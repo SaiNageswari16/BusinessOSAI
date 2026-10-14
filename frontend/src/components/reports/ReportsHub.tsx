@@ -527,8 +527,15 @@ export function ReportsHub() {
             const isPending = (c.key === "pending_amount" || c.key === "balance") && parseFloat(String(val).replace(/[^0-9.-]/g, "")) > 0;
             
             if (isStatus) {
-              const isPaid = String(val).toLowerCase().includes("paid") || String(val).toLowerCase().includes("completed");
-              return `<td style="white-space: nowrap;"><span style="display: inline-block; padding: 2px 7px; border-radius: 9999px; font-size: 8px; font-weight: 700; ${isPaid ? 'background: #dcfce7; color: #15803d; border: 1px solid #86efac;' : 'background: #fef3c7; color: #b45309; border: 1px solid #fde68a;'}">${val}</span></td>`;
+              const valLower = String(val).toLowerCase();
+              const isPaid = valLower.includes("paid") || valLower.includes("completed");
+              const isCancelled = valLower.includes("cancel") || valLower.includes("repaid");
+              const bgStyle = isCancelled
+                ? 'background: #ffe4e6; color: #be123c; border: 1px solid #fecdd3;'
+                : isPaid
+                ? 'background: #dcfce7; color: #15803d; border: 1px solid #86efac;'
+                : 'background: #fef3c7; color: #b45309; border: 1px solid #fde68a;';
+              return `<td style="white-space: nowrap;"><span style="display: inline-block; padding: 2px 7px; border-radius: 9999px; font-size: 8px; font-weight: 700; ${bgStyle}">${val}</span></td>`;
             }
             if (isPending) {
               return `<td style="text-align: right; font-weight: 700; color: #be123c;">${val}</td>`;
@@ -1350,9 +1357,12 @@ export function ReportsHub() {
                                   {isStatus ? (
                                     <span
                                       className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                        String(val).toLowerCase().includes("paid") ||
-                                        String(val).toLowerCase().includes("completed") ||
-                                        String(val).toLowerCase().includes("active")
+                                        String(val).toLowerCase().includes("cancel") ||
+                                        String(val).toLowerCase().includes("repaid")
+                                          ? "bg-rose-50 text-rose-700 border border-rose-200 font-extrabold"
+                                          : String(val).toLowerCase().includes("paid") ||
+                                            String(val).toLowerCase().includes("completed") ||
+                                            String(val).toLowerCase().includes("active")
                                           ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                           : String(val).toLowerCase().includes("pending") ||
                                             String(val).toLowerCase().includes("partial") ||

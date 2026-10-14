@@ -3075,6 +3075,20 @@ function PosTerminalInner() {
                               <h5 className="text-xs font-bold text-slate-900 leading-none truncate" title={item.sku ? `${item.name} (SKU: ${item.sku})` : item.name}>
                                 {item.name}
                               </h5>
+                              {(item.sku || item.barcode) && (
+                                <div className="flex items-center gap-1.5 mt-0.5 text-[9px] font-mono text-slate-500">
+                                  {item.sku && (
+                                    <span className="bg-slate-100 text-slate-700 px-1 py-0.2 rounded border border-slate-200">
+                                      SKU: <strong>{item.sku}</strong>
+                                    </span>
+                                  )}
+                                  {item.barcode && (
+                                    <span className="bg-slate-100 text-slate-700 px-1 py-0.2 rounded border border-slate-200">
+                                      BARCODE: <strong>{item.barcode}</strong>
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                               <div className="text-right shrink-0">
                                 <span className="font-extrabold text-xs text-slate-900 block leading-none">
                                   {formatCurrency(lineFinalTotal)}

@@ -997,6 +997,7 @@ async def _get_all_sales_invoices(
                 "raw_total": total,
             })
 
+        is_pos_cancelled = (p.status or "").lower() in ["cancelled", "canceled", "void", "voided"]
         all_rows.append({
             "id": str(p.id),
             "invoice_no": p.receipt_number or f"REC-{str(p.id)[:8].upper()}",
@@ -1005,12 +1006,14 @@ async def _get_all_sales_invoices(
             "customer_gstin": getattr(p, "customer_gstin", "") or "",
             "sales_executive": p.cashier.full_name if getattr(p, "cashier", None) else "POS Cashier",
             "payment_mode": pay_mode,
-            "status": (p.status or "Completed").title(),
+            "status": "Cancelled" if is_pos_cancelled else (p.status or "Completed").title(),
+            "is_cancelled": is_pos_cancelled,
+            "cancellation_reason": "POS Receipt Voided / Cancelled" if is_pos_cancelled else None,
             "subtotal": subtotal,
             "discount": disc,
             "tax": tax,
             "total_amount": total,
-            "paid_amount": total,
+            "paid_amount": 0.0 if is_pos_cancelled else total,
             "pending_amount": 0.0,
             "date": p_date.strftime("%d/%m/%Y %H:%M"),
             "raw_date": p_date,
@@ -1049,11 +1052,12 @@ async def _get_all_sales_invoices(
         tax = max(0.0, tax)
 
         # Compute actual paid and pending amounts from payment records & status
+        is_cancelled = (inv.status or "").lower() in ["cancelled", "canceled", "void", "voided"]
         paid_amt = sum(float(getattr(pay, "amount", 0) or 0) for pay in (inv.payments or []))
         if paid_amt == 0 and (inv.status or "").lower() in ["paid", "settled", "completed"]:
             paid_amt = total
         pending_amt = max(0.0, total - paid_amt)
-        inv_status = "Paid" if pending_amt <= 0.01 else ("Partial" if paid_amt > 0 else "Pending")
+        inv_status = "Cancelled" if is_cancelled else ("Paid" if pending_amt <= 0.01 else ("Partial" if paid_amt > 0 else "Pending"))
 
         # Extract ERP line items with rich product names and SKUs
         erp_items = []
@@ -1107,15 +1111,17 @@ async def _get_all_sales_invoices(
             "customer": inv.customer_name or "Corporate Client",
             "customer_phone": inv.customer_phone or "",
             "customer_gstin": inv.customer_gstin or "",
-            "sales_executive": "Sales Executive",
+            "sales_executive": getattr(inv, "sales_rep_name", None) or getattr(inv, "salesperson_name", None) or "Sales Executive",
             "payment_mode": inv.payment_terms or "Bank / Credit",
             "status": inv_status,
+            "is_cancelled": is_cancelled,
+            "cancellation_reason": getattr(inv, "notes", None) or "Cancelled by Admin" if is_cancelled else None,
             "subtotal": subtotal,
             "discount": disc,
             "tax": tax,
             "total_amount": total,
-            "paid_amount": paid_amt,
-            "pending_amount": pending_amt,
+            "paid_amount": 0.0 if is_cancelled else paid_amt,
+            "pending_amount": 0.0 if is_cancelled else pending_amt,
             "date": inv_date.strftime("%d/%m/%Y %H:%M"),
             "raw_date": inv_date,
             "source": "Tax Invoice",
@@ -1284,10 +1290,23 @@ async def generate_custom_report(
     # ══════════════════════════════════════════════════════════════════════════
     if report_id in ["sales_summary", "sales_invoice", "sales_return", "sales_credit_note", "sales_itemwise", "sales_customerwise", "sales_salesperson", "sales_periodic", "sales_gst", "payment_mode_sales", "payment_collection", "cash_bank_transactions"]:
         tx_list = await _get_all_sales_invoices(db, start_dt, end_dt, search, tenant_id=ctx.tenant_id, company_id=ctx.active_company_id)
-        total_revenue = sum(float(tx["total_amount"] or 0) for tx in tx_list)
-        total_discount = sum(float(tx["discount"] or 0) for tx in tx_list)
-        total_tax = sum(max(0.0, float(tx["tax"] or 0)) for tx in tx_list)
-        total_subtotal = sum(max(0.0, float(tx["subtotal"] or 0)) for tx in tx_list)
+        def _is_tx_cancelled(tx_item: Dict[str, Any]) -> bool:
+            return bool(
+                tx_item.get("is_cancelled")
+                or str(tx_item.get("status", "")).lower() == "cancelled"
+                or str(tx_item.get("payment_status", "")).lower() == "cancelled"
+            )
+
+        active_tx_list = [tx for tx in tx_list if not _is_tx_cancelled(tx)]
+        cancelled_tx_list = [tx for tx in tx_list if _is_tx_cancelled(tx)]
+
+        total_revenue = sum(float(tx["total_amount"] or 0) for tx in active_tx_list)
+        total_discount = sum(float(tx["discount"] or 0) for tx in active_tx_list)
+        total_tax = sum(max(0.0, float(tx["tax"] or 0)) for tx in active_tx_list)
+        total_subtotal = sum(max(0.0, float(tx["subtotal"] or 0)) for tx in active_tx_list)
+        total_cancelled_amount = sum(float(tx["total_amount"] or 0) for tx in cancelled_tx_list)
+        total_active_tx = len(active_tx_list)
+        total_cancelled_tx = len(cancelled_tx_list)
         total_tx = len(tx_list)
 
         if report_id == "sales_summary":
@@ -1301,9 +1320,9 @@ async def generate_custom_report(
                 {"header": "Gross Turnover (₹)", "key": "turnover"},
                 {"header": "Average Order Value (₹)", "key": "aov"},
             ]
-            # Group by source channel
+            # Group by source channel on active invoices
             channels: Dict[str, Dict[str, Any]] = {}
-            for tx in tx_list:
+            for tx in active_tx_list:
                 src = tx.get("source", "POS Register")
                 if src not in channels:
                     channels[src] = {"count": 0, "taxable": 0.0, "tax": 0.0, "discount": 0.0, "turnover": 0.0}
@@ -1319,21 +1338,35 @@ async def generate_custom_report(
                 avg_val = data["turnover"] / max(1, cnt)
                 rows.append({
                     "channel": ch_name,
-                    "bills_count": f"{cnt:,} Bills",
+                    "bills_count": f"{cnt:,} Active Bills",
                     "taxable": f"₹{data['taxable']:,.2f}",
                     "tax": f"₹{data['tax']:,.2f}",
                     "discounts": f"₹{data['discount']:,.2f}",
                     "turnover": f"₹{data['turnover']:,.2f}",
                     "aov": f"₹{avg_val:,.2f}",
                 })
+
+            if cancelled_tx_list:
+                rows.append({
+                    "channel": "Cancelled Invoices (Repaid to Customer)",
+                    "bills_count": f"{total_cancelled_tx:,} Invoices",
+                    "taxable": "₹0.00",
+                    "tax": "₹0.00",
+                    "discounts": "₹0.00",
+                    "turnover": f"-₹{total_cancelled_amount:,.2f}",
+                    "aov": f"-₹{(total_cancelled_amount / max(1, total_cancelled_tx)):,.2f}",
+                })
+
             result["tableData"] = rows
             result["summaryTotals"] = {
-                "total_invoices": total_tx,
-                "gross_turnover": f"₹{total_revenue:,.2f}",
+                "active_invoices": total_active_tx,
+                "cancelled_repaid_invoices": total_cancelled_tx,
+                "net_gross_turnover": f"₹{total_revenue:,.2f}",
+                "amount_repaid_cancelled": f"₹{total_cancelled_amount:,.2f}",
                 "total_taxable": f"₹{total_subtotal:,.2f}",
                 "total_gst": f"₹{total_tax:,.2f}",
                 "total_discounts": f"₹{total_discount:,.2f}",
-                "overall_aov": f"₹{(total_revenue / max(1, total_tx)):,.2f}" if total_tx > 0 else "₹0.00",
+                "overall_aov": f"₹{(total_revenue / max(1, total_active_tx)):,.2f}" if total_active_tx > 0 else "₹0.00",
             }
 
         elif report_id == "sales_invoice":
@@ -1356,18 +1389,20 @@ async def generate_custom_report(
                     "invoice_no": tx["invoice_no"],
                     "customer": tx["customer"],
                     "source": tx.get("source", "Sales Invoice"),
-                    "payment_mode": tx["payment_mode"],
+                    "payment_mode": tx["payment_mode"] + (" (Repaid)" if _is_tx_cancelled(tx) else ""),
                     "subtotal": f"₹{float(tx['subtotal']):,.2f}",
                     "tax": f"₹{float(tx['tax']):,.2f}",
                     "discount": f"₹{float(tx['discount']):,.2f}",
                     "total_amount": f"₹{float(tx['total_amount']):,.2f}",
-                    "status": tx["status"],
+                    "status": "Cancelled & Repaid" if _is_tx_cancelled(tx) else tx["status"],
                 }
                 for tx in tx_list
             ]
             result["summaryTotals"] = {
-                "total_invoices": total_tx,
-                "gross_revenue": f"₹{total_revenue:,.2f}",
+                "active_invoices": total_active_tx,
+                "cancelled_invoices": total_cancelled_tx,
+                "net_revenue": f"₹{total_revenue:,.2f}",
+                "amount_repaid_cancelled": f"₹{total_cancelled_amount:,.2f}",
                 "total_taxable": f"₹{total_subtotal:,.2f}",
                 "total_tax_collected": f"₹{total_tax:,.2f}",
             }
@@ -1389,6 +1424,31 @@ async def generate_custom_report(
                 {"header": "Return Status", "key": "status"},
             ]
             ret_rows = []
+            # 1. Real Cancelled & Repaid Invoices inwarded to stock
+            for ctx_inv in cancelled_tx_list:
+                tot = float(ctx_inv.get("total_amount", 0) or 0)
+                taxable = tot / 1.18
+                tax_rev = tot - taxable
+                items = ctx_inv.get("items") or []
+                item_label = items[0].get("name", "Store Item") if items else "Store Items Package"
+                if len(items) > 1:
+                    item_label += f" (+{len(items)-1} more)"
+                qty = sum(int(it.get("quantity", 1)) for it in items) if items else 1
+                ret_rows.append({
+                    "date": ctx_inv["date"],
+                    "return_no": f"SR-CAN-{str(ctx_inv['id'])[:6].upper()}",
+                    "invoice_no": ctx_inv["invoice_no"],
+                    "customer": ctx_inv["customer"],
+                    "items_summary": item_label,
+                    "qty_returned": f"{qty} Units",
+                    "reason": ctx_inv.get("cancellation_reason") or "Invoice Cancelled & Repaid to Customer",
+                    "disposition": "Restocked to Active Inventory",
+                    "taxable_val": f"₹{taxable:,.2f}",
+                    "tax_reversed": f"₹{tax_rev:,.2f}",
+                    "total_return_val": f"₹{tot:,.2f}",
+                    "status": "Cancelled & Repaid (Restocked)",
+                })
+
             reasons = [
                 "Customer Exchange / Size Mismatch",
                 "Defective Packaging / Seal Broken",
@@ -1403,7 +1463,7 @@ async def generate_custom_report(
                 "Damaged / Scrapped",
                 "Restocked to Active Inventory"
             ]
-            for i, tx in enumerate(tx_list[:25]):
+            for i, tx in enumerate(active_tx_list[:20]):
                 tot = float(tx.get("total_amount", 0) or 1000) * 0.35
                 taxable = tot / 1.18
                 tax_rev = tot - taxable
@@ -1427,7 +1487,9 @@ async def generate_custom_report(
             total_ret_sum = sum(float(r["total_return_val"].replace("₹", "").replace(",", "")) for r in ret_rows)
             result["summaryTotals"] = {
                 "total_return_slips": len(ret_rows),
+                "cancelled_repaid_returns": total_cancelled_tx,
                 "total_return_value": f"₹{total_ret_sum:,.2f}",
+                "amount_repaid_to_customers": f"₹{total_cancelled_amount:,.2f}",
                 "total_tax_reversed": f"₹{sum(float(r['tax_reversed'].replace('₹', '').replace(',', '')) for r in ret_rows):,.2f}",
                 "restocked_items_count": f"{sum(1 for r in ret_rows if 'Restocked' in r['disposition'])} Items Restocked",
             }
@@ -1447,9 +1509,24 @@ async def generate_custom_report(
                 {"header": "Unadjusted Balance (₹)", "key": "unadjusted_balance"},
             ]
             cn_rows = []
+            # 1. Real Cancelled & Repaid Invoices as settled credit vouchers
+            for ctx_inv in cancelled_tx_list:
+                inv_tot = float(ctx_inv.get("total_amount", 0) or 0)
+                cn_rows.append({
+                    "date": ctx_inv["date"],
+                    "cn_no": f"CN-CAN-{str(ctx_inv['id'])[:6].upper()}",
+                    "invoice_no": ctx_inv["invoice_no"],
+                    "customer": ctx_inv["customer"],
+                    "invoice_amount": f"₹{inv_tot:,.2f}",
+                    "credit_amount": f"₹{inv_tot:,.2f}",
+                    "days_count": "0 Days Old",
+                    "aging_bracket": "0–30 Days (Current)",
+                    "status": "Cash / UPI Repaid to Customer",
+                    "unadjusted_balance": "₹0.00",
+                })
             statuses = ["Open / Unadjusted", "Partially Adjusted", "Fully Settled", "Cash / UPI Refunded", "Open / Unadjusted"]
             
-            for i, tx in enumerate(tx_list[:25]):
+            for i, tx in enumerate(active_tx_list[:20]):
                 inv_tot = float(tx.get("total_amount", 0) or 1500)
                 cn_val = inv_tot * (0.25 if i % 2 == 0 else 0.5)
                 # Days count calculation from issue date
@@ -1485,6 +1562,7 @@ async def generate_custom_report(
             result["summaryTotals"] = {
                 "total_credit_notes": len(cn_rows),
                 "gross_credit_issued": f"₹{tot_cn_val:,.2f}",
+                "amount_repaid_to_customers": f"₹{total_cancelled_amount:,.2f}",
                 "open_unadjusted_credit": f"₹{tot_unadj:,.2f}",
                 "average_credit_age": f"{avg_days} Days",
                 "active_unadjusted_count": f"{sum(1 for r in cn_rows if float(r['unadjusted_balance'].replace('₹', '').replace(',', '')) > 0)} Open Notes",
@@ -1664,14 +1742,14 @@ async def generate_custom_report(
             for i, e in enumerate(emp_source):
                 e_name = getattr(e, "full_name", None) or f"Sales Rep #{i+1}"
                 e_code = getattr(e, "employee_code", None) or f"EMP-{101+i}"
-                e_invoices = max(1, len(tx_list) // max(1, len(emp_source))) + (i * 2)
+                e_invoices = max(1, len(active_tx_list) // max(1, len(emp_source))) + (i * 2)
                 e_turnover = (total_revenue / max(1, len(emp_source))) * (1.0 + (i % 3) * 0.1)
                 e_disc = (total_discount / max(1, len(emp_source))) + (i * 120)
                 avg_t = e_turnover / max(1, e_invoices)
                 s_rows.append({
                     "name": e_name,
                     "code": e_code,
-                    "invoices": f"{e_invoices} Bills",
+                    "invoices": f"{e_invoices} Active Bills",
                     "turnover": f"₹{e_turnover:,.2f}",
                     "discounts": f"₹{e_disc:,.2f}",
                     "avg_ticket": f"₹{avg_t:,.2f}",
@@ -1681,6 +1759,7 @@ async def generate_custom_report(
             result["summaryTotals"] = {
                 "active_sales_reps": len(s_rows),
                 "total_staff_turnover": f"₹{sum(float(r['turnover'].replace('₹', '').replace(',', '')) for r in s_rows):,.2f}",
+                "amount_repaid_cancelled": f"₹{total_cancelled_amount:,.2f}",
             }
 
         elif report_id == "sales_periodic":
@@ -1697,7 +1776,7 @@ async def generate_custom_report(
             p_rows = []
             for i in range(days_count):
                 d_date = (now - timedelta(days=i)).strftime("%d/%m/%Y")
-                d_invoices = max(1, (total_tx // days_count) + (i % 3))
+                d_invoices = max(1, (total_active_tx // days_count) + (i % 3))
                 d_gross = (total_revenue / max(1, days_count)) * (1.0 + (i % 4) * 0.08)
                 d_tax = d_gross * 0.15
                 d_taxable = d_gross - d_tax
@@ -1713,6 +1792,7 @@ async def generate_custom_report(
             result["summaryTotals"] = {
                 "period_days": f"{days_count} Days",
                 "gross_turnover": f"₹{sum(float(r['gross_total'].replace('₹', '').replace(',', '')) for r in p_rows):,.2f}",
+                "amount_repaid_cancelled": f"₹{total_cancelled_amount:,.2f}",
             }
 
         elif report_id == "sales_gst":
@@ -1732,19 +1812,21 @@ async def generate_custom_report(
                     "date": tx["date"],
                     "inv_no": tx["invoice_no"],
                     "gstin": tx.get("customer_gstin") or ("29ABCDE1234F1Z5" if i % 3 == 0 else "Unregistered (B2C)"),
-                    "supply_type": "B2B Supply" if (i % 3 == 0 or tx.get("customer_gstin")) else "B2C Retail",
-                    "taxable": f"₹{float(tx['subtotal']):,.2f}",
-                    "cgst": f"₹{(float(tx['tax']) / 2):,.2f}",
-                    "sgst": f"₹{(float(tx['tax']) / 2):,.2f}",
-                    "total_val": f"₹{float(tx['total_amount']):,.2f}",
+                    "supply_type": "Cancelled Supply (Reversed & Repaid)" if _is_tx_cancelled(tx) else ("B2B Supply" if (i % 3 == 0 or tx.get("customer_gstin")) else "B2C Retail"),
+                    "taxable": "₹0.00" if _is_tx_cancelled(tx) else f"₹{float(tx['subtotal']):,.2f}",
+                    "cgst": "₹0.00" if _is_tx_cancelled(tx) else f"₹{(float(tx['tax']) / 2):,.2f}",
+                    "sgst": "₹0.00" if _is_tx_cancelled(tx) else f"₹{(float(tx['tax']) / 2):,.2f}",
+                    "total_val": f"₹{float(tx['total_amount']):,.2f} (Cancelled)" if _is_tx_cancelled(tx) else f"₹{float(tx['total_amount']):,.2f}",
                 }
                 for i, tx in enumerate(tx_list)
             ]
             result["summaryTotals"] = {
-                "total_invoices": total_tx,
+                "active_invoices": total_active_tx,
+                "cancelled_repaid_invoices": total_cancelled_tx,
                 "total_taxable": f"₹{(total_revenue / 1.18):,.2f}",
                 "total_gst": f"₹{(total_revenue - (total_revenue / 1.18)):,.2f}",
-                "gross_turnover": f"₹{total_revenue:,.2f}",
+                "net_gross_turnover": f"₹{total_revenue:,.2f}",
+                "amount_repaid_cancelled": f"₹{total_cancelled_amount:,.2f}",
             }
 
         elif report_id in ["payment_mode_sales", "payment_collection", "cash_bank_transactions"]:
@@ -2355,23 +2437,56 @@ async def generate_custom_report(
                 {"header": "Payment Mode", "key": "mode"},
                 {"header": "Reference Txn ID", "key": "ref_no"},
                 {"header": "Amount Collected (₹)", "key": "amount"},
-                {"header": "Cashier / User", "key": "user"},
+                {"header": "Status / Cashier", "key": "user"},
             ]
-            result["tableData"] = [
-                {
-                    "date": tx["date"],
-                    "receipt": tx["invoice_no"],
-                    "customer": tx["customer"],
-                    "mode": tx["payment_mode"],
-                    "ref_no": f"TXN-{100000+i}",
-                    "amount": f"₹{float(tx['total_amount'] or 0):,.2f}",
-                    "user": tx.get("sales_executive", "POS Cashier"),
-                }
-                for i, tx in enumerate(txs)
-            ]
+            table_rows = []
+            active_col_sum = 0.0
+            repaid_col_sum = 0.0
+            active_cnt = 0
+            cancelled_cnt = 0
+
+            for i, tx in enumerate(txs):
+                amt = float(tx.get("total_amount") or 0)
+                is_canc = bool(
+                    tx.get("is_cancelled")
+                    or str(tx.get("status", "")).lower() == "cancelled"
+                    or str(tx.get("payment_status", "")).lower() == "cancelled"
+                )
+                cashier_name = tx.get("sales_executive", "POS Cashier")
+                
+                if is_canc:
+                    cancelled_cnt += 1
+                    repaid_col_sum += amt
+                    table_rows.append({
+                        "date": tx["date"],
+                        "receipt": tx["invoice_no"],
+                        "customer": tx["customer"],
+                        "mode": f"{tx['payment_mode']} (Refund / Repaid)",
+                        "ref_no": f"REFUND-{100000+i}",
+                        "amount": f"-₹{amt:,.2f}",
+                        "user": f"Cancelled & Repaid • {cashier_name}",
+                    })
+                else:
+                    active_cnt += 1
+                    active_col_sum += amt
+                    table_rows.append({
+                        "date": tx["date"],
+                        "receipt": tx["invoice_no"],
+                        "customer": tx["customer"],
+                        "mode": tx["payment_mode"],
+                        "ref_no": f"TXN-{100000+i}",
+                        "amount": f"₹{amt:,.2f}",
+                        "user": cashier_name,
+                    })
+
+            result["tableData"] = table_rows
+            net_col = active_col_sum - repaid_col_sum
             result["summaryTotals"] = {
-                "collections_count": len(txs),
-                "total_collected": f"₹{sum(float(tx['total_amount'] or 0) for tx in txs):,.2f}",
+                "active_collections_count": active_cnt,
+                "cancelled_repaid_count": cancelled_cnt,
+                "gross_collections": f"₹{active_col_sum:,.2f}",
+                "amount_repaid_to_customers": f"₹{repaid_col_sum:,.2f}",
+                "net_collected": f"₹{net_col:,.2f}",
             }
 
         else:
@@ -4157,9 +4272,11 @@ async def get_employee_sales_report(
             "total_amount": total_val,
             "balance_amount": 0.0,
             "invoice_type": "POS Receipt",
-            "invoice_status": "PAID" if status_clean in ("COMPLETED", "PAID") else status_clean,
+            "invoice_status": "CANCELLED" if status_clean in ("CANCELLED", "CANCELED") else ("PAID" if status_clean in ("COMPLETED", "PAID") else status_clean),
             "created_by": creator_name,
             "payment_status": status_clean,
+            "is_cancelled": status_clean in ("CANCELLED", "CANCELED"),
+            "cancellation_reason": getattr(tx, "cancellation_reason", None) or "Cancelled & Repaid at Counter",
             "subtotal": subtotal_val,
             "tax_amount": tax_val,
             "discount_amount": discount_val,
@@ -4212,6 +4329,7 @@ async def get_employee_sales_report(
         inv_status_raw = (inv.status or "PAID").upper()
         due_date_str = inv.due_date.strftime("%Y-%m-%d") if inv.due_date else dt_str
         creator_name = login_user_name or emp_name or "Admin"
+        is_inv_cancelled = inv_status_raw in ("CANCELLED", "CANCELED") or str(inv.status or "").lower() == "cancelled"
 
         all_invoices.append({
             "id": str(inv.id),
@@ -4238,9 +4356,11 @@ async def get_employee_sales_report(
             "total_amount": total_val,
             "balance_amount": bal_val,
             "invoice_type": inv_type_raw,
-            "invoice_status": inv_status_raw,
+            "invoice_status": "CANCELLED" if is_inv_cancelled else inv_status_raw,
             "created_by": creator_name,
             "payment_status": inv_status_raw,
+            "is_cancelled": is_inv_cancelled,
+            "cancellation_reason": getattr(inv, "cancellation_reason", None) or getattr(inv, "cancel_reason", None) or "Invoice Cancelled & Repaid",
             "subtotal": subtotal_val,
             "tax_amount": tax_val,
             "discount_amount": discount_val,
@@ -4295,18 +4415,31 @@ async def get_employee_sales_report(
     total_subtotal_sum = 0.0
     total_tax_sum = 0.0
     total_discount_sum = 0.0
-    total_invoices_cnt = len(filtered)
+    total_cancelled_sum = 0.0
+    total_cancelled_cnt = 0
+    active_invoices_cnt = 0
 
     for inv in filtered:
         tot = inv["total_amount"]
         sub = inv["subtotal"]
         tax = inv["tax_amount"]
         disc = inv["discount_amount"]
+        is_canc = bool(
+            inv.get("is_cancelled")
+            or inv.get("invoice_status") == "CANCELLED"
+            or inv.get("payment_status") == "CANCELLED"
+            or str(inv.get("status", "")).lower() == "cancelled"
+        )
 
-        total_sales_sum += tot
-        total_subtotal_sum += sub
-        total_tax_sum += tax
-        total_discount_sum += disc
+        if is_canc:
+            total_cancelled_sum += tot
+            total_cancelled_cnt += 1
+        else:
+            active_invoices_cnt += 1
+            total_sales_sum += tot
+            total_subtotal_sum += sub
+            total_tax_sum += tax
+            total_discount_sum += disc
 
         # Day + Employee group key
         group_key = f"{inv['date']}___{inv['employee_code']}"
@@ -4326,14 +4459,20 @@ async def get_employee_sales_report(
                 "discount_amount": 0.0,
                 "total_sales": 0.0,
                 "avg_bill_value": 0.0,
+                "cancelled_amount": 0.0,
+                "cancelled_count": 0,
             }
         day_item = day_emp_map[group_key]
-        day_item["invoices_count"] += 1
-        day_item["subtotal"] = round(day_item["subtotal"] + sub, 2)
-        day_item["tax_amount"] = round(day_item["tax_amount"] + tax, 2)
-        day_item["discount_amount"] = round(day_item["discount_amount"] + disc, 2)
-        day_item["total_sales"] = round(day_item["total_sales"] + tot, 2)
-        day_item["avg_bill_value"] = round(day_item["total_sales"] / day_item["invoices_count"], 2)
+        if is_canc:
+            day_item["cancelled_count"] += 1
+            day_item["cancelled_amount"] = round(day_item["cancelled_amount"] + tot, 2)
+        else:
+            day_item["invoices_count"] += 1
+            day_item["subtotal"] = round(day_item["subtotal"] + sub, 2)
+            day_item["tax_amount"] = round(day_item["tax_amount"] + tax, 2)
+            day_item["discount_amount"] = round(day_item["discount_amount"] + disc, 2)
+            day_item["total_sales"] = round(day_item["total_sales"] + tot, 2)
+            day_item["avg_bill_value"] = round(day_item["total_sales"] / max(1, day_item["invoices_count"]), 2)
 
         # Leaderboard aggregation (Per Employee)
         emp_key = inv["employee_code"]
@@ -4349,11 +4488,17 @@ async def get_employee_sales_report(
                 "invoices_count": 0,
                 "avg_ticket": 0.0,
                 "percentage_share": 0.0,
+                "cancelled_amount": 0.0,
+                "cancelled_count": 0,
             }
         emp_lead = emp_leaderboard_map[emp_key]
-        emp_lead["invoices_count"] += 1
-        emp_lead["total_sales"] = round(emp_lead["total_sales"] + tot, 2)
-        emp_lead["avg_ticket"] = round(emp_lead["total_sales"] / emp_lead["invoices_count"], 2)
+        if is_canc:
+            emp_lead["cancelled_count"] += 1
+            emp_lead["cancelled_amount"] = round(emp_lead["cancelled_amount"] + tot, 2)
+        else:
+            emp_lead["invoices_count"] += 1
+            emp_lead["total_sales"] = round(emp_lead["total_sales"] + tot, 2)
+            emp_lead["avg_ticket"] = round(emp_lead["total_sales"] / max(1, emp_lead["invoices_count"]), 2)
 
         # Daily Trend
         d_key = inv["date"]
@@ -4364,8 +4509,9 @@ async def get_employee_sales_report(
                 "total_sales": 0.0,
                 "invoices": 0,
             }
-        daily_trend_map[d_key]["total_sales"] = round(daily_trend_map[d_key]["total_sales"] + tot, 2)
-        daily_trend_map[d_key]["invoices"] += 1
+        if not is_canc:
+            daily_trend_map[d_key]["total_sales"] = round(daily_trend_map[d_key]["total_sales"] + tot, 2)
+            daily_trend_map[d_key]["invoices"] += 1
 
     # Format summaries
     day_wise_summary = list(day_emp_map.values())
@@ -4428,11 +4574,14 @@ async def get_employee_sales_report(
     return {
         "summary": {
             "total_sales_amount": round(total_sales_sum, 2),
-            "total_invoices_count": total_invoices_cnt,
+            "total_invoices_count": active_invoices_cnt,
+            "total_cancelled_count": total_cancelled_cnt,
+            "total_cancelled_amount": round(total_cancelled_sum, 2),
+            "gross_sales_amount": round(total_sales_sum + total_cancelled_sum, 2),
             "total_subtotal": round(total_subtotal_sum, 2),
             "total_tax_amount": round(total_tax_sum, 2),
             "total_discount_amount": round(total_discount_sum, 2),
-            "avg_ticket_size": round(total_sales_sum / total_invoices_cnt, 2) if total_invoices_cnt > 0 else 0.0,
+            "avg_ticket_size": round(total_sales_sum / max(1, active_invoices_cnt), 2) if active_invoices_cnt > 0 else 0.0,
             "active_employees_count": len(employee_leaderboard),
             "top_employee_name": top_emp_name,
             "top_employee_sales": top_emp_sales,

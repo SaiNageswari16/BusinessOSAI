@@ -15,7 +15,8 @@ import {
   CheckCircle2,
   Image as ImageIcon,
   FileSpreadsheet,
-  FileText
+  FileText,
+  RotateCcw
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
@@ -161,14 +162,36 @@ export function EmployeeSalesReportSuite({ onBack }: EmployeeSalesReportSuitePro
     return reportData?.detailed_invoices || [];
   }, [reportData]);
 
-  // Aggregate totals
-  const totalSales = useMemo(() => {
-    return invoices.reduce((sum, inv) => sum + (Number(inv.amount || inv.total_amount) || 0), 0);
+  // Helper to check if an invoice is cancelled
+  const isCancelledInvoice = (inv: any): boolean => {
+    return Boolean(
+      inv?.is_cancelled ||
+      String(inv?.invoice_status || "").toUpperCase().includes("CANCEL") ||
+      String(inv?.payment_status || "").toUpperCase().includes("CANCEL") ||
+      String(inv?.status || "").toLowerCase().includes("cancel")
+    );
+  };
+
+  const activeInvoices = useMemo(() => {
+    return invoices.filter((inv) => !isCancelledInvoice(inv));
   }, [invoices]);
 
-  const totalBalance = useMemo(() => {
-    return invoices.reduce((sum, inv) => sum + (Number(inv.balance_amount) || 0), 0);
+  const cancelledInvoices = useMemo(() => {
+    return invoices.filter((inv) => isCancelledInvoice(inv));
   }, [invoices]);
+
+  // Aggregate totals (Net sales strictly excluding cancelled & repaid invoices)
+  const totalSales = useMemo(() => {
+    return activeInvoices.reduce((sum, inv) => sum + (Number(inv.amount || inv.total_amount) || 0), 0);
+  }, [activeInvoices]);
+
+  const totalCancelledAmount = useMemo(() => {
+    return cancelledInvoices.reduce((sum, inv) => sum + (Number(inv.amount || inv.total_amount) || 0), 0);
+  }, [cancelledInvoices]);
+
+  const totalBalance = useMemo(() => {
+    return activeInvoices.reduce((sum, inv) => sum + (Number(inv.balance_amount) || 0), 0);
+  }, [activeInvoices]);
 
   // Staff options list
   const staffOptions = useMemo(() => {
@@ -389,17 +412,39 @@ export function EmployeeSalesReportSuite({ onBack }: EmployeeSalesReportSuitePro
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5 bg-white">
-        {/* Metric Card matching reference screenshot: Total Sales */}
-        <div>
-          <div className="inline-block border border-slate-200 rounded-xl p-4 bg-white shadow-2xs min-w-[240px]">
-            <div className="flex items-center gap-2 text-slate-500 mb-1.5">
-              <ImageIcon className="w-4 h-4 text-blue-500" />
-              <span className="text-xs font-semibold tracking-wide">Total Sales</span>
+        {/* Metric Cards Row */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="border border-slate-200 rounded-xl p-4 bg-white shadow-2xs min-w-[240px]">
+            <div className="flex items-center justify-between gap-2 text-slate-500 mb-1.5">
+              <div className="flex items-center gap-2">
+                <ImageIcon className="w-4 h-4 text-blue-500" />
+                <span className="text-xs font-semibold tracking-wide">Net Total Sales</span>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                {activeInvoices.length} Active Bills
+              </span>
             </div>
             <div className="text-2xl font-bold text-slate-900">
               ₹ {Number(totalSales || 0).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
             </div>
           </div>
+
+          {cancelledInvoices.length > 0 && (
+            <div className="border border-rose-200 rounded-xl p-4 bg-rose-50/50 shadow-2xs min-w-[240px]">
+              <div className="flex items-center justify-between gap-2 text-rose-700 mb-1.5">
+                <div className="flex items-center gap-2">
+                  <RotateCcw className="w-4 h-4 text-rose-600" />
+                  <span className="text-xs font-semibold tracking-wide">Cancelled & Repaid</span>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300">
+                  {cancelledInvoices.length} Invoices Repaid
+                </span>
+              </div>
+              <div className="text-2xl font-bold text-rose-700">
+                ₹ {Number(totalCancelledAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Filter Controls Row (5 inputs matching screenshot) */}
@@ -586,21 +631,22 @@ export function EmployeeSalesReportSuite({ onBack }: EmployeeSalesReportSuitePro
                   </tr>
                 ) : (
                   invoices.map((inv, idx) => {
+                    const isCanc = isCancelledInvoice(inv);
                     const status = (inv.invoice_status || "PAID").toUpperCase();
                     let statusBadgeClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
-                    if (status.includes("OVERDUE") || status.includes("UNPAID")) {
+                    if (isCanc) {
+                      statusBadgeClass = "bg-rose-50 text-rose-700 border-rose-200 font-bold";
+                    } else if (status.includes("OVERDUE") || status.includes("UNPAID")) {
                       statusBadgeClass = "bg-rose-50 text-rose-700 border-rose-200";
                     } else if (status.includes("PARTIAL")) {
                       statusBadgeClass = "bg-amber-50 text-amber-700 border-amber-200";
-                    } else if (status.includes("CANCEL")) {
-                      statusBadgeClass = "bg-slate-100 text-slate-600 border-slate-200";
                     }
 
                     const amt = Number(inv.amount || inv.total_amount || 0);
                     const bal = Number(inv.balance_amount || 0);
 
                     return (
-                      <tr key={inv.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                      <tr key={inv.id || idx} className={`transition-colors ${isCanc ? "bg-rose-50/20 hover:bg-rose-50/40" : "hover:bg-slate-50/80"}`}>
                         <td className="py-3 px-4 font-medium text-slate-900 whitespace-nowrap">
                           {inv.date ? formatDisplayDate(inv.date) : "—"}
                         </td>
@@ -614,10 +660,19 @@ export function EmployeeSalesReportSuite({ onBack }: EmployeeSalesReportSuitePro
                           {inv.due_date ? formatDisplayDate(inv.due_date) : "—"}
                         </td>
                         <td className="py-3 px-4 text-slate-900 font-semibold text-right whitespace-nowrap">
-                          ₹ {amt.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {isCanc ? (
+                            <div className="flex flex-col items-end">
+                              <span className="line-through text-slate-400">
+                                ₹ {amt.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                              <span className="text-[10px] text-rose-600 font-bold">Repaid to Customer</span>
+                            </div>
+                          ) : (
+                            `₹ ${amt.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          )}
                         </td>
                         <td className="py-3 px-4 text-slate-700 font-medium text-right whitespace-nowrap">
-                          {bal > 0 ? (
+                          {bal > 0 && !isCanc ? (
                             <span className="text-rose-600 font-semibold">
                               ₹ {bal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
@@ -632,7 +687,7 @@ export function EmployeeSalesReportSuite({ onBack }: EmployeeSalesReportSuitePro
                           <span
                             className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${statusBadgeClass}`}
                           >
-                            {status}
+                            {isCanc ? "CANCELLED & REPAID" : status}
                           </span>
                         </td>
                         <td className="py-3 px-4 text-slate-700 whitespace-nowrap font-medium">
@@ -649,7 +704,7 @@ export function EmployeeSalesReportSuite({ onBack }: EmployeeSalesReportSuitePro
                 <tfoot>
                   <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold text-slate-900">
                     <td colSpan={4} className="py-3 px-4 text-slate-700">
-                      Total ({invoices.length} transactions)
+                      Net Total ({activeInvoices.length} active bills{cancelledInvoices.length > 0 ? ` • ${cancelledInvoices.length} cancelled/repaid excluded` : ""})
                     </td>
                     <td className="py-3 px-4 text-right text-slate-900 font-extrabold whitespace-nowrap">
                       ₹ {totalSales.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

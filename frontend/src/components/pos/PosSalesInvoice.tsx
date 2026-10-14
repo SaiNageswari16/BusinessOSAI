@@ -64,6 +64,7 @@ import {
 import { posApi, crmApi, crmCustomersApi, type CustomerAddressItem, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi, crmWalletApi, bankApi, BankAccountRecord, crmQuotationsApi, companiesApi, numberSeriesApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
+import { ThermalReceiptPreviewModal } from "./ThermalReceiptPreviewModal";
 import { FullInvoicePrinter, FullInvoiceData } from "./FullInvoicePrinter";
 import { getActiveBillingGst, setActiveBillingGst, getTenantIdFromStorage, getOrgDocumentPrefix, getOrgPaymentQrSettings, isGenericBusinessTerm, getActiveInvoicePrintTemplate } from "../../lib/receipt-template-store";
 import { EWayBillModal } from "./EWayBillModal";
@@ -177,6 +178,8 @@ export interface InvoiceItem {
   id: string;
   product_id?: string;
   product_name: string;
+  sku?: string;
+  barcode?: string;
   description?: string;
   notes?: string;
   hsn_code?: string;
@@ -2714,6 +2717,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         id: Math.random().toString(36).substr(2, 9),
         product_id: prod.id,
         product_name: prod.name,
+        sku: prod.sku || "",
+        barcode: prod.barcode || "",
         quantity: qty,
         primary_qty: qty,
         secondary_qty: 0,
@@ -2779,16 +2784,67 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       return;
     }
 
-    // 3. Auto-add to product line or increment quantity if same product is scanned repeatedly
+    // 3. Auto-add to product line or increment quantity if same exact product (matching ID, SKU, barcode, and batch) is scanned repeatedly
     setItems((prevItems) => {
-      const existingIndex = prevItems.findIndex(
-        (it) =>
-          (product.id && it.product_id && it.product_id === product.id) ||
-          (it.product_name && product.name && it.product_name.toLowerCase().trim() === product.name.toLowerCase().trim())
-      );
+      const incomingId = product.id ? String(product.id) : "";
+      const incomingSku = product.sku ? String(product.sku).trim() : "";
+      const incomingBarcode = product.barcode ? String(product.barcode).trim() : "";
+      const batchInfo = getProductBatchInfo(product, 1);
+      const incomingBatch = batchInfo?.batch_number ? String(batchInfo.batch_number).trim() : "";
+
+      const existingIndex = prevItems.findIndex((it) => {
+        const itId = it.product_id ? String(it.product_id) : "";
+        const itSku = it.sku ? String(it.sku).trim() : "";
+        const itBarcode = it.barcode ? String(it.barcode).trim() : "";
+        const itBatch = it.batch_number ? String(it.batch_number).trim() : "";
+
+        // 1. If product IDs are present on both and differ -> DIFFERENT products, do NOT increment
+        if (itId && incomingId && itId !== incomingId) {
+          return false;
+        }
+
+        // 2. If SKUs are present on both and differ -> DIFFERENT variants/SKUs, do NOT increment
+        if (itSku && incomingSku && itSku.toLowerCase() !== incomingSku.toLowerCase()) {
+          return false;
+        }
+
+        // 3. If barcodes are present on both and differ -> DIFFERENT barcodes, do NOT increment
+        if (itBarcode && incomingBarcode && itBarcode !== incomingBarcode) {
+          return false;
+        }
+
+        // 4. If batch numbers are present on both and differ -> DIFFERENT batches, do NOT increment
+        if (itBatch && incomingBatch && itBatch !== incomingBatch) {
+          return false;
+        }
+
+        // Positive Match:
+        // A) Exact matching product_id
+        if (incomingId && itId && itId === incomingId) {
+          return true;
+        }
+
+        // B) Exact matching barcode
+        if (incomingBarcode && itBarcode && itBarcode === incomingBarcode) {
+          return true;
+        }
+
+        // C) Exact matching SKU
+        if (incomingSku && itSku && itSku.toLowerCase() === incomingSku.toLowerCase()) {
+          return true;
+        }
+
+        // D) Only match by product_name if NEITHER the row NOR incoming product has an ID, SKU, or Barcode
+        const hasSpecificCodes = Boolean(itId || incomingId || itSku || incomingSku || itBarcode || incomingBarcode);
+        if (!hasSpecificCodes && it.product_name && product.name && it.product_name.toLowerCase().trim() === product.name.toLowerCase().trim()) {
+          return true;
+        }
+
+        return false;
+      });
 
       if (existingIndex >= 0) {
-        // Product already exists in the invoice: increment quantity!
+        // Exact same product already exists in the invoice: increment quantity!
         const existingItem = prevItems[existingIndex];
         const newQty = Number((existingItem.quantity + 1).toFixed(4));
         const factor = Number(existingItem.conversion_factor) > 0 ? Number(existingItem.conversion_factor) : 1;
@@ -2800,10 +2856,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           newSecondaryQty = Math.round((newQty - Math.floor(newQty)) * factor);
         }
 
-        const batchInfo = getProductBatchInfo(product, newQty);
-
         const updatedItem: InvoiceItem = {
           ...existingItem,
+          sku: existingItem.sku || product.sku || "",
+          barcode: existingItem.barcode || product.barcode || "",
           quantity: newQty,
           primary_qty: newPrimaryQty,
           secondary_qty: newSecondaryQty,
@@ -2813,12 +2869,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
         const next = [...prevItems];
         next[existingIndex] = updatedItem;
-        toast.success(`Scanned: ${product.name} — Quantity incremented to ${newQty}`);
+        toast.success(`Scanned: ${product.name}${product.sku ? ` (${product.sku})` : ""} — Quantity incremented to ${newQty}`);
         return next;
       }
 
-      // Product does NOT exist in current invoice line items: add new row!
-      const batchInfo = getProductBatchInfo(product, 1);
+      // Product does NOT exist in current invoice line items (or has different SKU/barcode): add new row!
       const uomInfo = extractProductUomInfo(product);
       const discInfo = extractProductDiscount(product);
       const rateInfo = computeItemUomRates(batchInfo.unit_price, batchInfo.mrp, uomInfo);
@@ -2827,6 +2882,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         id: Math.random().toString(36).substr(2, 9),
         product_id: product.id || "",
         product_name: product.name,
+        sku: product.sku || "",
+        barcode: product.barcode || "",
         quantity: 1,
         primary_qty: 1,
         secondary_qty: 0,
@@ -2846,7 +2903,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         is_tax_inclusive: product.is_tax_inclusive === true,
       };
 
-      toast.success(`Scanned: Added ${product.name} (Qty: 1)`);
+      toast.success(`Scanned: Added ${product.name}${product.sku ? ` (${product.sku})` : ""} (Qty: 1)`);
 
       // If there is only one blank initial row, replace it
       if (prevItems.length === 1 && !prevItems[0].product_name && !prevItems[0].product_id) {
@@ -3726,6 +3783,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [fullInvoiceModalData, setFullInvoiceModalData] = useState<FullInvoiceData | null>(null);
   const [isFullInvoiceOpen, setIsFullInvoiceOpen] = useState(false);
   const [autoPrintFullInvoice, setAutoPrintFullInvoice] = useState(false);
+  const [thermalReceiptModalData, setThermalReceiptModalData] = useState<any | null>(null);
+  const [isThermalReceiptOpen, setIsThermalReceiptOpen] = useState(false);
+  const [autoPrintThermalReceipt, setAutoPrintThermalReceipt] = useState(false);
   const [navigateOnCloseToHistory, setNavigateOnCloseToHistory] = useState<boolean>(false);
   const [pendingTargetTab, setPendingTargetTab] = useState<string>("sales_history");
   const [pendingSavedRecord, setPendingSavedRecord] = useState<any>(null);
@@ -3877,52 +3937,60 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     setIsFullInvoiceOpen(true);
   };
 
-  const handlePrintThermal = () => {
-    if (items.length === 0) return toast.error("Please add items to invoice before printing receipt.");
-    const customerObj = customers.find((c) => c.id === selectedCustomer) || ((selectedCustomer === "walk-in" || (typeof selectedCustomer === "string" && selectedCustomer.startsWith("walk-in"))) ? {
-      id: selectedCustomer || "walk-in",
-      name: customerSearchQuery.trim() || "Walk-in Customer",
-      customer_type: "Walk-in",
-      type: "Retail"
-    } : null);
-    const walkInThermal = isWalkInParty(customerObj || selectedCustomer);
-    const billData = {
-      invoice_number: invoiceNumber,
-      date: invoiceDate,
-      customer_id: walkInThermal ? null : customerObj?.id,
-      customer_type: walkInThermal ? "Walk-in" : (customerObj?.customer_type || ""),
-      customer_name: customerObj?.name || (selectedCustomer === 'walk-in' ? (customerSearchQuery.trim() || 'Walk-in Customer') : ''),
-      customerName: customerObj?.name || (selectedCustomer === 'walk-in' ? (customerSearchQuery.trim() || 'Walk-in Customer') : ''),
-      customerPhone: customerObj?.phone || '',
-      customerAddress: formatPartyAddress(selectedBillingAddress) || formatPartyAddress(customerObj) || '',
-      customerBillingAddress: formatPartyAddress(selectedBillingAddress) || formatPartyAddress(customerObj) || '',
-      customerShippingAddress: formatPartyAddress(selectedDeliveryAddress) || formatPartyAddress(selectedBillingAddress) || formatPartyAddress(customerObj) || '',
-      gst_type: gstType,
-      is_interstate: gstType === 'igst',
-      items: items.map(it => ({
-        name: it.product_name || 'Item',
-        product_name: it.product_name || 'Item',
-        quantity: it.quantity,
-        unit_price: it.is_free ? 0 : it.unit_price,
-        original_unit_price: Number(it.unit_price || it.mrp || 0),
-        hsn_code: it.hsn_code,
-        is_free: Boolean(it.is_free),
-        description: it.is_free ? [it.description || it.custom_note, "FREE ITEM"].filter(Boolean).join(" | ") : (it.description || it.custom_note || ""),
-        custom_note: it.is_free ? "FREE ITEM" : (it.custom_note || ""),
-        discount: it.is_free ? 0 : (it.discount_type === 'percent' ? (it.quantity * it.unit_price * it.discount_value / 100) : it.discount_value),
-        subtotal: it.is_free ? 0 : ((it.quantity * it.unit_price) - (it.discount_type === 'percent' ? (it.quantity * it.unit_price * it.discount_value / 100) : it.discount_value))
-      })),
-      subtotal: subtotal,
-      discount_amount: totalDiscount,
-      tax_amount: combinedTax,
-      grand_total: grandTotal,
-      payment_method: walkInThermal ? (paymentMode === "Credit" || paymentMode === "Wallet" ? "Cash" : paymentMode) : paymentMode,
-      payment_status: walkInThermal ? 'PAID' : (paymentMode === "Credit" ? 'UNPAID' : (Number(amountReceived) >= grandTotal ? 'PAID' : 'PARTIAL')),
-      amount_received: walkInThermal ? grandTotal : (paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0),
-      paid_amount: walkInThermal ? grandTotal : (paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0),
-      print_payment_qr: showPaymentQR,
-    };
+  const handlePrintThermal = (overrideBillData?: any) => {
+    let billData: any = null;
+    if (overrideBillData) {
+      billData = overrideBillData;
+    } else {
+      if (items.length === 0) return toast.error("Please add items to invoice before printing receipt.");
+      const customerObj = customers.find((c) => c.id === selectedCustomer) || ((selectedCustomer === "walk-in" || (typeof selectedCustomer === "string" && selectedCustomer.startsWith("walk-in"))) ? {
+        id: selectedCustomer || "walk-in",
+        name: customerSearchQuery.trim() || "Walk-in Customer",
+        customer_type: "Walk-in",
+        type: "Retail"
+      } : null);
+      const walkInThermal = isWalkInParty(customerObj || selectedCustomer);
+      billData = {
+        invoice_number: invoiceNumber,
+        date: invoiceDate,
+        customer_id: walkInThermal ? null : customerObj?.id,
+        customer_type: walkInThermal ? "Walk-in" : (customerObj?.customer_type || ""),
+        customer_name: customerObj?.name || (selectedCustomer === 'walk-in' ? (customerSearchQuery.trim() || 'Walk-in Customer') : ''),
+        customerName: customerObj?.name || (selectedCustomer === 'walk-in' ? (customerSearchQuery.trim() || 'Walk-in Customer') : ''),
+        customerPhone: customerObj?.phone || '',
+        customerAddress: formatPartyAddress(selectedBillingAddress) || formatPartyAddress(customerObj) || '',
+        customerBillingAddress: formatPartyAddress(selectedBillingAddress) || formatPartyAddress(customerObj) || '',
+        customerShippingAddress: formatPartyAddress(selectedDeliveryAddress) || formatPartyAddress(selectedBillingAddress) || formatPartyAddress(customerObj) || '',
+        gst_type: gstType,
+        is_interstate: gstType === 'igst',
+        items: items.map(it => ({
+          name: it.product_name || 'Item',
+          product_name: it.product_name || 'Item',
+          quantity: it.quantity,
+          unit_price: it.is_free ? 0 : it.unit_price,
+          original_unit_price: Number(it.unit_price || it.mrp || 0),
+          hsn_code: it.hsn_code,
+          is_free: Boolean(it.is_free),
+          description: it.is_free ? [it.description || it.custom_note, "FREE ITEM"].filter(Boolean).join(" | ") : (it.description || it.custom_note || ""),
+          custom_note: it.is_free ? "FREE ITEM" : (it.custom_note || ""),
+          discount: it.is_free ? 0 : (it.discount_type === 'percent' ? (it.quantity * it.unit_price * it.discount_value / 100) : it.discount_value),
+          subtotal: it.is_free ? 0 : ((it.quantity * it.unit_price) - (it.discount_type === 'percent' ? (it.quantity * it.unit_price * it.discount_value / 100) : it.discount_value))
+        })),
+        subtotal: subtotal,
+        discount_amount: totalDiscount,
+        tax_amount: combinedTax,
+        grand_total: grandTotal,
+        payment_method: walkInThermal ? (paymentMode === "Credit" || paymentMode === "Wallet" ? "Cash" : paymentMode) : paymentMode,
+        payment_status: walkInThermal ? 'PAID' : (paymentMode === "Credit" ? 'UNPAID' : (Number(amountReceived) >= grandTotal ? 'PAID' : 'PARTIAL')),
+        amount_received: walkInThermal ? grandTotal : (paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0),
+        paid_amount: walkInThermal ? grandTotal : (paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0),
+        print_payment_qr: showPaymentQR,
+      };
+    }
     setPrintedBill(billData);
+    setThermalReceiptModalData(billData);
+    setIsThermalReceiptOpen(true);
+    setAutoPrintThermalReceipt(true);
     setTimeout(() => {
       try {
         printThermalReceiptInvoice(billData, undefined, currentTenantId);
@@ -4528,13 +4596,6 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         toast.success(`Sales Invoice ${backendInvoiceNumber} saved! +${earnedPts} sales points awarded to ${salesExecutive || 'Sales Rep'}.`);
       }
 
-      const payload = constructFullInvoicePayload();
-      payload.invoice_number = backendInvoiceNumber;
-      setFullInvoiceModalData(payload);
-      setAutoPrintFullInvoice(printMode === 'a4');
-      setIsFullInvoiceOpen(true);
-      setNavigateOnCloseToHistory(true);
-
       let targetTab = "sales_history";
       if ((invoiceType as string) === "CREDIT_NOTE") {
         targetTab = "credit_notes";
@@ -4548,8 +4609,27 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       setPendingTargetTab(targetTab);
       setPendingSavedRecord(newInvoiceRecord);
 
-      if (printMode === 'thermal') {
-        handlePrintThermal();
+      if (printMode === 'a4') {
+        const payload = constructFullInvoicePayload();
+        payload.invoice_number = backendInvoiceNumber;
+        setFullInvoiceModalData(payload);
+        setAutoPrintFullInvoice(true);
+        setIsFullInvoiceOpen(true);
+        setNavigateOnCloseToHistory(true);
+      } else if (printMode === 'thermal') {
+        handlePrintThermal(newInvoiceRecord);
+        setNavigateOnCloseToHistory(true);
+      } else {
+        // printMode === 'none' (Save Only)
+        if (onSaved) {
+          onSaved(newInvoiceRecord);
+        } else {
+          try {
+            navigate({ to: "/pos", search: { tab: targetTab } as any });
+          } catch (navErr) {
+            console.warn("Navigation to history tab error:", navErr);
+          }
+        }
       }
 
       if (isEditMode) {
@@ -4740,20 +4820,36 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         toast.success(`Quotation ${invoiceNumber} saved & issued successfully!`);
       }
 
-      const payload = constructFullInvoicePayload();
-      payload.invoice_number = invoiceNumber;
-      setFullInvoiceModalData(payload);
-      setAutoPrintFullInvoice(printMode === 'a4');
-      setIsFullInvoiceOpen(true);
-      setNavigateOnCloseToHistory(true);
-
       const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
       const isCrm = currentPath.includes("/crm");
-      setPendingTargetTab(isCrm ? "crm_quotations" : "quotations");
+      const targetTab = isCrm ? "crm_quotations" : "quotations";
+      setPendingTargetTab(targetTab);
       setPendingSavedRecord(newInvoiceRecord);
 
-      if (printMode === 'thermal') {
-        handlePrintThermal();
+      if (printMode === 'a4') {
+        const payload = constructFullInvoicePayload();
+        payload.invoice_number = invoiceNumber;
+        setFullInvoiceModalData(payload);
+        setAutoPrintFullInvoice(true);
+        setIsFullInvoiceOpen(true);
+        setNavigateOnCloseToHistory(true);
+      } else if (printMode === 'thermal') {
+        handlePrintThermal(newInvoiceRecord);
+        setNavigateOnCloseToHistory(true);
+      } else {
+        if (onSaved) {
+          onSaved(newInvoiceRecord);
+        } else {
+          try {
+            if (isCrm) {
+              navigate({ to: "/crm", search: { tab: "quotations" } as any });
+            } else {
+              navigate({ to: "/pos", search: { tab: "quotations" } as any });
+            }
+          } catch (navErr) {
+            console.warn("Navigation to quotations tab error:", navErr);
+          }
+        }
       }
       
       if (isEditQuote) {
@@ -6050,6 +6146,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                               ...it,
                               product_id: prod.id,
                               product_name: prod.name,
+                              sku: prod.sku || "",
+                              barcode: prod.barcode || "",
                               search_query: prod.name,
                               uom: uomInfo.uom,
                               secondary_uom: uomInfo.secondary_uom,
@@ -6292,6 +6390,22 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                   <MessageSquare className="w-3 h-3" />
                                 </button>
                               </div>
+
+                              {/* SKU and Barcode Indicator */}
+                              {(item.sku || item.barcode) && (
+                                <div className="flex items-center gap-1.5 mt-1 text-[10px] text-slate-500 font-mono flex-wrap">
+                                  {item.sku && (
+                                    <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200">
+                                      SKU: <strong>{item.sku}</strong>
+                                    </span>
+                                  )}
+                                  {item.barcode && (
+                                    <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200">
+                                      Barcode: <strong>{item.barcode}</strong>
+                                    </span>
+                                  )}
+                                </div>
+                              )}
 
                               {/* Custom Note Box */}
                               {item.is_note_open && (
@@ -7606,7 +7720,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 type="button"
                 disabled={isSaving}
                 onClick={() => handleSave('a4')}
-                className="w-full py-3.5 bg-[#5b5ce2] hover:bg-[#4f50d0] text-white font-extrabold text-xs rounded-xl shadow-md shadow-indigo-500/25 transition-all uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                className="w-full py-3 bg-[#5b5ce2] hover:bg-[#4f50d0] text-white font-black text-xs rounded-xl shadow-md shadow-indigo-500/25 transition-all uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <Download className="size-4" />
                 {isSaving
@@ -7614,22 +7728,27 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   : `SUBMIT & DOWNLOAD PDF ${getDocButtonNoun(invoiceType)} (${currency.symbol}${grandTotal.toFixed(2)})`}
               </button>
 
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  disabled={isSaving}
-                  onClick={() => handleSave('thermal')}
-                  className="py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl border border-indigo-200 transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
-                >
-                  <QrCode className="size-3.5" /> Thermal
-                </button>
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={() => handleSave('thermal')}
+                className="w-full py-3 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white font-black text-xs rounded-xl shadow-md shadow-teal-500/20 transition-all uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <Printer className="size-4" />
+                {isSaving
+                  ? `Saving ${getDocTitle(invoiceType)}...`
+                  : `SUBMIT & THERMAL PRINT (80mm) (${currency.symbol}${grandTotal.toFixed(2)})`}
+              </button>
+
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   disabled={isSaving}
                   onClick={() => handleSave('none')}
-                  className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                  className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
-                  Save Only
+                  <FileText className="size-3.5 text-slate-600" />
+                  <span>Save Only</span>
                 </button>
                 <button
                   type="button"
@@ -7637,9 +7756,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                     if (items.length === 0) return toast.error("Please add items to bill before generating E-Way Bill");
                     setIsEWayBillOpen(true);
                   }}
-                  className="py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl border border-blue-200 transition-all flex items-center justify-center gap-1 cursor-pointer"
+                  className="py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl border border-blue-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <Truck className="size-3.5" /> E-Way Bill
+                  <Truck className="size-3.5 text-blue-600" />
+                  <span>E-Way Bill</span>
                 </button>
               </div>
             </div>
@@ -9195,6 +9315,40 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           fields: {
             showBankDetails: Boolean(selectedBankAccountId && getSelectedBankDetailsString())
           }
+        }}
+      />
+
+      {/* Thermal Receipt In-App Preview & Direct Print Modal */}
+      <ThermalReceiptPreviewModal
+        invoice={thermalReceiptModalData}
+        isOpen={isThermalReceiptOpen}
+        autoPrint={autoPrintThermalReceipt}
+        onClose={() => {
+          setIsThermalReceiptOpen(false);
+          if (navigateOnCloseToHistory) {
+            setNavigateOnCloseToHistory(false);
+            if (pendingSavedRecord && onSaved) {
+              onSaved(pendingSavedRecord);
+            } else {
+              try {
+                if (pendingTargetTab === "crm_quotations") {
+                  navigate({ to: "/crm", search: { tab: "quotations" } as any });
+                } else {
+                  navigate({ to: "/pos", search: { tab: pendingTargetTab || "sales_history" } as any });
+                }
+              } catch (navErr) {
+                console.warn("Navigation to history tab error:", navErr);
+              }
+            }
+          }
+        }}
+        onSwitchToA4={(inv) => {
+          setIsThermalReceiptOpen(false);
+          const payload = constructFullInvoicePayload();
+          payload.invoice_number = inv?.invoice_number || invoiceNumber;
+          setFullInvoiceModalData(payload);
+          setAutoPrintFullInvoice(false);
+          setIsFullInvoiceOpen(true);
         }}
       />
 

@@ -291,24 +291,43 @@ export function PosInvoicesHistory() {
       const cancelResult = await invoicesApi.cancelInvoice(cancellingInvoice.id || cancellingInvoice.invoice_number, cancellationReason);
       console.log("Backend invoice cancellation result:", cancelResult);
 
-      // 2. Update Local Invoice History in localStorage
-      const stored = localStorage.getItem(storageKey);
-      let list = stored ? JSON.parse(stored) : [];
-      list = list.map((item: LocalInvoiceRecord) => {
-        if (item.id === cancellingInvoice.id || item.invoice_number === cancellingInvoice.invoice_number) {
-          return {
-            ...item,
-            status: "cancelled",
-            payment_status: "Cancelled" as any,
-            cancellation_reason: cancellationReason || "Cancelled by Admin",
-            cancelled_at: new Date().toISOString(),
-            cancelled_by: user?.name || "Organization Admin",
-          };
-        }
-        return item;
-      });
-      localStorage.setItem(storageKey, JSON.stringify(list));
-      setInvoices(list);
+      // 2. Update Local Invoice History in localStorage & in-memory state
+      try {
+        const stored = localStorage.getItem(storageKey);
+        let list = stored ? JSON.parse(stored) : [];
+        list = list.map((item: LocalInvoiceRecord) => {
+          if (item.id === cancellingInvoice.id || item.invoice_number === cancellingInvoice.invoice_number) {
+            return {
+              ...item,
+              status: "cancelled",
+              payment_status: "Cancelled" as any,
+              cancellation_reason: cancellationReason || "Cancelled by Admin",
+              cancelled_at: new Date().toISOString(),
+              cancelled_by: user?.name || "Organization Admin",
+            };
+          }
+          return item;
+        });
+        localStorage.setItem(storageKey, JSON.stringify(list));
+      } catch (e) {}
+
+      // Update in-memory invoices state
+      setInvoices((prev) =>
+        prev.map((item) => {
+          if (item.id === cancellingInvoice.id || item.invoice_number === cancellingInvoice.invoice_number) {
+            return {
+              ...item,
+              status: "cancelled",
+              payment_status: "Cancelled" as any,
+              cancellation_reason: cancellationReason || "Cancelled by Admin",
+              cancelled_at: new Date().toISOString(),
+              cancelled_by: user?.name || "Organization Admin",
+            };
+          }
+          return item;
+        })
+      );
+      void loadInvoices();
 
       // 3. Re-credit Product Stock in localStorage product cache
       try {
@@ -1590,41 +1609,78 @@ export function PosInvoicesHistory() {
     return "cash";
   };
 
-  // Sales Invoices count (excluding Credit Notes)
-  const salesInvoicesCount = React.useMemo(() => {
-    return invoices.filter((inv) => {
-      const invNum = (inv.invoice_number || "").toUpperCase();
-      const mode = (inv.payment_mode || inv.payment_method || inv.payment_terms || "").toLowerCase();
-      const isCreditNote =
-        inv.is_credit_note === true ||
-        inv.invoice_type === "credit_note" ||
-        inv.document_type === "CREDIT_NOTE" ||
-        invNum.startsWith("CN") ||
-        invNum.startsWith("CR-") ||
-        (inv as any).isCreditNote === true ||
-        mode.includes("credit note");
-      return !isCreditNote;
-    }).length;
+  // Helper to identify credit note
+  const isCreditNoteInv = (inv: any) => {
+    const invNum = String(inv.invoice_number || "").toUpperCase();
+    const mode = String(inv.payment_mode || inv.payment_method || inv.payment_terms || "").toLowerCase();
+    return (
+      inv.is_credit_note === true ||
+      inv.invoice_type === "credit_note" ||
+      inv.document_type === "CREDIT_NOTE" ||
+      invNum.startsWith("CN") ||
+      invNum.startsWith("CR-") ||
+      (inv as any).isCreditNote === true ||
+      mode.includes("credit note")
+    );
+  };
+
+  // Helper to identify cancelled invoice
+  const isCancelledInv = (inv: any) => {
+    const s = String(inv.status || "").toLowerCase();
+    const ps = String(inv.payment_status || "").toLowerCase();
+    return s === "cancelled" || ps === "cancelled" || (inv as any).is_cancelled === true;
+  };
+
+  // Helper to identify returned invoice
+  const isReturnedInv = (inv: any) => {
+    const s = String(inv.status || "").toLowerCase();
+    const ps = String(inv.payment_status || "").toLowerCase();
+    return s === "returned" || ps === "returned" || Boolean((inv as any).return_info);
+  };
+
+  // Total sales invoices count (excluding Credit Notes)
+  const totalSalesInvoicesCount = React.useMemo(() => {
+    return invoices.filter((inv) => !isCreditNoteInv(inv)).length;
   }, [invoices]);
 
-  // Calculate Authoritative Billed Revenue from DB sales invoices
-  const totalRevenue = React.useMemo(() => {
-    return invoices.reduce((acc, curr) => {
-      const invNum = (curr.invoice_number || "").toUpperCase();
-      const mode = (curr.payment_mode || curr.payment_method || curr.payment_terms || "").toLowerCase();
-      const isCreditNote =
-        curr.is_credit_note === true ||
-        curr.invoice_type === "credit_note" ||
-        curr.document_type === "CREDIT_NOTE" ||
-        invNum.startsWith("CN") ||
-        invNum.startsWith("CR-") ||
-        (curr as any).isCreditNote === true ||
-        mode.includes("credit note");
-      return isCreditNote ? acc : acc + Number(curr.grand_total || 0);
-    }, 0);
+  // Active sales invoices count (excluding Credit Notes and Cancelled/Returned invoices)
+  const activeSalesInvoicesCount = React.useMemo(() => {
+    return invoices.filter((inv) => !isCreditNoteInv(inv) && !isCancelledInv(inv) && !isReturnedInv(inv)).length;
   }, [invoices]);
 
-  // Dynamic Payment Mode & Credit Notes Metrics computed completely from DB invoice records
+  // Cancelled Invoices count
+  const cancelledInvoicesCount = React.useMemo(() => {
+    return invoices.filter((inv) => !isCreditNoteInv(inv) && isCancelledInv(inv)).length;
+  }, [invoices]);
+
+  // Returned Invoices count
+  const returnedInvoicesCount = React.useMemo(() => {
+    return invoices.filter((inv) => !isCreditNoteInv(inv) && isReturnedInv(inv)).length;
+  }, [invoices]);
+
+  // Calculate Authoritative Billed Revenue from DB sales invoices (deducting/excluding cancelled and returned amounts repaid to customers)
+  const { totalRevenue, cancelledTotal, returnedTotal } = React.useMemo(() => {
+    let rev = 0;
+    let canc = 0;
+    let ret = 0;
+
+    invoices.forEach((curr) => {
+      if (isCreditNoteInv(curr)) return;
+      const amt = Math.abs(Number(curr.grand_total || 0));
+
+      if (isCancelledInv(curr)) {
+        canc += amt;
+      } else if (isReturnedInv(curr)) {
+        ret += amt;
+      } else {
+        rev += amt;
+      }
+    });
+
+    return { totalRevenue: rev, cancelledTotal: canc, returnedTotal: ret };
+  }, [invoices]);
+
+  // Dynamic Payment Mode & Credit Notes Metrics computed completely from DB invoice records (excluding cancelled repayments)
   const paymentMetrics = React.useMemo(() => {
     let cashTotal = 0;
     let cashCount = 0;
@@ -1636,26 +1692,22 @@ export function PosInvoicesHistory() {
     let creditCount = 0;
     let creditNotesTotal = 0;
     let creditNotesCount = 0;
+    let cancelledCashTotal = 0;
+    let cancelledUpiTotal = 0;
+    let cancelledBankTotal = 0;
 
     invoices.forEach((inv) => {
-      const mode = (inv.payment_mode || inv.payment_method || inv.payment_terms || "").toLowerCase();
-      const invNum = (inv.invoice_number || "").toUpperCase();
-      const isCreditNote =
-        inv.is_credit_note === true ||
-        inv.invoice_type === "credit_note" ||
-        inv.document_type === "CREDIT_NOTE" ||
-        invNum.startsWith("CN") ||
-        invNum.startsWith("CR-") ||
-        (inv as any).isCreditNote === true ||
-        mode.includes("credit note");
-
+      const mode = String(inv.payment_mode || inv.payment_method || inv.payment_terms || "").toLowerCase();
       const amount = Math.abs(Number(inv.grand_total || 0));
 
-      if (isCreditNote) {
+      if (isCreditNoteInv(inv)) {
         creditNotesTotal += amount;
         creditNotesCount += 1;
         return;
       }
+
+      const isCancelled = isCancelledInv(inv);
+      const isReturned = isReturnedInv(inv);
 
       // Check authoritative payments array from DB if available
       const payments = Array.isArray(inv.payments) && inv.payments.length > 0 ? inv.payments : null;
@@ -1663,8 +1715,15 @@ export function PosInvoicesHistory() {
         const distinctCategories = Array.from(new Set(payments.map((p: any) => categorizePayment(p.payment_method || ""))));
 
         if (distinctCategories.length === 1 && !mode.includes("split")) {
-          // Single payment category for this entire invoice - attribute full invoice amount
+          // Single payment category for this entire invoice
           const cat = distinctCategories[0];
+          if (isCancelled || isReturned) {
+            if (cat === "upi") cancelledUpiTotal += amount;
+            else if (cat === "bank") cancelledBankTotal += amount;
+            else cancelledCashTotal += amount;
+            return;
+          }
+
           if (cat === "upi") {
             upiTotal += amount;
             upiCount += 1;
@@ -1691,6 +1750,13 @@ export function PosInvoicesHistory() {
           payments.forEach((p: any) => {
             const pAmt = Number(p.amount || 0) * scale;
             const cat = categorizePayment(p.payment_method || "");
+            if (isCancelled || isReturned) {
+              if (cat === "upi") cancelledUpiTotal += pAmt;
+              else if (cat === "bank") cancelledBankTotal += pAmt;
+              else cancelledCashTotal += pAmt;
+              return;
+            }
+
             if (cat === "upi") {
               upiTotal += pAmt;
               hasUpi = true;
@@ -1706,13 +1772,22 @@ export function PosInvoicesHistory() {
             }
           });
 
-          if (hasCash) cashCount += 1;
-          if (hasUpi) upiCount += 1;
-          if (hasBank) bankCount += 1;
-          if (hasCredit) creditCount += 1;
+          if (!isCancelled && !isReturned) {
+            if (hasCash) cashCount += 1;
+            if (hasUpi) upiCount += 1;
+            if (hasBank) bankCount += 1;
+            if (hasCredit) creditCount += 1;
+          }
         }
       } else {
         const cat = categorizePayment(inv.payment_mode || inv.payment_terms || inv.payment_method || "Cash");
+        if (isCancelled || isReturned) {
+          if (cat === "upi") cancelledUpiTotal += amount;
+          else if (cat === "bank") cancelledBankTotal += amount;
+          else cancelledCashTotal += amount;
+          return;
+        }
+
         if (cat === "upi") {
           upiTotal += amount;
           upiCount += 1;
@@ -1740,6 +1815,9 @@ export function PosInvoicesHistory() {
       creditCount,
       creditNotesTotal,
       creditNotesCount,
+      cancelledCashTotal,
+      cancelledUpiTotal,
+      cancelledBankTotal,
     };
   }, [invoices]);
 
@@ -1782,7 +1860,7 @@ export function PosInvoicesHistory() {
       </div>
 
       {/* Summary KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3.5">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3.5">
         {/* 1. Total Sales Invoices */}
         <div
           onClick={() => navigate({ to: "/reports", search: { tab: "payment_mode_sales" } as any })}
@@ -1793,8 +1871,14 @@ export function PosInvoicesHistory() {
             <span className="text-xs font-bold uppercase tracking-wider">Total Sales Invoices</span>
             <Receipt className="w-4 h-4 text-blue-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{salesInvoicesCount}</div>
-          <div className="text-[11px] text-emerald-600 font-bold mt-1">100% Synced & Logged</div>
+          <div className="text-2xl font-black text-slate-900">{activeSalesInvoicesCount}</div>
+          <div className="text-[11px] text-slate-500 font-medium mt-1">
+            {cancelledInvoicesCount > 0 ? (
+              <span className="text-rose-600 font-bold">{totalSalesInvoicesCount} Total • {cancelledInvoicesCount} Cancelled</span>
+            ) : (
+              <span className="text-emerald-600 font-bold">100% Synced & Logged</span>
+            )}
+          </div>
         </div>
 
         {/* 2. Total Billed Revenue */}
@@ -1809,7 +1893,7 @@ export function PosInvoicesHistory() {
           </div>
           <div className="text-2xl font-black text-emerald-600">{formatCurrency(totalRevenue)}</div>
           <div className="text-[11px] text-slate-500 font-medium mt-1">
-            Avg Bill: {formatCurrency(salesInvoicesCount ? totalRevenue / salesInvoicesCount : 0)}
+            Avg Bill: {formatCurrency(activeSalesInvoicesCount ? totalRevenue / activeSalesInvoicesCount : 0)}
           </div>
         </div>
 
@@ -1826,7 +1910,7 @@ export function PosInvoicesHistory() {
           <div className="text-2xl font-black text-emerald-600">{formatCurrency(paymentMetrics.cashTotal)}</div>
           <div className="text-[11px] text-slate-500 font-medium mt-1">
             {paymentMetrics.cashCount} {paymentMetrics.cashCount === 1 ? "Invoice" : "Invoices"}
-            {salesInvoicesCount > 0 && ` (${Math.round((paymentMetrics.cashCount / salesInvoicesCount) * 100)}%)`}
+            {activeSalesInvoicesCount > 0 && ` (${Math.round((paymentMetrics.cashCount / activeSalesInvoicesCount) * 100)}%)`}
           </div>
         </div>
 
@@ -1843,7 +1927,7 @@ export function PosInvoicesHistory() {
           <div className="text-2xl font-black text-indigo-600">{formatCurrency(paymentMetrics.upiTotal)}</div>
           <div className="text-[11px] text-slate-500 font-medium mt-1">
             {paymentMetrics.upiCount} {paymentMetrics.upiCount === 1 ? "Invoice" : "Invoices"}
-            {salesInvoicesCount > 0 && ` (${Math.round((paymentMetrics.upiCount / salesInvoicesCount) * 100)}%)`}
+            {activeSalesInvoicesCount > 0 && ` (${Math.round((paymentMetrics.upiCount / activeSalesInvoicesCount) * 100)}%)`}
           </div>
         </div>
 
@@ -1860,7 +1944,7 @@ export function PosInvoicesHistory() {
           <div className="text-2xl font-black text-blue-600">{formatCurrency(paymentMetrics.bankTotal)}</div>
           <div className="text-[11px] text-slate-500 font-medium mt-1">
             {paymentMetrics.bankCount} {paymentMetrics.bankCount === 1 ? "Invoice" : "Invoices"}
-            {salesInvoicesCount > 0 && ` (${Math.round((paymentMetrics.bankCount / salesInvoicesCount) * 100)}%)`}
+            {activeSalesInvoicesCount > 0 && ` (${Math.round((paymentMetrics.bankCount / activeSalesInvoicesCount) * 100)}%)`}
           </div>
         </div>
 
@@ -1877,11 +1961,23 @@ export function PosInvoicesHistory() {
           <div className="text-2xl font-black text-purple-600">{formatCurrency(paymentMetrics.creditTotal)}</div>
           <div className="text-[11px] text-slate-500 font-medium mt-1">
             {paymentMetrics.creditCount} {paymentMetrics.creditCount === 1 ? "Invoice" : "Invoices"}
-            {salesInvoicesCount > 0 && ` (${Math.round((paymentMetrics.creditCount / salesInvoicesCount) * 100)}%)`}
+            {activeSalesInvoicesCount > 0 && ` (${Math.round((paymentMetrics.creditCount / activeSalesInvoicesCount) * 100)}%)`}
           </div>
         </div>
 
-        {/* 7. Credit Notes */}
+        {/* 7. Cancelled / Refunded (Amount Returned to Customer) */}
+        <div className="bg-white p-4.5 rounded-2xl border border-rose-200 shadow-sm hover:border-rose-300 transition-colors bg-gradient-to-b from-rose-50/20 to-white">
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-rose-700">Cancelled / Repaid</span>
+            <RotateCcw className="w-4 h-4 text-rose-600" />
+          </div>
+          <div className="text-2xl font-black text-rose-600">{formatCurrency(cancelledTotal)}</div>
+          <div className="text-[11px] text-rose-600 font-semibold mt-1">
+            {cancelledInvoicesCount} {cancelledInvoicesCount === 1 ? "Invoice" : "Invoices"} Repaid to Customer
+          </div>
+        </div>
+
+        {/* 8. Credit Notes */}
         <div
           onClick={() => navigate({ to: "/reports", search: { tab: "payment_mode_sales" } as any })}
           className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-amber-300 hover:shadow-md transition-all cursor-pointer"

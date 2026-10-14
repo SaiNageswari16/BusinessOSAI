@@ -15,6 +15,7 @@ export interface ThermalReceiptPreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSwitchToA4?: (invoice: any) => void;
+  autoPrint?: boolean;
 }
 
 export function ThermalReceiptPreviewModal({
@@ -22,6 +23,7 @@ export function ThermalReceiptPreviewModal({
   isOpen,
   onClose,
   onSwitchToA4,
+  autoPrint = false,
 }: ThermalReceiptPreviewModalProps) {
   const { t } = useI18n();
   const { tenant } = useTenant();
@@ -38,6 +40,20 @@ export function ThermalReceiptPreviewModal({
     }
   });
   const [isPrinting, setIsPrinting] = useState<boolean>(false);
+  const hasAutoPrintedRef = useRef(false);
+
+  useEffect(() => {
+    if (isOpen && invoice && autoPrint && !hasAutoPrintedRef.current) {
+      hasAutoPrintedRef.current = true;
+      const timer = setTimeout(() => {
+        handleDirectPrint();
+      }, 350);
+      return () => clearTimeout(timer);
+    }
+    if (!isOpen) {
+      hasAutoPrintedRef.current = false;
+    }
+  }, [isOpen, invoice, autoPrint]);
 
   useEffect(() => {
     if (!invoice || !isOpen) return;
