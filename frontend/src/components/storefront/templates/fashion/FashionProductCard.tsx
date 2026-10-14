@@ -26,7 +26,7 @@ export interface FashionProductCardProps {
 }
 
 export function FashionProductCard({ product, className }: FashionProductCardProps) {
-  const { addToCart, items } = useStoreCart();
+  const { addToCart, items = [], cartItems = [] } = useStoreCart();
   const { toggleWishlist, isInWishlist } = useWishlist();
   const { formatCurrency } = useCurrency();
 
@@ -38,32 +38,31 @@ export function FashionProductCard({ product, className }: FashionProductCardPro
   const discountPct = originalPrice > price ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0;
   const image = product.image_url || product.image || "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=600&q=80";
 
-  const cartItem = items.find((i) => i.productId === product.id);
-  const inCart = Boolean(cartItem);
-  const isWishlisted = isInWishlist(product.id);
+  const activeItems = items || cartItems || [];
+  const inCart = activeItems.some((i: any) => (i?.product?.id || i?.productId || i?.id) === product.id);
+  const isWishlisted = isInWishlist ? isInWishlist(product.id) : false;
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     addToCart({
+      id: product.id,
       productId: product.id,
       name: `${product.name} (${selectedSize})`,
       price,
+      mrp: originalPrice,
       image,
+      image_url: image,
       quantity: 1,
-    });
-    toast.success(`Added "${product.name}" (${selectedSize}) to Bag!`);
+    }, 1);
   };
 
   const handleToggleWishlist = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    toggleWishlist({
-      productId: product.id,
-      name: product.name,
-      price,
-      image,
-    });
+    if (toggleWishlist) {
+      toggleWishlist(product.id);
+    }
   };
 
   const dummyColors = ["#18181B", "#C25E3E", "#A8A29E", "#15803D"];

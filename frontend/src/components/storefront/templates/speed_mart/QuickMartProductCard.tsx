@@ -26,7 +26,7 @@ export interface QuickMartProductCardProps {
 }
 
 export function QuickMartProductCard({ product, className }: QuickMartProductCardProps) {
-  const { addToCart, updateQuantity, items } = useStoreCart();
+  const { addToCart, updateQuantity, items = [], cartItems = [] } = useStoreCart();
   const { formatCurrency } = useCurrency();
 
   const price = Number(product.selling_price ?? product.price ?? 0);
@@ -34,7 +34,8 @@ export function QuickMartProductCard({ product, className }: QuickMartProductCar
   const discountPct = originalPrice > price ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0;
   const image = product.image_url || product.image || "https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&q=80";
 
-  const cartItem = items.find((i) => i.productId === product.id);
+  const activeItems = items || cartItems || [];
+  const cartItem = activeItems.find((i: any) => (i?.product?.id || i?.productId || i?.id) === product.id);
   const qtyInCart = cartItem ? cartItem.quantity : 0;
 
   const handleIncrement = (e: React.MouseEvent) => {
@@ -42,13 +43,15 @@ export function QuickMartProductCard({ product, className }: QuickMartProductCar
     e.stopPropagation();
     if (qtyInCart === 0) {
       addToCart({
+        id: product.id,
         productId: product.id,
         name: product.name,
         price,
+        mrp: originalPrice,
         image,
+        image_url: image,
         quantity: 1,
-      });
-      toast.success(`Added "${product.name}" to cart!`);
+      }, 1);
     } else {
       updateQuantity(product.id, qtyInCart + 1);
     }

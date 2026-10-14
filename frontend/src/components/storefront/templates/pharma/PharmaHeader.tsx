@@ -25,9 +25,10 @@ interface PharmaHeaderProps {
 }
 
 export function PharmaHeader({ onOpenCart, onOpenMenu }: PharmaHeaderProps) {
-  const navigate = useNavigate();
-  const { totalItems } = useStoreCart();
-  const { totalWishlistItems } = useWishlist();
+  const { totalItems = 0, cartCount = 0 } = useStoreCart();
+  const { totalWishlistItems = 0, wishlistItems = [] } = useWishlist();
+  const safeTotalItems = totalItems || cartCount || 0;
+  const safeWishlistItems = totalWishlistItems || (wishlistItems || []).length || 0;
   const [searchQuery, setSearchQuery] = useState("");
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -135,14 +136,14 @@ export function PharmaHeader({ onOpenCart, onOpenMenu }: PharmaHeaderProps) {
           >
             <div className="relative">
               <ShoppingCart className="w-4 h-4 text-white" />
-              {totalItems > 0 && (
+              {safeTotalItems > 0 && (
                 <span className="absolute -top-2 -right-2.5 size-4.5 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center border-2 border-white">
-                  {totalItems}
+                  {safeTotalItems}
                 </span>
               )}
             </div>
             <span className="text-xs font-bold tracking-wide hidden sm:inline">
-              Medicine Bag ({totalItems})
+              Medicine Bag ({safeTotalItems})
             </span>
           </button>
         </div>

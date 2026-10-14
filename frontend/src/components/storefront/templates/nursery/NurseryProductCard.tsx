@@ -41,7 +41,7 @@ export interface NurseryProductCardProps {
 }
 
 export function NurseryProductCard({ product, className }: NurseryProductCardProps) {
-  const { addToCart, items } = useStoreCart();
+  const { addToCart, items = [], cartItems = [] } = useStoreCart();
   const { toggleWishlist, isInWishlist } = useWishlist();
   const { formatCurrency } = useCurrency();
 
@@ -50,33 +50,32 @@ export function NurseryProductCard({ product, className }: NurseryProductCardPro
   const discountPct = originalPrice > price ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0;
   const image = product.image_url || product.image || "https://images.unsplash.com/photo-1485955900006-10f4d324d411?w=500&q=80";
 
-  // Check if item already in cart
-  const cartItem = items.find((i) => i.productId === product.id);
-  const inCart = Boolean(cartItem);
-  const isWishlisted = isInWishlist(product.id);
+  // Check if item already in cart safely
+  const activeItems = items || cartItems || [];
+  const inCart = activeItems.some((i: any) => (i?.product?.id || i?.productId || i?.id) === product.id);
+  const isWishlisted = isInWishlist ? isInWishlist(product.id) : false;
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     addToCart({
+      id: product.id,
       productId: product.id,
       name: product.name,
       price,
+      mrp: originalPrice,
       image,
+      image_url: image,
       quantity: 1,
-    });
-    toast.success(`Added "${product.name}" to your Garden Cart!`);
+    }, 1);
   };
 
   const handleToggleWishlist = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    toggleWishlist({
-      productId: product.id,
-      name: product.name,
-      price,
-      image,
-    });
+    if (toggleWishlist) {
+      toggleWishlist(product.id);
+    }
   };
 
   // Plant Care defaults (derived or smart fallback for non-plant inventory)

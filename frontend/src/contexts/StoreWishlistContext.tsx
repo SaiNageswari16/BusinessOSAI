@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface WishlistContextType {
   wishlistItems: any[];
+  totalWishlistItems: number;
   isInWishlist: (productId: string) => boolean;
   toggleWishlist: (productId: string) => Promise<void>;
   isLoading: boolean;
@@ -34,7 +35,7 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
   });
 
   const isInWishlist = (productId: string) => {
-    return wishlistItems.some((item) => item.product_id === productId);
+    return (wishlistItems || []).some((item) => item?.product_id === productId);
   };
 
   const toggleWishlist = async (productId: string) => {
@@ -46,7 +47,15 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <WishlistContext.Provider value={{ wishlistItems, isInWishlist, toggleWishlist, isLoading }}>
+    <WishlistContext.Provider
+      value={{
+        wishlistItems,
+        totalWishlistItems: (wishlistItems || []).length,
+        isInWishlist,
+        toggleWishlist,
+        isLoading,
+      }}
+    >
       {children}
     </WishlistContext.Provider>
   );

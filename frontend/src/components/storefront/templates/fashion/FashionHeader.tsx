@@ -18,9 +18,10 @@ interface FashionHeaderProps {
 }
 
 export function FashionHeader({ onOpenCart, onOpenMenu }: FashionHeaderProps) {
-  const navigate = useNavigate();
-  const { totalItems } = useStoreCart();
-  const { totalWishlistItems } = useWishlist();
+  const { totalItems = 0, cartCount = 0 } = useStoreCart();
+  const { totalWishlistItems = 0, wishlistItems = [] } = useWishlist();
+  const safeTotalItems = totalItems || cartCount || 0;
+  const safeWishlistItems = totalWishlistItems || (wishlistItems || []).length || 0;
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
 
@@ -115,9 +116,9 @@ export function FashionHeader({ onOpenCart, onOpenMenu }: FashionHeaderProps) {
             title="Wishlist"
           >
             <Heart className="w-5 h-5 stroke-[1.75]" />
-            {totalWishlistItems > 0 && (
+            {safeWishlistItems > 0 && (
               <span className="absolute -top-1 -right-1 size-3.5 rounded-full bg-rose-600 text-white text-[8px] font-bold flex items-center justify-center">
-                {totalWishlistItems}
+                {safeWishlistItems}
               </span>
             )}
           </Link>
@@ -129,14 +130,14 @@ export function FashionHeader({ onOpenCart, onOpenMenu }: FashionHeaderProps) {
           >
             <div className="relative">
               <ShoppingBag className="w-5 h-5 stroke-[1.75]" />
-              {totalItems > 0 && (
+              {safeTotalItems > 0 && (
                 <span className="absolute -top-1.5 -right-2 size-4 rounded-full bg-zinc-950 text-white text-[9px] font-black flex items-center justify-center">
-                  {totalItems}
+                  {safeTotalItems}
                 </span>
               )}
             </div>
             <span className="hidden sm:inline text-xs font-bold tracking-wider uppercase">
-              Bag ({totalItems})
+              Bag ({safeTotalItems})
             </span>
           </button>
         </div>

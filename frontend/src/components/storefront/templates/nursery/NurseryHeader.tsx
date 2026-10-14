@@ -26,9 +26,10 @@ interface NurseryHeaderProps {
 }
 
 export function NurseryHeader({ onOpenCart, onOpenMenu }: NurseryHeaderProps) {
-  const navigate = useNavigate();
-  const { totalItems } = useStoreCart();
-  const { totalWishlistItems } = useWishlist();
+  const { totalItems = 0, cartCount = 0 } = useStoreCart();
+  const { totalWishlistItems = 0, wishlistItems = [] } = useWishlist();
+  const safeTotalItems = totalItems || cartCount || 0;
+  const safeWishlistItems = totalWishlistItems || (wishlistItems || []).length || 0;
   const { user } = useStoreUser();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -118,9 +119,9 @@ export function NurseryHeader({ onOpenCart, onOpenMenu }: NurseryHeaderProps) {
           >
             <div className="relative">
               <Heart className="w-5 h-5 text-[#C25E3E]" />
-              {totalWishlistItems > 0 && (
+              {safeWishlistItems > 0 && (
                 <span className="absolute -top-1.5 -right-2 size-4 rounded-full bg-[#C25E3E] text-white text-[9px] font-black flex items-center justify-center">
-                  {totalWishlistItems}
+                  {safeWishlistItems}
                 </span>
               )}
             </div>
@@ -134,14 +135,14 @@ export function NurseryHeader({ onOpenCart, onOpenMenu }: NurseryHeaderProps) {
           >
             <div className="relative">
               <ShoppingCart className="w-4 h-4 text-[#86EFAC]" />
-              {totalItems > 0 && (
+              {safeTotalItems > 0 && (
                 <span className="absolute -top-2 -right-2.5 size-4.5 rounded-full bg-[#C25E3E] text-white text-[10px] font-black flex items-center justify-center border-2 border-white">
-                  {totalItems}
+                  {safeTotalItems}
                 </span>
               )}
             </div>
             <span className="text-xs font-bold tracking-wide hidden sm:inline">
-              Garden Cart ({totalItems})
+              Garden Cart ({safeTotalItems})
             </span>
           </button>
         </div>

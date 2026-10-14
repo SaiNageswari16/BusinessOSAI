@@ -26,14 +26,16 @@ export interface CartItem {
 
 interface StoreCartContextType {
   cartItems: CartItem[];
-  addToCart: (product: CartProduct, quantity: number) => void;
+  items: Array<CartItem & { productId: string; name: string; price: number; image?: string }>;
+  addToCart: (product: any, quantity?: number) => void;
   removeFromCart: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
   cartCount: number;
+  totalItems: number;
   cartTotal: number;
   wishlistItems: CartProduct[];
-  toggleWishlist: (product: CartProduct) => void;
+  toggleWishlist: (product: any) => void;
 }
 
 const StoreCartContext = createContext<StoreCartContextType | undefined>(undefined);
@@ -72,33 +74,57 @@ export function StoreCartProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('store-wishlist', JSON.stringify(wishlistItems));
   }, [wishlistItems]);
 
-  const toggleWishlist = (product: CartProduct) => {
+  const toggleWishlist = (productOrId: any) => {
+    const id = typeof productOrId === "string" ? productOrId : productOrId.id || productOrId.productId;
+    const name = typeof productOrId === "object" ? productOrId.name : "Product";
     setWishlistItems(prev => {
-      const exists = prev.some(item => item.id === product.id);
+      const exists = prev.some(item => item.id === id);
       if (exists) {
-        toast.info(`Removed from wishlist: ${product.name}`);
-        return prev.filter(item => item.id !== product.id);
+        toast.info(`Removed from wishlist: ${name}`);
+        return prev.filter(item => item.id !== id);
       } else {
-        toast.success(`Saved to wishlist: ${product.name}`);
-        return [...prev, product];
+        toast.success(`Saved to wishlist: ${name}`);
+        const productObj: CartProduct = typeof productOrId === "object" ? {
+          id,
+          name: productOrId.name || "Product",
+          price: productOrId.price || 0,
+          image_url: productOrId.image_url || productOrId.image,
+          mrp: productOrId.mrp || productOrId.originalPrice,
+        } : { id, name: "Product", price: 0 };
+        return [...prev, productObj];
       }
     });
   };
 
-  const addToCart = (product: CartProduct, quantity: number) => {
+  const addToCart = (productInput: any, quantityParam?: number) => {
+    const productId = productInput.id || productInput.productId;
+    const finalQuantity = quantityParam ?? productInput.quantity ?? 1;
+
+    const normalizedProduct: CartProduct = {
+      id: productId,
+      name: productInput.name || "Product",
+      price: Number(productInput.price ?? productInput.selling_price ?? 0),
+      mrp: Number(productInput.mrp ?? productInput.original_price ?? productInput.price ?? 0),
+      image_url: productInput.image_url || productInput.image,
+      category_name: productInput.category_name || productInput.category,
+      brand: productInput.brand,
+      stock: productInput.stock,
+      vendorName: productInput.vendorName,
+    };
+
     setCartItems(prev => {
-      const existing = prev.find(item => item.product.id === product.id);
+      const existing = prev.find(item => item.product.id === productId);
       if (existing) {
         return prev.map(item =>
-          item.product.id === product.id
-            ? { ...item, quantity: item.quantity + quantity }
+          item.product.id === productId
+            ? { ...item, quantity: item.quantity + finalQuantity }
             : item
         );
       }
-      return [...prev, { product, quantity }];
+      return [...prev, { product: normalizedProduct, quantity: finalQuantity }];
     });
 
-    toast.success(`Added to cart: ${product.name}`, {
+    toast.success(`Added to cart: ${normalizedProduct.name}`, {
       style: { background: '#2563EB', color: 'white', border: 'none' },
     });
   };
@@ -126,8 +152,29 @@ export function StoreCartProvider({ children }: { children: React.ReactNode }) {
   const cartCount = cartItems.reduce((total, item) => total + item.quantity, 0);
   const cartTotal = cartItems.reduce((total, item) => total + (item.product.price * item.quantity), 0);
 
+  // Compatible items array with top-level helper getters
+  const compatibleItems = cartItems.map(item => ({
+    ...item,
+    productId: item.product.id,
+    name: item.product.name,
+    price: item.product.price,
+    image: item.product.image_url,
+  }));
+
   return (
-    <StoreCartContext.Provider value={{ cartItems, addToCart, removeFromCart, updateQuantity, clearCart, cartCount, cartTotal, wishlistItems, toggleWishlist }}>
+    <StoreCartContext.Provider value={{
+      cartItems,
+      items: compatibleItems,
+      addToCart,
+      removeFromCart,
+      updateQuantity,
+      clearCart,
+      cartCount,
+      totalItems: cartCount,
+      cartTotal,
+      wishlistItems,
+      toggleWishlist
+    }}>
       {children}
     </StoreCartContext.Provider>
   );

@@ -28,7 +28,7 @@ export interface MegaProductCardProps {
 }
 
 export function MegaProductCard({ product, className }: MegaProductCardProps) {
-  const { addToCart, items } = useStoreCart();
+  const { addToCart, items = [], cartItems = [] } = useStoreCart();
   const { toggleWishlist, isInWishlist } = useWishlist();
   const { formatCurrency } = useCurrency();
 
@@ -37,32 +37,31 @@ export function MegaProductCard({ product, className }: MegaProductCardProps) {
   const discountPct = originalPrice > price ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0;
   const image = product.image_url || product.image || "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500&q=80";
 
-  const cartItem = items.find((i) => i.productId === product.id);
-  const inCart = Boolean(cartItem);
-  const isWishlisted = isInWishlist(product.id);
+  const activeItems = items || cartItems || [];
+  const inCart = activeItems.some((i: any) => (i?.product?.id || i?.productId || i?.id) === product.id);
+  const isWishlisted = isInWishlist ? isInWishlist(product.id) : false;
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     addToCart({
+      id: product.id,
       productId: product.id,
       name: product.name,
       price,
+      mrp: originalPrice,
       image,
+      image_url: image,
       quantity: 1,
-    });
-    toast.success(`Added "${product.name}" to cart!`);
+    }, 1);
   };
 
   const handleToggleWishlist = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    toggleWishlist({
-      productId: product.id,
-      name: product.name,
-      price,
-      image,
-    });
+    if (toggleWishlist) {
+      toggleWishlist(product.id);
+    }
   };
 
   return (
