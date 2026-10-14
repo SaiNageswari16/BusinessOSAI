@@ -9,7 +9,7 @@ import {
   organicProducts as fallbackProducts,
   OrganicProduct
 } from "@/data/mockOrganicData";
-import { OrganicProductCard } from "@/components/storefront/organic/OrganicProductCard";
+import { DynamicProductCard } from "@/components/storefront/UniversalTemplateRouter";
 import { fetchStorefrontProductById, fetchStorefrontProducts, mapStorefrontToOrganic } from "@/lib/storefront-api";
 import { useStoreCart } from "@/contexts/StoreCartContext";
 import { useCurrency } from "@/hooks/use-currency";
@@ -459,7 +459,7 @@ function SingleProductPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
             {relatedProducts.map((p) => (
-              <OrganicProductCard key={p.id} product={p} />
+              <DynamicProductCard key={p.id} product={p} />
             ))}
           </div>
         </div>
