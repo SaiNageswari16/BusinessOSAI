@@ -54,7 +54,7 @@ interface AudienceRecipient {
 }
 
 export function WhatsappBroadcastCampaigns() {
-  const { tenant, activeCompany } = useTenant();
+  const { tenant } = useTenant();
   const { currency, formatCurrency } = useCurrency();
 
   // Active Tab

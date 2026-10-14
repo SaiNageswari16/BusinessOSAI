@@ -740,7 +740,7 @@ async def list_products(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:erp", "view:pos"))],
     db: Annotated[AsyncSession, Depends(get_db)],
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=5000),
+    page_size: int = Query(50, ge=1, le=50000),
     search: str | None = None,
     category_id: uuid.UUID | None = None,
     category_name: str | None = None,
@@ -1603,7 +1603,8 @@ async def master_import_products(
                 item_tax = hsn_tax_map[item_hsn]
 
         item_barcode = (item.barcode or "").strip()
-        if not item_barcode:
+        # If barcode is missing, contains -DUP-, or is already assigned to another item in this batch, generate a clean unique barcode
+        if not item_barcode or "-dup-" in item_barcode.lower() or item_barcode in used_barcodes_batch:
             from src.api.v1.inventory.identifiers import generate_globally_unique_barcode
             item_barcode, _ = await generate_globally_unique_barcode(
                 db,
@@ -1611,8 +1612,7 @@ async def master_import_products(
                 barcode_format="EAN-13",
                 existing_used_set=used_barcodes_batch,
             )
-        else:
-            used_barcodes_batch.add(item_barcode)
+        used_barcodes_batch.add(item_barcode)
 
         # Resolve or auto-generate unique SKU
         sku_val = (item.sku or "").strip()

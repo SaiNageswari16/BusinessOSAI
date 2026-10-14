@@ -444,37 +444,62 @@ async def generate_bulk_barcodes(
     db: AsyncSession = Depends(get_db),
     format: str = Query("EAN-13", description="Barcode format: EAN-13 or Code-128"),
     product_ids: str | None = Query(None, description="Optional comma-separated product UUIDs to generate for"),
+    force_all: bool = Query(False, description="Whether to regenerate barcodes for all items, even if already set"),
+    include_invalid: bool = Query(True, description="Whether to regenerate for products with -DUP- or duplicate or non-numeric barcodes"),
 ):
-    """Bulk generate guaranteed globally unique, non-duplicating barcodes across all organizations."""
+    """Bulk generate guaranteed globally unique, pure numeric barcodes across all products."""
     from src.models.inventory import Product, MasterCatalogProduct, InventoryBatch
 
-    query = select(Product).where(
-        Product.tenant_id == ctx.tenant_id,
-        or_(Product.barcode.is_(None), Product.barcode == ""),
-    )
+    base_query = select(Product).where(Product.tenant_id == ctx.tenant_id)
 
     if product_ids:
         raw_ids = [UUID(pid.strip()) for pid in product_ids.split(",") if pid.strip()]
         if raw_ids:
-            query = query.where(Product.id.in_(raw_ids))
+            base_query = base_query.where(Product.id.in_(raw_ids))
+
+    if force_all:
+        query = base_query
+    else:
+        conditions = [
+            Product.barcode.is_(None),
+            Product.barcode == "",
+        ]
+        if include_invalid:
+            conditions.append(Product.barcode.ilike("%-DUP-%"))
+            conditions.append(Product.barcode.ilike("%dup%"))
+            # Include duplicate barcodes within the tenant
+            dup_subq = (
+                select(Product.barcode)
+                .where(
+                    Product.tenant_id == ctx.tenant_id,
+                    Product.barcode.isnot(None),
+                    Product.barcode != "",
+                )
+                .group_by(Product.barcode)
+                .having(func.count(Product.id) > 1)
+            )
+            conditions.append(Product.barcode.in_(dup_subq))
+        query = base_query.where(or_(*conditions))
 
     result = await db.execute(query)
     target_products = result.scalars().all()
 
     if not target_products:
         return {
-            "message": "All specified products already have barcodes.",
+            "message": "All specified products already have valid unique barcodes.",
             "generated_count": 0,
             "products": [],
         }
 
+    target_ids = {p.id for p in target_products}
+
     # Fetch all currently assigned barcodes across ALL organizations to guarantee zero collisions
     used_barcodes: set[str] = set()
     all_prod_barcodes = await db.execute(
-        select(Product.barcode).where(Product.barcode.isnot(None), Product.barcode != "")
+        select(Product.id, Product.barcode).where(Product.barcode.isnot(None), Product.barcode != "")
     )
-    for b in all_prod_barcodes.scalars().all():
-        if b:
+    for p_id, b in all_prod_barcodes.all():
+        if b and p_id not in target_ids:
             used_barcodes.add(b.strip())
 
     all_mc_barcodes = await db.execute(

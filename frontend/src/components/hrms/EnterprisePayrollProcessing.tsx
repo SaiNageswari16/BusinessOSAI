@@ -48,9 +48,9 @@ interface AttendanceRecord {
   loan_deduction: number;
   total_deductions: number;
   net_payable: number;
-  status: "Draft" | "Computed" | "Paid" | "Disbursed";
-  payslip_id?: string;
-  pdf_url?: string;
+  status: "Draft" | "Computed" | "Paid" | "Disbursed" | string;
+  payslip_id?: string | null;
+  pdf_url?: string | null;
 }
 
 export function EnterprisePayrollProcessing() {
@@ -100,7 +100,7 @@ export function EnterprisePayrollProcessing() {
     other_deductions: number;
     net_salary: number;
     status: string;
-    pdf_url?: string;
+    pdf_url?: string | null;
   } | null>(null);
 
   // Import modal state
@@ -114,13 +114,13 @@ export function EnterprisePayrollProcessing() {
     setLoading(true);
     try {
       const [empRes, structRes, slipRes, sheetRes, attRes, leaveRes, calRes] = await Promise.allSettled([
-        employeesApi.list(1, 200),
-        payrollApi.listSalaryStructures(),
-        payrollApi.listPayslips(),
-        payrollApi.getAttendanceSheet(selectedMonth, selectedYear),
-        attendanceApi.list(1, 1000),
-        leavesApi.list(1, 200),
-        workCalendarsApi.list(1, 50),
+        employeesApi.list(1, 200, undefined, tenant?.id),
+        payrollApi.listSalaryStructures(tenant?.id),
+        payrollApi.listPayslips(undefined, tenant?.id),
+        payrollApi.getAttendanceSheet(selectedMonth, selectedYear, tenant?.id),
+        attendanceApi.list(1, 1000, undefined, undefined, undefined, tenant?.id),
+        leavesApi.list(1, 200, undefined, undefined, tenant?.id),
+        workCalendarsApi.list(1, 50, undefined, tenant?.id),
       ]);
 
       const emps: Employee[] = empRes.status === "fulfilled" && empRes.value
@@ -174,7 +174,7 @@ export function EnterprisePayrollProcessing() {
   useEffect(() => {
     loadData();
     setSelectedEmpIds(new Set());
-  }, [selectedMonth, selectedYear]);
+  }, [selectedMonth, selectedYear, tenant?.id]);
 
   // Compute composite payroll & day-wise records for the chosen month
   const computePayrollRows = (
@@ -490,7 +490,7 @@ export function EnterprisePayrollProcessing() {
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Monthly Attendance & Payroll");
 
-      const filename = `Payroll_Attendance_Matrix_${tenant?.slug || "org"}_${selectedYear}_${String(selectedMonth).padStart(2, "0")}.xlsx`;
+      const filename = `Payroll_Attendance_Matrix_${(tenant as any)?.slug || tenant?.id || "org"}_${selectedYear}_${String(selectedMonth).padStart(2, "0")}.xlsx`;
       XLSX.writeFile(workbook, filename);
       toast.success(`Exported ${dataRows.length} employee attendance records to Excel!`);
     } catch (err: any) {
@@ -628,6 +628,7 @@ export function EnterprisePayrollProcessing() {
         year: selectedYear,
         status: "Paid",
         employee_ids: isSelective ? targetIds : undefined,
+        company_id: tenant?.id,
       });
 
       toast.success(`Successfully processed & disbursed ${res.length || count} employee payslips!`);

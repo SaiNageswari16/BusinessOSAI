@@ -187,12 +187,12 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
       const [companiesRes, branchesRes, deptsRes, desigsRes, teamsRes, rolesRes, schemesRes, empsRes] = await Promise.all([
         companiesApi.list(1, 100).catch(() => ({ items: [] })),
         branchesApi.list(1, 100).catch(() => ({ items: [] })),
-        departmentsApi.list(1, 100).catch(() => ({ items: [] })),
+        departmentsApi.list(1, 100, tenant?.id).catch(() => ({ items: [] })),
         designationsApi.list(1, 100).catch(() => ({ items: [] })),
-        teamsApi.list(1, 100).catch(() => ({ items: [] })),
+        teamsApi.list(1, 100, undefined, tenant?.id).catch(() => ({ items: [] })),
         rolesApi.list(1, 100).catch(() => ({ items: [] })),
-        attendanceSchemesApi.list().catch(() => []),
-        employeesApi.list(1, 200).catch(() => ({ items: [], total: 0 }))
+        attendanceSchemesApi.list(tenant?.id).catch(() => []),
+        employeesApi.list(1, 200, undefined, tenant?.id).catch(() => ({ items: [], total: 0 }))
       ]);
 
       const loadedCompanies = companiesRes.items || [];
@@ -217,7 +217,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     } catch (e) {
       console.error("Failed to load multi-org reference data", e);
     }
-  }, [formData.company_id]);
+  }, [formData.company_id, tenant?.id]);
 
   const loadEmployees = useCallback(async () => {
     setLoading(true);
@@ -227,7 +227,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
         page,
         100, // Load more to map managers locally
         search || undefined,
-        undefined,
+        tenant?.id,
         deptFilter || undefined,
         statusFilter || undefined
       );
@@ -238,15 +238,15 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [page, search, deptFilter, statusFilter]);
+  }, [page, search, deptFilter, statusFilter, tenant?.id]);
 
   // Load other tabs data
   const loadDepartmentsTab = useCallback(async () => {
     setLoading(true);
     try {
       const [deptsRes, empsRes] = await Promise.all([
-        departmentsApi.list(1, 100),
-        employeesApi.list(1, 200).catch(() => ({ items: [], total: 0 }))
+        departmentsApi.list(1, 100, tenant?.id),
+        employeesApi.list(1, 200, undefined, tenant?.id).catch(() => ({ items: [], total: 0 }))
       ]);
       setDepartments(deptsRes.items || []);
       setEmployees(empsRes.items || []);
@@ -255,15 +255,15 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tenant?.id]);
 
   const loadDesignationsTab = useCallback(async () => {
     setLoading(true);
     try {
       const [desigsRes, deptsRes, empsRes] = await Promise.all([
         designationsApi.list(1, 100),
-        departmentsApi.list(1, 100).catch(() => ({ items: [] })),
-        employeesApi.list(1, 200).catch(() => ({ items: [], total: 0 }))
+        departmentsApi.list(1, 100, tenant?.id).catch(() => ({ items: [] })),
+        employeesApi.list(1, 200, undefined, tenant?.id).catch(() => ({ items: [], total: 0 }))
       ]);
       setDesignations(desigsRes.items || []);
       if (deptsRes.items) setDepartments(deptsRes.items);
@@ -273,15 +273,15 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tenant?.id]);
 
   const loadTeamsTab = useCallback(async () => {
     setLoading(true);
     try {
       const [teamsRes, deptsRes, empsRes] = await Promise.all([
-        teamsApi.list(1, 100),
-        departmentsApi.list(1, 100).catch(() => ({ items: [] })),
-        employeesApi.list(1, 200).catch(() => ({ items: [], total: 0 }))
+        teamsApi.list(1, 100, undefined, tenant?.id),
+        departmentsApi.list(1, 100, tenant?.id).catch(() => ({ items: [] })),
+        employeesApi.list(1, 200, undefined, tenant?.id).catch(() => ({ items: [], total: 0 }))
       ]);
       setTeams(teamsRes.items || []);
       if (deptsRes.items) setDepartments(deptsRes.items);
@@ -291,7 +291,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tenant?.id]);
 
   useEffect(() => {
     loadReferenceData();
@@ -307,7 +307,7 @@ export function EmployeeManagement({ tab = "employees" }: Props) {
     } else if (tab === "teams") {
       loadTeamsTab();
     }
-  }, [tab, loadEmployees, loadDepartmentsTab, loadDesignationsTab, loadTeamsTab]);
+  }, [tab, tenant?.id, loadEmployees, loadDepartmentsTab, loadDesignationsTab, loadTeamsTab]);
 
   // Load documents when selection changes
   const loadEmployeeDocs = async (empId: string) => {

@@ -241,15 +241,15 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
     setLoading(true);
     try {
       const [structsRes, slipsRes, empsRes, gradesRes, desigsRes, loansRes, advsRes, bonusesRes, commsRes] = await Promise.allSettled([
-        payrollApi.listSalaryStructures(),
-        payrollApi.listPayslips(),
-        employeesApi.list(1, 100),
-        payrollApi.listPayGrades(),
+        payrollApi.listSalaryStructures(tenant?.id),
+        payrollApi.listPayslips(undefined, tenant?.id),
+        employeesApi.list(1, 100, undefined, tenant?.id),
+        payrollApi.listPayGrades(tenant?.id),
         designationsApi.list(1, 100),
-        payrollApi.listLoans(),
-        payrollApi.listAdvances(),
-        payrollApi.listBonuses(),
-        payrollApi.listCommissions(),
+        payrollApi.listLoans(tenant?.id),
+        payrollApi.listAdvances(tenant?.id),
+        payrollApi.listBonuses(tenant?.id),
+        payrollApi.listCommissions(tenant?.id),
       ]);
 
       if (structsRes.status === "fulfilled" && Array.isArray(structsRes.value)) {
@@ -282,7 +282,7 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
 
       // Load dynamic slab plan
       try {
-        const slabPlanRes = await payrollApi.getCommissionSlabPlan();
+        const slabPlanRes = await payrollApi.getCommissionSlabPlan(tenant?.id);
         if (slabPlanRes && Array.isArray(slabPlanRes.slabs) && slabPlanRes.slabs.length > 0) {
           const colors = [
             "text-blue-500 bg-blue-500/10 border-blue-500/20",
@@ -308,11 +308,11 @@ export function PayrollManagement({ tab = "salary_structure" }: Props) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tenant?.id]);
 
   useEffect(() => {
     loadPayrollData();
-  }, [loadPayrollData]);
+  }, [loadPayrollData, tenant?.id]);
 
   const handleSaveSlabPlan = async () => {
     setSavingSlabPlan(true);

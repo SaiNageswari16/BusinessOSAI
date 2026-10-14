@@ -17,6 +17,7 @@ from src.database.init_db import write_audit_log
 from src.database.session import get_db
 from src.services.credential_dispatcher import dispatch_user_onboarding_credentials
 from src.models import (
+    Company,
     Employee,
     EmployeeDocument,
     User,
@@ -106,8 +107,14 @@ async def get_my_employee_profile(
             select(func.count()).select_from(Employee).where(Employee.tenant_id == ctx.tenant_id)
         ) or 0
         seq = str(count + 1).zfill(4)
+        target_comp = ctx.active_company_id
+        if not target_comp:
+            target_comp = await db.scalar(
+                select(Company.id).where(Company.tenant_id == ctx.tenant_id).order_by(Company.created_at.asc()).limit(1)
+            )
         emp = Employee(
             tenant_id=ctx.tenant_id,
+            company_id=target_comp,
             user_id=ctx.user.id,
             employee_code=f"EMP-{seq}",
             full_name=ctx.user.full_name or ctx.user.email.split("@")[0].capitalize(),
@@ -127,6 +134,7 @@ async def get_my_employee_profile(
 async def list_employees(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: uuid.UUID | None = None,
     department_id: uuid.UUID | None = None,
     designation_id: uuid.UUID | None = None,
     status_filter: str | None = Query(None, alias="status"),
@@ -135,6 +143,8 @@ async def list_employees(
     page_size: int = Query(20, ge=1, le=1000),
     search: str | None = None,
 ):
+    target_company_id = company_id or ctx.active_company_id
+
     # Auto-link any workspace User belonging to this tenant who doesn't have an Employee profile yet
     try:
         users_without_emp = await db.scalars(
@@ -177,8 +187,18 @@ async def list_employees(
                         )
                         if not code_exists:
                             code_found = True
+                            target_comp = target_company_id
+                            if not target_comp:
+                                target_comp = await db.scalar(
+                                    select(UserRole.company_id).where(UserRole.user_id == u.id, UserRole.company_id.is_not(None))
+                                )
+                            if not target_comp:
+                                target_comp = await db.scalar(
+                                    select(Company.id).where(Company.tenant_id == ctx.tenant_id).order_by(Company.created_at.asc()).limit(1)
+                                )
                             db.add(Employee(
                                 tenant_id=ctx.tenant_id,
+                                company_id=target_comp,
                                 user_id=u.id,
                                 employee_code=candidate_code,
                                 full_name=u.full_name or u.email.split('@')[0].capitalize(),
@@ -196,11 +216,14 @@ async def list_employees(
         logging.getLogger("hrms.employees").warning(f"Auto-link user to employee skipped: {sync_err}")
 
     query = select(Employee).where(Employee.tenant_id == ctx.tenant_id)
-    if ctx.active_company_id:
-        from src.models import Company
-        company_exists = await db.scalar(select(Company.id).where(Company.id == ctx.active_company_id, Company.tenant_id == ctx.tenant_id))
-        if company_exists:
-            query = query.where((Employee.company_id == ctx.active_company_id) | (Employee.company_id == None))
+    if target_company_id:
+        primary_comp = await db.scalar(
+            select(Company.id).where(Company.tenant_id == ctx.tenant_id).order_by(Company.created_at.asc()).limit(1)
+        )
+        if target_company_id == primary_comp:
+            query = query.where((Employee.company_id == target_company_id) | (Employee.company_id == None))
+        else:
+            query = query.where(Employee.company_id == target_company_id)
 
 
     # If the user does not have company-wide employee viewing permissions, strictly isolate to their own profile
@@ -236,8 +259,14 @@ async def list_employees(
     # If role filter produced 0 results, fallback to returning active employees for this workspace
     if (total or 0) == 0 and role:
         query = select(Employee).where(Employee.tenant_id == ctx.tenant_id, Employee.status.ilike("Active"))
-        if ctx.active_company_id:
-            query = query.where((Employee.company_id == ctx.active_company_id) | (Employee.company_id == None))
+        if target_company_id:
+            primary_comp = await db.scalar(
+                select(Company.id).where(Company.tenant_id == ctx.tenant_id).order_by(Company.created_at.asc()).limit(1)
+            )
+            if target_company_id == primary_comp:
+                query = query.where((Employee.company_id == target_company_id) | (Employee.company_id == None))
+            else:
+                query = query.where(Employee.company_id == target_company_id)
         total = await db.scalar(select(func.count()).select_from(query.subquery()))
 
     result = await db.execute(

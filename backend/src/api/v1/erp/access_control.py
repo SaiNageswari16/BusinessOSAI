@@ -310,6 +310,50 @@ async def update_role(
     return await _role_to_response(db, role)
 
 
+@router.delete("/roles/{role_id}", response_model=MessageResponse)
+async def delete_role(
+    role_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:roles"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    role = await db.scalar(select(Role).where(Role.id == role_id, Role.tenant_id == ctx.tenant_id))
+    if not role:
+        raise HTTPException(status_code=404, detail="Role not found")
+    if role.is_system:
+        raise HTTPException(status_code=400, detail="System roles cannot be deleted")
+
+    # Clean up tenant role_modules and role_tabs settings if present
+    from sqlalchemy.orm.attributes import flag_modified
+    from src.models import Tenant
+    tenant = await db.get(Tenant, ctx.tenant_id)
+    if tenant and tenant.settings:
+        t_settings = dict(tenant.settings)
+        changed = False
+        if "role_modules" in t_settings and str(role.id) in t_settings["role_modules"]:
+            r_mods = dict(t_settings["role_modules"])
+            r_mods.pop(str(role.id), None)
+            t_settings["role_modules"] = r_mods
+            changed = True
+        if "role_tabs" in t_settings and str(role.id) in t_settings["role_tabs"]:
+            r_tabs = dict(t_settings["role_tabs"])
+            r_tabs.pop(str(role.id), None)
+            t_settings["role_tabs"] = r_tabs
+            changed = True
+        if changed:
+            tenant.settings = t_settings
+            flag_modified(tenant, "settings")
+
+    # Delete all UserRole associations for this role
+    existing_user_roles = await db.execute(select(UserRole).where(UserRole.role_id == role.id))
+    for ur in existing_user_roles.scalars().all():
+        await db.delete(ur)
+
+    # Delete the role (role_permissions will cascade delete via foreign key)
+    await db.delete(role)
+    await db.commit()
+    return MessageResponse(message=f"Role '{role.name}' deleted successfully")
+
+
 
 @router.get("/users", response_model=PaginatedResponse[UserResponse])
 async def list_users(

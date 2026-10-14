@@ -248,8 +248,6 @@ function UserFormModal({
           : (getStoredRoleTabs(id) || (pickedRole?.name ? getStoredRoleTabs(pickedRole.name) : null));
         if (roleMod && roleMod.length > 0) {
           setSelectedModules(roleMod);
-        } else if (pickedRole?.name.toLowerCase().includes("pos") || pickedRole?.name.toLowerCase().includes("cashier")) {
-          setSelectedModules(["dashboard", "pos", "inventory", "operations"]);
         } else {
           setSelectedModules(DEFAULT_STANDARD_MODULES);
         }

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.deps import CurrentUserContext, require_permission
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
-from src.models import Employee, LeaveRequest, LeaveBalance, Department
+from src.models import Company, Employee, LeaveRequest, LeaveBalance, Department
 from src.schemas.erp import (
     LeaveRequestCreate,
     LeaveRequestUpdate,
@@ -25,6 +25,7 @@ router = APIRouter(prefix="/hrms", tags=["HRMS - Leaves"])
 async def list_leave_requests(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: uuid.UUID | None = None,
     employee_id: uuid.UUID | None = None,
     status_filter: str | None = None,
     page: int = Query(1, ge=1),
@@ -38,30 +39,34 @@ async def list_leave_requests(
         .where(LeaveRequest.tenant_id == ctx.tenant_id)
     )
 
-    if ctx.active_company_id:
-        query = query.where((Employee.company_id == ctx.active_company_id) | (Employee.company_id == None))
-
-    # If the user does not have company-wide leave viewing permissions, strictly isolate to their own leave requests
-    if not (ctx.has_permission("view:hrms_leaves") or ctx.has_permission("manage:hrms") or getattr(ctx.user, "is_tenant_owner", False)):
-        query = query.where((Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email))
-
-    if employee_id:
-        query = query.where(LeaveRequest.employee_id == employee_id)
-    if status_filter:
-        query = query.where(LeaveRequest.status == status_filter)
-
     count_query = (
         select(func.count(LeaveRequest.id))
         .join(Employee, LeaveRequest.employee_id == Employee.id)
         .where(LeaveRequest.tenant_id == ctx.tenant_id)
     )
-    if ctx.active_company_id:
-        count_query = count_query.where((Employee.company_id == ctx.active_company_id) | (Employee.company_id == None))
+
+    target_company_id = company_id or ctx.active_company_id
+    if target_company_id:
+        primary_comp = await db.scalar(
+            select(Company.id).where(Company.tenant_id == ctx.tenant_id).order_by(Company.created_at.asc()).limit(1)
+        )
+        if target_company_id == primary_comp:
+            emp_cond = (Employee.company_id == target_company_id) | (Employee.company_id == None)
+        else:
+            emp_cond = (Employee.company_id == target_company_id)
+        query = query.where(emp_cond)
+        count_query = count_query.where(emp_cond)
+
+    # If the user does not have company-wide leave viewing permissions, strictly isolate to their own leave requests
     if not (ctx.has_permission("view:hrms_leaves") or ctx.has_permission("manage:hrms") or getattr(ctx.user, "is_tenant_owner", False)):
+        query = query.where((Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email))
         count_query = count_query.where((Employee.user_id == ctx.user.id) | (Employee.email == ctx.user.email))
+
     if employee_id:
+        query = query.where(LeaveRequest.employee_id == employee_id)
         count_query = count_query.where(LeaveRequest.employee_id == employee_id)
     if status_filter:
+        query = query.where(LeaveRequest.status == status_filter)
         count_query = count_query.where(LeaveRequest.status == status_filter)
 
     total = await db.scalar(count_query)
@@ -100,6 +105,7 @@ async def list_leave_requests(
 async def get_leave_balances(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: uuid.UUID | None = None,
     employee_id: uuid.UUID | None = None,
 ):
     query = (
@@ -107,8 +113,16 @@ async def get_leave_balances(
         .join(Employee, LeaveBalance.employee_id == Employee.id)
         .where(LeaveBalance.tenant_id == ctx.tenant_id)
     )
-    if ctx.active_company_id:
-        query = query.where((Employee.company_id == ctx.active_company_id) | (Employee.company_id == None))
+    target_company_id = company_id or ctx.active_company_id
+    if target_company_id:
+        primary_comp = await db.scalar(
+            select(Company.id).where(Company.tenant_id == ctx.tenant_id).order_by(Company.created_at.asc()).limit(1)
+        )
+        if target_company_id == primary_comp:
+            query = query.where((Employee.company_id == target_company_id) | (Employee.company_id == None))
+        else:
+            query = query.where(Employee.company_id == target_company_id)
+
     if employee_id:
         query = query.where(LeaveBalance.employee_id == employee_id)
 
