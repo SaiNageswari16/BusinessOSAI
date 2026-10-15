@@ -1023,7 +1023,7 @@ export function FullInvoicePrinter({
         <!DOCTYPE html>
         <html>
           <head>
-            <title>Invoice - ${invoice?.invoice_number || 'Tax Invoice'}</title>
+            <title>${(invoice?.doc_type === 'quotation' || invoice?.invoice_type === 'QUOTATION' || String(invoice?.invoice_number || '').toUpperCase().startsWith('QT-')) ? 'Tax Quotation' : (invoice?.doc_type === 'estimate' || invoice?.invoice_type === 'ESTIMATE_NON_GST' || String(invoice?.invoice_number || '').toUpperCase().startsWith('EST-')) ? 'Tax Estimate' : 'Tax Invoice'} - ${invoice?.invoice_number || 'Document'}</title>
             <meta charset="utf-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1.0" />
             <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1191,8 +1191,10 @@ export function FullInvoicePrinter({
                 <h3 className="font-bold text-sm text-white flex items-center gap-2">
                   {invoice?.header_title
                     ? `${invoice.header_title} (A4 Format)`
-                    : invoice?.doc_type === 'quotation'
-                    ? 'Official Quotation Preview (A4 Format)'
+                    : (invoice?.doc_type === 'quotation' || invoice?.invoice_type === 'QUOTATION' || String(invoice?.invoice_number || '').toUpperCase().startsWith('QT-'))
+                    ? 'TAX QUOTATION / ESTIMATE (A4 Format)'
+                    : (invoice?.doc_type === 'estimate' || invoice?.invoice_type === 'ESTIMATE_NON_GST' || String(invoice?.invoice_number || '').toUpperCase().startsWith('EST-'))
+                    ? 'TAX ESTIMATE / ESTIMATE (A4 Format)'
                     : (invoice?.doc_type === 'proforma' || invoice?.invoice_type === 'proforma' || invoice?.invoice_type === 'PROFORMA')
                     ? 'Proforma Invoice Preview (A4 Format)'
                     : 'Tax Invoice Preview (A4 Format)'}
@@ -1366,12 +1368,12 @@ export function FullInvoicePrinter({
               )}
               {!isWordTemplate && isRoyalGold && (
                 <div className="text-center text-[10px] font-black tracking-widest text-amber-900 bg-gradient-to-r from-amber-200/60 via-yellow-100/90 to-amber-200/60 py-1 rounded border border-amber-400/80 mb-2 shadow-2xs">
-                  👑 ✦ ROYAL HERITAGE TAX INVOICE ✦ 👑
+                  👑 ✦ ROYAL HERITAGE {(invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? 'TAX QUOTATION / ESTIMATE' : (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? 'TAX ESTIMATE / ESTIMATE' : 'TAX INVOICE'} ✦ 👑
                 </div>
               )}
               {!isWordTemplate && isCorporate && (
                 <div className="text-center text-[10px] font-bold tracking-widest text-indigo-900 dark:text-indigo-200 bg-indigo-50/80 dark:bg-indigo-950/50 py-1 rounded border border-indigo-200/80 mb-2 shadow-2xs">
-                  🏛️ OFFICIAL COMMERCIAL TAX INVOICE · ORIGINAL 🏛️
+                  🏛️ OFFICIAL COMMERCIAL {(invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? 'TAX QUOTATION / ESTIMATE' : (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? 'TAX ESTIMATE / ESTIMATE' : 'TAX INVOICE'} · ORIGINAL 🏛️
                 </div>
               )}
               {!isWordTemplate && (isCultureGod || isCultureUp) && (
@@ -1550,16 +1552,24 @@ export function FullInvoicePrinter({
                       </div>
                       <h1 className="text-xl font-black tracking-tight uppercase" style={{ color: primaryColor }}>
                         {invoice.header_title || (
-                          invoice.doc_type === 'quotation' ? 'OFFICIAL QUOTATION' :
-                          (invoice.doc_type === 'proforma' || invoice.invoice_type?.toLowerCase() === 'proforma' || invoice.invoice_type === 'PROFORMA') ? 'PROFORMA INVOICE' :
+                          (invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? 'TAX QUOTATION / ESTIMATE' :
+                          (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? 'TAX ESTIMATE / ESTIMATE' :
+                          (invoice.doc_type === 'proforma' || invoice.invoice_type?.toLowerCase() === 'proforma' || invoice.invoice_type === 'PROFORMA' || String(invoice.invoice_number || '').toUpperCase().startsWith('PI-')) ? 'PROFORMA INVOICE' :
                           (template.headerTitle || 'TAX INVOICE')
                         )}
                       </h1>
                       <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 inline-block text-right mt-0.5">
                         <p className="text-xs font-bold text-slate-900">
-                          {invoice.doc_type === 'quotation' ? 'Quote No:' : (invoice.doc_type === 'proforma' || invoice.invoice_type?.toLowerCase() === 'proforma' || invoice.invoice_type === 'PROFORMA') ? 'Proforma No:' : 'Invoice No:'} {invoice.invoice_number || (invoice.doc_type === 'quotation' ? '#QTN' : (invoice.doc_type === 'proforma' || invoice.invoice_type?.toLowerCase() === 'proforma' || invoice.invoice_type === 'PROFORMA') ? '#PI' : '#INV')}
+                          {(invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? 'Quote No:' :
+                           (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? 'Estimate No:' :
+                           (invoice.doc_type === 'proforma' || invoice.invoice_type?.toLowerCase() === 'proforma' || invoice.invoice_type === 'PROFORMA' || String(invoice.invoice_number || '').toUpperCase().startsWith('PI-')) ? 'Proforma No:' :
+                           'Invoice No:'} {invoice.invoice_number || ((invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION') ? '#QTN' : (invoice.doc_type === 'proforma' || invoice.invoice_type?.toLowerCase() === 'proforma' || invoice.invoice_type === 'PROFORMA') ? '#PI' : '#INV')}
                         </p>
-                        <p className="text-[11px] text-slate-600 font-medium">Date: {formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date())}</p>
+                        <p className="text-[11px] text-slate-600 font-medium">
+                          {(invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? 'Quote Date:' :
+                           (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? 'Estimate Date:' :
+                           'Date:'} {formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date())}
+                        </p>
                         {invoice.eway_bill_number && (
                           <div className="mt-1 px-2 py-0.5 bg-emerald-50 border border-emerald-300 rounded text-emerald-800 text-[10px] font-mono font-bold text-right">
                             <span className="font-sans font-extrabold uppercase text-[9px] text-emerald-950">e-Way Bill: </span>

@@ -3539,12 +3539,12 @@ class QuotationSendPayload(BaseModel):
 
 @router.get("/quotations")
 async def list_quotations(
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:crm_quotations", "view:crm_customers", "pos:sales", "view:sales"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     query = select(CRMQuotation).where(CRMQuotation.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(CRMQuotation.company_id == ctx.active_company_id)
+        query = query.where(or_(CRMQuotation.company_id == ctx.active_company_id, CRMQuotation.company_id.is_(None)))
     res = await db.execute(query.order_by(CRMQuotation.created_at.desc()))
     quotes = res.scalars().all()
     
@@ -3584,26 +3584,51 @@ async def list_quotations(
 @router.post("/quotations")
 async def create_quotation(
     payload: QuotationCreate,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:crm_quotations", "manage:crm_customers", "pos:sales", "manage:sales"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    # Ensure customer_id is valid uuid
+    # Ensure customer_id exists and is valid in this tenant
     target_cust_id = payload.customer_id
-    if not target_cust_id:
-        # Fallback to first existing customer or create dummy if needed
-        first_cust = await db.scalar(select(Customer).where(Customer.tenant_id == ctx.tenant_id).limit(1))
-        if first_cust:
-            target_cust_id = first_cust.id
-        else:
-            new_cust = Customer(
-                tenant_id=ctx.tenant_id,
-                company_id=ctx.active_company_id,
-                name=payload.customer_name or "Walk-in Customer",
-                status="Active"
+    cust = None
+    if target_cust_id:
+        cust = await db.scalar(
+            select(Customer).where(Customer.id == target_cust_id, Customer.tenant_id == ctx.tenant_id)
+        )
+    
+    if not cust:
+        cust_name = (payload.customer_name or "").strip()
+        cust_phone = (payload.recipient_phone or "").strip()
+        if cust_name and cust_name.lower() not in ["walk-in customer", "walk-in client", "walk-in", ""]:
+            cust = await db.scalar(
+                select(Customer).where(
+                    Customer.tenant_id == ctx.tenant_id,
+                    Customer.name.ilike(cust_name)
+                ).limit(1)
             )
-            db.add(new_cust)
-            await db.flush()
-            target_cust_id = new_cust.id
+        if not cust and cust_phone:
+            cust = await db.scalar(
+                select(Customer).where(
+                    Customer.tenant_id == ctx.tenant_id,
+                    Customer.phone == cust_phone
+                ).limit(1)
+            )
+        if not cust:
+            # Fallback to any existing active customer or create dummy walk-in
+            existing_first = await db.scalar(select(Customer).where(Customer.tenant_id == ctx.tenant_id).limit(1))
+            if existing_first and not cust_name:
+                cust = existing_first
+            else:
+                cust = Customer(
+                    tenant_id=ctx.tenant_id,
+                    company_id=ctx.active_company_id,
+                    name=payload.customer_name or "Walk-in Client",
+                    phone=payload.recipient_phone or None,
+                    email=payload.recipient_email or None,
+                    status="Active"
+                )
+                db.add(cust)
+                await db.flush()
+        target_cust_id = cust.id
 
     items_data = dict(payload.items or {})
     if payload.customer_name:
@@ -3613,18 +3638,36 @@ async def create_quotation(
     if payload.recipient_email:
         items_data["customer_email"] = payload.recipient_email
 
-    quote = CRMQuotation(
-        tenant_id=ctx.tenant_id,
-        company_id=ctx.active_company_id,
-        customer_id=target_cust_id,
-        quote_number=payload.quote_number,
-        items=items_data,
-        subtotal=payload.subtotal,
-        tax=payload.tax,
-        total=payload.total,
-        status=payload.status or "Draft"
+    # Check if quotation already exists for this tenant
+    quote = await db.scalar(
+        select(CRMQuotation).where(
+            CRMQuotation.tenant_id == ctx.tenant_id,
+            CRMQuotation.quote_number == payload.quote_number
+        )
     )
-    db.add(quote)
+    if quote:
+        quote.customer_id = target_cust_id
+        if ctx.active_company_id and not quote.company_id:
+            quote.company_id = ctx.active_company_id
+        quote.items = items_data
+        quote.subtotal = payload.subtotal
+        quote.tax = payload.tax
+        quote.total = payload.total
+        quote.status = payload.status or "Draft"
+    else:
+        quote = CRMQuotation(
+            tenant_id=ctx.tenant_id,
+            company_id=ctx.active_company_id,
+            customer_id=target_cust_id,
+            quote_number=payload.quote_number,
+            items=items_data,
+            subtotal=payload.subtotal,
+            tax=payload.tax,
+            total=payload.total,
+            status=payload.status or "Draft"
+        )
+        db.add(quote)
+
     await db.flush()
     await db.commit()
     await db.refresh(quote)
@@ -3638,12 +3681,12 @@ async def create_quotation(
         import logging
         logging.getLogger(__name__).warning("Failed to generate initial quotation PDF: %s", e)
 
-    if payload.send_email or payload.send_whatsapp or payload.status in ["Sent", "Issued"]:
+    if payload.send_email or payload.send_whatsapp:
         dispatch_info = await dispatch_quotation(
             db=db,
             quote=quote,
-            send_email_flag=payload.send_email or payload.status in ["Sent", "Issued"],
-            send_whatsapp_flag=payload.send_whatsapp or payload.status in ["Sent", "Issued"],
+            send_email_flag=payload.send_email,
+            send_whatsapp_flag=payload.send_whatsapp,
             recipient_email=payload.recipient_email,
             recipient_phone=payload.recipient_phone,
         )
@@ -3679,7 +3722,7 @@ class QuotationUpdate(BaseModel):
 async def update_quotation(
     quote_id: uuid.UUID,
     payload: QuotationUpdate,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:crm_quotations", "manage:crm_customers", "pos:sales", "manage:sales"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     quote = await db.scalar(select(CRMQuotation).where(CRMQuotation.id == quote_id, CRMQuotation.tenant_id == ctx.tenant_id))
@@ -3703,7 +3746,9 @@ async def update_quotation(
     if payload.quote_number is not None:
         quote.quote_number = payload.quote_number
     if payload.customer_id is not None:
-        quote.customer_id = payload.customer_id
+        cust = await db.scalar(select(Customer).where(Customer.id == payload.customer_id, Customer.tenant_id == ctx.tenant_id))
+        if cust:
+            quote.customer_id = cust.id
     quote.items = items_data
     if payload.subtotal is not None:
         quote.subtotal = payload.subtotal
@@ -3751,7 +3796,7 @@ async def update_quotation(
 async def send_quotation_endpoint(
     quote_id: uuid.UUID,
     payload: QuotationSendPayload,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:crm_quotations", "manage:crm_customers", "pos:sales", "manage:sales"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     quote = await db.scalar(select(CRMQuotation).where(CRMQuotation.id == quote_id, CRMQuotation.tenant_id == ctx.tenant_id))
@@ -3782,7 +3827,7 @@ async def send_quotation_endpoint(
 @router.get("/quotations/{quote_id}/pdf")
 async def get_quotation_pdf(
     quote_id: uuid.UUID,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_customers"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:crm_quotations", "view:crm_customers", "pos:sales", "view:sales"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     quote = await db.scalar(select(CRMQuotation).where(CRMQuotation.id == quote_id, CRMQuotation.tenant_id == ctx.tenant_id))
@@ -3802,7 +3847,7 @@ async def get_quotation_pdf(
 @router.delete("/quotations/{quote_id}")
 async def delete_quotation(
     quote_id: uuid.UUID,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:crm_quotations", "manage:crm_customers", "pos:sales", "manage:sales"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     quote = await db.scalar(select(CRMQuotation).where(CRMQuotation.id == quote_id, CRMQuotation.tenant_id == ctx.tenant_id))
@@ -3816,7 +3861,7 @@ async def delete_quotation(
 @router.post("/quotations/{quote_id}/convert-to-order")
 async def convert_quotation_to_sales_order(
     quote_id: uuid.UUID,
-    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:crm_quotations", "manage:crm_customers", "pos:sales", "manage:sales"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     quote = await db.scalar(select(CRMQuotation).where(CRMQuotation.id == quote_id, CRMQuotation.tenant_id == ctx.tenant_id))

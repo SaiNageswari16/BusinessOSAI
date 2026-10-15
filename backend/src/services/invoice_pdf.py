@@ -420,8 +420,20 @@ def _render_fmcg_pdf(invoice: Any, template: dict) -> bytes:
     pan_number = gstin[2:12] if len(gstin) >= 12 else "AAOFM2891F"
     copy_type = _safe_text(getattr(invoice, "copy_type", None) or "ORIGINAL FOR RECIPIENT", 35)
 
-    inv_number = _safe_text(getattr(invoice, "invoice_number", None) or "INV-91132", 30)
-    inv_date = _safe_text(str(getattr(invoice, "invoice_date", None) or date.today()), 20)
+    inv_number = _safe_text(getattr(invoice, "invoice_number", None) or getattr(invoice, "quote_number", None) or "INV-91132", 30)
+    raw_doc_type = str(getattr(invoice, "doc_type", "") or getattr(invoice, "invoice_type", "") or "").lower()
+    is_estimate = raw_doc_type in ("estimate", "estimate_non_gst") or inv_number.upper().startswith("EST-")
+    is_quote = (
+        raw_doc_type in ("quotation", "quote", "estimate", "estimate_non_gst")
+        or inv_number.upper().startswith("QT-")
+        or bool(getattr(invoice, "quote_number", None))
+        or is_estimate
+    )
+    default_title = ("TAX ESTIMATE / ESTIMATE" if is_estimate else "TAX QUOTATION / ESTIMATE") if is_quote else "TAX INVOICE"
+    tpl_title = template.get("headerTitle") or template.get("invoiceTitle")
+    parle_title = _safe_text(tpl_title if (tpl_title and tpl_title != "TAX INVOICE") or not is_quote else default_title, 40)
+
+    inv_date = _safe_text(str(getattr(invoice, "invoice_date", None) or getattr(invoice, "created_at", None) or date.today()), 20)
     if "-" in inv_date and len(inv_date.split("-")) == 3:
         p = inv_date.split("-")
         inv_date = f"{p[2]}/{p[1]}/{p[0]}" if len(p[0]) == 4 else inv_date
@@ -453,7 +465,7 @@ def _render_fmcg_pdf(invoice: Any, template: dict) -> bytes:
     pdf.set_xy(70, 9)
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(0, 0, 0)
-    pdf.cell(70, 4.5, "TAX INVOICE", border=0, align="C")
+    pdf.cell(70, 4.5, parle_title, border=0, align="C")
 
     pdf.set_xy(145, 9)
     pdf.set_font("Helvetica", "", 7)
@@ -493,8 +505,10 @@ def _render_fmcg_pdf(invoice: Any, template: dict) -> bytes:
     pdf.rect(10.2, 29.2, 189.6, 6.6, style="F")
     pdf.set_xy(12, 30.5)
     pdf.set_font("Helvetica", "", 7)
-    pdf.cell(42, 4, f"Invoice No. : {inv_number}", ln=0)
-    pdf.cell(38, 4, f"Invoice Date: {inv_date}", ln=0)
+    inv_lbl = "Estimate No." if is_estimate else ("Quote No." if is_quote else "Invoice No.")
+    date_lbl = "Estimate Date" if is_estimate else ("Quote Date" if is_quote else "Invoice Date")
+    pdf.cell(42, 4, f"{inv_lbl} : {inv_number}", ln=0)
+    pdf.cell(38, 4, f"{date_lbl}: {inv_date}", ln=0)
     pdf.cell(42, 4, "PO / Order Ref: DMS", ln=0)
     pdf.cell(35, 4, f"Pymt Mode: {payment_method}", ln=0)
     pdf.cell(30, 4, "e-Way Bill: NA", align="R", ln=1)
@@ -706,8 +720,20 @@ def _render_parle_pdf(invoice: Any, template: dict) -> bytes:
     gstin = _safe_text(template.get("gstin") or "36ABBFV0741M1Z0", 30)
     copy_type = _safe_text(getattr(invoice, "copy_type", None) or "ORIGINAL FOR RECIPIENT", 35)
 
-    inv_number = _safe_text(getattr(invoice, "invoice_number", None) or "2026-2027-0007", 30)
-    inv_date = _safe_text(str(getattr(invoice, "invoice_date", None) or date.today()), 20)
+    inv_number = _safe_text(getattr(invoice, "invoice_number", None) or getattr(invoice, "quote_number", None) or "2026-2027-0007", 30)
+    raw_doc_type = str(getattr(invoice, "doc_type", "") or getattr(invoice, "invoice_type", "") or "").lower()
+    is_estimate = raw_doc_type in ("estimate", "estimate_non_gst") or inv_number.upper().startswith("EST-")
+    is_quote = (
+        raw_doc_type in ("quotation", "quote", "estimate", "estimate_non_gst")
+        or inv_number.upper().startswith("QT-")
+        or bool(getattr(invoice, "quote_number", None))
+        or is_estimate
+    )
+    default_fmcg_title = ("TAX ESTIMATE / ESTIMATE" if is_estimate else "TAX QUOTATION / ESTIMATE") if is_quote else "GST TAX INVOICE"
+    tpl_title = template.get("headerTitle") or template.get("invoiceTitle")
+    fmcg_title = _safe_text(tpl_title if (tpl_title and tpl_title != "TAX INVOICE" and tpl_title != "GST TAX INVOICE") or not is_quote else default_fmcg_title, 40)
+
+    inv_date = _safe_text(str(getattr(invoice, "invoice_date", None) or getattr(invoice, "created_at", None) or date.today()), 20)
     if "-" in inv_date and len(inv_date.split("-")) == 3:
         p = inv_date.split("-")
         inv_date = f"{p[2]}/{p[1]}/{p[0]}" if len(p[0]) == 4 else inv_date
@@ -749,7 +775,7 @@ def _render_parle_pdf(invoice: Any, template: dict) -> bytes:
     pdf.set_xy(70, 9)
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(0, 0, 0)
-    pdf.cell(70, 4.5, "GST TAX INVOICE", border=0, align="C")
+    pdf.cell(70, 4.5, fmcg_title, border=0, align="C")
 
     pdf.set_xy(145, 9)
     pdf.set_font("Helvetica", "", 7)
@@ -850,11 +876,14 @@ def _render_parle_pdf(invoice: Any, template: dict) -> bytes:
     pdf.set_xy(13, 35.5)
     pdf.set_font("Helvetica", "B", 9)
     pdf.set_text_color(255, 255, 255)
-    pdf.cell(40, 4, "GST INVOICE", ln=0)
+    strip_title = ("TAX ESTIMATE" if is_estimate else "TAX QUOTATION") if is_quote else "GST INVOICE"
+    pdf.cell(40, 4, strip_title, ln=0)
 
     pdf.set_xy(60, 35.5)
     pdf.set_font("Helvetica", "", 7)
-    meta_str = f"Invoice No. : {inv_number}   |   Date : {inv_date}   |   Due Date : {due_date}"
+    inv_lbl = "Estimate No." if is_estimate else ("Quote No." if is_quote else "Invoice No.")
+    date_lbl = "Estimate Date" if is_estimate else ("Quote Date" if is_quote else "Date")
+    meta_str = f"{inv_lbl} : {inv_number}   |   {date_lbl} : {inv_date}   |   Due Date : {due_date}"
     pdf.cell(138, 4, meta_str, align="R", ln=1)
 
     pdf.line(10, 41, 200, 41)
@@ -1126,7 +1155,25 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
     store_address = _safe_text(template.get("storeAddress") or "", 90)
     store_phone = _safe_text(template.get("storePhone") or "", 35)
     gstin = _safe_text(template.get("gstin") or "", 25)
-    invoice_title = _safe_text(template.get("headerTitle") or template.get("invoiceTitle") or "TAX INVOICE", 30)
+    inv_number = _safe_text(
+        getattr(invoice, "receipt_number", None)
+        or getattr(invoice, "reference_number", None)
+        or getattr(invoice, "invoice_number", None)
+        or getattr(invoice, "quote_number", None)
+        or "REC-0001",
+        30,
+    )
+    raw_doc_type = str(getattr(invoice, "doc_type", "") or getattr(invoice, "invoice_type", "") or "").lower()
+    is_estimate = raw_doc_type in ("estimate", "estimate_non_gst") or inv_number.upper().startswith("EST-")
+    is_quote = (
+        raw_doc_type in ("quotation", "quote", "estimate", "estimate_non_gst")
+        or inv_number.upper().startswith("QT-")
+        or bool(getattr(invoice, "quote_number", None))
+        or is_estimate
+    )
+    default_thermal_title = ("TAX ESTIMATE / ESTIMATE" if is_estimate else "TAX QUOTATION / ESTIMATE") if is_quote else "TAX INVOICE"
+    tpl_title = template.get("headerTitle") or template.get("invoiceTitle")
+    invoice_title = _safe_text(tpl_title if (tpl_title and tpl_title != "TAX INVOICE") or not is_quote else default_thermal_title, 30)
     terms_text = _safe_text(template.get("termsText") or "Thank you for shopping with us! Please keep this receipt handy.", 250)
     footer_text = _safe_text(template.get("footerText") or "Thank you! Visit Again.", 120)
 
@@ -1134,14 +1181,6 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
     cust_phone = _safe_text(getattr(invoice, "customer_phone", None) or getattr(invoice, "phone", None) or "", 20)
     cust_gstin = _safe_text(getattr(invoice, "customer_gstin", None) or getattr(invoice, "gst_number", None) or "", 25)
     cust_addr = _safe_text(getattr(invoice, "billing_address", None) or getattr(invoice, "customer_address", None) or "", 80)
-
-    inv_number = _safe_text(
-        getattr(invoice, "receipt_number", None)
-        or getattr(invoice, "reference_number", None)
-        or getattr(invoice, "invoice_number", None)
-        or "REC-0001",
-        30,
-    )
     raw_date = getattr(invoice, "invoice_date", None) or getattr(invoice, "created_at", None) or date.today()
     if isinstance(raw_date, datetime):
         inv_date = raw_date.strftime("%d/%m/%Y")
@@ -1217,8 +1256,10 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
     pdf.cell(usable_w, 4.2, f"[ {invoice_title.upper()} ]", align="C", new_x="LMARGIN", new_y="NEXT")
 
     pdf.set_font("Helvetica", "", 7)
-    pdf.cell(usable_w * 0.52, 3.3, f"INV: #{inv_number}", align="L")
-    pdf.cell(usable_w * 0.48, 3.3, f"DATE: {inv_date}", align="R", new_x="LMARGIN", new_y="NEXT")
+    inv_prefix = "EST:" if is_estimate else ("QUOTE:" if is_quote else "INV:")
+    date_prefix = "EST DATE:" if is_estimate else ("QUOTE DATE:" if is_quote else "DATE:")
+    pdf.cell(usable_w * 0.52, 3.3, f"{inv_prefix} #{inv_number}", align="L")
+    pdf.cell(usable_w * 0.48, 3.3, f"{date_prefix} {inv_date}", align="R", new_x="LMARGIN", new_y="NEXT")
 
     if show_cashier or show_time:
         c_txt = f"CASHIER: {cashier_name}" if show_cashier else ""
@@ -1353,7 +1394,19 @@ def _render_stylish_pdf(invoice: Any, template: dict) -> bytes:
     else:
         primary_rgb = _hex_to_rgb("#2563eb")  # Brand Blue 600 (Stylish)
 
-    header_title = _safe_text(template.get("headerTitle") or "TAX INVOICE", 40)
+    inv_number = _safe_text(getattr(invoice, "invoice_number", None) or getattr(invoice, "quote_number", None) or "INV-0001", 30)
+    raw_doc_type = str(getattr(invoice, "doc_type", "") or getattr(invoice, "invoice_type", "") or "").lower()
+    is_estimate = raw_doc_type in ("estimate", "estimate_non_gst") or inv_number.upper().startswith("EST-")
+    is_quote = (
+        raw_doc_type in ("quotation", "quote", "estimate", "estimate_non_gst")
+        or inv_number.upper().startswith("QT-")
+        or bool(getattr(invoice, "quote_number", None))
+        or is_estimate
+    )
+    default_stylish_title = ("TAX ESTIMATE / ESTIMATE" if is_estimate else "TAX QUOTATION / ESTIMATE") if is_quote else "TAX INVOICE"
+    tpl_title = template.get("headerTitle") or template.get("invoiceTitle")
+    header_title = _safe_text(tpl_title if (tpl_title and tpl_title != "TAX INVOICE") or not is_quote else default_stylish_title, 40)
+
     store_name = _safe_text(template.get("storeName") or "venatic", 60)
     legal_name = _safe_text(template.get("legalName") or "AUTHORIZED BUSINESS ORGANIZATION", 60)
     store_address = _safe_text(template.get("storeAddress") or "", 120)
@@ -1377,8 +1430,7 @@ def _render_stylish_pdf(invoice: Any, template: dict) -> bytes:
     is_interstate = bool(cust_state_code and seller_state_code and cust_state_code != seller_state_code)
 
     # Invoice Meta
-    inv_number = _safe_text(getattr(invoice, "invoice_number", None) or "INV-0001", 30)
-    inv_date = _safe_text(str(getattr(invoice, "invoice_date", None) or date.today()), 20)
+    inv_date = _safe_text(str(getattr(invoice, "invoice_date", None) or getattr(invoice, "created_at", None) or date.today()), 20)
     if "-" in inv_date and len(inv_date.split("-")) == 3:
         parts = inv_date.split("-")
         inv_date = f"{parts[2]}/{parts[1]}/{parts[0]}" if len(parts[0]) == 4 else inv_date
@@ -1482,12 +1534,14 @@ def _render_stylish_pdf(invoice: Any, template: dict) -> bytes:
     pdf.set_xy(meta_box_x + 3, y_hdr + 12.5)
     pdf.set_font("Helvetica", "B", 8)
     pdf.set_text_color(15, 23, 42)
-    pdf.cell(meta_box_w - 6, 4, f"Invoice No: {inv_number}", align="R", ln=1)
+    inv_lbl = "Estimate No" if is_estimate else ("Quote No" if is_quote else "Invoice No")
+    pdf.cell(meta_box_w - 6, 4, f"{inv_lbl}: {inv_number}", align="R", ln=1)
 
     pdf.set_xy(meta_box_x + 3, y_hdr + 17)
     pdf.set_font("Helvetica", "", 7.5)
     pdf.set_text_color(71, 85, 105)
-    pdf.cell(meta_box_w - 6, 4, f"Date: {inv_date}", align="R", ln=1)
+    date_lbl = "Estimate Date" if is_estimate else ("Quote Date" if is_quote else "Date")
+    pdf.cell(meta_box_w - 6, 4, f"{date_lbl}: {inv_date}", align="R", ln=1)
 
     # 3. DIVIDER LINE
     y_div = y_hdr + 25.5

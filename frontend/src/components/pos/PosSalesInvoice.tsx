@@ -3823,8 +3823,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     return {
       invoice_number: invoiceNumber,
       invoice_type: invoiceType,
-      doc_type: invoiceType === "QUOTATION" ? "quotation" : (invoiceType === "PROFORMA" ? "proforma" : "invoice"),
-      header_title: invoiceType === "QUOTATION" ? "OFFICIAL QUOTATION" : (invoiceType === "PROFORMA" ? "PROFORMA INVOICE" : undefined),
+      doc_type: invoiceType === "QUOTATION" ? "quotation" : (invoiceType === "ESTIMATE_NON_GST" ? "estimate" : (invoiceType === "PROFORMA" ? "proforma" : "invoice")),
+      header_title: invoiceType === "QUOTATION" ? "TAX QUOTATION / ESTIMATE" : (invoiceType === "ESTIMATE_NON_GST" ? "TAX ESTIMATE / ESTIMATE" : (invoiceType === "PROFORMA" ? "PROFORMA INVOICE" : undefined)),
       print_template_id: currentTemplateId,
       template_id: currentTemplateId,
       original_invoice_ref: originalInvoiceRef || undefined,
@@ -4717,14 +4717,23 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
     setIsSaving(true);
     try {
+      const formattedBillingAddress = selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (customer?.billing_address || customer?.address || "");
+      const formattedShippingAddress = selectedDeliveryAddress ? [selectedDeliveryAddress.street, selectedDeliveryAddress.city, selectedDeliveryAddress.state, selectedDeliveryAddress.pincode].filter(Boolean).join(", ") : (customer?.shipping_address || formattedBillingAddress);
+      const formattedCustomerGstin = selectedBillingAddress?.gst_number || customer?.gst_number || "";
+      const customerName = customer?.name || (selectedCustomer === "walk-in" ? (customerSearchQuery.trim() || "Walk-in Client") : "Walk-in Client");
+      const customerPhone = customer?.phone || "";
+      const customerEmail = customer?.email || "";
+
       const quotationPayload = {
         quote_number: invoiceNumber,
         customer_id: customer?.id && isValidUUID(customer.id) ? customer.id : null,
-        customer_name: customer?.name || "Walk-in Client",
-        customer_phone: customer?.phone || "",
-        customer_email: customer?.email || "",
-        customer_address: selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state].filter(Boolean).join(", ") : (customer?.billing_address || customer?.address || ""),
-        customer_gstin: selectedBillingAddress?.gst_number || customer?.gst_number || "",
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        customer_email: customerEmail,
+        recipient_phone: customerPhone || undefined,
+        recipient_email: customerEmail || undefined,
+        customer_address: formattedBillingAddress,
+        customer_gstin: formattedCustomerGstin,
         status: status === "Draft" ? "Draft" : status === "Converted" ? "Accepted" : "Issued",
         total: grandTotal,
         subtotal: subtotal,
@@ -4734,6 +4743,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         sales_rep: salesExecutive || "Sales Representative",
         notes: notes || undefined,
         items: {
+          customer_name: customerName,
+          customer_phone: customerPhone,
+          customer_email: customerEmail,
+          customer_address: formattedBillingAddress,
+          customer_shipping_address: formattedShippingAddress,
+          customer_gstin: formattedCustomerGstin,
+          sales_rep: salesExecutive || "Sales Representative",
+          quote_date: invoiceDate,
+          valid_until: dueDate || invoiceDate,
+          notes: notes || undefined,
+          terms: terms || undefined,
           items: items.map((it) => ({
             product_id: it.product_id,
             product_name: it.product_name,
@@ -4752,14 +4772,20 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       // 1. Save / Update to CRM quotations API
       let resQuote: any = null;
-      if (editQuoteId && isValidUUID(editQuoteId)) {
-        resQuote = await crmQuotationsApi.update(editQuoteId, quotationPayload).catch((e: any) => console.warn("CRM Quotations update error:", e));
-      } else {
-        resQuote = await crmQuotationsApi.create(quotationPayload).catch((e: any) => console.warn("CRM Quotations create error:", e));
+      try {
+        if (editQuoteId && isValidUUID(editQuoteId)) {
+          resQuote = await crmQuotationsApi.update(editQuoteId, quotationPayload);
+        } else {
+          resQuote = await crmQuotationsApi.create(quotationPayload);
+        }
+      } catch (apiErr: any) {
+        console.warn("CRM Quotations API error:", apiErr);
+        // If API fails with error, still proceed to cache locally so user does not lose their quotation
       }
 
       // 2. Save / Update in localStorage cache for instant POS quotation list sync
       const resolvedQuoteId = resQuote?.id || editQuoteId || `qt-${Date.now()}`;
+      const savedQuoteNumber = resQuote?.quote_number || invoiceNumber;
       const activeTpl = getActiveInvoicePrintTemplate();
       const currentTemplateId =
         activeTpl?.id ||
@@ -4768,11 +4794,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         'tpl-inv-stylish';
       const newInvoiceRecord = {
         id: resolvedQuoteId,
-        invoice_number: invoiceNumber,
+        invoice_number: savedQuoteNumber,
+        quote_number: savedQuoteNumber,
         invoice_type: "QUOTATION",
+        doc_type: "quotation",
+        header_title: "TAX QUOTATION / ESTIMATE",
         print_template_id: currentTemplateId,
         template_id: currentTemplateId,
-        customer_name: customer?.name || "Walk-in Client",
+        customer_name: customerName,
         customer_phone: customer?.phone || "",
         customer_email: customer?.email || "",
         customer_gstin: customer?.gst_number || "",
@@ -5703,7 +5732,19 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 )}
               >
                 <FileText className="size-3.5 text-indigo-600" />
-                <span>INVOICE METADATA</span>
+                <span>
+                  {invoiceType === "QUOTATION"
+                    ? "QUOTATION METADATA"
+                    : invoiceType === "ESTIMATE_NON_GST"
+                    ? "ESTIMATE METADATA"
+                    : invoiceType === "PROFORMA"
+                    ? "PROFORMA METADATA"
+                    : invoiceType === "CREDIT_NOTE"
+                    ? "CREDIT NOTE METADATA"
+                    : invoiceType === "DEBIT_NOTE"
+                    ? "DEBIT NOTE METADATA"
+                    : "INVOICE METADATA"}
+                </span>
               </button>
 
               <button
@@ -5724,20 +5765,30 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               </button>
             </div>
 
-            {/* Tab 1: INVOICE METADATA */}
+            {/* Tab 1: INVOICE / QUOTATION METADATA */}
             {metaTab === "invoice" && (
               <div className="space-y-1.5 animate-in fade-in duration-150">
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
                       <label className="text-[11px] font-semibold text-slate-600">
-                        Invoice No
+                        {invoiceType === "QUOTATION"
+                          ? "Quote No"
+                          : invoiceType === "ESTIMATE_NON_GST"
+                          ? "Estimate No"
+                          : invoiceType === "PROFORMA"
+                          ? "Proforma No"
+                          : invoiceType === "CREDIT_NOTE"
+                          ? "Credit Note No"
+                          : invoiceType === "DEBIT_NOTE"
+                          ? "Debit Note No"
+                          : "Invoice No"}
                       </label>
                       <button
                         type="button"
                         onClick={() => handleRegenerateInvoiceNumber(invoiceType)}
                         className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-                        title="Generate new sequential invoice number"
+                        title="Generate new sequential document number"
                       >
                         <RefreshCw className="size-2.5" /> Auto-Gen
                       </button>
@@ -5766,7 +5817,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
                   <div className="space-y-1">
                     <label className="text-[11px] font-semibold text-slate-600">
-                      {invoiceType === "CREDIT_NOTE" ? "Credit Note Date" : invoiceType === "DEBIT_NOTE" ? "Debit Note Date" : invoiceType === "PROFORMA" ? "Proforma Date" : "Invoice Date"}
+                      {invoiceType === "QUOTATION"
+                        ? "Quote Date"
+                        : invoiceType === "ESTIMATE_NON_GST"
+                        ? "Estimate Date"
+                        : invoiceType === "CREDIT_NOTE"
+                        ? "Credit Note Date"
+                        : invoiceType === "DEBIT_NOTE"
+                        ? "Debit Note Date"
+                        : invoiceType === "PROFORMA"
+                        ? "Proforma Date"
+                        : "Invoice Date"}
                     </label>
                     <DatePickerInput
                       value={invoiceDate}

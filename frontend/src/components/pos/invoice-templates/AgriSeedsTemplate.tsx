@@ -46,6 +46,19 @@ export function AgriSeedsTemplate({
 
   const formattedDate = formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date());
 
+  const isQuotation =
+    invoice.doc_type === "quotation" ||
+    invoice.invoice_type === "QUOTATION" ||
+    String(invoice.invoice_number || "").toUpperCase().startsWith("QT-") ||
+    Boolean((invoice as any).quote_number);
+  const isEstimate =
+    invoice.doc_type === "estimate" ||
+    invoice.invoice_type === "ESTIMATE_NON_GST" ||
+    String(invoice.invoice_number || "").toUpperCase().startsWith("EST-");
+  const docHeaderTitle = invoice.header_title || (isEstimate ? "TAX ESTIMATE" : isQuotation ? "TAX QUOTATION / ESTIMATE" : t("GST INVOICE", "GST INVOICE"));
+  const docNumLabel = isEstimate ? "Estimate No. : " : isQuotation ? "Quote No. : " : "Invoice No. : ";
+  const docDateLabel = isEstimate ? "Estimate Date : " : isQuotation ? "Quote Date : " : "Date : ";
+
   return (
     <div className="w-full bg-transparent text-black font-sans text-[10px] leading-tight border border-black/40 rounded-md selection:bg-none p-1 relative">
       {/* ─── TOP STATUTORY PERMIT HEADER ─── */}
@@ -95,7 +108,7 @@ export function AgriSeedsTemplate({
           <div className="col-span-3 text-right flex flex-col justify-between h-full">
             {f.showInvoiceDetails !== false && (
               <div>
-                <h2 className="font-black text-xs text-gray-900 tracking-wider">{t("GST INVOICE", "GST INVOICE")}</h2>
+                <h2 className="font-black text-xs text-gray-900 tracking-wider">{docHeaderTitle}</h2>
                 <span className="text-[8px] font-extrabold uppercase text-blue-900 block bg-blue-500/10 px-1 py-0.5 rounded border border-blue-200 mt-0.5">
                   {invoice.copy_type || "ORIGINAL FOR RECIPIENT"}
                 </span>
@@ -127,8 +140,8 @@ export function AgriSeedsTemplate({
 
           {f.showInvoiceDetails !== false && (
             <div className={`${f.showCustomerDetails === false ? 'col-span-12' : 'col-span-5'} text-right font-mono space-y-0.5`}>
-              <p><span className="font-sans font-bold">Date : </span>{formattedDate}</p>
-              <p><span className="font-sans font-bold">Invoice No. : </span><b className="font-black">{invoice.invoice_number || 'ALL000001'}</b></p>
+              <p><span className="font-sans font-bold">{docDateLabel}</span>{formattedDate}</p>
+              <p><span className="font-sans font-bold">{docNumLabel}</span><b className="font-black">{invoice.invoice_number || (isQuotation ? 'QT-0001' : 'ALL000001')}</b></p>
               {invoice.po_number && <p><span className="font-sans font-bold">PO / Order Ref : </span><b>{invoice.po_number}</b></p>}
               {invoice.vehicle_number && <p><span className="font-sans font-bold">Vehicle No : </span><b>{invoice.vehicle_number}</b></p>}
               {invoice.eway_bill_number && <p className="text-emerald-800 font-bold"><span className="font-sans">e-Way Bill : </span>{invoice.eway_bill_number}</p>}

@@ -5,7 +5,8 @@ import {
   MapPin, Play, Pause, RotateCcw, FastForward, Navigation, Calendar, User,
   Clock, Gauge, Battery, Activity, Compass, Layers, Radio, Sparkles,
   ChevronRight, ArrowRight, ShieldCheck, Search, Filter, Info, Download,
-  Car, Footprints, AlertCircle, RefreshCw, CheckCircle2, Eye, Map as MapIcon
+  Car, Footprints, AlertCircle, RefreshCw, CheckCircle2, Eye, EyeOff, Map as MapIcon,
+  Key, Settings, Globe, Trash2, Check, X, ExternalLink, HelpCircle
 } from "lucide-react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -16,6 +17,7 @@ import { toast } from "sonner";
 import {
   travelRoutesApi,
   employeesApi,
+  systemSettingsApi,
   Employee,
   EmployeeRouteHistoryResponse,
   LiveFieldStaffItem,
@@ -79,15 +81,94 @@ export function EmployeeRouteMapStudio() {
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1); // 1x, 2x, 5x, 10x
   const animationTimerRef = useRef<any>(null);
 
-  // Map tile style: "standard" | "dark" | "satellite"
-  const [mapStyle, setMapStyle] = useState<"standard" | "dark" | "satellite">("standard");
+  // Google Maps API Key & Management
+  const [googleApiKey, setGoogleApiKey] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return (
+        localStorage.getItem("bos_google_maps_api_key") ||
+        (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string) ||
+        ""
+      );
+    }
+    return (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string) || "";
+  });
+  const [keySource, setKeySource] = useState<"platform_env" | "org_custom" | "none">("none");
+  const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
+  const [inputApiKey, setInputApiKey] = useState("");
+  const [showKeyText, setShowKeyText] = useState(false);
+  const [savingKey, setSavingKey] = useState(false);
+  const [simulating, setSimulating] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
 
-  const getTileConfig = (style: "standard" | "dark" | "satellite") => {
+  // Map tile style
+  type MapStyleType =
+    | "google_roadmap"
+    | "google_satellite"
+    | "google_hybrid"
+    | "google_terrain"
+    | "google_traffic"
+    | "standard"
+    | "dark"
+    | "satellite";
+
+  const [mapStyle, setMapStyle] = useState<MapStyleType>(() => {
+    if (typeof window !== "undefined" && (localStorage.getItem("bos_google_maps_api_key") || import.meta.env.VITE_GOOGLE_MAPS_API_KEY)) {
+      return "google_roadmap";
+    }
+    return "standard";
+  });
+
+  const getTileConfig = (style: MapStyleType, key?: string) => {
+    const effectiveKey = key !== undefined ? key : googleApiKey;
+    const keyParam = effectiveKey ? `&key=${effectiveKey}` : "";
+
+    if (style === "google_roadmap") {
+      return {
+        url: `https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}${keyParam}`,
+        maxZoom: 21,
+        subdomains: ["0", "1", "2", "3"],
+        attribution: "© Google Maps",
+      };
+    }
+    if (style === "google_satellite") {
+      return {
+        url: `https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}${keyParam}`,
+        maxZoom: 21,
+        subdomains: ["0", "1", "2", "3"],
+        attribution: "© Google Satellite",
+      };
+    }
+    if (style === "google_hybrid") {
+      return {
+        url: `https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}${keyParam}`,
+        maxZoom: 21,
+        subdomains: ["0", "1", "2", "3"],
+        attribution: "© Google Hybrid",
+      };
+    }
+    if (style === "google_terrain") {
+      return {
+        url: `https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}${keyParam}`,
+        maxZoom: 21,
+        subdomains: ["0", "1", "2", "3"],
+        attribution: "© Google Terrain",
+      };
+    }
+    if (style === "google_traffic") {
+      return {
+        url: `https://mt{s}.google.com/vt/lyrs=m,traffic&x={x}&y={y}&z={z}${keyParam}`,
+        maxZoom: 21,
+        subdomains: ["0", "1", "2", "3"],
+        attribution: "© Google Maps Traffic",
+      };
+    }
     if (style === "dark") {
       return {
         url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
         maxZoom: 19,
         subdomains: "abc",
+        attribution: "© Esri Canvas Dark",
       };
     }
     if (style === "satellite") {
@@ -95,32 +176,167 @@ export function EmployeeRouteMapStudio() {
         url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
         maxZoom: 19,
         subdomains: "abc",
+        attribution: "© Esri World Imagery",
       };
     }
     return {
       url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
       maxZoom: 19,
       subdomains: "abc",
+      attribution: "© OpenStreetMap contributors",
     };
   };
 
-  // Load employee directory
+  // Load employee directory (Fixed: No invalid hook call!)
   useEffect(() => {
     async function loadEmployees() {
-  const { t } = useI18n();
+      setLoadingEmployees(true);
       try {
-        const res = await employeesApi.list(1, 100);
-        const list = res?.items || [];
+        const res: any = await employeesApi.list(1, 200);
+        const list: Employee[] = Array.isArray(res) ? res : res?.items || [];
         setEmployees(list);
-        if (list.length > 0 && !selectedEmployeeId) {
-          setSelectedEmployeeId(list[0].id);
+        if (list.length > 0) {
+          setSelectedEmployeeId((prev) => (prev ? prev : list[0].id));
         }
       } catch (err) {
         console.error("Failed to load employees list:", err);
+        toast.error("Failed to load employees list");
+      } finally {
+        setLoadingEmployees(false);
       }
     }
     loadEmployees();
   }, []);
+
+  // Fetch Google Maps Key (Hybrid: Checks Tenant DB setting first, falls back to platform .env)
+  useEffect(() => {
+    async function loadSystemMapKey() {
+      try {
+        const cfg = await travelRoutesApi.getConfig();
+        if (cfg.google_maps_api_key) {
+          setGoogleApiKey(cfg.google_maps_api_key);
+          setKeySource(cfg.is_custom_org_key ? "org_custom" : "platform_env");
+          if (typeof window !== "undefined" && cfg.is_custom_org_key) {
+            localStorage.setItem("bos_google_maps_api_key", cfg.google_maps_api_key);
+          }
+          setMapStyle((prev) => (prev === "standard" ? "google_roadmap" : prev));
+          return;
+        }
+      } catch (err) {
+        console.warn("Could not fetch route config endpoint:", err);
+      }
+
+      // Secondary fallback: check VITE_GOOGLE_MAPS_API_KEY in frontend env
+      const viteKey = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string) || "";
+      if (viteKey) {
+        setGoogleApiKey(viteKey);
+        setKeySource("platform_env");
+        setMapStyle((prev) => (prev === "standard" ? "google_roadmap" : prev));
+      }
+    }
+    loadSystemMapKey();
+  }, []);
+
+  // Dynamically inject Google Maps JS SDK for geocoding
+  useEffect(() => {
+    if (!googleApiKey || typeof window === "undefined") return;
+    const existing = document.getElementById("google-maps-js-sdk");
+    if (!existing) {
+      const script = document.createElement("script");
+      script.id = "google-maps-js-sdk";
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&libraries=places,geometry`;
+      script.async = true;
+      document.head.appendChild(script);
+    }
+  }, [googleApiKey]);
+
+  // Save Google Maps Key handler
+  const handleSaveGoogleKey = async (newKey: string) => {
+    setSavingKey(true);
+    try {
+      const trimmed = newKey.trim();
+      if (typeof window !== "undefined") {
+        if (trimmed) {
+          localStorage.setItem("bos_google_maps_api_key", trimmed);
+        } else {
+          localStorage.removeItem("bos_google_maps_api_key");
+        }
+      }
+      try {
+        await systemSettingsApi.upsert("google_maps_api_key", {
+          value: trimmed || null,
+          category: "maps",
+          description: "Google Maps API Key for Attendance GPS Tracking and Geocoding",
+        });
+      } catch (saveErr) {
+        console.warn("Backend settings save fallback:", saveErr);
+      }
+
+      if (trimmed) {
+        setGoogleApiKey(trimmed);
+        setKeySource("org_custom");
+        toast.success("Organization custom Google Maps API Key saved!");
+        setMapStyle("google_roadmap");
+      } else {
+        // Check if platform env key exists
+        const viteKey = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string) || "";
+        if (viteKey) {
+          setGoogleApiKey(viteKey);
+          setKeySource("platform_env");
+          toast.info("Reverted to global platform key from .env");
+          setMapStyle("google_roadmap");
+        } else {
+          setGoogleApiKey("");
+          setKeySource("none");
+          toast.info("Using OpenStreetMap fallback.");
+          setMapStyle("standard");
+        }
+      }
+      setIsGoogleModalOpen(false);
+    } catch (e: any) {
+      toast.error("Failed to save API key: " + e.message);
+    } finally {
+      setSavingKey(false);
+    }
+  };
+
+  // Simulate realistic Demo Roadmap
+  const handleSimulateDemoRoute = async () => {
+    if (!selectedEmployeeId) {
+      toast.error("Please select an employee first");
+      return;
+    }
+    setSimulating(true);
+    try {
+      const res = await travelRoutesApi.simulateRoute({
+        employee_id: selectedEmployeeId,
+        date: selectedDate,
+        date_str: selectedDate,
+      });
+      toast.success(res.message || "Simulated 22-point daily roadmap with stops!");
+      await fetchRouteHistory();
+    } catch (err: any) {
+      toast.error("Simulation failed: " + (err.message || "Unknown error"));
+    } finally {
+      setSimulating(false);
+    }
+  };
+
+  // Clear day's route trail
+  const handleClearRoute = async () => {
+    if (!selectedEmployeeId) return;
+    if (!confirm(`Are you sure you want to clear the GPS route trail for this employee on ${selectedDate}?`)) return;
+    setClearing(true);
+    try {
+      await travelRoutesApi.clearRoute(selectedEmployeeId, selectedDate);
+      toast.success("Route trail cleared for " + selectedDate);
+      await fetchRouteHistory();
+    } catch (err: any) {
+      toast.error("Failed to clear route: " + (err.message || "Unknown error"));
+    } finally {
+      setClearing(false);
+    }
+  };
 
   // Initialize Leaflet Map
   useEffect(() => {
@@ -131,10 +347,11 @@ export function EmployeeRouteMapStudio() {
       attributionControl: false,
     }).setView([17.3850, 78.4867], 13); // Default center
 
-    const cfg = getTileConfig(mapStyle);
+    const cfg = getTileConfig(mapStyle, googleApiKey);
     L.tileLayer(cfg.url, {
       maxZoom: cfg.maxZoom,
       subdomains: cfg.subdomains,
+      attribution: cfg.attribution,
     }).addTo(initialMap);
 
     L.control.zoom({ position: "bottomright" }).addTo(initialMap);
@@ -148,7 +365,7 @@ export function EmployeeRouteMapStudio() {
     };
   }, []);
 
-  // Update map tile theme if toggled
+  // Update map tile theme when style or Google Key changes
   useEffect(() => {
     if (!mapInstanceRef.current) return;
     mapInstanceRef.current.eachLayer((layer) => {
@@ -156,12 +373,13 @@ export function EmployeeRouteMapStudio() {
         mapInstanceRef.current?.removeLayer(layer);
       }
     });
-    const cfg = getTileConfig(mapStyle);
+    const cfg = getTileConfig(mapStyle, googleApiKey);
     L.tileLayer(cfg.url, {
       maxZoom: cfg.maxZoom,
       subdomains: cfg.subdomains,
+      attribution: cfg.attribution,
     }).addTo(mapInstanceRef.current);
-  }, [mapStyle]);
+  }, [mapStyle, googleApiKey]);
 
   // Safe normalized points and stops
   const currentPoints = useMemo(() => {
@@ -561,30 +779,62 @@ export function EmployeeRouteMapStudio() {
             </button>
           </div>
 
+          {/* Map Layer Switcher Dropdown */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-card/90 rounded-xl border shadow-xs text-xs">
+            <Layers className="size-3.5 text-primary shrink-0" />
+            <select
+              value={mapStyle}
+              onChange={(e) => setMapStyle(e.target.value as MapStyleType)}
+              className="bg-transparent text-xs font-semibold text-foreground focus:outline-hidden cursor-pointer"
+            >
+              <optgroup label="Google Maps (Official)">
+                <option value="google_roadmap">🗺️ Google Streets (Roadmap)</option>
+                <option value="google_satellite">🛰️ Google Satellite</option>
+                <option value="google_hybrid">🏙️ Google Hybrid (Satellite + Labels)</option>
+                <option value="google_terrain">⛰️ Google Terrain</option>
+                <option value="google_traffic">🚦 Google Live Traffic</option>
+              </optgroup>
+              <optgroup label="Alternative GIS Layers">
+                <option value="standard">🌐 OpenStreetMap</option>
+                <option value="dark">🌙 Dark Canvas (ArcGIS)</option>
+                <option value="satellite">🛰️ ArcGIS Satellite</option>
+              </optgroup>
+            </select>
+          </div>
+
+          {/* Google Maps API Key Config Button */}
           <Button
             variant="outline"
             size="sm"
-            onClick={() =>
-              setMapStyle(
-                mapStyle === "standard" ? "dark" : mapStyle === "dark" ? "satellite" : "standard"
-              )
-            }
-            className="h-9 px-3 text-xs gap-1.5"
-            title="Toggle Map Style"
+            onClick={() => {
+              setInputApiKey(googleApiKey);
+              setIsGoogleModalOpen(true);
+            }}
+            className={`h-9 px-3 text-xs gap-1.5 rounded-xl transition-all ${
+              googleApiKey
+                ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/5 hover:bg-emerald-500/10 shadow-xs"
+                : "border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/5 hover:bg-amber-500/10 shadow-xs"
+            }`}
+            title="Configure Google Cloud Maps API Key"
           >
-            <Layers className="size-3.5" />{" "}
-            {mapStyle === "standard"
-              ? "Dark Mode"
-              : mapStyle === "dark"
-              ? "Satellite View"
-              : "Standard Street"}
+            <Key className="size-3.5" />
+            <span>Google Maps Key</span>
+            <span
+              className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                googleApiKey
+                  ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300"
+                  : "bg-amber-500/20 text-amber-700 dark:text-amber-300"
+              }`}
+            >
+              {googleApiKey ? "Active" : "Setup"}
+            </span>
           </Button>
 
           <Button
             variant="outline"
             size="sm"
             onClick={() => (viewMode === "journey" ? fetchRouteHistory() : fetchLiveRadar())}
-            className="h-9 px-3 text-xs gap-1.5"
+            className="h-9 px-3 text-xs gap-1.5 rounded-xl"
             disabled={loadingRoute || loadingLive}
           >
             <RefreshCw className={`size-3.5 ${loadingRoute || loadingLive ? "animate-spin" : ""}`} /> Refresh
@@ -594,30 +844,49 @@ export function EmployeeRouteMapStudio() {
 
       {/* ─── JOURNEY SELECTOR BAR (In Journey Mode) ─── */}
       {viewMode === "journey" && (
-        <Card className="p-3 border bg-card/40 rounded-2xl">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-center">
+        <Card className="p-3 border bg-card/60 backdrop-blur-md rounded-2xl shadow-xs">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
             {/* Employee Picker */}
-            <div className="md:col-span-2 space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                <User className="size-3" /> Select Staff / Field Executive
-              </label>
-              <select
-                value={selectedEmployeeId}
-                onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                className="w-full h-10 px-3 text-sm rounded-xl border bg-background font-medium focus:ring-2 focus:ring-primary focus:outline-hidden"
-              >
-                {filteredEmployees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.full_name} ({emp.employee_code || "EMP"}) — {emp.department || "Field"}
-                  </option>
-                ))}
-              </select>
+            <div className="md:col-span-5 space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                  <User className="size-3 text-primary" /> Select Staff / Field Executive
+                </label>
+                {employees.length > 0 && (
+                  <span className="text-[10px] font-bold text-muted-foreground">
+                    {filteredEmployees.length} of {employees.length} staff
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={selectedEmployeeId}
+                  onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                  disabled={loadingEmployees}
+                  className="w-full h-10 px-3 text-sm rounded-xl border bg-background font-medium focus:ring-2 focus:ring-primary focus:outline-hidden"
+                >
+                  {loadingEmployees ? (
+                    <option value="">Loading staff directory...</option>
+                  ) : employees.length === 0 ? (
+                    <option value="" disabled>No employees registered in system</option>
+                  ) : (
+                    <>
+                      <option value="" disabled>-- Select Staff Member --</option>
+                      {filteredEmployees.map((emp) => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.full_name} ({emp.employee_code || "EMP"}) — {emp.department || "Field Operations"}
+                        </option>
+                      ))}
+                    </>
+                  )}
+                </select>
+              </div>
             </div>
 
             {/* Shift Date Picker */}
-            <div className="space-y-1">
+            <div className="md:col-span-2 space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                <Calendar className="size-3" /> Shift Date
+                <Calendar className="size-3 text-primary" /> Shift Date
               </label>
               <Input
                 type="date"
@@ -628,14 +897,41 @@ export function EmployeeRouteMapStudio() {
             </div>
 
             {/* Quick Action Load */}
-            <div className="flex items-end h-full">
+            <div className="md:col-span-2">
               <Button
                 onClick={fetchRouteHistory}
-                disabled={loadingRoute}
+                disabled={loadingRoute || !selectedEmployeeId}
                 className="w-full h-10 gradient-brand text-white font-bold text-xs rounded-xl shadow-xs"
               >
                 {loadingRoute ? <RefreshCw className="size-3.5 animate-spin mr-1.5" /> : <Navigation className="size-3.5 mr-1.5" />}
                 Load Route Trail
+              </Button>
+            </div>
+
+            {/* Simulate Demo Route Button */}
+            <div className="md:col-span-2">
+              <Button
+                variant="outline"
+                onClick={handleSimulateDemoRoute}
+                disabled={simulating || !selectedEmployeeId}
+                className="w-full h-10 border-indigo-500/30 text-indigo-600 dark:text-indigo-400 bg-indigo-500/5 hover:bg-indigo-500/10 font-bold text-xs rounded-xl gap-1.5 shadow-xs"
+                title="Generates a realistic 22-point full shift journey with 4 halt stops for testing"
+              >
+                {simulating ? <RefreshCw className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                Simulate Demo Trail
+              </Button>
+            </div>
+
+            {/* Clear Route Button */}
+            <div className="md:col-span-1">
+              <Button
+                variant="ghost"
+                onClick={handleClearRoute}
+                disabled={clearing || !selectedEmployeeId}
+                className="w-full h-10 text-red-600 hover:text-red-700 hover:bg-red-500/10 rounded-xl"
+                title="Clear route trail for this date"
+              >
+                {clearing ? <RefreshCw className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
               </Button>
             </div>
           </div>
@@ -799,12 +1095,39 @@ export function EmployeeRouteMapStudio() {
 
             {/* Empty State Overlay */}
             {viewMode === "journey" && currentPoints.length === 0 && !loadingRoute && (
-              <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center p-6 text-center">
-                <MapPin className="size-12 text-muted-foreground/50 mb-2" />
-                <h3 className="font-bold text-base text-foreground">{t("No GPS Trail Logged For This Date", "No GPS Trail Logged For This Date")}</h3>
-                <p className="text-xs text-muted-foreground max-w-sm mt-1">
-                  The selected employee has no recorded background GPS coordinates on {selectedDate}. Geolocation logs stream automatically while employees are clocked in on their mobile / web shift.
-                </p>
+              <div className="absolute inset-0 bg-background/85 backdrop-blur-md z-10 flex flex-col items-center justify-center p-6 text-center space-y-3">
+                <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                  <MapPin className="size-8" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-foreground">{t("No GPS Trail Logged For This Date", "No GPS Trail Logged For This Date")}</h3>
+                  <p className="text-xs text-muted-foreground max-w-md mt-1">
+                    The selected employee has no recorded background GPS coordinates on {selectedDate}. Geolocation logs stream automatically while employees are clocked in on their mobile / web shift.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                  <Button
+                    size="sm"
+                    onClick={handleSimulateDemoRoute}
+                    disabled={simulating || !selectedEmployeeId}
+                    className="gradient-brand text-white font-bold text-xs rounded-xl shadow-md gap-1.5 h-9 px-4"
+                  >
+                    {simulating ? <RefreshCw className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                    Simulate Demo Shift Roadmap
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setInputApiKey(googleApiKey);
+                      setIsGoogleModalOpen(true);
+                    }}
+                    className="text-xs rounded-xl gap-1.5 h-9"
+                  >
+                    <Key className="size-3.5 text-primary" />
+                    Google Maps API Key Setup
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -1077,6 +1400,209 @@ export function EmployeeRouteMapStudio() {
           )}
         </div>
       </div>
+
+      {/* ─── GOOGLE MAPS API KEY CONFIGURATION MODAL ─── */}
+      <AnimatePresence>
+        {isGoogleModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-2xl bg-card border rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-5 border-b bg-muted/30">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-primary/10 text-primary">
+                    <Key className="size-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-foreground flex items-center gap-2">
+                      Google Cloud Maps Configuration
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                        Official Google Maps API
+                      </span>
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      Power live attendance tracking with authentic Google Roadmaps, Satellite, Terrain, and Reverse Geocoding.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsGoogleModalOpen(false)}
+                  className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-5 space-y-4 overflow-y-auto flex-1">
+                {/* Active Key Status Card */}
+                <div
+                  className={`p-3.5 rounded-2xl border text-xs flex items-center justify-between gap-3 ${
+                    googleApiKey
+                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-800 dark:text-emerald-300"
+                      : "bg-amber-500/10 border-amber-500/20 text-amber-800 dark:text-amber-300"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <CheckCircle2 className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold">
+                          {googleApiKey
+                            ? keySource === "org_custom"
+                              ? "Organization Custom Key Active (Database)"
+                              : "Global Platform Key Active (.env)"
+                            : "No Google Maps Key Configured"}
+                        </span>
+                        {keySource === "platform_env" && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-blue-500/20 text-blue-700 dark:text-blue-300">
+                            Shared across all tenants
+                          </span>
+                        )}
+                        {keySource === "org_custom" && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-purple-500/20 text-purple-700 dark:text-purple-300">
+                            Tenant Override
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] opacity-80 mt-0.5">
+                        {googleApiKey
+                          ? `Key starting with ${googleApiKey.slice(0, 8)}•••••••• is currently serving Google Maps layers.`
+                          : "Place VITE_GOOGLE_MAPS_API_KEY in .env to enable for all tenants, or enter a tenant-specific key below."}
+                      </p>
+                    </div>
+                  </div>
+                  {googleApiKey && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleSaveGoogleKey("")}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-500/10 h-7 text-xs px-2 shrink-0"
+                    >
+                      {keySource === "org_custom" ? "Remove Override" : "Clear Key"}
+                    </Button>
+                  )}
+                </div>
+
+                {/* API Key Input */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-foreground flex items-center justify-between">
+                    <span>Google Cloud Maps API Key</span>
+                    <a
+                      href="https://console.cloud.google.com/google/maps-apis/credentials"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline text-[11px] font-medium flex items-center gap-1"
+                    >
+                      Open Google Cloud Console <ExternalLink className="size-3" />
+                    </a>
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type={showKeyText ? "text" : "password"}
+                      value={inputApiKey}
+                      onChange={(e) => setInputApiKey(e.target.value)}
+                      placeholder="AIzaSy..."
+                      className="h-11 pr-20 text-sm font-mono rounded-xl bg-background"
+                    />
+                    <div className="absolute right-2 top-2 flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowKeyText(!showKeyText)}
+                        className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg"
+                        title={showKeyText ? "Hide Key" : "Show Key"}
+                      >
+                        {showKeyText ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Your key is securely stored in organization settings and loaded automatically whenever managers view route trails.
+                  </p>
+                </div>
+
+                {/* Step-by-Step Google Cloud Console Guide */}
+                <div className="p-4 rounded-2xl bg-muted/40 border space-y-3 text-xs">
+                  <h4 className="font-bold text-foreground flex items-center gap-1.5">
+                    <HelpCircle className="size-3.5 text-primary" /> What To Do In Google Cloud Console (Quick Guide):
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                    <div className="p-2.5 rounded-xl bg-card border space-y-1">
+                      <span className="font-bold text-primary flex items-center gap-1 text-[11px]">
+                        1. Select / Create Project
+                      </span>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Sign in to <a href="https://console.cloud.google.com" target="_blank" rel="noreferrer" className="text-primary underline">console.cloud.google.com</a>, create a project (e.g. <em>BusinessOS-Maps</em>) or choose your active project.
+                      </p>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-card border space-y-1">
+                      <span className="font-bold text-primary flex items-center gap-1 text-[11px]">
+                        2. Enable Billing Account
+                      </span>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Google Cloud requires a billing account attached, but Google provides <strong>$200 free credit</strong> every single month (~28,500 map loads free).
+                      </p>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-card border space-y-1 md:col-span-2">
+                      <span className="font-bold text-primary flex items-center gap-1 text-[11px]">
+                        3. Enable The Required APIs (in APIs & Services &gt; Library)
+                      </span>
+                      <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1 text-[11px] text-muted-foreground">
+                        <li className="flex items-center gap-1 font-medium text-foreground">
+                          <Check className="size-3 text-emerald-500" /> Maps JavaScript API
+                        </li>
+                        <li className="flex items-center gap-1 font-medium text-foreground">
+                          <Check className="size-3 text-emerald-500" /> Map Tiles API
+                        </li>
+                        <li className="flex items-center gap-1 font-medium text-foreground">
+                          <Check className="size-3 text-emerald-500" /> Geocoding API (Addresses)
+                        </li>
+                        <li className="flex items-center gap-1 font-medium text-foreground">
+                          <Check className="size-3 text-emerald-500" /> Geolocation API
+                        </li>
+                      </ul>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-card border space-y-1 md:col-span-2">
+                      <span className="font-bold text-primary flex items-center gap-1 text-[11px]">
+                        4. Create &amp; Restrict API Key
+                      </span>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Go to <strong>APIs &amp; Services &gt; Credentials &gt; Create Credentials &gt; API Key</strong>. Copy the key starting with <code className="bg-muted px-1 rounded text-primary">AIzaSy...</code>. Under <em>API Restrictions</em>, restrict to the 4 APIs above (or unrestricted for testing).
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t bg-muted/20 flex items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsGoogleModalOpen(false)}
+                  className="rounded-xl h-10 px-4 text-xs font-semibold"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => handleSaveGoogleKey(inputApiKey)}
+                  disabled={savingKey}
+                  className="gradient-brand text-white font-bold text-xs rounded-xl h-10 px-5 gap-1.5 shadow-md"
+                >
+                  {savingKey ? <RefreshCw className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+                  Save &amp; Activate Google Maps
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

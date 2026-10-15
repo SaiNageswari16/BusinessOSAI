@@ -86,6 +86,19 @@ export function MargPharmaTemplate({
 
   const formattedDate = formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date());
 
+  const isQuotation =
+    invoice.doc_type === "quotation" ||
+    invoice.invoice_type === "QUOTATION" ||
+    String(invoice.invoice_number || "").toUpperCase().startsWith("QT-") ||
+    Boolean((invoice as any).quote_number);
+  const isEstimate =
+    invoice.doc_type === "estimate" ||
+    invoice.invoice_type === "ESTIMATE_NON_GST" ||
+    String(invoice.invoice_number || "").toUpperCase().startsWith("EST-");
+  const docHeaderTitle = invoice.header_title || (isEstimate ? "TAX ESTIMATE" : isQuotation ? "TAX QUOTATION / ESTIMATE" : t("GST INVOICE", "GST INVOICE"));
+  const docNumLabel = isEstimate ? "Estimate No" : isQuotation ? "Quote No" : "Invoice No";
+  const docDateLabel = isEstimate ? "Estimate Date" : isQuotation ? "Quote Date" : "Invoice Date";
+
   return (
     <div className="w-full bg-transparent text-black font-sans text-[11px] leading-tight border border-black/40 rounded-md selection:bg-none">
       {/* ─── TOP 3-BOX HEADER ─── */}
@@ -117,7 +130,7 @@ export function MargPharmaTemplate({
         {f?.showInvoiceDetails !== false && (
           <div className={`${f?.showCompanyDetails === false ? 'col-span-6' : 'col-span-4'} p-1.5 border-r-2 border-black flex flex-col justify-between text-center bg-black/5`}>
             <div>
-              <h1 className="text-base font-black text-blue-900 tracking-wider">{t("GST INVOICE", "GST INVOICE")}</h1>
+              <h1 className="text-base font-black text-blue-900 tracking-wider">{docHeaderTitle}</h1>
               <span className="text-[9px] font-extrabold text-blue-900 tracking-wider uppercase block mb-1 border border-blue-300 bg-blue-500/10 px-1 py-0.5 rounded">
                 {invoice.copy_type || "ORIGINAL FOR RECIPIENT"}
               </span>
@@ -126,15 +139,15 @@ export function MargPharmaTemplate({
             <table className="w-full text-left text-[8px] border border-black border-collapse bg-transparent font-mono">
               <tbody>
                 <tr className="border-b border-black">
-                  <td className="p-0.5 font-sans font-bold border-r border-black w-18">Invoice No</td>
-                  <td className="p-0.5 font-bold border-r border-black">{invoice.invoice_number || 'A000002'}</td>
+                  <td className="p-0.5 font-sans font-bold border-r border-black w-18">{docNumLabel}</td>
+                  <td className="p-0.5 font-bold border-r border-black">{invoice.invoice_number || (isQuotation ? 'QT-0001' : 'A000002')}</td>
                   <td className="p-0.5 font-sans font-bold border-r border-black">Order / PO No.<br />Order Date</td>
                   <td className="p-0.5 border-r border-black font-bold">{invoice.po_number || invoice.order_number || '-'}<br />{invoice.po_date ? formatDisplayDate(invoice.po_date) : formattedDate}</td>
                   <td className="p-0.5 font-sans font-bold border-r border-black">Cases / Mode</td>
                   <td className="p-0.5">{invoice.payment_method || '0'}</td>
                 </tr>
                 <tr>
-                  <td className="p-0.5 font-sans font-bold border-r border-black">Invoice Date<br />Due Date</td>
+                  <td className="p-0.5 font-sans font-bold border-r border-black">{docDateLabel}<br />Due Date</td>
                   <td className="p-0.5 border-r border-black">{formattedDate}<br />{formatDisplayDate(invoice.due_date || invoice.invoice_date || new Date())}</td>
                   <td className="p-0.5 font-sans font-bold border-r border-black">e-Way Bill / LR<br />Vehicle No</td>
                   <td className="p-0.5 border-r border-black font-bold text-[7.5px]">{invoice.eway_bill_number ? `EWB: ${invoice.eway_bill_number}` : '-'}<br />{invoice.vehicle_number || '-'}</td>

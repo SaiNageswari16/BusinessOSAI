@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     google_client_id: str | None = Field(default=None, alias="GOOGLE_CLIENT_ID")
     google_client_secret: str | None = Field(default=None, alias="GOOGLE_CLIENT_SECRET")
     google_redirect_uri: str | None = Field(default=None, alias="GOOGLE_REDIRECT_URI")
+    google_maps_api_key: str = Field(default="", alias="GOOGLE_MAPS_API_KEY")
 
     # AI / LLM
     gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")

@@ -6302,6 +6302,7 @@ export const travelRoutesApi = {
     request<EmployeeRouteHistoryResponse>("GET", "/hrms/travel-routes/history", undefined, {
       employee_id: employeeId,
       date,
+      date_str: date,
     }),
   getLiveFieldStaff: (department?: string) =>
     request<{ total_on_duty: number; active_moving: number; staff: LiveFieldStaffItem[] }>(
@@ -6310,6 +6311,26 @@ export const travelRoutesApi = {
       undefined,
       { department }
     ),
+  simulateRoute: (data: { employee_id: string; date?: string; date_str?: string; base_lat?: number; base_lon?: number; city?: string }) =>
+    request<{ success: boolean; message: string; points_created: number; date: string; employee_id: string }>(
+      "POST",
+      "/hrms/travel-routes/simulate-route",
+      data
+    ),
+  clearRoute: (employeeId: string, date?: string) =>
+    request<{ success: boolean; deleted_count: number; employee_id: string; date: string }>(
+      "DELETE",
+      "/hrms/travel-routes/clear-route",
+      undefined,
+      { employee_id: employeeId, date, date_str: date }
+    ),
+  getConfig: () =>
+    request<{
+      google_maps_api_key: string;
+      is_custom_org_key: boolean;
+      is_platform_default: boolean;
+      has_key: boolean;
+    }>("GET", "/hrms/travel-routes/config"),
 };
 
 export const inventoryAlertsApi = {

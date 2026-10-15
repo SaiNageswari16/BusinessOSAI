@@ -8,10 +8,13 @@ import logging
 from datetime import datetime, date, timezone, timedelta
 from typing import Annotated, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, and_, func, desc
+from pydantic import BaseModel, Field
+from sqlalchemy import select, and_, func, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import os
 from src.database.session import get_db
+from src.config import get_settings
 from src.api.deps import CurrentUserContext, get_current_user_context, require_permission
 from src.models import (
     Tenant,
@@ -21,6 +24,7 @@ from src.models import (
     EmployeeLocationTrail,
     Department,
     Designation,
+    SystemSetting,
 )
 from src.schemas.erp import (
     LocationPingPayload,
@@ -62,6 +66,40 @@ async def _get_current_employee(db: AsyncSession, ctx: CurrentUserContext) -> Op
     )
     res = await db.execute(stmt)
     return res.scalars().first()
+
+
+@router.get("/config")
+async def get_travel_routes_config(
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Returns the resolved Google Maps configuration for the current organization.
+    Order of precedence:
+    1. Tenant/Org override from database (SystemSetting: google_maps_api_key)
+    2. Platform-wide fallback from .env (GOOGLE_MAPS_API_KEY)
+    """
+    # 1. Check org setting in DB
+    stmt = select(SystemSetting.value).where(
+        SystemSetting.tenant_id == ctx.tenant_id,
+        SystemSetting.key == "google_maps_api_key",
+    ).limit(1)
+    res = await db.execute(stmt)
+    db_key = res.scalar_one_or_none()
+
+    # 2. Check platform fallback from env
+    app_settings = get_settings()
+    env_key = getattr(app_settings, "google_maps_api_key", "") or os.getenv("GOOGLE_MAPS_API_KEY", "")
+
+    effective_key = db_key or env_key or ""
+    is_platform_default = not bool(db_key) and bool(env_key)
+
+    return {
+        "google_maps_api_key": effective_key,
+        "is_custom_org_key": bool(db_key),
+        "is_platform_default": is_platform_default,
+        "has_key": bool(effective_key),
+    }
 
 
 # ─── 1. RECORD REAL-TIME GPS LOCATION PING (MOBILE / WEB) ───────────────────
@@ -195,6 +233,7 @@ async def record_location_ping_batch(
 async def get_employee_route_history(
     employee_id: Optional[uuid.UUID] = Query(None, description="Target Employee ID. Defaults to current user if omitted."),
     date_str: Optional[str] = Query(None, description="Shift Date (YYYY-MM-DD). Defaults to today."),
+    date: Optional[str] = Query(None, description="Shift Date alias (YYYY-MM-DD)"),
     ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)] = None,
     db: Annotated[AsyncSession, Depends(get_db)] = None,
 ):
@@ -218,9 +257,10 @@ async def get_employee_route_history(
                 raise HTTPException(status_code=404, detail="No employee records available")
 
     # 2. Resolve Target Date Range (UTC boundaries for query)
-    if date_str:
+    effective_date_str = date or date_str
+    if effective_date_str:
         try:
-            target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            target_date = datetime.strptime(effective_date_str, "%Y-%m-%d").date()
         except ValueError:
             target_date = datetime.now(timezone.utc).date()
     else:
@@ -474,6 +514,214 @@ async def get_employee_route_history(
         trail_points=trail_points,
         stops=stops,
     )
+
+
+class SimulateRoutePayload(BaseModel):
+    employee_id: uuid.UUID
+    date: Optional[str] = None
+    date_str: Optional[str] = None
+    base_lat: Optional[float] = None
+    base_lon: Optional[float] = None
+    city: Optional[str] = "Office Headquarters"
+
+
+@router.post("/simulate-route")
+async def simulate_employee_route(
+    payload: SimulateRoutePayload,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Generates a realistic full-shift roadmap trail (22 GPS breadcrumbs with 4 realistic client halts)
+    for a chosen employee on a target date. Allows immediate verification of map tracking and analytics.
+    """
+    emp_stmt = select(Employee).where(Employee.tenant_id == ctx.tenant_id, Employee.id == payload.employee_id)
+    target_emp = (await db.execute(emp_stmt)).scalars().first()
+    if not target_emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    effective_date_str = payload.date or payload.date_str
+    if effective_date_str:
+        try:
+            target_date = datetime.strptime(effective_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            target_date = datetime.now(timezone.utc).date()
+    else:
+        target_date = datetime.now(timezone.utc).date()
+
+    start_dt = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0, tzinfo=timezone.utc)
+    end_dt = start_dt + timedelta(days=1)
+
+    # 1. Base anchor coordinates
+    base_lat = payload.base_lat
+    base_lon = payload.base_lon
+    if not base_lat or not base_lon:
+        att_stmt = select(AttendanceRecord).where(
+            AttendanceRecord.tenant_id == ctx.tenant_id,
+            AttendanceRecord.employee_id == target_emp.id,
+            AttendanceRecord.latitude.isnot(None),
+        ).limit(1)
+        prev_att = (await db.execute(att_stmt)).scalars().first()
+        if prev_att and prev_att.latitude and prev_att.longitude:
+            base_lat = float(prev_att.latitude)
+            base_lon = float(prev_att.longitude)
+        else:
+            base_lat = 17.3850
+            base_lon = 78.4867
+
+    # 2. Clear old trails for this employee on this date to refresh cleanly
+    del_stmt = delete(EmployeeLocationTrail).where(
+        EmployeeLocationTrail.tenant_id == ctx.tenant_id,
+        EmployeeLocationTrail.employee_id == target_emp.id,
+        EmployeeLocationTrail.recorded_at >= start_dt,
+        EmployeeLocationTrail.recorded_at < end_dt,
+    )
+    await db.execute(del_stmt)
+
+    # 3. Create or update Attendance record for today
+    att_today_stmt = select(AttendanceRecord).where(
+        AttendanceRecord.tenant_id == ctx.tenant_id,
+        AttendanceRecord.employee_id == target_emp.id,
+        AttendanceRecord.date == target_date,
+    ).limit(1)
+    att_rec = (await db.execute(att_today_stmt)).scalars().first()
+    clock_in_time = start_dt.replace(hour=9, minute=15)
+    clock_out_time = start_dt.replace(hour=18, minute=5)
+
+    if not att_rec:
+        att_rec = AttendanceRecord(
+            id=uuid.uuid4(),
+            tenant_id=ctx.tenant_id,
+            company_id=target_emp.company_id,
+            employee_id=target_emp.id,
+            date=target_date,
+            status="Present",
+            check_in=clock_in_time,
+            check_out=clock_out_time,
+            total_hours=8.8,
+            work_type="Field",
+            latitude=base_lat,
+            longitude=base_lon,
+            verified_method="GPS Mobile",
+        )
+        db.add(att_rec)
+        await db.flush()
+    else:
+        att_rec.check_in = clock_in_time
+        att_rec.check_out = clock_out_time
+        att_rec.latitude = base_lat
+        att_rec.longitude = base_lon
+        att_rec.status = "Present"
+
+    # 4. Realistic shift trajectory sequence
+    # Format: (d_lat, d_lon, minutes_offset, speed_kmh, activity, location_name, battery_percent)
+    waypoints = [
+        (0.0000, 0.0000, 0, 0.0, "stationary", "HQ Office (Shift Punch-In)", 98),
+        (0.0052, 0.0068, 15, 34.0, "driving", "Main Arterial Expressway Link", 96),
+        (0.0125, 0.0142, 28, 42.5, "driving", "Outer Ring Road Transit", 95),
+        # Stop 1: Tech Park Client Site (45 mins)
+        (0.0185, 0.0210, 42, 0.0, "stationary", "Client Site Alpha - Tech Solutions Ltd", 93),
+        (0.0186, 0.0211, 62, 0.0, "stationary", "Client Site Alpha - Meeting Room A", 92),
+        (0.0185, 0.0210, 87, 0.0, "stationary", "Client Site Alpha - Departure", 90),
+        # Transit to Stop 2
+        (0.0240, 0.0150, 102, 38.0, "driving", "Central Commercial Boulevard", 88),
+        (0.0310, 0.0080, 118, 48.0, "driving", "Logistics Corridor", 86),
+        # Stop 2: Retail Hub (50 mins)
+        (0.0385, 0.0010, 134, 0.0, "stationary", "Retail Hub & Distributor Apex", 84),
+        (0.0384, 0.0011, 158, 0.0, "stationary", "Retail Hub - Inventory Verification", 82),
+        (0.0385, 0.0010, 184, 0.0, "stationary", "Retail Hub - Order Signoff", 80),
+        # Transit to Lunch Stop
+        (0.0290, -0.0080, 200, 31.0, "driving", "Metro Cross Avenue", 78),
+        # Stop 3: Lunch & Rest Stop (40 mins)
+        (0.0250, -0.0140, 215, 0.0, "stationary", "City Diner & Food Court (Rest Halt)", 76),
+        (0.0251, -0.0139, 238, 0.0, "stationary", "City Diner - Rest Period", 74),
+        (0.0250, -0.0140, 255, 0.0, "stationary", "Departure after Lunch Break", 72),
+        # Transit to Stop 4
+        (0.0140, -0.0210, 272, 45.0, "driving", "South Bypass Parkway", 69),
+        # Stop 4: Warehouse Depot (60 mins)
+        (0.0060, -0.0260, 292, 0.0, "stationary", "Regional Fulfillment Center & Warehouse", 66),
+        (0.0061, -0.0259, 322, 0.0, "stationary", "Warehouse Dispatch & Verification", 63),
+        (0.0060, -0.0260, 352, 0.0, "stationary", "Warehouse - Loading Complete", 60),
+        # Return journey back to base
+        (0.0020, -0.0130, 372, 39.0, "driving", "Highway Connecting Ramp", 57),
+        (0.0005, -0.0040, 388, 28.0, "driving", "Approaching HQ Complex", 55),
+        # Final Return to HQ
+        (0.0000, 0.0000, 405, 0.0, "stationary", "HQ Office - Shift End & Clock-Out", 53),
+    ]
+
+    new_trails: list[EmployeeLocationTrail] = []
+    for d_lat, d_lon, mins, spd, act, loc, bat in waypoints:
+        pt_time = clock_in_time + timedelta(minutes=mins)
+        trail = EmployeeLocationTrail(
+            id=uuid.uuid4(),
+            tenant_id=ctx.tenant_id,
+            company_id=target_emp.company_id,
+            employee_id=target_emp.id,
+            attendance_id=att_rec.id,
+            latitude=round(base_lat + d_lat, 6),
+            longitude=round(base_lon + d_lon, 6),
+            accuracy=3.5,
+            speed=spd,
+            heading=45.0 if spd > 0 else 0.0,
+            altitude=510.0,
+            activity_type=act,
+            location_name=loc,
+            battery_level=bat,
+            is_mock=True,
+            recorded_at=pt_time,
+        )
+        new_trails.append(trail)
+
+    db.add_all(new_trails)
+    await db.commit()
+
+    return {
+        "success": True,
+        "message": f"Successfully simulated realistic daily roadmap for {target_emp.full_name or 'Employee'}",
+        "date": target_date.isoformat(),
+        "points_created": len(new_trails),
+        "employee_id": target_emp.id,
+    }
+
+
+@router.delete("/clear-route")
+async def clear_employee_route(
+    employee_id: uuid.UUID = Query(..., description="Target Employee ID"),
+    date_str: Optional[str] = Query(None, description="Date to purge (YYYY-MM-DD)"),
+    date: Optional[str] = Query(None, description="Date alias"),
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)] = None,
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+):
+    """
+    Purges all GPS location trails for an employee on a target date.
+    """
+    effective_date_str = date or date_str
+    if effective_date_str:
+        try:
+            target_date = datetime.strptime(effective_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            target_date = datetime.now(timezone.utc).date()
+    else:
+        target_date = datetime.now(timezone.utc).date()
+
+    start_dt = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0, tzinfo=timezone.utc)
+    end_dt = start_dt + timedelta(days=1)
+
+    del_stmt = delete(EmployeeLocationTrail).where(
+        EmployeeLocationTrail.tenant_id == ctx.tenant_id,
+        EmployeeLocationTrail.employee_id == employee_id,
+        EmployeeLocationTrail.recorded_at >= start_dt,
+        EmployeeLocationTrail.recorded_at < end_dt,
+    )
+    result = await db.execute(del_stmt)
+    await db.commit()
+
+    return {
+        "success": True,
+        "deleted_count": result.rowcount,
+        "employee_id": employee_id,
+        "date": target_date.isoformat(),
+    }
 
 
 # ─── 4. GET LIVE FLEET / ACTIVE FIELD STAFF RADAR ───────────────────────────

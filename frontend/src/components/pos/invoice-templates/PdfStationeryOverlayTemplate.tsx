@@ -199,9 +199,21 @@ export function PdfStationeryOverlayTemplate({
       : ''
     : '';
 
-  // Signature Settings
   const sigSettings = getOrgSignatureSettings();
   const sigImg = sigSettings.signatureUrl;
+
+  const isQuotation =
+    invoice.doc_type === "quotation" ||
+    invoice.invoice_type === "QUOTATION" ||
+    String(invoice.invoice_number || "").toUpperCase().startsWith("QT-") ||
+    Boolean((invoice as any).quote_number);
+  const isEstimate =
+    invoice.doc_type === "estimate" ||
+    invoice.invoice_type === "ESTIMATE_NON_GST" ||
+    String(invoice.invoice_number || "").toUpperCase().startsWith("EST-");
+  const defaultDocTitle = invoice.header_title || (isEstimate ? "TAX ESTIMATE / ESTIMATE" : isQuotation ? "TAX QUOTATION / ESTIMATE" : "TAX INVOICE");
+  const defaultNumLabel = isEstimate ? "Estimate No:" : isQuotation ? "Quote No:" : "Invoice No:";
+  const defaultDateLabel = isEstimate ? "Estimate Date:" : isQuotation ? "Quote Date:" : "Invoice Date:";
 
   const padClass =
     cellPadding === 'compact'
@@ -360,7 +372,7 @@ export function PdfStationeryOverlayTemplate({
                   className={`text-[17pt] font-black tracking-tight uppercase ${editClass}`}
                   style={{ color: primaryColor }}
                 >
-                  {customTexts.headerTitle || template.headerTitle || 'TAX INVOICE'}
+                  {customTexts.headerTitle || (template.headerTitle && template.headerTitle !== 'TAX INVOICE' ? template.headerTitle : defaultDocTitle)}
                 </h1>
                 <div className="bg-slate-50 border border-slate-300 rounded p-2 inline-block text-right shadow-2xs">
                   <p className="text-[10pt] font-bold text-slate-900">
@@ -369,14 +381,14 @@ export function PdfStationeryOverlayTemplate({
                       suppressContentEditableWarning
                       className={editClass}
                     >
-                      Invoice No:
+                      {defaultNumLabel}
                     </span>{' '}
                     <span
                       contentEditable={isEditable}
                       suppressContentEditableWarning
                       className={`font-mono ${editClass}`}
                     >
-                      {invoice.invoice_number || '#INV-0001'}
+                      {invoice.invoice_number || (isQuotation ? '#QT-0001' : '#INV-0001')}
                     </span>
                   </p>
                   <p className="text-[9pt] text-slate-700">
@@ -385,7 +397,7 @@ export function PdfStationeryOverlayTemplate({
                       suppressContentEditableWarning
                       className={editClass}
                     >
-                      Invoice Date: {formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date())}
+                      {defaultDateLabel} {formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date())}
                     </span>
                   </p>
                   {invoice.due_date && (
@@ -432,7 +444,7 @@ export function PdfStationeryOverlayTemplate({
                     suppressContentEditableWarning
                     className={editClass}
                   >
-                    Invoice No: <span className="font-mono">{invoice.invoice_number || '#INV'}</span>
+                    {defaultNumLabel} <span className="font-mono">{invoice.invoice_number || (isQuotation ? '#QTN' : '#INV')}</span>
                   </span>
                 </p>
                 <p className="text-[9pt] text-slate-700">
@@ -441,7 +453,7 @@ export function PdfStationeryOverlayTemplate({
                     suppressContentEditableWarning
                     className={editClass}
                   >
-                    Date: {formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date())}
+                    {defaultDateLabel} {formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date())}
                   </span>
                 </p>
                 {invoice.eway_bill_number && (

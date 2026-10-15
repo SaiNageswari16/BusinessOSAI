@@ -1819,7 +1819,7 @@ class CRMQuotation(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin)
         UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
     )
     customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("crm_customers.id", ondelete="CASCADE"), nullable=False)
-    quote_number: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    quote_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     items: Mapped[dict | None] = mapped_column(JSONB, default=dict)  # [{"product_id": ..., "qty": ..., "price": ...}]
     subtotal: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
     tax: Mapped[float] = mapped_column(Numeric(14, 2), default=0)

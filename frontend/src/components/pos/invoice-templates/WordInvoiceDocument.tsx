@@ -98,7 +98,12 @@ export function WordInvoiceDocument({
       paperBgColor: raw?.paperBgColor || "#ffffff",
       watermarkText: raw?.watermarkText || template?.watermarkText || "",
       watermarkOpacity: raw?.watermarkOpacity || 0.04,
-      invoiceTitle: raw?.invoiceTitle || raw?.headerTitle || template?.headerTitle || "TAX INVOICE",
+      invoiceTitle: raw?.invoiceTitle || raw?.headerTitle || invoice?.header_title || (
+        (invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? "TAX QUOTATION / ESTIMATE" :
+        (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? "TAX ESTIMATE / ESTIMATE" :
+        (invoice.doc_type === 'proforma' || invoice.invoice_type === 'PROFORMA' || String(invoice.invoice_number || '').toUpperCase().startsWith('PI-')) ? "PROFORMA INVOICE" :
+        (template?.headerTitle || "TAX INVOICE")
+      ),
       logoUrl: raw?.logoUrl || template?.logoUrl || dynamicLogoUrl || "",
       companyName: raw?.companyName || template?.storeName || template?.companyName || dynamicStoreName || activeGst?.trade_name || activeGst?.legal_name || "ACME ENTERPRISES",
       companyTagline: raw?.companyTagline || template?.companyTagline || "AUTHORIZED BILLING & COMMERCIAL INVOICING",
@@ -115,9 +120,19 @@ export function WordInvoiceDocument({
       shippingTitle: raw?.shippingTitle || "Shipped To (Delivery):",
       shippingName: raw?.shippingName || "",
       shippingAddress: raw?.shippingAddress || "",
-      invoiceNumberLabel: raw?.invoiceNumberLabel || "Invoice No",
+      invoiceNumberLabel: raw?.invoiceNumberLabel || (
+        (invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? "Quote No" :
+        (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? "Estimate No" :
+        (invoice.doc_type === 'proforma' || invoice.invoice_type === 'PROFORMA' || String(invoice.invoice_number || '').toUpperCase().startsWith('PI-')) ? "Proforma No" :
+        "Invoice No"
+      ),
       invoiceNumberValue: raw?.invoiceNumberValue || "INV-2026-0001",
-      invoiceDateLabel: raw?.invoiceDateLabel || "Invoice Date",
+      invoiceDateLabel: raw?.invoiceDateLabel || (
+        (invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? "Quote Date" :
+        (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? "Estimate Date" :
+        (invoice.doc_type === 'proforma' || invoice.invoice_type === 'PROFORMA' || String(invoice.invoice_number || '').toUpperCase().startsWith('PI-')) ? "Proforma Date" :
+        "Invoice Date"
+      ),
       invoiceDateValue: raw?.invoiceDateValue || "",
       dueDateLabel: raw?.dueDateLabel || "Due Date",
       dueDateValue: raw?.dueDateValue || "",
@@ -476,7 +491,7 @@ export function WordInvoiceDocument({
               return (
                 <div key={section.id} className="border-2 border-slate-900 rounded-lg overflow-hidden">
                   <div className="px-4 py-2 text-white flex items-center justify-between text-xs font-mono font-bold uppercase tracking-wider" style={{ backgroundColor: brandPrimary }}>
-                    <span>OFFICIAL TAX INVOICE · COMMERCIAL SPEC</span>
+                    <span>{config.invoiceTitle || "OFFICIAL TAX INVOICE · COMMERCIAL SPEC"}</span>
                     <span>{invoice.copy_type || "ORIGINAL FOR RECIPIENT"}</span>
                   </div>
                   <div className="p-4 bg-slate-50/50 flex flex-col sm:flex-row items-start justify-between gap-4">
@@ -494,7 +509,7 @@ export function WordInvoiceDocument({
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-[9.5px] font-mono min-w-[220px]">
                       <div className="border border-slate-300 bg-white p-1.5">
-                        <span className="text-slate-400 block text-[8px] uppercase">INVOICE NO</span>
+                        <span className="text-slate-400 block text-[8px] uppercase">{config.invoiceNumberLabel || "INVOICE NO"}</span>
                         <strong className="text-slate-950 font-bold">{invoiceNumber}</strong>
                       </div>
                       <div className="border border-slate-300 bg-white p-1.5">

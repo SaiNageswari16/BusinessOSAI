@@ -269,9 +269,24 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
   const isPaidInFull = isWalkInReceipt || inv?.payment_status?.toUpperCase() === 'PAID' || inv?.payment_status === 'Paid' || (amountReceived > 0 && amountReceived >= grandTotal - 0.05) || true;
   const totalQty = rawItems.reduce((sum: number, i: any) => sum + Number(i.quantity || 1), 0);
 
-  // Dynamic receipt title: "TAX INVOICE" if GST is charged, "BILL OF SUPPLY" / "RETAIL INVOICE" if non-GST
-  const rawHeaderTitle = activeTemplate?.headerTitle || 'TAX INVOICE';
-  const resolvedHeaderTitle = hasGst ? rawHeaderTitle : (rawHeaderTitle === 'TAX INVOICE' ? 'BILL OF SUPPLY' : rawHeaderTitle);
+  const isQuotationDoc = inv?.invoice_type === 'QUOTATION' || inv?.doc_type === 'quotation' || String(inv?.invoice_number || '').toUpperCase().startsWith('QT-');
+  const isEstimateDoc = inv?.invoice_type === 'ESTIMATE_NON_GST' || inv?.doc_type === 'estimate' || String(inv?.invoice_number || '').toUpperCase().startsWith('EST-');
+  const isProformaDoc = inv?.invoice_type === 'PROFORMA' || inv?.doc_type === 'proforma' || String(inv?.invoice_number || '').toUpperCase().startsWith('PI-');
+
+  // Dynamic receipt title: "TAX QUOTATION / ESTIMATE", "TAX ESTIMATE / ESTIMATE", "PROFORMA INVOICE", or "TAX INVOICE" / "BILL OF SUPPLY"
+  const rawHeaderTitle = inv?.header_title || activeTemplate?.headerTitle || (
+    isQuotationDoc ? 'TAX QUOTATION / ESTIMATE' :
+    isEstimateDoc ? 'TAX ESTIMATE / ESTIMATE' :
+    isProformaDoc ? 'PROFORMA INVOICE' :
+    'TAX INVOICE'
+  );
+  const resolvedHeaderTitle = isQuotationDoc
+    ? (inv?.header_title || 'TAX QUOTATION / ESTIMATE')
+    : isEstimateDoc
+    ? (inv?.header_title || 'TAX ESTIMATE / ESTIMATE')
+    : isProformaDoc
+    ? (inv?.header_title || 'PROFORMA INVOICE')
+    : hasGst ? rawHeaderTitle : (rawHeaderTitle === 'TAX INVOICE' ? 'BILL OF SUPPLY' : rawHeaderTitle);
 
   // Dynamic Custom Header Fields
   const enabledCustomFields: any[] = Array.isArray(activeTemplate?.customFields)
@@ -481,8 +496,8 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
         </div>
 
         <div class="flex-between" style="font-size: 10px; font-weight: bold; margin-top: 4px;">
-          ${f.showInvoiceNumber !== false ? `<span>INV: #${invoiceNum}</span>` : '<span></span>'}
-          ${f.showInvoiceDate !== false ? `<span>DATE: ${invoiceDate}</span>` : '<span></span>'}
+          ${f.showInvoiceNumber !== false ? `<span>${isQuotationDoc ? 'QUOTE' : isEstimateDoc ? 'EST' : isProformaDoc ? 'PI' : 'INV'}: #${invoiceNum}</span>` : '<span></span>'}
+          ${f.showInvoiceDate !== false ? `<span>${isQuotationDoc ? 'QUOTE DATE' : isEstimateDoc ? 'EST DATE' : 'DATE'}: ${invoiceDate}</span>` : '<span></span>'}
         </div>
 
         <div class="flex-between" style="font-size: 9.5px; font-weight: 600; margin-bottom: 3px;">

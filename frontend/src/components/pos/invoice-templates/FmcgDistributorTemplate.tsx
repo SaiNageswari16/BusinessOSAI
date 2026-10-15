@@ -47,6 +47,19 @@ export function FmcgDistributorTemplate({
   const formattedDate = formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date());
   const panNumber = sellerGstin && sellerGstin.length >= 12 ? sellerGstin.slice(2, 12) : 'AAOFM2891F';
 
+  const isQuotation =
+    invoice.doc_type === "quotation" ||
+    invoice.invoice_type === "QUOTATION" ||
+    String(invoice.invoice_number || "").toUpperCase().startsWith("QT-") ||
+    Boolean((invoice as any).quote_number);
+  const isEstimate =
+    invoice.doc_type === "estimate" ||
+    invoice.invoice_type === "ESTIMATE_NON_GST" ||
+    String(invoice.invoice_number || "").toUpperCase().startsWith("EST-");
+  const docTitle = invoice.header_title || (isEstimate ? "TAX ESTIMATE / ESTIMATE" : isQuotation ? "TAX QUOTATION / ESTIMATE" : (template.headerTitle || "TAX INVOICE"));
+  const docNumLabel = isEstimate ? "Estimate No. : " : isQuotation ? "Quote No. : " : "Invoice No. : ";
+  const docDateLabel = isEstimate ? "Estimate Date: " : isQuotation ? "Quote Date: " : "Invoice Date: ";
+
   return (
     <div className="w-full bg-transparent text-black font-sans text-[10px] leading-tight border border-black/40 rounded-md selection:bg-none p-1">
       {/* ─── TOP TITLE BAR ─── */}
@@ -54,7 +67,7 @@ export function FmcgDistributorTemplate({
         <span className="font-extrabold uppercase text-blue-900 border border-black/60 px-1.5 py-0.5 rounded bg-black/5">
           {invoice.copy_type || "ORIGINAL FOR RECIPIENT"}
         </span>
-        <span className="text-xs font-black tracking-wider uppercase">TAX INVOICE</span>
+        <span className="text-xs font-black tracking-wider uppercase">{docTitle}</span>
         <span>Page No: 1 of 1</span>
       </div>
 
@@ -87,8 +100,8 @@ export function FmcgDistributorTemplate({
       {/* ─── META BAR ─── */}
       {f?.showInvoiceDetails !== false && (
         <div className="grid grid-cols-5 border-b border-black text-[9px] font-mono py-1 px-1 bg-black/5">
-          <div><span className="font-sans font-bold">Invoice No. : </span>{invoice.invoice_number || 'B/26-27/010451'}</div>
-          <div><span className="font-sans font-bold">Invoice Date: </span>{formattedDate}</div>
+          <div><span className="font-sans font-bold">{docNumLabel}</span>{invoice.invoice_number || (isQuotation ? 'QT-0001' : 'B/26-27/010451')}</div>
+          <div><span className="font-sans font-bold">{docDateLabel}</span>{formattedDate}</div>
           <div><span className="font-sans font-bold">PO / Order Ref: </span>{invoice.po_number || invoice.order_number || 'DMS'}</div>
           <div><span className="font-sans font-bold">Pymt Mode: </span>{invoice.payment_method || 'Cash'}</div>
           <div><span className="font-sans font-bold">e-Way Bill: </span>{invoice.eway_bill_number || 'NA'}</div>

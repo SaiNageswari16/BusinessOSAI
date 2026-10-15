@@ -178,7 +178,8 @@ def render_quotation_pdf(
     pdf.set_fill_color(*primary_rgb)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font(font_name, "B", 13)
-    pdf.cell(0, 18, "COMMERCIAL SALES QUOTATION", ln=1, align="R", fill=True)
+    quote_title = _safe_text(items_data.get("header_title") or tpl.get("headerTitle") or "TAX QUOTATION / ESTIMATE", 40)
+    pdf.cell(0, 18, quote_title, ln=1, align="R", fill=True)
 
     # ── STORE INFO BLOCK ────────────────────────────────────────────────
     pdf.set_text_color(15, 23, 42)
@@ -217,7 +218,7 @@ def render_quotation_pdf(
 
     quote_meta = [
         ("Quote Number:", _safe_text(quote.quote_number, 30)),
-        ("Date of Issue:", quote_date),
+        ("Quote Date:", quote_date),
         ("Valid Until:", valid_until),
         ("Payment Terms:", payment_terms),
         ("Status:", _safe_text(quote.status or "Draft", 20)),

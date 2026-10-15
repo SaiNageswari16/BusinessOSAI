@@ -4,12 +4,13 @@ import { systemSettingsApi, crmLeadsApi, SystemSetting } from "../../lib/api-cli
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { Settings, Globe, Shield, Bell, Palette, Database, Check, Loader2, Facebook } from "lucide-react";
+import { Settings, Globe, Shield, Bell, Palette, Database, Check, Loader2, Facebook, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 
 const CATEGORIES = [
   { id: "general", icon: Globe, label: "Localization" },
+  { id: "maps", icon: MapPin, label: "Maps & Geolocation" },
   { id: "security", icon: Shield, label: "Security & MFA" },
   { id: "notifications", icon: Bell, label: "Notifications" },
   { id: "branding", icon: Palette, label: "Theme & Branding" },
@@ -24,6 +25,10 @@ const DEFAULT_SETTINGS: { key: string; label: string; category: string; type: "t
   { key: "date_format", label: "Date Format", category: "general", type: "text" },
   { key: "enable_gst_vat", label: "Enable GST / VAT Tracking", category: "general", type: "toggle" },
   { key: "strict_fy_locking", label: "Strict Financial Year Locking", category: "general", type: "toggle" },
+
+  { key: "google_maps_api_key", label: "Google Cloud Maps API Key", category: "maps", type: "password" },
+  { key: "map_default_provider", label: "Default Map Layer", category: "maps", type: "select", options: ["google_roadmap", "google_satellite", "google_hybrid", "google_terrain", "google_traffic", "standard", "dark"] },
+  { key: "gps_tracking_interval_seconds", label: "Mobile GPS Ping Frequency (seconds)", category: "maps", type: "text" },
   
   { key: "mfa_required", label: "Require MFA for all users", category: "security", type: "toggle" },
   { key: "session_timeout_hours", label: "Session Timeout (hours)", category: "security", type: "text" },

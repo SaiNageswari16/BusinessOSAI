@@ -96,6 +96,20 @@ export function ParleDistributorTemplate({
 
   const formattedDate = formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date());
 
+  const isQuotation =
+    invoice.doc_type === "quotation" ||
+    invoice.invoice_type === "QUOTATION" ||
+    String(invoice.invoice_number || "").toUpperCase().startsWith("QT-") ||
+    Boolean((invoice as any).quote_number);
+  const isEstimate =
+    invoice.doc_type === "estimate" ||
+    invoice.invoice_type === "ESTIMATE_NON_GST" ||
+    String(invoice.invoice_number || "").toUpperCase().startsWith("EST-");
+  const docTitle = invoice.header_title || (isEstimate ? "TAX ESTIMATE / ESTIMATE" : isQuotation ? "TAX QUOTATION / ESTIMATE" : (template.headerTitle || "GST TAX INVOICE"));
+  const docStripTitle = isEstimate ? "TAX ESTIMATE" : isQuotation ? "TAX QUOTATION" : t("GST INVOICE", "GST INVOICE");
+  const docNumLabel = isEstimate ? "Estimate No. : " : isQuotation ? "Quote No. : " : "Invoice No. : ";
+  const docDateLabel = isEstimate ? "Estimate Date : " : isQuotation ? "Quote Date : " : "Date : ";
+
   return (
     <div className="w-full bg-transparent text-black font-sans text-[10px] leading-tight border border-black/40 rounded-md selection:bg-none p-1">
       {/* ─── TOP COPY TYPE BAR ─── */}
@@ -103,7 +117,7 @@ export function ParleDistributorTemplate({
         <span className="font-extrabold uppercase text-blue-900 bg-black/5 px-1.5 py-0.5 rounded border border-gray-400">
           {invoice.copy_type || "ORIGINAL FOR RECIPIENT"}
         </span>
-        <span className="text-xs font-black tracking-wider uppercase">GST TAX INVOICE</span>
+        <span className="text-xs font-black tracking-wider uppercase">{docTitle}</span>
         <span className="font-mono text-[8px]">Page No. 1</span>
       </div>
 
@@ -178,12 +192,12 @@ export function ParleDistributorTemplate({
       {f.showInvoiceDetails !== false && (
         <div className="grid grid-cols-12 border-b-2 border-black bg-teal-900/10 py-1 px-2 items-center text-[10px]">
           <div className="col-span-4">
-            <h2 className="font-black text-sm text-teal-900 tracking-wider">{t("GST INVOICE", "GST INVOICE")}</h2>
+            <h2 className="font-black text-sm text-teal-900 tracking-wider">{docStripTitle}</h2>
           </div>
           <div className="col-span-8 text-right font-mono flex justify-end gap-3 text-[9px]">
-            <div><span className="font-sans font-bold">Invoice No. : </span><b className="font-black">{invoice.invoice_number || 'B000738'}</b></div>
+            <div><span className="font-sans font-bold">{docNumLabel}</span><b className="font-black">{invoice.invoice_number || (isQuotation ? 'QT-0001' : 'B000738')}</b></div>
             {invoice.eway_bill_number && <div><span className="font-sans font-bold text-emerald-800">e-Way Bill: </span><b className="text-emerald-950">{invoice.eway_bill_number}</b></div>}
-            <div><span className="font-sans font-bold">Date : </span>{formattedDate}</div>
+            <div><span className="font-sans font-bold">{docDateLabel}</span>{formattedDate}</div>
             <div><span className="font-sans font-bold">Due Date : </span>{formatDisplayDate(invoice.due_date || invoice.invoice_date || new Date())}</div>
           </div>
         </div>
