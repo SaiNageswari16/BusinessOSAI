@@ -1700,7 +1700,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         }
       }
 
-      const apiRes = await invoicesApi.listInvoices({ page_size: 50 }).catch(() => null);
+      const [apiRes, quotesRes] = await Promise.all([
+        invoicesApi.listInvoices({ page_size: 50 }).catch(() => null),
+        crmQuotationsApi.list().catch(() => null),
+      ]);
       let remoteUnpaid: any[] = [];
       if (apiRes && apiRes.items) {
         // Auto-detect highest issued invoice number from database to prevent duplicate collisions
@@ -1715,35 +1718,76 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const curSuffix = isTax ? (invoiceSettings?.suffix || "") : "";
         let maxRemoteSeq = 0;
 
-        apiRes.items.forEach((inv: any) => {
-          const invNum = String(inv.invoice_number || "").trim();
-          if (curPrefix && invNum.startsWith(curPrefix)) {
-            const remainder = curSuffix && invNum.endsWith(curSuffix)
-              ? invNum.slice(curPrefix.length, invNum.length - curSuffix.length)
-              : invNum.slice(curPrefix.length);
+        if (isQuote) {
+          const quoteList: any[] = Array.isArray(quotesRes) ? quotesRes : (quotesRes as any)?.items || [];
+          quoteList.forEach((q: any) => {
+            const qNum = String(q.quote_number || q.invoice_number || "").trim();
+            if (curPrefix && qNum.startsWith(curPrefix)) {
+              const remainder = curSuffix && qNum.endsWith(curSuffix)
+                ? qNum.slice(curPrefix.length, qNum.length - curSuffix.length)
+                : qNum.slice(curPrefix.length);
+              const digitsMatch = remainder.match(/\d+$/);
+              if (digitsMatch) {
+                const parsed = parseInt(digitsMatch[0], 10);
+                if (!isNaN(parsed) && parsed > 0 && parsed < 50000) {
+                  maxRemoteSeq = Math.max(maxRemoteSeq, parsed);
+                }
+              }
+            }
+          });
+        } else {
+          apiRes.items.forEach((inv: any) => {
+            const invNum = String(inv.invoice_number || "").trim();
+            if (curPrefix && invNum.startsWith(curPrefix)) {
+              const remainder = curSuffix && invNum.endsWith(curSuffix)
+                ? invNum.slice(curPrefix.length, invNum.length - curSuffix.length)
+                : invNum.slice(curPrefix.length);
+              const digitsMatch = remainder.match(/\d+$/);
+              if (digitsMatch) {
+                const parsed = parseInt(digitsMatch[0], 10);
+                if (!isNaN(parsed) && parsed > 0 && parsed < 50000) {
+                  maxRemoteSeq = Math.max(maxRemoteSeq, parsed);
+                }
+              }
+            }
+          });
+        }
+
+        // Also calculate max remote sequence for quotations from backend quotesRes
+        let maxRemoteQuoteSeq = 0;
+        const qPrefix = invoiceSettings?.quotationPrefix || "QT-";
+        const quoteList: any[] = Array.isArray(quotesRes) ? quotesRes : (quotesRes as any)?.items || [];
+        quoteList.forEach((q: any) => {
+          const qNum = String(q.quote_number || q.invoice_number || "").trim();
+          if (qPrefix && qNum.startsWith(qPrefix)) {
+            const remainder = qNum.slice(qPrefix.length);
             const digitsMatch = remainder.match(/\d+$/);
             if (digitsMatch) {
               const parsed = parseInt(digitsMatch[0], 10);
               if (!isNaN(parsed) && parsed > 0 && parsed < 50000) {
-                maxRemoteSeq = Math.max(maxRemoteSeq, parsed);
+                maxRemoteQuoteSeq = Math.max(maxRemoteQuoteSeq, parsed);
               }
             }
           }
         });
 
-        if (maxRemoteSeq > 0 && !editingInvoice && !activeEditingInvoice && !isRecreatingInvoice) {
+        if ((maxRemoteSeq > 0 || maxRemoteQuoteSeq > 0) && !editingInvoice && !activeEditingInvoice && !isRecreatingInvoice) {
           const currentConfigured = isTax
             ? (invoiceSettings?.sequenceNumber || 1)
             : isProforma
             ? (invoiceSettings?.proformaSequenceNumber || 1)
             : (invoiceSettings?.quotationSequenceNumber || 1);
-          if (currentConfigured <= maxRemoteSeq) {
-            const updatedNext = maxRemoteSeq + 1;
+
+          const baseSettings = invoiceSettings || loadStoredInvoiceSettings();
+          const targetQuoteSeq = maxRemoteQuoteSeq > 0 ? Math.max(baseSettings.quotationSequenceNumber || 1, maxRemoteQuoteSeq + 1) : (baseSettings.quotationSequenceNumber || 1);
+
+          if (currentConfigured <= maxRemoteSeq || (isQuote && targetQuoteSeq > (baseSettings.quotationSequenceNumber || 1))) {
+            const updatedNext = Math.max(currentConfigured, maxRemoteSeq + 1);
             const updated = {
-              ...(invoiceSettings || loadStoredInvoiceSettings()),
+              ...baseSettings,
               ...(isTax ? { sequenceNumber: updatedNext } : {}),
               ...(isProforma ? { proformaSequenceNumber: updatedNext } : {}),
-              ...(isQuote ? { quotationSequenceNumber: updatedNext } : {}),
+              quotationSequenceNumber: targetQuoteSeq || (isQuote ? updatedNext : (baseSettings.quotationSequenceNumber || 1)),
             };
             saveStoredInvoiceSettings(updated);
             setInvoiceSettings(updated);
@@ -4894,14 +4938,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       } else {
         const s = loadStoredInvoiceSettings();
         const pfx = s.quotationPrefix || "QT-";
-        let nextQuoteSeq = (s.quotationSequenceNumber || 1) + 1;
-        if (invoiceNumber && invoiceNumber.startsWith(pfx)) {
-          const remainder = invoiceNumber.slice(pfx.length);
+        const quoteNumToParse = savedQuoteNumber || invoiceNumber;
+        if (quoteNumToParse && quoteNumToParse.startsWith(pfx)) {
+          const remainder = quoteNumToParse.slice(pfx.length);
           const digitsMatch = remainder.match(/\d+$/);
           if (digitsMatch) {
             const parsed = parseInt(digitsMatch[0], 10);
             if (!isNaN(parsed)) {
-              nextQuoteSeq = parsed + 1;
+              nextQuoteSeq = Math.max(nextQuoteSeq, parsed + 1);
             }
           }
         }

@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, U
 import io
 import csv
 from fastapi.responses import StreamingResponse, Response
-from sqlalchemy import func, or_, and_, select
+from sqlalchemy import func, or_, and_, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -3638,11 +3639,34 @@ async def create_quotation(
     if payload.recipient_email:
         items_data["customer_email"] = payload.recipient_email
 
+    # Defensive drop of legacy table-wide constraint
+    try:
+        await db.execute(text("ALTER TABLE crm_quotations DROP CONSTRAINT IF EXISTS crm_quotations_quote_number_key;"))
+    except Exception:
+        pass
+
+    # Determine desired quote number safely
+    target_quote_number = (payload.quote_number or "").strip()
+    if not target_quote_number:
+        max_res = await db.execute(
+            select(CRMQuotation.quote_number).where(CRMQuotation.tenant_id == ctx.tenant_id)
+        )
+        existing_nums = [r[0] for r in max_res.fetchall() if r[0]]
+        next_seq = 1
+        for num_str in existing_nums:
+            m = re.search(r"(\d+)$", num_str)
+            if m:
+                try:
+                    next_seq = max(next_seq, int(m.group(1)) + 1)
+                except ValueError:
+                    pass
+        target_quote_number = f"QT-{next_seq:04d}"
+
     # Check if quotation already exists for this tenant
     quote = await db.scalar(
         select(CRMQuotation).where(
             CRMQuotation.tenant_id == ctx.tenant_id,
-            CRMQuotation.quote_number == payload.quote_number
+            CRMQuotation.quote_number == target_quote_number
         )
     )
     if quote:
@@ -3655,11 +3679,32 @@ async def create_quotation(
         quote.total = payload.total
         quote.status = payload.status or "Draft"
     else:
+        # Check if target_quote_number collides globally with another tenant or existing records
+        global_exists = await db.scalar(
+            select(CRMQuotation.id).where(CRMQuotation.quote_number == target_quote_number).limit(1)
+        )
+        if global_exists:
+            # Assign next collision-free sequence globally to prevent any legacy constraint violations
+            all_res = await db.execute(select(CRMQuotation.quote_number))
+            all_nums = {r[0] for r in all_res.fetchall() if r[0]}
+            seq = 1
+            for num_str in all_nums:
+                m = re.search(r"(\d+)$", num_str)
+                if m:
+                    try:
+                        seq = max(seq, int(m.group(1)) + 1)
+                    except ValueError:
+                        pass
+            target_quote_number = f"QT-{seq:04d}"
+            while target_quote_number in all_nums:
+                seq += 1
+                target_quote_number = f"QT-{seq:04d}"
+
         quote = CRMQuotation(
             tenant_id=ctx.tenant_id,
             company_id=ctx.active_company_id,
             customer_id=target_cust_id,
-            quote_number=payload.quote_number,
+            quote_number=target_quote_number,
             items=items_data,
             subtotal=payload.subtotal,
             tax=payload.tax,
@@ -3668,7 +3713,62 @@ async def create_quotation(
         )
         db.add(quote)
 
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        # Drop constraint defensively
+        try:
+            await db.execute(text("ALTER TABLE crm_quotations DROP CONSTRAINT IF EXISTS crm_quotations_quote_number_key;"))
+            await db.commit()
+        except Exception:
+            pass
+
+        # Recover customer id if needed
+        cust = await db.scalar(select(Customer).where(Customer.tenant_id == ctx.tenant_id).limit(1))
+        if not cust:
+            cust = Customer(
+                tenant_id=ctx.tenant_id,
+                company_id=ctx.active_company_id,
+                name=payload.customer_name or "Walk-in Client",
+                phone=payload.recipient_phone or None,
+                email=payload.recipient_email or None,
+                status="Active"
+            )
+            db.add(cust)
+            await db.flush()
+        target_cust_id = cust.id
+
+        # Auto-generate unique fallback quote number
+        all_res = await db.execute(select(CRMQuotation.quote_number))
+        all_nums = {r[0] for r in all_res.fetchall() if r[0]}
+        seq = 1
+        for num_str in all_nums:
+            m = re.search(r"(\d+)$", num_str)
+            if m:
+                try:
+                    seq = max(seq, int(m.group(1)) + 1)
+                except ValueError:
+                    pass
+        fallback_quote_number = f"QT-{seq:04d}"
+        while fallback_quote_number in all_nums:
+            seq += 1
+            fallback_quote_number = f"QT-{seq:04d}"
+
+        quote = CRMQuotation(
+            tenant_id=ctx.tenant_id,
+            company_id=ctx.active_company_id,
+            customer_id=target_cust_id,
+            quote_number=fallback_quote_number,
+            items=items_data,
+            subtotal=payload.subtotal,
+            tax=payload.tax,
+            total=payload.total,
+            status=payload.status or "Draft"
+        )
+        db.add(quote)
+        await db.flush()
+
     await db.commit()
     await db.refresh(quote)
 
@@ -3759,7 +3859,19 @@ async def update_quotation(
     if payload.status is not None:
         quote.status = payload.status
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        try:
+            await db.execute(text("ALTER TABLE crm_quotations DROP CONSTRAINT IF EXISTS crm_quotations_quote_number_key;"))
+            await db.commit()
+        except Exception:
+            pass
+        try:
+            await db.commit()
+        except Exception:
+            pass
     await db.refresh(quote)
 
     # Refresh the exact saved Quotation PDF on disk if needed
