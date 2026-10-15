@@ -839,6 +839,7 @@ export function PosInvoicesHistory() {
               eway_bill_date: inv.eway_bill_date || undefined,
               print_template_id: isThermal ? "thermal" : (inv.print_template_id || inv.template_id || inv.custom_fields?.print_template_id || inv.custom_fields?.template_id || undefined),
               template_id: isThermal ? "thermal" : (inv.template_id || inv.print_template_id || inv.custom_fields?.template_id || undefined),
+              is_pos: isThermal || Boolean(matchedTx) || Boolean(inv.is_pos),
               custom_fields: inv.custom_fields,
               items: lines,
             });
@@ -1271,7 +1272,11 @@ export function PosInvoicesHistory() {
       inv.print_status?.includes("Thermal") ||
       (inv as any).is_pos ||
       (inv as any).receipt_number ||
-      (inv as any).order_type === "pos"
+      (inv as any).order_type === "pos" ||
+      inv.template_id === "thermal" ||
+      inv.print_template_id === "thermal" ||
+      inv.invoice_number?.toLowerCase().startsWith("rec-") ||
+      !(inv as any).is_credit_note
     );
 
     try {

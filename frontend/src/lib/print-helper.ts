@@ -419,15 +419,15 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
             size: ${is58mm ? '58mm' : '80mm'} auto;
             margin: 0mm !important;
           }
-          *, *::before, *::after {
+          #printable-receipt-portal,
+          #printable-receipt-portal * {
             box-sizing: border-box !important;
-            margin: 0;
-            padding: 0;
             color: #000000 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          html, body {
+          #printable-receipt-portal,
+          .receipt-portal {
             width: ${printableWidth} !important;
             max-width: ${printableWidth} !important;
             margin: 0 auto !important;
@@ -451,7 +451,17 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
           .qr-section { text-align: center; border-top: 1px dashed #000; padding-top: 6px; margin-top: 6px; display: block; width: 100%; }
           .qr-img { display: block; margin: 0 auto 4px auto; filter: contrast(200%); }
           @media print {
-            html, body, #printable-receipt-portal, .receipt-portal {
+            @page {
+              size: ${is58mm ? '58mm' : '80mm'} auto;
+              margin: 0mm !important;
+            }
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+              color: #000000 !important;
+            }
+            #printable-receipt-portal, .receipt-portal {
               width: ${printableWidth} !important;
               max-width: ${printableWidth} !important;
               margin: 0 auto !important;
@@ -712,28 +722,40 @@ export async function thermalReceiptHtmlToPdfBase64(
   const paperWidthMm = paperSize === '58mm' ? 58 : 80;
   const containerWidthPx = paperSize === '58mm' ? 280 : 380;
 
-  const container = document.createElement('div');
-  container.id = 'bos-thermal-pdf-render-portal';
-  container.style.position = 'fixed';
-  container.style.top = '0';
-  container.style.left = '0';
-  container.style.width = `${containerWidthPx}px`;
-  container.style.maxWidth = `${containerWidthPx}px`;
-  container.style.backgroundColor = '#ffffff';
-  container.style.color = '#000000';
-  container.style.zIndex = '-99999';
-  container.style.opacity = '1';
-  container.style.pointerEvents = 'none';
-  container.style.visibility = 'visible';
-  container.style.overflow = 'visible';
+  // Remove any previous stale render iframes
+  const staleIframe = document.getElementById('bos-thermal-pdf-render-iframe');
+  if (staleIframe) {
+    try { staleIframe.remove(); } catch {}
+  }
+
+  // Use an isolated, offscreen iframe to ensure zero CSS contamination of the host application
+  const iframe = document.createElement('iframe');
+  iframe.id = 'bos-thermal-pdf-render-iframe';
+  iframe.style.position = 'fixed';
+  iframe.style.top = '-99999px';
+  iframe.style.left = '-99999px';
+  iframe.style.width = `${containerWidthPx}px`;
+  iframe.style.height = '1200px';
+  iframe.style.border = 'none';
+  iframe.style.opacity = '0';
+  iframe.style.pointerEvents = 'none';
+  iframe.style.zIndex = '-99999';
+  document.body.appendChild(iframe);
 
   // Replace oklch CSS color functions with hex black for html2canvas compatibility
   const sanitizedHtml = htmlContent.replace(/oklch\([^)]+\)/gi, '#000000');
-  container.innerHTML = sanitizedHtml;
-  document.body.appendChild(container);
+  const iframeDoc = iframe.contentWindow?.document || iframe.contentDocument;
+  if (!iframeDoc) {
+    try { iframe.remove(); } catch {}
+    throw new Error('Thermal receipt iframe document is unavailable.');
+  }
+
+  iframeDoc.open();
+  iframeDoc.write(sanitizedHtml);
+  iframeDoc.close();
 
   try {
-    const portal = (container.querySelector('#printable-receipt-portal') as HTMLElement) || container;
+    const portal = (iframeDoc.getElementById('printable-receipt-portal') as HTMLElement) || iframeDoc.body;
     portal.style.display = 'block';
     portal.style.visibility = 'visible';
     portal.style.width = `${containerWidthPx}px`;
@@ -743,7 +765,7 @@ export async function thermalReceiptHtmlToPdfBase64(
     portal.style.color = '#000000';
 
     // Wait briefly for images to resolve and sanitize any cross-origin failures
-    const images = Array.from(container.querySelectorAll('img'));
+    const images = Array.from(portal.querySelectorAll('img'));
     if (images.length > 0) {
       await Promise.all(
         images.map(
@@ -756,13 +778,18 @@ export async function thermalReceiptHtmlToPdfBase64(
                 img.style.display = 'none';
                 res();
               };
-              setTimeout(res, 800);
+              setTimeout(() => {
+                if (!img.complete || img.naturalHeight === 0) {
+                  img.style.display = 'none';
+                }
+                res();
+              }, 600);
             })
         )
       );
     }
 
-    await new Promise((r) => setTimeout(r, 60));
+    await new Promise((r) => setTimeout(r, 80));
 
     const canvas = await html2canvas(portal, {
       scale: 2,
@@ -801,7 +828,7 @@ export async function thermalReceiptHtmlToPdfBase64(
     return dataUri.slice(separator + 1);
   } finally {
     try {
-      container.remove();
+      iframe.remove();
     } catch {}
   }
 }

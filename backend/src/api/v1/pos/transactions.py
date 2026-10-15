@@ -8,7 +8,7 @@ import urllib.parse
 
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from pydantic import BaseModel, Field
-from sqlalchemy import select, desc, func
+from sqlalchemy import select, desc, func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -750,7 +750,7 @@ async def send_pos_receipt(
         if not invoice:
             raise HTTPException(status_code=404, detail="POS transaction or invoice not found")
 
-    resolved_receipt_num = transaction.receipt_number if transaction else (invoice.reference_number or invoice.invoice_number)
+    resolved_receipt_num = (transaction.receipt_number if transaction else None) or (invoice.invoice_number if invoice else None) or (invoice.reference_number if invoice else None) or str(transaction_id)
     resolved_company_id = transaction.company_id if transaction else invoice.company_id
 
     # Resolve recipient phone: payload input -> registered customer phone -> transaction notes

@@ -15,9 +15,12 @@ Supports:
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 import os
+import re
+import urllib.parse
 import uuid
 from datetime import date, datetime
 from pathlib import Path
@@ -151,13 +154,125 @@ def _hex_to_rgb(hex_color: str | None) -> tuple[int, int, int]:
 
 
 def _find_logo_path(custom_url: str | None = None) -> str | None:
-    """Resolve a valid local logo image path if available."""
-    if custom_url and os.path.exists(custom_url):
-        return custom_url
+    """Resolve a valid local logo image path from Base64 data URI, HTTP URL, relative path, or file."""
+    if not custom_url:
+        for p in _STATIC_LOGO_PATHS:
+            if p.exists() and p.stat().st_size > 100:
+                return str(p)
+        return None
+
+    cleaned_url = str(custom_url).strip()
+    if not cleaned_url:
+        for p in _STATIC_LOGO_PATHS:
+            if p.exists() and p.stat().st_size > 100:
+                return str(p)
+        return None
+
+    logos_cache_dir = INVOICE_PDF_DIR / "logos"
+    logos_cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Base64 Data URL: data:image/png;base64,...
+    if cleaned_url.startswith("data:image/"):
+        try:
+            header, encoded = cleaned_url.split(",", 1)
+            ext = "png"
+            if "jpeg" in header or "jpg" in header:
+                ext = "jpg"
+            elif "webp" in header:
+                ext = "webp"
+            elif "svg" in header:
+                ext = "svg"
+
+            content_hash = hashlib.md5(encoded.encode("ascii", errors="ignore")).hexdigest()
+            target_path = logos_cache_dir / f"logo_{content_hash}.{ext}"
+            if not target_path.exists() or target_path.stat().st_size < 10:
+                img_bytes = base64.b64decode(encoded)
+                if ext in ("webp", "svg"):
+                    try:
+                        import io
+                        from PIL import Image
+                        with Image.open(io.BytesIO(img_bytes)) as pil_img:
+                            converted_path = logos_cache_dir / f"logo_{content_hash}.png"
+                            pil_img.convert("RGBA").save(str(converted_path), format="PNG")
+                            return str(converted_path)
+                    except Exception as conv_err:
+                        logger.warning("PIL logo conversion failed: %s", conv_err)
+                target_path.write_bytes(img_bytes)
+            return str(target_path)
+        except Exception as b64_err:
+            logger.warning("Failed to decode base64 logo: %s", b64_err)
+
+    # 2. Local filesystem path that exists
+    if os.path.exists(cleaned_url) and os.path.isfile(cleaned_url):
+        return cleaned_url
+
+    # 3. Relative web path: /uploads/..., /static/..., uploads/..., etc.
+    rel_candidate = cleaned_url.lstrip("/")
+    search_roots = [
+        _BACKEND_ROOT,
+        _BACKEND_ROOT / "static",
+        _BACKEND_ROOT / "uploads",
+        _BACKEND_ROOT.parent / "frontend" / "public",
+    ]
+    for root in search_roots:
+        cand = root / rel_candidate
+        if cand.exists() and cand.is_file() and cand.stat().st_size > 50:
+            return str(cand)
+
+    # 4. HTTP / HTTPS URL: download & cache locally
+    if cleaned_url.startswith(("http://", "https://")):
+        try:
+            url_hash = hashlib.md5(cleaned_url.encode("utf-8")).hexdigest()
+            ext = "png"
+            if ".jpg" in cleaned_url or ".jpeg" in cleaned_url:
+                ext = "jpg"
+            cached_file = logos_cache_dir / f"remote_{url_hash}.{ext}"
+            if cached_file.exists() and cached_file.stat().st_size > 100:
+                return str(cached_file)
+
+            import httpx
+            with httpx.Client(timeout=4.0) as client:
+                res = client.get(cleaned_url)
+                if res.status_code == 200 and len(res.content) > 100:
+                    cached_file.write_bytes(res.content)
+                    return str(cached_file)
+        except Exception as dl_err:
+            logger.warning("Failed to download remote logo URL %s: %s", cleaned_url, dl_err)
+
+    # 5. Fallback to static logo paths
     for p in _STATIC_LOGO_PATHS:
         if p.exists() and p.stat().st_size > 100:
             return str(p)
     return None
+
+
+def _generate_qr_code_file(content: str, prefix: str = "qr") -> str | None:
+    """Generate and cache a local PNG QR code image for embedding into PDF."""
+    if not content or not str(content).strip():
+        return None
+    try:
+        qr_cache_dir = INVOICE_PDF_DIR / "qr"
+        qr_cache_dir.mkdir(parents=True, exist_ok=True)
+        content_hash = hashlib.md5(content.encode("utf-8")).hexdigest()
+        file_path = qr_cache_dir / f"{prefix}_{content_hash}.png"
+        if file_path.exists() and file_path.stat().st_size > 100:
+            return str(file_path)
+
+        import qrcode
+        qr = qrcode.QRCode(
+            version=None,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=4,
+            border=1,
+        )
+        qr.add_data(content)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        img.save(str(file_path))
+        return str(file_path)
+    except Exception as exc:
+        logger.warning("QR code generation failed for %s: %s", prefix, exc)
+        return None
 
 
 def _resolve_state(gstin: str | None, address: str | None = None) -> tuple[str, str]:
@@ -307,26 +422,78 @@ async def get_active_invoice_template(
 
     # 3. Dynamic organization details override (replaces hardcoded defaults)
     tenant_name = (tenant.name if tenant else "TESTINGORG") or "TESTINGORG"
+    gst_regs = getattr(company, "gst_registrations", []) or []
+    active_gst_reg = gst_regs[0] if (isinstance(gst_regs, list) and len(gst_regs) > 0 and isinstance(gst_regs[0], dict)) else {}
+    wa_settings = getattr(company, "whatsapp_settings", {}) or {}
+    if not isinstance(wa_settings, dict):
+        wa_settings = {}
+    payment_qr_settings = tenant_settings.get("payment_qr") or {}
+    if not isinstance(payment_qr_settings, dict):
+        payment_qr_settings = {}
+
     if company:
-        tpl["storeName"] = company.name or tenant_name
-        tpl["legalName"] = company.legal_name or company.name or "AUTHORIZED BUSINESS ORGANIZATION"
-        if company.address:
-            tpl["storeAddress"] = company.address
-        if company.phone:
-            tpl["storePhone"] = company.phone
-        if company.gst_number:
-            tpl["gstin"] = company.gst_number
+        tpl["storeName"] = active_gst_reg.get("trade_name") or company.name or tenant_name
+        tpl["legalName"] = active_gst_reg.get("legal_name") or company.legal_name or company.name or "AUTHORIZED BUSINESS ORGANIZATION"
+        if company.address or active_gst_reg.get("address"):
+            tpl["storeAddress"] = active_gst_reg.get("address") or company.address
+        if company.phone or active_gst_reg.get("phone"):
+            tpl["storePhone"] = active_gst_reg.get("phone") or company.phone
+        if company.gst_number or active_gst_reg.get("gstin"):
+            tpl["gstin"] = active_gst_reg.get("gstin") or company.gst_number
         if company.email:
             tpl["storeEmail"] = company.email
         if company.terms_and_conditions:
             tpl["termsText"] = company.terms_and_conditions
-        if company.logo_url:
-            tpl["logoUrl"] = company.logo_url
-        if company.google_review_url:
-            tpl["googleReviewUrl"] = company.google_review_url
+
+        # Resolve logo: template custom logo > company logo > tenant logo > active gst reg logo
+        tpl_logo = tpl.get("logoUrl") or tpl.get("customLogoUrl")
+        comp_logo = company.logo_url
+        tenant_logo = tenant_settings.get("logo_url") or tenant_settings.get("logo")
+        gst_logo = active_gst_reg.get("logo_url")
+        is_tpl_custom = bool(tpl_logo and not str(tpl_logo).strip().lower().endswith(("/logo.png", "logo.png")))
+
+        if is_tpl_custom:
+            tpl["logoUrl"] = tpl_logo
+        elif comp_logo:
+            tpl["logoUrl"] = comp_logo
+        elif gst_logo:
+            tpl["logoUrl"] = gst_logo
+        elif tpl_logo:
+            tpl["logoUrl"] = tpl_logo
+        elif tenant_logo:
+            tpl["logoUrl"] = tenant_logo
+
+        # Google Review URL
+        tpl["googleReviewUrl"] = company.google_review_url or tpl.get("googleReviewUrl") or tenant_settings.get("google_review_url")
+
+        # Branch name
+        branch_name = active_gst_reg.get("branch_name") or tpl.get("branchName") or ""
+        if branch_name:
+            tpl["branchName"] = branch_name
+
+        # Custom Fields (e.g. DL NO, FSSAI LIC)
+        custom_flds = tpl.get("customFields") or active_gst_reg.get("custom_fields") or []
+        if custom_flds:
+            tpl["customFields"] = custom_flds
+
+        # UPI VPA for Dynamic Payment QR
+        resolved_upi = (
+            tpl.get("upiId")
+            or tpl.get("upi_vpa")
+            or active_gst_reg.get("upi_vpa")
+            or wa_settings.get("upi_vpa")
+            or wa_settings.get("upi_id")
+            or payment_qr_settings.get("vpa")
+            or (f"{re.sub(r'[^0-9]', '', str(company.phone))}@okaxis" if company.phone and len(re.sub(r'[^0-9]', '', str(company.phone))) == 10 else "")
+        )
+        if resolved_upi:
+            tpl["upiId"] = resolved_upi
     else:
         tpl["storeName"] = tenant_name
         tpl["legalName"] = "AUTHORIZED BUSINESS ORGANIZATION"
+        tenant_logo = tenant_settings.get("logo_url") or tenant_settings.get("logo")
+        if tenant_logo and not tpl.get("logoUrl"):
+            tpl["logoUrl"] = tenant_logo
 
     return tpl
 
@@ -1121,7 +1288,7 @@ def render_invoice_pdf(invoice: Any, template: dict) -> bytes:
 
 
 def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
-    """Render 80mm / 58mm POS Thermal Receipt PDF with full template fidelity."""
+    """Render 80mm / 58mm POS Thermal Receipt PDF with full template fidelity matching browser print."""
     paper_size = str(template.get("paperSize") or "80mm").lower()
     page_w = 58.0 if "58" in paper_size else 80.0
     margin = 3.5
@@ -1155,14 +1322,35 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
     store_address = _safe_text(template.get("storeAddress") or "", 90)
     store_phone = _safe_text(template.get("storePhone") or "", 35)
     gstin = _safe_text(template.get("gstin") or "", 25)
+
+    # Document Number: Prioritize actual invoice_number over internal receipt sequence
     inv_number = _safe_text(
-        getattr(invoice, "receipt_number", None)
+        getattr(invoice, "invoice_number", None)
+        or getattr(invoice, "receipt_number", None)
         or getattr(invoice, "reference_number", None)
-        or getattr(invoice, "invoice_number", None)
         or getattr(invoice, "quote_number", None)
-        or "REC-0001",
+        or "INV-0001",
         30,
     )
+
+    # Financial Totals & Tax
+    total_amount = float(getattr(invoice, "total_amount", 0.0) or 0.0)
+    cgst_amount = float(getattr(invoice, "cgst_amount", 0.0) or 0.0)
+    sgst_amount = float(getattr(invoice, "sgst_amount", 0.0) or 0.0)
+    igst_amount = float(getattr(invoice, "igst_amount", 0.0) or 0.0)
+    total_tax = float(getattr(invoice, "tax_amount", 0.0) or (cgst_amount + sgst_amount + igst_amount))
+    subtotal = float(getattr(invoice, "subtotal", 0.0) or (total_amount - total_tax if total_amount > 0 else 0.0))
+    discount_amount = float(getattr(invoice, "discount_amount", 0.0) or 0.0)
+    amount_paid = float(
+        getattr(invoice, "amount_paid", None)
+        if getattr(invoice, "amount_paid", None) is not None
+        else (getattr(invoice, "amount_received", None) if getattr(invoice, "amount_received", None) is not None else total_amount)
+    )
+    balance_due = float(getattr(invoice, "balance_due", 0.0) or max(0.0, total_amount - amount_paid))
+    payment_method = _safe_text(getattr(invoice, "payment_terms", None) or getattr(invoice, "payment_method", None) or getattr(invoice, "payment_mode", None) or "Cash", 20)
+    is_paid = (getattr(invoice, "status", "") or "").lower() == "paid" or (amount_paid >= (total_amount - 0.05) and total_amount > 0)
+    has_gst = total_tax > 0.001 or cgst_amount > 0 or sgst_amount > 0 or igst_amount > 0
+
     raw_doc_type = str(getattr(invoice, "doc_type", "") or getattr(invoice, "invoice_type", "") or "").lower()
     is_estimate = raw_doc_type in ("estimate", "estimate_non_gst") or inv_number.upper().startswith("EST-")
     is_quote = (
@@ -1171,11 +1359,27 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
         or bool(getattr(invoice, "quote_number", None))
         or is_estimate
     )
-    default_thermal_title = ("TAX ESTIMATE / ESTIMATE" if is_estimate else "TAX QUOTATION / ESTIMATE") if is_quote else "TAX INVOICE"
+
+    # Dynamic Title: Under GST, non-taxable / 0% retail receipts MUST be BILL OF SUPPLY
+    if is_estimate:
+        default_thermal_title = "TAX ESTIMATE / ESTIMATE"
+    elif is_quote:
+        default_thermal_title = "TAX QUOTATION / ESTIMATE"
+    elif not has_gst:
+        default_thermal_title = "BILL OF SUPPLY"
+    else:
+        default_thermal_title = "TAX INVOICE"
+
     tpl_title = template.get("headerTitle") or template.get("invoiceTitle")
-    invoice_title = _safe_text(tpl_title if (tpl_title and tpl_title != "TAX INVOICE") or not is_quote else default_thermal_title, 30)
-    terms_text = _safe_text(template.get("termsText") or "Thank you for shopping with us! Please keep this receipt handy.", 250)
-    footer_text = _safe_text(template.get("footerText") or "Thank you! Visit Again.", 120)
+    if tpl_title and tpl_title != "TAX INVOICE":
+        invoice_title = _safe_text(tpl_title, 30)
+    elif not has_gst and not is_quote and not is_estimate:
+        invoice_title = "BILL OF SUPPLY"
+    else:
+        invoice_title = _safe_text(default_thermal_title, 30)
+
+    terms_text = _safe_text(template.get("termsText") or "1. Goods once sold will not be taken back or exchanged, except where specifically agreed by the seller or required under applicable law.\n2. Invoice Verification: Customers are requested to verify the items, quantity, description, price, discounts, and applicable taxes before leaving the premises.", 300)
+    footer_text = _safe_text(template.get("footerText") or "THANK YOU! VISIT AGAIN", 120)
 
     cust_name = _safe_text(getattr(invoice, "customer_name", None) or "Walk-in Guest", 35)
     cust_phone = _safe_text(getattr(invoice, "customer_phone", None) or getattr(invoice, "phone", None) or "", 20)
@@ -1196,35 +1400,40 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
         getattr(invoice, "sales_rep_name", None)
         or getattr(invoice, "salesperson_name", None)
         or (getattr(getattr(invoice, "cashier", None), "full_name", None))
-        or "Cashier",
+        or "workspaceisolation",
         25,
     )
 
-    total_amount = float(getattr(invoice, "total_amount", 0.0) or 0.0)
-    cgst_amount = float(getattr(invoice, "cgst_amount", 0.0) or 0.0)
-    sgst_amount = float(getattr(invoice, "sgst_amount", 0.0) or 0.0)
-    igst_amount = float(getattr(invoice, "igst_amount", 0.0) or 0.0)
-    total_tax = float(getattr(invoice, "tax_amount", 0.0) or (cgst_amount + sgst_amount + igst_amount))
-    subtotal = float(getattr(invoice, "subtotal", 0.0) or (total_amount - total_tax if total_amount > 0 else 0.0))
-    discount_amount = float(getattr(invoice, "discount_amount", 0.0) or 0.0)
-    amount_paid = float(getattr(invoice, "amount_paid", None) if getattr(invoice, "amount_paid", None) is not None else (getattr(invoice, "amount_received", None) if getattr(invoice, "amount_received", None) is not None else total_amount))
-    balance_due = float(getattr(invoice, "balance_due", 0.0) or max(0.0, total_amount - amount_paid))
-    payment_method = _safe_text(getattr(invoice, "payment_terms", None) or getattr(invoice, "payment_method", None) or getattr(invoice, "payment_mode", None) or "Cash", 20)
-    is_paid = (getattr(invoice, "status", "") or "").lower() == "paid" or (amount_paid >= (total_amount - 0.05) and total_amount > 0)
-
     raw_lines = getattr(invoice, "lines", None) or getattr(invoice, "items", None) or []
-    calc_h = max(120.0, 60.0 + max(1, len(raw_lines)) * 9.0 + (30.0 if show_terms and terms_text else 0.0) + (15.0 if show_footer else 0.0) + 30.0)
+
+    # Dynamic Height Calculation accounting for items, sublines, QR codes & signatory
+    upi_vpa = (template.get("upiId") or template.get("upi_vpa") or "").strip()
+    review_url = (template.get("googleReviewUrl") or "").strip()
+    calc_h = max(
+        150.0,
+        75.0
+        + max(1, len(raw_lines)) * 13.0
+        + (35.0 if upi_vpa else 0.0)
+        + (38.0 if review_url else 0.0)
+        + (14.0 if is_paid else 0.0)
+        + (14.0 if show_terms and terms_text else 0.0)
+        + 30.0,
+    )
 
     pdf = FPDF(orientation="P", unit="mm", format=(page_w, calc_h))
-    pdf.set_auto_page_break(auto=True, margin=4)
-    pdf.set_margins(margin, 3, margin)
+    pdf.set_auto_page_break(auto=True, margin=3.0)
+    pdf.set_margins(margin, 2.5, margin)
     pdf.add_page()
+
+    # 0. Top Tear Edge
+    pdf.set_font("Helvetica", "", 6)
+    pdf.cell(usable_w, 2.2, "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -", align="C", new_x="LMARGIN", new_y="NEXT")
 
     # 1. Header (Logo + Store)
     logo_path = _find_logo_path(template.get("logoUrl"))
     if show_logo and logo_path:
         try:
-            pdf.image(logo_path, x=(page_w - 22.0) / 2.0, w=22.0)
+            pdf.image(logo_path, x=(page_w - 24.0) / 2.0, w=24.0)
             pdf.ln(1)
         except Exception:
             pass
@@ -1234,7 +1443,10 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
         pdf.cell(usable_w, 4.5, store_name.upper(), align="C", new_x="LMARGIN", new_y="NEXT")
     if branch_name:
         pdf.set_font("Helvetica", "B", 8)
-        pdf.cell(usable_w, 3.5, branch_name.upper(), align="C", new_x="LMARGIN", new_y="NEXT")
+        b_str = branch_name.upper()
+        if "[" not in b_str and "(" not in b_str:
+            b_str = f"({b_str}) [{b_str}]"
+        pdf.cell(usable_w, 3.5, b_str, align="C", new_x="LMARGIN", new_y="NEXT")
     if tagline:
         pdf.set_font("Helvetica", "I", 7.5)
         pdf.cell(usable_w, 3.2, tagline, align="C", new_x="LMARGIN", new_y="NEXT")
@@ -1242,18 +1454,35 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
         pdf.set_font("Helvetica", "", 7)
         pdf.multi_cell(usable_w, 3.0, store_address, align="C")
     if show_store_contact and store_phone:
-        pdf.set_font("Helvetica", "", 7)
-        pdf.cell(usable_w, 3.2, f"Ph: {store_phone}", align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "B", 7)
+        pdf.cell(usable_w, 3.2, f"PH: {store_phone}", align="C", new_x="LMARGIN", new_y="NEXT")
     if show_tax_id and gstin:
         pdf.set_font("Helvetica", "B", 7)
         pdf.cell(usable_w, 3.2, f"GSTIN: {gstin}", align="C", new_x="LMARGIN", new_y="NEXT")
 
-    pdf.set_font("Helvetica", "", 7)
-    pdf.cell(usable_w, 2.8, div_str, align="C", new_x="LMARGIN", new_y="NEXT")
+    # Custom Header Fields (e.g. DL NO, FSSAI LIC)
+    custom_fields = template.get("customFields") or getattr(invoice, "custom_fields", {}) or []
+    if isinstance(custom_fields, dict):
+        custom_fields = [{"name": k, "value": v} for k, v in custom_fields.items()]
+    if isinstance(custom_fields, list):
+        for cf in custom_fields:
+            if isinstance(cf, dict):
+                f_name = str(cf.get("name") or cf.get("label") or "").strip().upper()
+                f_val = str(cf.get("value") or "").strip()
+                if f_name and f_val and cf.get("enabled", True) is not False:
+                    pdf.set_font("Helvetica", "B", 7)
+                    pdf.cell(usable_w, 3.0, f"{f_name}: {f_val}", align="C", new_x="LMARGIN", new_y="NEXT")
 
-    # 2. Receipt Title & Meta
+    pdf.set_font("Helvetica", "", 7)
+    pdf.cell(usable_w, 2.5, div_str, align="C", new_x="LMARGIN", new_y="NEXT")
+
+    # 2. Receipt Title Box & Meta
     pdf.set_font("Helvetica", "B", 8.5)
-    pdf.cell(usable_w, 4.2, f"[ {invoice_title.upper()} ]", align="C", new_x="LMARGIN", new_y="NEXT")
+    t_box_text = f" {invoice_title.upper()} "
+    t_box_w = min(usable_w * 0.75, pdf.get_string_width(t_box_text) + 6.0)
+    pdf.set_x((page_w - t_box_w) / 2.0)
+    pdf.cell(t_box_w, 4.2, t_box_text, align="C", border=1, new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(0.8)
 
     pdf.set_font("Helvetica", "", 7)
     inv_prefix = "EST:" if is_estimate else ("QUOTE:" if is_quote else "INV:")
@@ -1268,7 +1497,7 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
         pdf.cell(usable_w * 0.48, 3.2, t_txt, align="R", new_x="LMARGIN", new_y="NEXT")
 
     if show_customer and cust_name and cust_name != "Walk-in Guest":
-        pdf.cell(usable_w, 2.5, "-" * int(usable_w * 0.72), align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(usable_w, 2.2, "-" * int(usable_w * 0.72), align="C", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "B", 7)
         pdf.cell(usable_w, 3.2, f"CUSTOMER: {cust_name}", align="L", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 6.8)
@@ -1279,42 +1508,69 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
         if show_customer_address and cust_addr:
             pdf.multi_cell(usable_w, 2.8, f"ADDR: {cust_addr}", align="L")
 
-    pdf.cell(usable_w, 2.8, div_str, align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(usable_w, 2.5, div_str, align="C", new_x="LMARGIN", new_y="NEXT")
 
     # 3. Items Table Header
-    col_w = [usable_w * 0.44, usable_w * 0.16, usable_w * 0.18, usable_w * 0.22]
+    col_w = [usable_w * 0.44, usable_w * 0.18, usable_w * 0.18, usable_w * 0.20]
     pdf.set_font("Helvetica", "B", 7)
     pdf.cell(col_w[0], 3.6, "ITEM", align="L")
     pdf.cell(col_w[1], 3.6, "QTY", align="C")
     pdf.cell(col_w[2], 3.6, "RATE", align="R")
     pdf.cell(col_w[3], 3.6, "AMT", align="R", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(usable_w, 2.5, "-" * int(usable_w * 0.72), align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(usable_w, 2.2, "-" * int(usable_w * 0.72), align="C", new_x="LMARGIN", new_y="NEXT")
 
     total_billed_qty = 0.0
-    pdf.set_font("Helvetica", "", 7)
     for idx, line in enumerate(raw_lines, start=1):
         p_name = _safe_text(
             getattr(line, "product_name", None)
             or getattr(line, "name", None)
             or getattr(getattr(line, "product", None), "name", None)
             or f"Item {idx}",
-            24,
+            28,
         )
         qty = float(getattr(line, "quantity", 1.0) or getattr(line, "qty", 1.0) or 1.0)
         total_billed_qty += qty
+        unit_str = getattr(line, "unit", "Nos") or "Nos"
         unit_price = float(getattr(line, "unit_price", 0.0) or getattr(line, "price", 0.0) or 0.0)
         line_tot = float(
             getattr(line, "line_total", None)
             if getattr(line, "line_total", None) is not None
             else (getattr(line, "subtotal", None) if getattr(line, "subtotal", None) is not None else (qty * unit_price))
         )
+        mrp = float(getattr(line, "mrp", 0.0) or 0.0)
+        hsn = _safe_text(getattr(line, "hsn_code", None) or getattr(line, "hsn", None) or "", 15)
+        batch = _safe_text(getattr(line, "batch_number", None) or getattr(line, "batch", None) or "", 20)
+        exp = _safe_text(getattr(line, "expiry_date", None) or getattr(line, "exp_date", None) or "", 15)
 
-        pdf.cell(col_w[0], 3.4, p_name, align="L")
-        pdf.cell(col_w[1], 3.4, str(int(qty) if qty.is_integer() else f"{qty:.2f}"), align="C")
-        pdf.cell(col_w[2], 3.4, _fmt_amount(unit_price), align="R")
-        pdf.cell(col_w[3], 3.4, _fmt_amount(line_tot), align="R", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "B", 7)
+        pdf.cell(col_w[0], 3.3, f"{idx}. {p_name}", align="L")
+        pdf.set_font("Helvetica", "", 7)
+        qty_display = f"{int(qty) if qty.is_integer() else f'{qty:.2f}'} {unit_str}"
+        pdf.cell(col_w[1], 3.3, qty_display, align="C")
+        pdf.cell(col_w[2], 3.3, _fmt_amount(unit_price), align="R")
+        pdf.cell(col_w[3], 3.3, _fmt_amount(line_tot), align="R", new_x="LMARGIN", new_y="NEXT")
 
-    pdf.cell(usable_w, 2.8, div_str, align="C", new_x="LMARGIN", new_y="NEXT")
+        # Subline: MRP & Savings breakdown (matching browser print)
+        if mrp > unit_price:
+            saved_unit = mrp - unit_price
+            saved_total = saved_unit * qty
+            pct_off = round((saved_unit / mrp) * 100) if mrp > 0 else 0
+            pdf.set_font("Helvetica", "I", 6.2)
+            pdf.cell(usable_w, 2.7, f"   MRP: Rs. {_fmt_amount(mrp)} | Saved: Rs. {_fmt_amount(saved_total)} ({pct_off}% OFF)", align="L", new_x="LMARGIN", new_y="NEXT")
+
+        # Subline: HSN / Batch / Expiry details
+        sub_info = []
+        if hsn:
+            sub_info.append(f"HSN: {hsn}")
+        if batch:
+            sub_info.append(f"Batch: {batch}")
+        if exp:
+            sub_info.append(f"EXP: {exp}")
+        if sub_info:
+            pdf.set_font("Helvetica", "", 6.0)
+            pdf.cell(usable_w, 2.5, f"   {' | '.join(sub_info)}", align="L", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.cell(usable_w, 2.5, div_str, align="C", new_x="LMARGIN", new_y="NEXT")
 
     # 4. Totals Summary
     def _trow(lbl: str, val: str, is_bold: bool = False, size: float = 7.0):
@@ -1323,43 +1579,105 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
         pdf.cell(usable_w * 0.45, 3.4, val, align="R", new_x="LMARGIN", new_y="NEXT")
 
     qty_text = f"{int(total_billed_qty) if total_billed_qty.is_integer() else f'{total_billed_qty:g}'} Units"
-    _trow("TOTAL ITEMS / QTY:", f"{len(raw_lines)} Items / {qty_text}")
+    _trow("TOTAL ITEMS / BILLED QTY:", f"{len(raw_lines)} Items / {qty_text}", is_bold=True)
 
     if show_subtotal:
         _trow("SUBTOTAL:", f"Rs. {_fmt_amount(subtotal)}")
     if show_discount and discount_amount > 0:
-        _trow("TOTAL SAVINGS:", f"-Rs. {_fmt_amount(discount_amount)}", is_bold=True)
+        _trow("TOTAL SAVINGS TODAY:", f"-Rs. {_fmt_amount(discount_amount)}", is_bold=True)
     if show_tax and total_tax > 0:
+        _trow("Taxable Amount:", f"Rs. {_fmt_amount(subtotal - discount_amount)}")
         if cgst_amount > 0 or sgst_amount > 0:
             _trow("Central GST (CGST):", f"Rs. {_fmt_amount(cgst_amount)}")
             _trow("State GST (SGST):", f"Rs. {_fmt_amount(sgst_amount)}")
         elif igst_amount > 0:
             _trow("Integrated GST (IGST):", f"Rs. {_fmt_amount(igst_amount)}")
-        _trow("Total Tax (GST):", f"Rs. {_fmt_amount(total_tax)}")
+        _trow("Total Tax (GST):", f"Rs. {_fmt_amount(total_tax)}", is_bold=True)
 
     pdf.cell(usable_w, 2.2, "=" * int(usable_w * 0.72), align="C", new_x="LMARGIN", new_y="NEXT")
-    _trow("TOTAL AMOUNT:", f"Rs. {_fmt_amount(total_amount)}", is_bold=True, size=8.5)
+    _trow("NET PAYABLE:", f"Rs. {_fmt_amount(total_amount)}", is_bold=True, size=8.5)
     pdf.cell(usable_w, 2.2, "=" * int(usable_w * 0.72), align="C", new_x="LMARGIN", new_y="NEXT")
 
-    _trow("AMOUNT PAID:", f"Rs. {_fmt_amount(amount_paid)}")
-    _trow("PAYMENT MODE:", f"{payment_method.upper()} ({'PAID' if is_paid else 'DUE'})", is_bold=True)
+    # Paid In Full Badge Stamp
+    if is_paid:
+        pdf.ln(0.5)
+        pdf.set_font("Helvetica", "B", 7.5)
+        stamp_text = "* PAID IN FULL *"
+        s_w = pdf.get_string_width(stamp_text) + 6.0
+        pdf.set_x((page_w - s_w) / 2.0)
+        pdf.cell(s_w, 3.8, stamp_text, align="C", border=1, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "B", 6.2)
+        pdf.cell(usable_w, 3.0, f"({payment_method.upper()}) * ALL DUES CLEARED", align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(0.5)
+
+    _trow("PAID VIA:", f"{payment_method.upper()} (COMPLETED)", is_bold=True)
+    _trow("AMOUNT RECEIVED:", f"Rs. {_fmt_amount(amount_paid)}")
 
     if balance_due > 0.01:
         _trow("BALANCE DUE:", f"Rs. {_fmt_amount(balance_due)}", is_bold=True)
 
-    pdf.cell(usable_w, 2.8, div_str, align="C", new_x="LMARGIN", new_y="NEXT")
+    # 5. Dynamic Payment QR Code (UPI / GPAY)
+    if upi_vpa:
+        pdf.cell(usable_w, 2.5, "-" * int(usable_w * 0.72), align="C", new_x="LMARGIN", new_y="NEXT")
+        target_amt = balance_due if balance_due > 0.01 else total_amount
+        upi_payee = urllib.parse.quote(store_name)
+        upi_uri = f"upi://pay?pa={upi_vpa}&pn={upi_payee}&am={target_amt:.2f}&tr={inv_number}&cu=INR"
+        upi_qr_file = _generate_qr_code_file(upi_uri, "upi")
+        if upi_qr_file and os.path.exists(upi_qr_file):
+            try:
+                pdf.ln(0.5)
+                qr_size = 23.0
+                pdf.image(upi_qr_file, x=(page_w - qr_size) / 2.0, w=qr_size, h=qr_size)
+                pdf.ln(0.5)
+                pdf.set_font("Helvetica", "B", 7)
+                pdf.cell(usable_w, 3.0, "SCAN TO PAY VIA UPI / GPAY", align="C", new_x="LMARGIN", new_y="NEXT")
+                pdf.set_font("Courier", "", 6.5)
+                pdf.cell(usable_w, 2.8, upi_vpa, align="C", new_x="LMARGIN", new_y="NEXT")
+                pdf.ln(0.5)
+            except Exception as qr_err:
+                logger.warning("Failed to embed UPI QR code in thermal receipt: %s", qr_err)
 
-    # 5. Terms & Footer
+    # 6. Google Review QR Code
+    if review_url:
+        pdf.cell(usable_w, 2.5, "-" * int(usable_w * 0.72), align="C", new_x="LMARGIN", new_y="NEXT")
+        review_qr_file = _generate_qr_code_file(review_url, "review")
+        if review_qr_file and os.path.exists(review_qr_file):
+            try:
+                pdf.ln(0.5)
+                pdf.set_font("Helvetica", "B", 8)
+                pdf.cell(usable_w, 3.0, "* * * * *", align="C", new_x="LMARGIN", new_y="NEXT")
+                pdf.set_font("Helvetica", "B", 7)
+                pdf.cell(usable_w, 2.8, "RATE YOUR EXPERIENCE", align="C", new_x="LMARGIN", new_y="NEXT")
+                r_size = 19.0
+                pdf.image(review_qr_file, x=(page_w - r_size) / 2.0, w=r_size, h=r_size)
+                pdf.ln(0.5)
+                pdf.set_font("Helvetica", "B", 6.5)
+                pdf.cell(usable_w, 2.8, "SCAN TO LEAVE A 5-STAR GOOGLE REVIEW", align="C", new_x="LMARGIN", new_y="NEXT")
+                pdf.ln(0.5)
+            except Exception as r_err:
+                logger.warning("Failed to embed Review QR code in thermal receipt: %s", r_err)
+
+    # 7. Authorized Signatory
+    pdf.cell(usable_w, 2.5, "-" * int(usable_w * 0.72), align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "B", 6.8)
+    pdf.cell(usable_w, 3.0, f"For {store_name}", align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 6.2)
+    pdf.cell(usable_w, 2.8, "Authorized Signatory", align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(0.5)
+
+    pdf.cell(usable_w, 2.5, div_str, align="C", new_x="LMARGIN", new_y="NEXT")
+
+    # 8. Terms & Footer
     if show_terms and terms_text:
         pdf.set_font("Helvetica", "B", 6.8)
-        pdf.cell(usable_w, 3.2, "TERMS & CONDITIONS:", align="L", new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("Helvetica", "", 6.2)
-        pdf.multi_cell(usable_w, 2.8, terms_text, align="L")
-        pdf.ln(1)
+        pdf.cell(usable_w, 3.0, "TERMS & CONDITIONS:", align="L", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 6.0)
+        pdf.multi_cell(usable_w, 2.6, terms_text, align="L")
+        pdf.ln(0.5)
 
     if show_footer and footer_text:
         pdf.set_font("Helvetica", "B", 7.5)
-        pdf.cell(usable_w, 3.8, f"*** {footer_text} ***", align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(usable_w, 3.5, f"*** {footer_text} ***", align="C", new_x="LMARGIN", new_y="NEXT")
 
     raw = pdf.output()
     if isinstance(raw, str):

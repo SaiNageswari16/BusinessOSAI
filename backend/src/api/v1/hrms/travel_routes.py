@@ -592,26 +592,29 @@ async def simulate_employee_route(
         att_rec = AttendanceRecord(
             id=uuid.uuid4(),
             tenant_id=ctx.tenant_id,
-            company_id=target_emp.company_id,
             employee_id=target_emp.id,
             date=target_date,
             status="Present",
             check_in=clock_in_time,
             check_out=clock_out_time,
-            total_hours=8.8,
-            work_type="Field",
+            hours_worked=8.8,
+            method="GPS Mobile",
             latitude=base_lat,
             longitude=base_lon,
-            verified_method="GPS Mobile",
+            is_geofence_verified=True,
+            notes="Field simulated route",
         )
         db.add(att_rec)
         await db.flush()
     else:
         att_rec.check_in = clock_in_time
         att_rec.check_out = clock_out_time
+        att_rec.hours_worked = 8.8
         att_rec.latitude = base_lat
         att_rec.longitude = base_lon
         att_rec.status = "Present"
+        att_rec.method = "GPS Mobile"
+        att_rec.is_geofence_verified = True
 
     # 4. Realistic shift trajectory sequence
     # Format: (d_lat, d_lon, minutes_offset, speed_kmh, activity, location_name, battery_percent)

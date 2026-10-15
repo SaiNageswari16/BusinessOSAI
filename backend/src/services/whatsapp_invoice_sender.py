@@ -430,8 +430,12 @@ async def send_pos_receipt_whatsapp(
     valid_pdf = False
     if receipt_pdf_base64:
         try:
-            base64.b64decode(receipt_pdf_base64, validate=True)
+            clean_b64 = str(receipt_pdf_base64).strip()
+            if "," in clean_b64:
+                clean_b64 = clean_b64.split(",", 1)[1]
+            base64.b64decode(clean_b64, validate=True)
             valid_pdf = True
+            receipt_pdf_base64 = clean_b64
         except Exception:
             logger.warning("POS receipt PDF base64 decode failed, will fallback to text delivery")
 

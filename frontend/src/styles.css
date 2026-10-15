@@ -504,3 +504,22 @@ html {
   }
 }
 
+/* Thermal and Barcode Portals Screen Isolation - Never render on screen outside @media print */
+@media screen {
+  #printable-receipt-portal,
+  #bos-thermal-pdf-render-portal,
+  #bos-thermal-pdf-render-iframe,
+  #bos-in-page-print-iframe,
+  #thermal-print-iframe {
+    display: none !important;
+    visibility: hidden !important;
+    position: fixed !important;
+    left: -99999px !important;
+    top: -99999px !important;
+    width: 0 !important;
+    height: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+}
+
