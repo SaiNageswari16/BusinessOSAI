@@ -711,10 +711,7 @@ async def send_pos_receipt(
     if tx_uuid:
         transaction = await db.scalar(
             select(POSTransaction).where(
-                or_(
-                    POSTransaction.id == tx_uuid,
-                    POSTransaction.invoice_id == tx_uuid,
-                ),
+                POSTransaction.id == tx_uuid,
                 POSTransaction.tenant_id == ctx.tenant_id,
             )
         )
