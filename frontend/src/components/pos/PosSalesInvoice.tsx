@@ -574,8 +574,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const normalNums = matchedNums.filter((n) => n < 50000);
       if (normalNums.length > 0) {
         highestActive = Math.max(...normalNums);
-      } else if (matchedNums.length > 0) {
-        highestActive = Math.max(...matchedNums);
+      } else {
+        highestActive = 0;
       }
 
       const configuredMinSeq = isTaxInv
@@ -4938,13 +4938,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       } else {
         const s = loadStoredInvoiceSettings();
         const pfx = s.quotationPrefix || "QT-";
+        let nextQuoteSeq = (s.quotationSequenceNumber || 1) + 1;
         const quoteNumToParse = savedQuoteNumber || invoiceNumber;
         if (quoteNumToParse && quoteNumToParse.startsWith(pfx)) {
           const remainder = quoteNumToParse.slice(pfx.length);
           const digitsMatch = remainder.match(/\d+$/);
           if (digitsMatch) {
             const parsed = parseInt(digitsMatch[0], 10);
-            if (!isNaN(parsed)) {
+            if (!isNaN(parsed) && parsed > 0 && parsed < 50000) {
               nextQuoteSeq = Math.max(nextQuoteSeq, parsed + 1);
             }
           }

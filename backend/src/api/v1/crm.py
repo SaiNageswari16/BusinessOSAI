@@ -3549,6 +3549,32 @@ async def list_quotations(
     res = await db.execute(query.order_by(CRMQuotation.created_at.desc()))
     quotes = res.scalars().all()
     
+    # Auto-repair any timestamp quote numbers (QT-1791...) to clean sequential numbers
+    clean_seq = 0
+    for q in reversed(quotes):
+        if q.quote_number and not q.quote_number.startswith("QT-1791") and not q.quote_number.startswith("qt-1791"):
+            m = re.search(r"(\d+)$", q.quote_number)
+            if m:
+                try:
+                    val = int(m.group(1))
+                    if 0 < val < 50000:
+                        clean_seq = max(clean_seq, val)
+                except ValueError:
+                    pass
+
+    dirty_repaired = False
+    for q in reversed(quotes):
+        if q.quote_number and (q.quote_number.startswith("QT-1791") or q.quote_number.startswith("qt-1791")):
+            clean_seq += 1
+            q.quote_number = f"QT-{clean_seq:04d}"
+            dirty_repaired = True
+
+    if dirty_repaired:
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
+
     result = []
     for q in quotes:
         cust_name = (q.items or {}).get("customer_name") if isinstance(q.items, dict) else None
@@ -3647,17 +3673,21 @@ async def create_quotation(
 
     # Determine desired quote number safely
     target_quote_number = (payload.quote_number or "").strip()
-    if not target_quote_number:
+    if not target_quote_number or target_quote_number.startswith("QT-1791") or target_quote_number.startswith("qt-1791"):
         max_res = await db.execute(
             select(CRMQuotation.quote_number).where(CRMQuotation.tenant_id == ctx.tenant_id)
         )
         existing_nums = [r[0] for r in max_res.fetchall() if r[0]]
         next_seq = 1
         for num_str in existing_nums:
+            if num_str.startswith("QT-1791") or num_str.startswith("qt-1791"):
+                continue
             m = re.search(r"(\d+)$", num_str)
             if m:
                 try:
-                    next_seq = max(next_seq, int(m.group(1)) + 1)
+                    val = int(m.group(1))
+                    if 0 < val < 50000:
+                        next_seq = max(next_seq, val + 1)
                 except ValueError:
                     pass
         target_quote_number = f"QT-{next_seq:04d}"
@@ -3679,27 +3709,6 @@ async def create_quotation(
         quote.total = payload.total
         quote.status = payload.status or "Draft"
     else:
-        # Check if target_quote_number collides globally with another tenant or existing records
-        global_exists = await db.scalar(
-            select(CRMQuotation.id).where(CRMQuotation.quote_number == target_quote_number).limit(1)
-        )
-        if global_exists:
-            # Assign next collision-free sequence globally to prevent any legacy constraint violations
-            all_res = await db.execute(select(CRMQuotation.quote_number))
-            all_nums = {r[0] for r in all_res.fetchall() if r[0]}
-            seq = 1
-            for num_str in all_nums:
-                m = re.search(r"(\d+)$", num_str)
-                if m:
-                    try:
-                        seq = max(seq, int(m.group(1)) + 1)
-                    except ValueError:
-                        pass
-            target_quote_number = f"QT-{seq:04d}"
-            while target_quote_number in all_nums:
-                seq += 1
-                target_quote_number = f"QT-{seq:04d}"
-
         quote = CRMQuotation(
             tenant_id=ctx.tenant_id,
             company_id=ctx.active_company_id,
@@ -3739,21 +3748,24 @@ async def create_quotation(
             await db.flush()
         target_cust_id = cust.id
 
-        # Auto-generate unique fallback quote number
-        all_res = await db.execute(select(CRMQuotation.quote_number))
-        all_nums = {r[0] for r in all_res.fetchall() if r[0]}
-        seq = 1
-        for num_str in all_nums:
+        # Auto-generate next clean sequence (< 50000) for this tenant
+        all_res = await db.execute(
+            select(CRMQuotation.quote_number).where(CRMQuotation.tenant_id == ctx.tenant_id)
+        )
+        existing_nums = [r[0] for r in all_res.fetchall() if r[0]]
+        next_seq = 1
+        for num_str in existing_nums:
+            if num_str.startswith("QT-1791") or num_str.startswith("qt-1791"):
+                continue
             m = re.search(r"(\d+)$", num_str)
             if m:
                 try:
-                    seq = max(seq, int(m.group(1)) + 1)
+                    val = int(m.group(1))
+                    if 0 < val < 50000:
+                        next_seq = max(next_seq, val + 1)
                 except ValueError:
                     pass
-        fallback_quote_number = f"QT-{seq:04d}"
-        while fallback_quote_number in all_nums:
-            seq += 1
-            fallback_quote_number = f"QT-{seq:04d}"
+        fallback_quote_number = f"QT-{next_seq:04d}"
 
         quote = CRMQuotation(
             tenant_id=ctx.tenant_id,

@@ -130,9 +130,14 @@ export function Quotations() {
               parsed.forEach((i: any) => {
                 const isQuote = i.invoice_type === "QUOTATION" || (i.invoice_number && String(i.invoice_number).startsWith("QT-")) || i.quote_number;
                 if (isQuote) {
+                  const qNumStr = String(i.invoice_number || i.quote_number || "").trim();
+                  // Skip timestamped corrupt numbers from local storage so they don't overwrite clean backend sequences
+                  if (qNumStr.startsWith("QT-1791") || qNumStr.startsWith("qt-1791") || String(i.id || "").startsWith("qt-1791")) {
+                    return;
+                  }
                   localItems.push({
                     id: i.id,
-                    quote_number: i.invoice_number || i.quote_number,
+                    quote_number: qNumStr,
                     customer_name: i.customer_name,
                     customer_phone: i.customer_phone,
                     total: i.grand_total || i.total,
