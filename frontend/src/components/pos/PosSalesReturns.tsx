@@ -36,7 +36,8 @@ import { invoicesApi, posApi, salesReturnsApi } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
 import { useCurrency } from "@/hooks/use-currency";
 import { PaginationControl } from "@/components/ui/PaginationControl";
-import { StandardVoucherModal } from "./StandardVoucherModal";
+import { StandardVoucherModal, StandardVoucherData } from "./StandardVoucherModal";
+import { printThermalVoucher } from "@/lib/print-helper";
 
 export interface SalesReturnItem {
   id: string;
@@ -972,6 +973,71 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
     window.print();
   };
 
+  const handleDirectThermalPrint = (record: SalesReturnRecord) => {
+    const voucherData: StandardVoucherData = {
+      voucherType: record.is_exchange ? "exchange" : "return",
+      voucherNumber: record.return_number,
+      voucherDate: record.return_date,
+      originalInvoiceNo: record.original_invoice_no,
+      originalInvoiceDate: record.original_invoice_date,
+      organization: {
+        name: tenant?.name || (tenant as any)?.raw?.name || "Business Enterprise",
+        address: (tenant as any)?.raw?.address || (tenant as any)?.address || "Store Main Counter • Retail POS",
+        city: (tenant as any)?.raw?.city || (tenant as any)?.city,
+        state: (tenant as any)?.raw?.state || (tenant as any)?.state,
+        pincode: (tenant as any)?.raw?.pincode || (tenant as any)?.pincode,
+        gstin: (tenant as any)?.raw?.gst_number || (tenant as any)?.raw?.gstin || (tenant as any)?.gstin,
+        phone: (tenant as any)?.raw?.phone || (tenant as any)?.phone,
+        email: (tenant as any)?.raw?.email || (tenant as any)?.email,
+      },
+      customer: {
+        name: record.customer_name,
+        phone: record.customer_phone,
+        gstin: record.customer_gstin,
+      },
+      items: record.items.map((it) => ({
+        product_name: it.product_name,
+        sku: it.sku,
+        hsn_code: it.hsn_code,
+        quantity: it.returned_qty,
+        unit_price: it.unit_price,
+        tax_rate: it.tax_rate,
+        tax_amount: it.tax_amount,
+        line_total: it.total_amount,
+        reason: it.reason,
+        disposition: it.restock_disposition,
+      })),
+      exchangeItems: record.exchange_items?.map((ex) => ({
+        product_name: ex.product_name,
+        sku: ex.sku,
+        quantity: ex.quantity,
+        unit_price: ex.unit_price,
+        tax_rate: ex.tax_rate,
+        line_total: ex.total_amount,
+      })),
+      subtotal: record.subtotal,
+      taxAmount: record.tax_amount,
+      totalAmount: record.total_refund,
+      settlementMethod: record.settlement_method,
+      creditNoteNumber: record.credit_note_number,
+      debitNoteNumber: record.debit_note_number,
+      exchangeInvoiceNumber: record.exchange_invoice_number,
+      exchangeTotal: record.exchange_total,
+      difference: record.difference,
+      reason: record.notes,
+      notes: record.notes,
+      cashierName: record.cashier_name || "Floor Cashier",
+      restockedCount: record.restock_count,
+    };
+
+    try {
+      printThermalVoucher(voucherData, { paperSize: "80mm" }, tenant?.id);
+      toast.success(`Thermal receipt sent to printer for ${record.return_number}`);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to send to thermal printer");
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col min-h-full bg-slate-50/50">
       {/* ── Top Header Toolbar ── */}
@@ -1228,9 +1294,16 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                           <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1.5">
                               <button
+                                onClick={() => handleDirectThermalPrint(ret)}
+                                className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+                                title="Instant Thermal Print (POS Receipt)"
+                              >
+                                <Receipt className="w-3.5 h-3.5" />
+                              </button>
+                              <button
                                 onClick={() => setSelectedReturnSlip(ret)}
                                 className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
-                                title="View & Print Slip"
+                                title="View & Print Slip (A4 / Thermal)"
                               >
                                 <Printer className="w-3.5 h-3.5" />
                               </button>

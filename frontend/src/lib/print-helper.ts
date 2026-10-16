@@ -1167,3 +1167,485 @@ function fallbackWindowPrint(printableWidth: string, strokeVal: string, fontWeig
   });
 }
 
+/**
+ * Generate full thermal receipt HTML string for a Sales Return, Exchange, or Cancellation Voucher.
+ * Renders on standard 80mm or 58mm thermal rolls, matching the design of POS thermal receipts
+ * while containing all audit, customer, and reversal details from the A4 voucher.
+ */
+export function generateVoucherThermalReceiptHtml(
+  voucher: any,
+  options?: { paperSize?: '80mm' | '58mm' },
+  tenantId?: string,
+): string {
+  if (!voucher) return '';
+
+  const tid = tenantId || (typeof window !== 'undefined' ? localStorage.getItem('bos_selected_tenant_id') || '' : '');
+  const activeGst = getActiveBillingGst(tid);
+  const activeTemplate = getActiveReceiptTemplate(tid) || getResolvedActiveThermalTemplate(tid);
+
+  const is58mm = (options?.paperSize || activeTemplate?.paperSize) === '58mm';
+  const printableWidth = is58mm ? '48mm' : '72mm';
+  const dividerStyle = String(activeTemplate?.dividerStyle || 'double');
+  const dividerChar =
+    dividerStyle === 'solid'
+      ? '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+      : dividerStyle === 'double'
+      ? '══════════════════════════════'
+      : dividerStyle === 'dotted'
+      ? '······························'
+      : dividerStyle === 'star'
+      ? '******************************'
+      : '------------------------------';
+  const dashedLine = '------------------------------';
+
+  const rawTenantObj = typeof window !== 'undefined' ? (() => {
+    try {
+      const raw = localStorage.getItem('bos-tenant');
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return {};
+  })() : {};
+
+  const org = voucher.organization || {};
+  const storeName =
+    org.name ||
+    activeGst?.trade_name ||
+    activeGst?.legal_name ||
+    rawTenantObj?.name ||
+    activeTemplate?.storeName ||
+    'Store';
+
+  const storeAddress =
+    org.address ||
+    activeGst?.address ||
+    rawTenantObj?.address ||
+    activeTemplate?.storeAddress ||
+    '';
+
+  const storePhone =
+    org.phone ||
+    activeGst?.phone ||
+    rawTenantObj?.phone ||
+    activeTemplate?.storePhone ||
+    '';
+
+  const storeGstin =
+    org.gstin ||
+    activeGst?.gstin ||
+    rawTenantObj?.gst_number ||
+    rawTenantObj?.gstin ||
+    activeTemplate?.gstin ||
+    '';
+
+  const rawLogo =
+    org.logo_url ||
+    activeTemplate?.logoUrl ||
+    activeGst?.logo_url ||
+    rawTenantObj?.logo_url ||
+    '';
+  const resolvedLogoUrl = rawLogo ? resolveImageUrl(rawLogo) : '';
+
+  const isCancel = voucher.voucherType === 'cancellation';
+  const isExchange = voucher.voucherType === 'exchange';
+
+  const titleBadge = isCancel
+    ? 'INVOICE CANCELLATION'
+    : isExchange
+    ? 'MERCHANDISE EXCHANGE'
+    : 'SALES RETURN & REFUND';
+
+  const subTitle = isCancel
+    ? 'OFFICIAL RESTOCK VOUCHER'
+    : isExchange
+    ? 'LIVE SWAP & SETTLEMENT'
+    : 'OFFICIAL CREDIT / REFUND SLIP';
+
+  const items = Array.isArray(voucher.items) ? voucher.items : [];
+  const exchangeItems = Array.isArray(voucher.exchangeItems) ? voucher.exchangeItems : [];
+
+  const totalRestockedQty = items.reduce((s: number, it: any) => s + (Number(it.quantity) || 0), 0);
+  const totalExchangeQty = exchangeItems.reduce((s: number, ex: any) => s + (Number(ex.quantity) || 0), 0);
+
+  const formatAmt = (val: any) => `₹${(Number(val) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const customerName = voucher.customer?.name || 'Walk-in Guest';
+  const customerPhone = voucher.customer?.phone || '';
+  const customerGstin = voucher.customer?.gstin || '';
+
+  const settlementLabel = (() => {
+    const m = (voucher.settlementMethod || 'cash').toLowerCase();
+    switch (m) {
+      case 'cash': return 'CASH PAYOUT / REFUND';
+      case 'upi': return 'UPI INSTANT TRANSFER';
+      case 'store_credit': return 'STORE CREDIT BALANCE';
+      case 'credit_note': return 'STATUTORY CREDIT NOTE';
+      case 'card': return 'CARD REFUND (POS)';
+      case 'exchange': return 'PRODUCT EXCHANGE VOUCHER';
+      default: return m.toUpperCase();
+    }
+  })();
+
+  const netAmount = voucher.difference !== undefined ? Math.abs(voucher.difference) : (Number(voucher.totalAmount) || 0);
+  const netLabel = isCancel
+    ? 'TOTAL CANCELLED & REFUNDED'
+    : isExchange && voucher.difference !== undefined
+    ? voucher.difference > 0
+      ? 'NET BALANCE COLLECTED'
+      : 'NET BALANCE REFUNDED'
+    : 'TOTAL REFUND AMOUNT';
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>${titleBadge} - ${voucher.voucherNumber || 'Voucher'}</title>
+        <style>
+          @page {
+            margin: 0;
+            size: ${is58mm ? '58mm' : '80mm'} auto;
+          }
+          * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          body {
+            margin: 0;
+            padding: 0;
+            background: #ffffff;
+            color: #000000;
+            font-family: 'Courier New', Courier, monospace, ui-monospace;
+            font-size: ${is58mm ? '10px' : '11.5px'};
+            line-height: 1.25;
+            -webkit-font-smoothing: antialiased;
+          }
+          .receipt-container {
+            width: ${printableWidth};
+            max-width: ${printableWidth};
+            margin: 0 auto;
+            padding: 3mm 1mm;
+          }
+          .center { text-align: center; }
+          .left { text-align: left; }
+          .right { text-align: right; }
+          .bold { font-weight: bold; }
+          .bolder { font-weight: 900; }
+          .divider {
+            text-align: center;
+            overflow: hidden;
+            white-space: nowrap;
+            margin: 3px 0;
+            font-size: 10px;
+            font-weight: bold;
+          }
+          .title-box {
+            border: 1.5px solid #000;
+            padding: 3px 4px;
+            margin: 4px auto;
+            text-align: center;
+            font-weight: 900;
+            font-size: ${is58mm ? '11px' : '13px'};
+            letter-spacing: 0.5px;
+          }
+          .meta-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2px;
+          }
+          .item-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 2px;
+          }
+          .item-table th {
+            border-bottom: 1px dashed #000;
+            padding: 2px 0;
+            font-size: ${is58mm ? '9px' : '10.5px'};
+            font-weight: 900;
+          }
+          .item-table td {
+            padding: 2px 0;
+            font-size: ${is58mm ? '9.5px' : '11px'};
+            vertical-align: top;
+          }
+          .total-box {
+            border: 1.5px dashed #000;
+            padding: 4px 6px;
+            margin: 5px 0;
+            font-size: ${is58mm ? '11px' : '13px'};
+            font-weight: 900;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          }
+          .sig-row {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 14px;
+            padding-top: 4px;
+          }
+          .sig-box {
+            text-align: center;
+            width: 45%;
+            font-size: 8.5px;
+            font-weight: bold;
+          }
+          .sig-line {
+            border-top: 1px dashed #000;
+            margin-bottom: 2px;
+            width: 100%;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="receipt-container" id="printable-receipt-portal">
+          <div class="center" style="font-size: 8px; letter-spacing: 1px;">- - - - - - - - - - - - - - - -</div>
+
+          ${resolvedLogoUrl ? `
+            <div class="center" style="margin-bottom: 3px;">
+              <img src="${resolvedLogoUrl}" alt="Logo" style="max-height: 38px; max-width: 90px; object-fit: contain; filter: grayscale(100%) contrast(180%);" />
+            </div>
+          ` : ''}
+
+          <div class="center bolder" style="font-size: ${is58mm ? '12px' : '14px'}; text-transform: uppercase;">
+            ${storeName}
+          </div>
+
+          ${storeAddress ? `
+            <div class="center" style="font-size: 8.5px; margin-top: 1px;">
+              ${storeAddress}
+            </div>
+          ` : ''}
+
+          <div class="center" style="font-size: 8.5px; margin-top: 1px;">
+            ${storeGstin ? `<b>GSTIN:</b> ${storeGstin}` : ''}
+            ${storePhone ? ` ${storeGstin ? '| ' : ''}<b>Ph:</b> ${storePhone}` : ''}
+          </div>
+
+          <div class="divider">${dividerChar}</div>
+
+          <div class="title-box">
+            ${titleBadge}
+          </div>
+          <div class="center bold" style="font-size: 8.5px; letter-spacing: 0.5px; margin-bottom: 3px;">
+            * ${subTitle} *
+          </div>
+
+          <div class="divider">${dashedLine}</div>
+
+          <!-- Metadata -->
+          <div class="meta-row">
+            <span><b>VOUCHER #:</b></span>
+            <span class="bold">${voucher.voucherNumber || '—'}</span>
+          </div>
+          <div class="meta-row">
+            <span><b>DATE & TIME:</b></span>
+            <span>${voucher.voucherDate || ''} ${voucher.voucherTime || ''}</span>
+          </div>
+          <div class="meta-row">
+            <span><b>AGAINST INVOICE:</b></span>
+            <span class="bold">${voucher.originalInvoiceNo || '—'}</span>
+          </div>
+          ${voucher.originalInvoiceDate ? `
+            <div class="meta-row">
+              <span><b>ORIG. DATE:</b></span>
+              <span>${voucher.originalInvoiceDate}</span>
+            </div>
+          ` : ''}
+          ${voucher.creditNoteNumber ? `
+            <div class="meta-row">
+              <span><b>CREDIT NOTE #:</b></span>
+              <span class="bold">${voucher.creditNoteNumber}</span>
+            </div>
+          ` : ''}
+          ${voucher.debitNoteNumber ? `
+            <div class="meta-row">
+              <span><b>DEBIT NOTE #:</b></span>
+              <span class="bold">${voucher.debitNoteNumber}</span>
+            </div>
+          ` : ''}
+          ${voucher.exchangeInvoiceNumber ? `
+            <div class="meta-row">
+              <span><b>EXCHANGE BILL #:</b></span>
+              <span class="bold">${voucher.exchangeInvoiceNumber}</span>
+            </div>
+          ` : ''}
+          <div class="meta-row">
+            <span><b>CASHIER:</b></span>
+            <span>${voucher.cashierName || 'Main Counter'}</span>
+          </div>
+
+          <div class="divider">${dashedLine}</div>
+
+          <!-- Customer details -->
+          <div class="meta-row">
+            <span><b>CUSTOMER:</b></span>
+            <span class="bold">${customerName}</span>
+          </div>
+          ${customerPhone ? `
+            <div class="meta-row">
+              <span><b>PHONE:</b></span>
+              <span>${customerPhone}</span>
+            </div>
+          ` : ''}
+          ${customerGstin ? `
+            <div class="meta-row">
+              <span><b>GSTIN:</b></span>
+              <span>${customerGstin}</span>
+            </div>
+          ` : ''}
+
+          <div class="divider">${dividerChar}</div>
+
+          <!-- Returned / Cancelled items -->
+          <div class="bold" style="font-size: ${is58mm ? '9px' : '10.5px'}; margin-bottom: 2px;">
+            ${isCancel ? 'CANCELLED ITEMS (RESTOCKED):' : 'RETURNED ITEMS (RESTOCKED):'}
+          </div>
+
+          <table class="item-table">
+            <thead>
+              <tr>
+                <th class="left" style="width: 48%;">ITEM</th>
+                <th class="center" style="width: 14%;">QTY</th>
+                <th class="right" style="width: 18%;">RATE</th>
+                <th class="right" style="width: 20%;">TOTAL</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.map((it: any, idx: number) => `
+                <tr>
+                  <td class="left">
+                    <b>${idx + 1}. ${it.product_name || 'Item'}</b>
+                    ${it.sku ? `<div style="font-size: 7.5px;">SKU: ${it.sku}</div>` : ''}
+                    ${it.reason ? `<div style="font-size: 7.5px; font-style: italic;">Reason: ${it.reason}</div>` : ''}
+                  </td>
+                  <td class="center bold">${it.quantity}</td>
+                  <td class="right">${formatAmt(it.unit_price)}</td>
+                  <td class="right bold">${formatAmt(it.line_total)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+
+          <div class="right bold" style="font-size: 8.5px; margin-top: 3px;">
+            ✔ ${totalRestockedQty} Product(s) Restocked to Inventory
+          </div>
+
+          ${(exchangeItems.length > 0) ? `
+            <div class="divider">${dashedLine}</div>
+            <div class="bold" style="font-size: ${is58mm ? '9px' : '10.5px'}; margin: 2px 0;">
+              ISSUED REPLACEMENT ITEMS:
+            </div>
+            <table class="item-table">
+              <thead>
+                <tr>
+                  <th class="left" style="width: 48%;">ITEM</th>
+                  <th class="center" style="width: 14%;">QTY</th>
+                  <th class="right" style="width: 18%;">RATE</th>
+                  <th class="right" style="width: 20%;">TOTAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${exchangeItems.map((ex: any, idx: number) => `
+                  <tr>
+                    <td class="left"><b>${idx + 1}. ${ex.product_name || 'Replacement'}</b></td>
+                    <td class="center bold">${ex.quantity}</td>
+                    <td class="right">${formatAmt(ex.unit_price)}</td>
+                    <td class="right bold">${formatAmt(ex.line_total)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+            <div class="right bold" style="font-size: 8.5px; margin-top: 3px;">
+              Total Replacement Units: ${totalExchangeQty}
+            </div>
+          ` : ''}
+
+          <div class="divider">${dividerChar}</div>
+
+          <!-- Financial Breakdown -->
+          <div class="meta-row">
+            <span>Gross Return Value:</span>
+            <span class="bold">${formatAmt(voucher.subtotal)}</span>
+          </div>
+
+          ${Number(voucher.taxAmount) > 0 ? `
+            <div class="meta-row">
+              <span>GST Tax Reversal:</span>
+              <span class="bold">${formatAmt(voucher.taxAmount)}</span>
+            </div>
+          ` : ''}
+
+          ${voucher.exchangeTotal !== undefined ? `
+            <div class="meta-row">
+              <span>Replacement Goods Total:</span>
+              <span class="bold">${formatAmt(voucher.exchangeTotal)}</span>
+            </div>
+          ` : ''}
+
+          <!-- Grand Net Box -->
+          <div class="total-box">
+            <span>${netLabel}:</span>
+            <span>${formatAmt(netAmount)}</span>
+          </div>
+
+          <div class="meta-row bold" style="font-size: 9px; margin-top: 2px;">
+            <span>SETTLEMENT METHOD:</span>
+            <span>[ ${settlementLabel} ]</span>
+          </div>
+
+          <div class="divider">${dashedLine}</div>
+
+          <div class="center bold" style="font-size: 8.5px; margin: 3px 0;">
+            ✔ INVENTORY RESTOCKED & STATUTORY AUDIT RECORDED
+          </div>
+
+          ${voucher.reason || voucher.notes ? `
+            <div style="font-size: 8px; border: 1px dotted #000; padding: 2px 4px; margin: 3px 0;">
+              <b>REMARKS / REASON:</b> ${voucher.reason || voucher.notes}
+            </div>
+          ` : ''}
+
+          <!-- Signatures -->
+          <div class="sig-row">
+            <div class="sig-box">
+              <div class="sig-line"></div>
+              Customer Sign
+            </div>
+            <div class="sig-box">
+              <div class="sig-line"></div>
+              Authorized Sign
+            </div>
+          </div>
+
+          <div class="divider">${dashedLine}</div>
+          <div class="center bold" style="font-size: 8.5px; margin-top: 4px;">
+            *** THANK YOU! VISIT AGAIN ***
+          </div>
+          <div class="center" style="font-size: 7.5px; font-style: italic; margin-top: 2px;">
+            Computer-generated voucher. Valid for store records.
+          </div>
+          <div class="center" style="font-size: 8px; letter-spacing: 1px; margin-top: 4px;">
+            - - - - - - - - - - - - - - - -
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
+/**
+ * Print a Sales Return, Exchange, or Cancellation Voucher seamlessly on a thermal printer.
+ */
+export function printThermalVoucher(
+  voucher: any,
+  options?: { paperSize?: '80mm' | '58mm' },
+  tenantId?: string,
+) {
+  if (typeof window === 'undefined') return;
+  const htmlContent = generateVoucherThermalReceiptHtml(voucher, options, tenantId);
+  printHtmlInPage(htmlContent, 250);
+}
+
+

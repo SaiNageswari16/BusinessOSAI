@@ -1352,16 +1352,25 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
     has_gst = total_tax > 0.001 or cgst_amount > 0 or sgst_amount > 0 or igst_amount > 0
 
     raw_doc_type = str(getattr(invoice, "doc_type", "") or getattr(invoice, "invoice_type", "") or "").lower()
-    is_estimate = raw_doc_type in ("estimate", "estimate_non_gst") or inv_number.upper().startswith("EST-")
+    is_return = raw_doc_type in ("sales_return", "return", "credit_note") or inv_number.upper().startswith(("RET-", "CN-", "SRET-"))
+    is_exchange = raw_doc_type in ("exchange", "product_exchange") or inv_number.upper().startswith(("EXC-", "EXCH-"))
+    is_cancellation = raw_doc_type in ("cancellation", "cancel", "void") or inv_number.upper().startswith(("CAN-", "VOID-"))
+    is_estimate = (raw_doc_type in ("estimate", "estimate_non_gst") or inv_number.upper().startswith("EST-")) and not is_return
     is_quote = (
         raw_doc_type in ("quotation", "quote", "estimate", "estimate_non_gst")
         or inv_number.upper().startswith("QT-")
         or bool(getattr(invoice, "quote_number", None))
         or is_estimate
-    )
+    ) and not is_return
 
     # Dynamic Title: Under GST, non-taxable / 0% retail receipts MUST be BILL OF SUPPLY
-    if is_estimate:
+    if is_cancellation:
+        default_thermal_title = "INVOICE CANCELLATION VOUCHER"
+    elif is_exchange:
+        default_thermal_title = "PRODUCT EXCHANGE VOUCHER"
+    elif is_return:
+        default_thermal_title = "CREDIT NOTE / SALES RETURN"
+    elif is_estimate:
         default_thermal_title = "TAX ESTIMATE / ESTIMATE"
     elif is_quote:
         default_thermal_title = "TAX QUOTATION / ESTIMATE"
@@ -1373,6 +1382,8 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
     tpl_title = template.get("headerTitle") or template.get("invoiceTitle")
     if tpl_title and tpl_title != "TAX INVOICE":
         invoice_title = _safe_text(tpl_title, 30)
+    elif is_cancellation or is_exchange or is_return:
+        invoice_title = _safe_text(default_thermal_title, 30)
     elif not has_gst and not is_quote and not is_estimate:
         invoice_title = "BILL OF SUPPLY"
     else:

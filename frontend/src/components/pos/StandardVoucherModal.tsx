@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -19,8 +19,13 @@ import {
   QrCode,
   Wallet,
   CreditCard,
+  Receipt,
+  MessageCircle,
 } from "lucide-react";
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
+import { toast } from "sonner";
+import { printThermalVoucher } from "@/lib/print-helper";
 
 export interface VoucherItem {
   product_name: string;
@@ -152,14 +157,64 @@ function numberToWordsINR(amount: number): string {
 
 export function StandardVoucherModal({ isOpen, onClose, voucher }: StandardVoucherModalProps) {
   const { formatCurrency } = useCurrency();
+  const { tenant } = useTenant();
+  const [printViewMode, setPrintViewMode] = useState<"a4" | "thermal">("a4");
+  const [paperSize, setPaperSize] = useState<"80mm" | "58mm">("80mm");
+  const [isPrintingThermal, setIsPrintingThermal] = useState(false);
 
   if (!isOpen || !voucher) return null;
 
   const isCancel = voucher.voucherType === "cancellation";
   const isExchange = voucher.voucherType === "exchange";
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrintA4 = () => {
+    if (printViewMode !== "a4") {
+      setPrintViewMode("a4");
+      setTimeout(() => window.print(), 120);
+    } else {
+      window.print();
+    }
+  };
+
+  const handlePrintThermal = () => {
+    setIsPrintingThermal(true);
+    try {
+      printThermalVoucher(voucher, { paperSize }, tenant?.id);
+      toast.success(`Thermal print command sent to printer (${paperSize})`);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to send to thermal printer");
+    } finally {
+      setTimeout(() => setIsPrintingThermal(false), 500);
+    }
+  };
+
+  const handleSendWhatsApp = () => {
+    let phone = (voucher.customer?.phone || "").replace(/[^0-9]/g, "");
+    if (!phone) {
+      const input = window.prompt("Enter customer WhatsApp phone number (10 digits):");
+      if (!input) return;
+      phone = input.replace(/[^0-9]/g, "");
+    }
+    if (phone.length === 10) phone = `91${phone}`;
+    if (phone.length < 10) {
+      toast.error("Please enter a valid 10-digit phone number");
+      return;
+    }
+
+    const docType = isCancel ? "Cancellation Voucher" : isExchange ? "Exchange Voucher" : "Sales Return Slip";
+    const storeName = voucher.organization?.name || "BusinessOS Store";
+    const netAmt = voucher.difference !== undefined ? Math.abs(voucher.difference) : voucher.totalAmount;
+
+    const itemsList = voucher.items.map((it, i) => `${i + 1}. ${it.product_name} x ${it.quantity} = ₹${it.line_total.toFixed(2)}`).join("\n");
+    const exList = voucher.exchangeItems && voucher.exchangeItems.length > 0
+      ? `\n\nReplacement Items Issued:\n${voucher.exchangeItems.map((ex, i) => `${i + 1}. ${ex.product_name} x ${ex.quantity} = ₹${ex.line_total.toFixed(2)}`).join("\n")}`
+      : "";
+
+    const text = `🧾 *${storeName.toUpperCase()}*\n*${docType.toUpperCase()}*\nRef: *${voucher.voucherNumber}*\nOrig. Bill: *${voucher.originalInvoiceNo}*\nDate: ${voucher.voucherDate} ${voucher.voucherTime || ""}\nCustomer: ${voucher.customer?.name || "Customer"}\n\n${isCancel ? "Items Cancelled & Restocked:" : "Items Returned & Restocked:"}\n${itemsList}${exList}\n\n💵 *${isCancel ? "Total Refunded" : isExchange && voucher.difference !== undefined ? (voucher.difference > 0 ? "Net Collected" : "Net Refunded") : "Total Refund"}: ₹${netAmt.toFixed(2)}*\nSettlement: ${voucher.settlementMethod?.toUpperCase() || "CASH"}\n\nThank you for shopping with us! Please keep this slip for your records.`;
+
+    const waUrl = `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(text)}`;
+    window.open(waUrl, "_blank");
+    toast.success(`Opening WhatsApp for ${phone}`);
   };
 
   const getMethodBadge = () => {
@@ -185,33 +240,58 @@ export function StandardVoucherModal({ isOpen, onClose, voucher }: StandardVouch
   const methodBadge = getMethodBadge();
   const MethodIcon = methodBadge.icon;
 
+  const totalRestockedQty = voucher.items.reduce((s, it) => s + it.quantity, 0);
+  const totalExchangeQty = (voucher.exchangeItems || []).reduce((s, ex) => s + ex.quantity, 0);
+  const netAmount = voucher.difference !== undefined ? Math.abs(voucher.difference) : voucher.totalAmount;
+
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-3 sm:p-5 backdrop-blur-xs">
-        {/* Isolated Print Styles — prevents printing modals, backgrounds, toasts or overlays */}
+        {/* Isolated Print Styles */}
         <style dangerouslySetInnerHTML={{ __html: `
           @media print {
             body * {
               visibility: hidden !important;
             }
-            #standard-voucher-printable, #standard-voucher-printable * {
-              visibility: visible !important;
-            }
-            #standard-voucher-printable {
-              position: fixed !important;
-              left: 0 !important;
-              top: 0 !important;
-              width: 100% !important;
-              max-width: 100% !important;
-              margin: 0 !important;
-              padding: 24px !important;
-              background: #ffffff !important;
-              color: #0f172a !important;
-              box-shadow: none !important;
-              border: none !important;
-              z-index: 9999999 !important;
-              font-size: 11px !important;
-            }
+            ${printViewMode === "thermal" ? `
+              #voucher-thermal-printable, #voucher-thermal-printable * {
+                visibility: visible !important;
+              }
+              #voucher-thermal-printable {
+                position: fixed !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                max-width: ${paperSize === "58mm" ? "48mm" : "72mm"} !important;
+                margin: 0 auto !important;
+                padding: 2mm 0 !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                box-shadow: none !important;
+                border: none !important;
+                z-index: 9999999 !important;
+                font-family: 'Courier New', Courier, monospace !important;
+              }
+            ` : `
+              #standard-voucher-printable, #standard-voucher-printable * {
+                visibility: visible !important;
+              }
+              #standard-voucher-printable {
+                position: fixed !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                margin: 0 !important;
+                padding: 24px !important;
+                background: #ffffff !important;
+                color: #0f172a !important;
+                box-shadow: none !important;
+                border: none !important;
+                z-index: 9999999 !important;
+                font-size: 11px !important;
+              }
+            `}
             .voucher-no-print, [data-sonner-toaster], .sonner-toast, header, nav, aside {
               display: none !important;
             }
@@ -222,37 +302,116 @@ export function StandardVoucherModal({ isOpen, onClose, voucher }: StandardVouch
           initial={{ opacity: 0, scale: 0.95, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 10 }}
-          className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[92vh] border border-slate-200 voucher-modal-container"
+          className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full overflow-hidden flex flex-col max-h-[92vh] border border-slate-200 voucher-modal-container"
         >
           {/* Modal Toolbar (hidden during print) */}
-          <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between voucher-no-print">
-            <div className="flex items-center gap-2">
-              {isCancel ? (
-                <AlertTriangle className="w-4 h-4 text-rose-400" />
-              ) : isExchange ? (
-                <ArrowRightLeft className="w-4 h-4 text-indigo-400" />
-              ) : (
-                <RotateCcw className="w-4 h-4 text-rose-400" />
-              )}
-              <span className="text-xs font-bold tracking-tight uppercase">
-                {isCancel
-                  ? "Invoice Cancellation Voucher"
-                  : isExchange
-                  ? "Merchandise Exchange Voucher"
-                  : "Sales Return Slip & Voucher"}
-              </span>
+          <div className="p-3.5 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3 voucher-no-print">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                {isCancel ? (
+                  <AlertTriangle className="w-4 h-4 text-rose-400" />
+                ) : isExchange ? (
+                  <ArrowRightLeft className="w-4 h-4 text-indigo-400" />
+                ) : (
+                  <RotateCcw className="w-4 h-4 text-rose-400" />
+                )}
+                <span className="text-xs font-bold tracking-tight uppercase">
+                  {isCancel
+                    ? "Invoice Cancellation"
+                    : isExchange
+                    ? "Product Exchange"
+                    : "Sales Return"}
+                </span>
+              </div>
+
+              {/* View Format Switcher */}
+              <div className="flex items-center bg-slate-800/90 p-0.5 rounded-lg border border-slate-700 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setPrintViewMode("a4")}
+                  className={`px-2.5 py-1 rounded-md font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                    printViewMode === "a4"
+                      ? "bg-indigo-600 text-white shadow-xs"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  A4 Slip
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrintViewMode("thermal")}
+                  className={`px-2.5 py-1 rounded-md font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                    printViewMode === "thermal"
+                      ? "bg-emerald-600 text-white shadow-xs"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <Receipt className="w-3.5 h-3.5" />
+                  Thermal Receipt
+                </button>
+              </div>
             </div>
+
             <div className="flex items-center gap-2">
+              {printViewMode === "thermal" && (
+                <div className="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 text-[11px] font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setPaperSize("80mm")}
+                    className={`px-2 py-0.5 rounded transition ${
+                      paperSize === "80mm" ? "bg-slate-700 text-emerald-400" : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    80mm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaperSize("58mm")}
+                    className={`px-2 py-0.5 rounded transition ${
+                      paperSize === "58mm" ? "bg-slate-700 text-emerald-400" : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    58mm
+                  </button>
+                </div>
+              )}
+
+              {/* Quick Action Buttons */}
               <button
-                onClick={handlePrint}
-                className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                type="button"
+                onClick={handlePrintThermal}
+                disabled={isPrintingThermal}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-sm disabled:opacity-50"
+                title="Send directly to POS Thermal Printer"
+              >
+                <Receipt className="w-3.5 h-3.5" />
+                Thermal Print
+              </button>
+
+              <button
+                type="button"
+                onClick={handlePrintA4}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-sm"
+                title="Print full A4 Document"
               >
                 <Printer className="w-3.5 h-3.5" />
-                Print Voucher
+                Print A4
               </button>
+
               <button
+                type="button"
+                onClick={handleSendWhatsApp}
+                className="p-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg transition cursor-pointer"
+                title="Share Slip on WhatsApp"
+              >
+                <MessageCircle className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
                 onClick={onClose}
-                className="p-1 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition cursor-pointer"
+                className="p-1.5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -260,10 +419,291 @@ export function StandardVoucherModal({ isOpen, onClose, voucher }: StandardVouch
           </div>
 
           {/* ═════════════════════════════════════════════════════════════ */}
-          {/* PRINTABLE SLIP DOCUMENT BODY                                  */}
+          {/* VIEW MODE 1: THERMAL RECEIPT LIVE SIMULATION                  */}
+          {/* ═════════════════════════════════════════════════════════════ */}
+          {printViewMode === "thermal" && (
+            <div className="flex-1 overflow-y-auto bg-slate-100 p-4 sm:p-6 flex justify-center">
+              <div
+                id="voucher-thermal-printable"
+                style={{ width: paperSize === "58mm" ? "280px" : "360px" }}
+                className="bg-white p-4 sm:p-5 shadow-lg border border-slate-300 text-black font-mono text-[11px] leading-snug rounded-sm"
+              >
+                {/* Top Tear Edge */}
+                <div className="text-center text-[8px] tracking-widest text-slate-400 mb-2 select-none">
+                  - - - - - - - - - - - - - - - - - - - - - - -
+                </div>
+
+                {/* Organization Header */}
+                <div className="text-center font-bold text-sm tracking-tight uppercase">
+                  {voucher.organization.name || "Business Enterprise"}
+                </div>
+                {voucher.organization.address && (
+                  <div className="text-center text-[9px] text-slate-600 mt-0.5">
+                    {voucher.organization.address}
+                    {voucher.organization.city ? `, ${voucher.organization.city}` : ""}
+                  </div>
+                )}
+                <div className="text-center text-[9px] text-slate-600 mt-0.5">
+                  {voucher.organization.gstin && <span>GSTIN: <b>{voucher.organization.gstin}</b> </span>}
+                  {voucher.organization.phone && <span>Ph: {voucher.organization.phone}</span>}
+                </div>
+
+                <div className="text-center my-2 font-bold select-none text-slate-400">
+                  ========================================
+                </div>
+
+                {/* Voucher Title Box */}
+                <div className="border-2 border-black p-1 text-center font-black tracking-wider text-xs uppercase my-1">
+                  {isCancel
+                    ? "INVOICE CANCELLATION"
+                    : isExchange
+                    ? "MERCHANDISE EXCHANGE"
+                    : "SALES RETURN & REFUND"}
+                </div>
+                <div className="text-center text-[9px] font-bold tracking-wide text-slate-600 mb-1">
+                  * {isCancel ? "OFFICIAL RESTOCK VOUCHER" : isExchange ? "LIVE SWAP & SETTLEMENT" : "OFFICIAL CREDIT / REFUND SLIP"} *
+                </div>
+
+                <div className="text-center my-1.5 text-slate-400 select-none">
+                  ----------------------------------------
+                </div>
+
+                {/* Metadata */}
+                <div className="space-y-0.5 text-[10px]">
+                  <div className="flex justify-between">
+                    <span>VOUCHER #:</span>
+                    <span className="font-bold">{voucher.voucherNumber}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>DATE & TIME:</span>
+                    <span>{voucher.voucherDate} {voucher.voucherTime || ""}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>AGAINST BILL:</span>
+                    <span className="font-bold">{voucher.originalInvoiceNo}</span>
+                  </div>
+                  {voucher.originalInvoiceDate && (
+                    <div className="flex justify-between">
+                      <span>ORIG. DATE:</span>
+                      <span>{voucher.originalInvoiceDate}</span>
+                    </div>
+                  )}
+                  {voucher.creditNoteNumber && (
+                    <div className="flex justify-between font-bold text-indigo-700">
+                      <span>CREDIT NOTE #:</span>
+                      <span>{voucher.creditNoteNumber}</span>
+                    </div>
+                  )}
+                  {voucher.debitNoteNumber && (
+                    <div className="flex justify-between font-bold text-amber-700">
+                      <span>DEBIT NOTE #:</span>
+                      <span>{voucher.debitNoteNumber}</span>
+                    </div>
+                  )}
+                  {voucher.exchangeInvoiceNumber && (
+                    <div className="flex justify-between font-bold text-purple-700">
+                      <span>EXCHANGE BILL #:</span>
+                      <span>{voucher.exchangeInvoiceNumber}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span>CASHIER:</span>
+                    <span>{voucher.cashierName || "Counter Staff"}</span>
+                  </div>
+                </div>
+
+                <div className="text-center my-1.5 text-slate-400 select-none">
+                  ----------------------------------------
+                </div>
+
+                {/* Customer Details */}
+                <div className="space-y-0.5 text-[10px]">
+                  <div className="flex justify-between">
+                    <span>CUSTOMER:</span>
+                    <span className="font-bold">{voucher.customer.name || "Walk-in Guest"}</span>
+                  </div>
+                  {voucher.customer.phone && (
+                    <div className="flex justify-between">
+                      <span>PHONE:</span>
+                      <span>{voucher.customer.phone}</span>
+                    </div>
+                  )}
+                  {voucher.customer.gstin && (
+                    <div className="flex justify-between">
+                      <span>GSTIN:</span>
+                      <span>{voucher.customer.gstin}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="text-center my-2 font-bold select-none text-slate-400">
+                  ========================================
+                </div>
+
+                {/* Returned Items */}
+                <div className="font-bold text-[10px] uppercase mb-1">
+                  {isCancel ? "CANCELLED ITEMS (RESTOCKED):" : "RETURNED ITEMS (RESTOCKED):"}
+                </div>
+                <table className="w-full text-left text-[10px] border-collapse">
+                  <thead>
+                    <tr className="border-b border-dashed border-black">
+                      <th className="py-1">ITEM</th>
+                      <th className="py-1 text-center w-10">QTY</th>
+                      <th className="py-1 text-right w-14">RATE</th>
+                      <th className="py-1 text-right w-16">TOTAL</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {voucher.items.map((it, idx) => (
+                      <tr key={idx} className="border-b border-dotted border-slate-200">
+                        <td className="py-1 pr-1">
+                          <div className="font-bold">{idx + 1}. {it.product_name}</div>
+                          {it.sku && <div className="text-[8px] text-slate-500">SKU: {it.sku}</div>}
+                          {it.reason && <div className="text-[8px] text-slate-500 italic">Reas: {it.reason}</div>}
+                        </td>
+                        <td className="py-1 text-center font-bold">{it.quantity}</td>
+                        <td className="py-1 text-right">{formatCurrency(it.unit_price)}</td>
+                        <td className="py-1 text-right font-bold">{formatCurrency(it.line_total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="text-right font-bold text-[9px] mt-1 text-emerald-700">
+                  ✔ {totalRestockedQty} Product(s) Restocked to Inventory
+                </div>
+
+                {/* Exchange Items if any */}
+                {voucher.exchangeItems && voucher.exchangeItems.length > 0 && (
+                  <>
+                    <div className="text-center my-1.5 text-slate-400 select-none">
+                      ----------------------------------------
+                    </div>
+                    <div className="font-bold text-[10px] uppercase mb-1 text-purple-800">
+                      ISSUED REPLACEMENT ITEMS:
+                    </div>
+                    <table className="w-full text-left text-[10px] border-collapse">
+                      <thead>
+                        <tr className="border-b border-dashed border-black">
+                          <th className="py-1">ITEM</th>
+                          <th className="py-1 text-center w-10">QTY</th>
+                          <th className="py-1 text-right w-14">RATE</th>
+                          <th className="py-1 text-right w-16">TOTAL</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {voucher.exchangeItems.map((ex, idx) => (
+                          <tr key={idx} className="border-b border-dotted border-slate-200">
+                            <td className="py-1 font-bold">{idx + 1}. {ex.product_name}</td>
+                            <td className="py-1 text-center font-bold">{ex.quantity}</td>
+                            <td className="py-1 text-right">{formatCurrency(ex.unit_price)}</td>
+                            <td className="py-1 text-right font-bold">{formatCurrency(ex.line_total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="text-right font-bold text-[9px] mt-1 text-purple-700">
+                      Total Replacement Units: {totalExchangeQty}
+                    </div>
+                  </>
+                )}
+
+                <div className="text-center my-2 font-bold select-none text-slate-400">
+                  ========================================
+                </div>
+
+                {/* Reversal Financial Breakdown */}
+                <div className="space-y-1 text-[10px]">
+                  <div className="flex justify-between">
+                    <span>Gross Return Value:</span>
+                    <span className="font-bold">{formatCurrency(voucher.subtotal)}</span>
+                  </div>
+                  {voucher.taxAmount > 0 && (
+                    <div className="flex justify-between text-emerald-700 font-semibold">
+                      <span>GST Tax Reversal:</span>
+                      <span>{formatCurrency(voucher.taxAmount)}</span>
+                    </div>
+                  )}
+                  {voucher.exchangeTotal !== undefined && (
+                    <div className="flex justify-between text-purple-700 font-semibold">
+                      <span>Replacement Goods Total:</span>
+                      <span>{formatCurrency(voucher.exchangeTotal)}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Grand Net Box */}
+                <div className="border-2 border-dashed border-black p-2 my-2 flex justify-between items-center text-xs font-black">
+                  <span>
+                    {isCancel
+                      ? "TOTAL REFUNDED:"
+                      : isExchange && voucher.difference !== undefined
+                      ? voucher.difference > 0
+                        ? "NET COLLECTED:"
+                        : "NET REFUNDED:"
+                      : "TOTAL REFUND:"}
+                  </span>
+                  <span className="text-sm">
+                    {formatCurrency(netAmount)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between text-[10px] font-bold">
+                  <span>SETTLEMENT:</span>
+                  <span>[ {methodBadge.label.toUpperCase()} ]</span>
+                </div>
+
+                <div className="text-[8.5px] italic text-slate-600 bg-slate-50 p-1.5 rounded border border-slate-200 mt-1">
+                  Words: {numberToWordsINR(netAmount)}
+                </div>
+
+                <div className="text-center my-1.5 text-slate-400 select-none">
+                  ----------------------------------------
+                </div>
+
+                <div className="text-center font-bold text-[9px] text-emerald-700">
+                  ✔ RESTOCKED & VERIFIED INVENTORY
+                </div>
+
+                {voucher.reason && (
+                  <div className="text-[8.5px] border border-dotted border-black p-1.5 my-1.5">
+                    <b>REASON / NOTES:</b> {voucher.reason}
+                  </div>
+                )}
+
+                {/* Signatures */}
+                <div className="flex justify-between items-end pt-4 text-[9px]">
+                  <div className="text-center w-28">
+                    <div className="border-t border-dashed border-black mb-0.5"></div>
+                    Customer Sign
+                  </div>
+                  <div className="text-center w-28">
+                    <div className="border-t border-dashed border-black mb-0.5"></div>
+                    Authorized Sign
+                  </div>
+                </div>
+
+                <div className="text-center my-2 text-slate-400 select-none">
+                  ----------------------------------------
+                </div>
+                <div className="text-center font-bold text-[9px] mt-1">
+                  *** THANK YOU! VISIT AGAIN ***
+                </div>
+                <div className="text-center text-[7.5px] text-slate-500 mt-0.5">
+                  Computer-generated voucher. Valid for store audit.
+                </div>
+                <div className="text-center text-[8px] tracking-widest text-slate-400 mt-2 select-none">
+                  - - - - - - - - - - - - - - - - - - - - - - -
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ═════════════════════════════════════════════════════════════ */}
+          {/* VIEW MODE 2: STANDARD A4 SLIP DOCUMENT BODY                   */}
           {/* ═════════════════════════════════════════════════════════════ */}
           <div
             id="standard-voucher-printable"
+            style={{ display: printViewMode === "thermal" ? "none" : "block" }}
             className="p-6 sm:p-8 overflow-y-auto space-y-4 font-sans text-slate-800 bg-white"
           >
             {/* 1. Official Organization Header */}
@@ -398,7 +838,7 @@ export function StandardVoucherModal({ isOpen, onClose, voucher }: StandardVouch
               <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 <span>{isCancel ? "Cancelled Items (Inventory Restocked)" : "Returned Items (Restocked to Inventory)"}</span>
                 <span className="text-emerald-700 font-bold font-mono">
-                  {voucher.items.reduce((s, it) => s + it.quantity, 0)} Units Restocked
+                  {totalRestockedQty} Units Restocked
                 </span>
               </div>
               <div className="border border-slate-200 rounded-xl overflow-hidden">
@@ -511,13 +951,13 @@ export function StandardVoucherModal({ isOpen, onClose, voucher }: StandardVouch
                     : "Total Refund Amount:"}
                 </span>
                 <span className="font-mono text-rose-600 text-base">
-                  {formatCurrency(voucher.difference !== undefined ? Math.abs(voucher.difference) : voucher.totalAmount)}
+                  {formatCurrency(netAmount)}
                 </span>
               </div>
 
               {/* Amount in words */}
               <div className="text-[10px] text-slate-500 italic bg-white p-2 rounded border border-slate-200">
-                Amount in Words: <b>{numberToWordsINR(voucher.difference !== undefined ? Math.abs(voucher.difference) : voucher.totalAmount)}</b>
+                Amount in Words: <b>{numberToWordsINR(netAmount)}</b>
               </div>
 
               {/* Settlement Mode Pill */}
@@ -568,20 +1008,54 @@ export function StandardVoucherModal({ isOpen, onClose, voucher }: StandardVouch
           </div>
 
           {/* Modal Footer Controls (hidden during print) */}
-          <div className="p-3.5 bg-slate-50 border-t border-slate-200 flex justify-end gap-2 voucher-no-print">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200/60 rounded-xl transition cursor-pointer"
-            >
-              Close
-            </button>
-            <button
-              onClick={handlePrint}
-              className="px-5 py-2 text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              Print Voucher
-            </button>
+          <div className="p-3.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 voucher-no-print">
+            <div className="flex items-center gap-2">
+              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border ${methodBadge.color}`}>
+                <MethodIcon className="w-3.5 h-3.5" />
+                {methodBadge.label}
+              </span>
+              <span className="text-xs text-slate-500 font-semibold hidden sm:inline">
+                • Ref: {voucher.voucherNumber}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSendWhatsApp}
+                className="px-3.5 py-2 text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                title="Send Slip to Customer on WhatsApp"
+              >
+                <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                WhatsApp
+              </button>
+              <button
+                type="button"
+                onClick={handlePrintThermal}
+                disabled={isPrintingThermal}
+                className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+                title="Print on POS 80mm / 58mm Thermal Printer"
+              >
+                <Receipt className="w-3.5 h-3.5" />
+                Thermal Print ({paperSize})
+              </button>
+              <button
+                type="button"
+                onClick={handlePrintA4}
+                className="px-4 py-2 text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                title="Print standard A4 Slip"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                Print A4
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-3.5 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200/60 rounded-xl transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </motion.div>
       </div>

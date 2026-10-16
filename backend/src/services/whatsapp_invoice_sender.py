@@ -17,11 +17,11 @@ from datetime import datetime
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import Company, Customer, Lead, LeadActivity, Tenant
+from src.models import Company, Customer, Lead, LeadActivity, Tenant, POSTransaction
 from src.models.erp import Invoice
 from src.services.invoice_pdf import (
     get_active_invoice_template,
@@ -462,38 +462,37 @@ async def send_pos_receipt_whatsapp(
 
     safe_receipt_number = re.sub(r"[^A-Za-z0-9_-]", "_", receipt_number)
     
-    tx = await db.scalar(
-        select(POSTransaction)
+    # Prefer the ERP Invoice if one was generated for this receipt (contains full item names, tax breakdowns, customer info)
+    inv_record = await db.scalar(
+        select(Invoice)
         .options(
-            selectinload(POSTransaction.items),
-            selectinload(POSTransaction.payments),
+            selectinload(Invoice.lines),
+            selectinload(Invoice.payments),
         )
         .where(
-            POSTransaction.receipt_number == receipt_number,
-            POSTransaction.tenant_id == tenant_id,
+            or_(
+                Invoice.reference_number == receipt_number,
+                Invoice.invoice_number == receipt_number,
+            ),
+            Invoice.tenant_id == tenant_id,
         )
     )
 
-    inv_record = None
-    if not tx:
-        from src.models.erp import Invoice
-        from sqlalchemy import or_
-        inv_record = await db.scalar(
-            select(Invoice)
+    tx = None
+    if not inv_record:
+        tx = await db.scalar(
+            select(POSTransaction)
             .options(
-                selectinload(Invoice.lines),
-                selectinload(Invoice.payments),
+                selectinload(POSTransaction.items),
+                selectinload(POSTransaction.payments),
             )
             .where(
-                or_(
-                    Invoice.reference_number == receipt_number,
-                    Invoice.invoice_number == receipt_number,
-                ),
-                Invoice.tenant_id == tenant_id,
+                POSTransaction.receipt_number == receipt_number,
+                POSTransaction.tenant_id == tenant_id,
             )
         )
 
-    target_record = tx or inv_record
+    target_record = inv_record or tx
 
     # If client did not provide thermal PDF base64, render it from the active thermal template
     if not valid_pdf:
@@ -506,6 +505,17 @@ async def send_pos_receipt_whatsapp(
                 category="thermal",
             )
             if target_record:
+                # If target_record is a POSTransaction, enrich items with product_name if missing
+                if tx and target_record is tx and getattr(tx, "items", None):
+                    p_ids = [it.product_id for it in tx.items if getattr(it, "product_id", None)]
+                    if p_ids:
+                        from src.models.inventory import Product
+                        prods = (await db.scalars(select(Product).where(Product.id.in_(p_ids)))).all()
+                        p_map = {p.id: p.name for p in prods}
+                        for it in tx.items:
+                            if it.product_id in p_map and not getattr(it, "product_name", None):
+                                setattr(it, "product_name", p_map[it.product_id])
+
                 raw_thermal_pdf = _render_thermal_receipt_pdf(target_record, thermal_tpl)
                 receipt_pdf_base64 = base64.b64encode(raw_thermal_pdf).decode("ascii")
                 valid_pdf = True
