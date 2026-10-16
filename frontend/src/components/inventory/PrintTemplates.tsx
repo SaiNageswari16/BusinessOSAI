@@ -483,7 +483,7 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     category: "invoices",
     docType: "invoice",
     description: "Modern card-style design with clean borders, high-contrast headers, and highlighted totals.",
-    isDefault: true,
+    isDefault: false,
     paperSize: "A4",
     orientation: "portrait",
     margins: "normal",
@@ -8531,6 +8531,8 @@ function LiveDocumentPreview({
         vehicle_number: (template as any).wordConfig?.customFields?.find((f: any) => f.id === "cf_veh" || f.label?.toLowerCase()?.includes("veh"))?.value || "TS 09 EA 4412",
         eway_bill_number: (template as any).wordConfig?.customFields?.find((f: any) => f.id === "cf_eway" || f.label?.toLowerCase()?.includes("eway"))?.value || "241098234190",
         challan_number: (template as any).wordConfig?.customFields?.find((f: any) => f.id === "cf_challan" || f.label?.toLowerCase()?.includes("challan"))?.value || "DC-0045",
+        custom_fields: (template as any).wordConfig?.customFields || (template as any).customFields || [],
+        invoice_custom_fields: (template as any).wordConfig?.customFields || (template as any).customFields || [],
         place_of_supply: (template as any).wordConfig?.placeOfSupplyValue || "36 - Telangana",
         items: [
           {

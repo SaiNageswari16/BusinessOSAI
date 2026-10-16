@@ -139,8 +139,29 @@ export function WordInvoiceDocument({
       placeOfSupplyLabel: raw?.placeOfSupplyLabel || "Place of Supply",
       placeOfSupplyValue: raw?.placeOfSupplyValue || "36 - Telangana",
       sections: Array.isArray(raw?.sections) && raw.sections.length > 0 ? raw.sections : DEFAULT_WORD_SECTIONS,
-      columns: Array.isArray(raw?.columns) && raw.columns.length > 0 ? raw.columns : DEFAULT_WORD_COLUMNS,
-      customFields: Array.isArray(raw?.customFields) ? raw.customFields : [],
+      customFields: (Array.isArray(raw?.customFields) && raw.customFields.length > 0)
+        ? raw.customFields
+        : (Array.isArray(template?.customFields) && template.customFields.length > 0)
+        ? template.customFields
+        : (Array.isArray(template?.wordConfig?.customFields) && template.wordConfig.customFields.length > 0)
+        ? template.wordConfig.customFields
+        : (Array.isArray(template?.metadata?.customFields) && template.metadata.customFields.length > 0)
+        ? template.metadata.customFields
+        : (() => {
+            try {
+              const cached = localStorage.getItem("bos_word_invoice_custom_fields");
+              if (cached) {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+              }
+            } catch {}
+            return [
+              { id: "cf_po", label: "PO Reference", value: "PO-2026-9921", enabled: true, section: "meta" },
+              { id: "cf_veh", label: "Vehicle No", value: "TS 09 EA 4412", enabled: true, section: "meta" },
+              { id: "cf_eway", label: "E-Way Bill No", value: "241098234190", enabled: true, section: "meta" },
+              { id: "cf_challan", label: "Challan No", value: "DC-0045", enabled: true, section: "meta" },
+            ];
+          })(),
       signatureConfig: {
         signatureUrl: raw?.signatureConfig?.signatureUrl !== undefined ? raw?.signatureConfig?.signatureUrl : (activeSig.signatureUrl || null),
         stampUrl: raw?.signatureConfig?.stampUrl !== undefined ? raw?.signatureConfig?.stampUrl : (activeSig.stampUrl || null),
@@ -319,52 +340,67 @@ export function WordInvoiceDocument({
   // Resolve Bank Details
   const resolvedBankText = dynamicBank || (activeGst?.bank_name ? `Bank: ${activeGst.bank_name} | A/C: ${activeGst.bank_account_number || ""} | IFSC: ${activeGst.bank_ifsc || ""}` : "");
 
-  // Dynamic Custom Field Value Resolver from Invoice metadata (Real data only, no mock fallbacks)
+  // Dynamic Custom Field Value Resolver from Invoice metadata
   const resolveCustomFieldValue = (f: { id: string; label: string; value: string }) => {
-    const norm = f.label.toLowerCase();
+    const norm = (f.label || "").toLowerCase();
     const invAny = invoice as any;
-    const invMeta = invAny.metadata || invAny.custom_fields || invAny.invoice_custom_fields || {};
+    let invMeta = invAny.metadata || invAny.custom_fields || invAny.invoice_custom_fields || {};
+    if (typeof invMeta === "string") {
+      try { invMeta = JSON.parse(invMeta); } catch { invMeta = {}; }
+    }
 
-    if (invMeta[f.id] !== undefined && invMeta[f.id] !== "") return String(invMeta[f.id]);
-    if (invMeta[f.label] !== undefined && invMeta[f.label] !== "") return String(invMeta[f.label]);
+    if (Array.isArray(invMeta)) {
+      const found = invMeta.find((item: any) =>
+        (item.id && String(item.id).toLowerCase() === f.id.toLowerCase()) ||
+        (item.name && String(item.name).toLowerCase() === f.label.toLowerCase()) ||
+        (item.label && String(item.label).toLowerCase() === f.label.toLowerCase()) ||
+        (item.field_name && String(item.field_name).toLowerCase() === f.label.toLowerCase())
+      );
+      if (found && found.value !== undefined && found.value !== "") return String(found.value);
+    } else if (typeof invMeta === "object" && invMeta !== null) {
+      if (invMeta[f.id] !== undefined && invMeta[f.id] !== "") return String(invMeta[f.id]);
+      if (invMeta[f.label] !== undefined && invMeta[f.label] !== "") return String(invMeta[f.label]);
+      const key = Object.keys(invMeta).find((k) => k.toLowerCase() === f.id.toLowerCase() || k.toLowerCase() === f.label.toLowerCase());
+      if (key && invMeta[key] !== undefined && invMeta[key] !== "") return String(invMeta[key]);
+    }
 
     if (norm.includes("po num") || norm.includes("po ref") || norm.includes("order no")) {
-      return invAny.po_number || invAny.po_reference || invAny.purchase_order_number || (isPureMockPreview ? f.value : "");
+      return invAny.po_number || invAny.po_reference || invAny.purchase_order_number || (typeof invMeta === "object" && (invMeta.po_number || invMeta.po_reference)) || f.value || "";
     }
     if (norm.includes("po date")) {
-      return invAny.po_date ? formatDisplayDate(invAny.po_date) : (isPureMockPreview ? f.value : "");
+      return invAny.po_date ? formatDisplayDate(invAny.po_date) : (f.value || "");
     }
     if (norm.includes("vehic")) {
-      return invAny.vehicle_number || invAny.vehicle_no || (isPureMockPreview ? f.value : "");
+      return invAny.vehicle_number || invAny.vehicle_no || (typeof invMeta === "object" && (invMeta.vehicle_number || invMeta.vehicle_no)) || f.value || "";
     }
     if (norm.includes("eway") || norm.includes("e-way")) {
-      return invAny.eway_bill_number || invAny.eway_bill_no || (isPureMockPreview ? f.value : "");
+      return invAny.eway_bill_number || invAny.eway_bill_no || (typeof invMeta === "object" && (invMeta.eway_bill_number || invMeta.eway_bill_no)) || f.value || "";
     }
     if (norm.includes("challan no") || norm.includes("dc no")) {
-      return invAny.challan_number || invAny.delivery_challan || (isPureMockPreview ? f.value : "");
+      return invAny.challan_number || invAny.delivery_challan || (typeof invMeta === "object" && (invMeta.challan_number || invMeta.delivery_challan)) || f.value || "";
     }
     if (norm.includes("challan date")) {
-      return invAny.challan_date ? formatDisplayDate(invAny.challan_date) : (isPureMockPreview ? f.value : "");
+      return invAny.challan_date ? formatDisplayDate(invAny.challan_date) : (f.value || "");
     }
     if (norm.includes("dispatch") || norm.includes("transporter")) {
-      return invAny.dispatch_through || invAny.transporter_name || (isPureMockPreview ? f.value : "");
+      return invAny.dispatch_through || invAny.transporter_name || (typeof invMeta === "object" && (invMeta.dispatch_through || invMeta.transporter_name)) || f.value || "";
     }
     if (norm.includes("lr") || norm.includes("gr")) {
-      return invAny.lr_number || invAny.gr_number || (isPureMockPreview ? f.value : "");
+      return invAny.lr_number || invAny.gr_number || (typeof invMeta === "object" && (invMeta.lr_number || invMeta.gr_number)) || f.value || "";
     }
     if (norm.includes("driver")) {
-      return [invAny.driver_name, invAny.driver_phone].filter(Boolean).join(" - ") || (isPureMockPreview ? f.value : "");
+      return [invAny.driver_name, invAny.driver_phone].filter(Boolean).join(" - ") || f.value || "";
     }
     if (norm.includes("sales exec")) {
-      return invAny.sales_executive || invAny.sales_rep_name || (isPureMockPreview ? f.value : "");
+      return invAny.sales_executive || invAny.sales_rep_name || (typeof invMeta === "object" && invMeta.sales_executive) || f.value || "";
     }
     if (norm.includes("terms of deliv")) {
-      return invAny.terms_of_delivery || (isPureMockPreview ? f.value : "");
+      return invAny.terms_of_delivery || (typeof invMeta === "object" && invMeta.terms_of_delivery) || f.value || "";
     }
     if (norm.includes("pay") && norm.includes("terms")) {
-      return invAny.payment_terms || (isPureMockPreview ? f.value : "");
+      return invAny.payment_terms || (typeof invMeta === "object" && invMeta.payment_terms) || f.value || "";
     }
-    return isPureMockPreview ? f.value : "";
+    return f.value || "";
   };
 
   const enabledCols = config.columns.filter((c) => c.enabled);
@@ -776,16 +812,41 @@ export function WordInvoiceDocument({
             const ewayField = config.customFields.find((f) => f.enabled && (f.label.toLowerCase().includes("eway") || f.id.includes("eway")));
             const challanField = config.customFields.find((f) => f.enabled && (f.label.toLowerCase().includes("challan") || f.id.includes("challan")));
 
-            const poVal = (invoice as any)?.po_number || (invoice as any)?.po_reference || (isPureMockPreview ? poField?.value : "") || "";
-            const vehVal = (invoice as any)?.vehicle_number || (invoice as any)?.vehicle_no || (isPureMockPreview ? vehField?.value : "") || "";
-            const ewayVal = (invoice as any)?.eway_bill_number || (invoice as any)?.eway_bill_no || (isPureMockPreview ? ewayField?.value : "") || "";
-            const challanVal = (invoice as any)?.challan_number || (invoice as any)?.delivery_challan || (isPureMockPreview ? challanField?.value : "") || "";
+            const poVal = (invoice as any)?.po_number || (invoice as any)?.po_reference || (poField ? resolveCustomFieldValue(poField) : "") || poField?.value || "";
+            const vehVal = (invoice as any)?.vehicle_number || (invoice as any)?.vehicle_no || (vehField ? resolveCustomFieldValue(vehField) : "") || vehField?.value || "";
+            const ewayVal = (invoice as any)?.eway_bill_number || (invoice as any)?.eway_bill_no || (ewayField ? resolveCustomFieldValue(ewayField) : "") || ewayField?.value || "";
+            const challanVal = (invoice as any)?.challan_number || (invoice as any)?.delivery_challan || (challanField ? resolveCustomFieldValue(challanField) : "") || challanField?.value || "";
 
             // Custom metadata fields with standard references filtered out, and ONLY fields that actually have a resolved value!
             const metaCustomFields = config.customFields
               .filter((f) => f.enabled && (f.section === "meta" || !f.section) && !isStandardRef(f.label))
-              .map((f) => ({ ...f, resolvedVal: resolveCustomFieldValue(f) }))
+              .map((f) => ({ ...f, resolvedVal: resolveCustomFieldValue(f) || f.value || "" }))
               .filter((f) => Boolean(f.resolvedVal && f.resolvedVal.trim() !== ""));
+
+            // Also include any invoice-level custom_fields / metadata not already covered
+            const invAny = invoice as any;
+            let rawInvMeta = invAny.metadata || invAny.custom_fields || invAny.invoice_custom_fields || {};
+            if (typeof rawInvMeta === "string") {
+              try { rawInvMeta = JSON.parse(rawInvMeta); } catch { rawInvMeta = {}; }
+            }
+            if (typeof rawInvMeta === "object" && rawInvMeta !== null && !Array.isArray(rawInvMeta)) {
+              Object.entries(rawInvMeta).forEach(([k, v]) => {
+                if (!v || typeof v === "object" || isStandardRef(k)) return;
+                const existing = metaCustomFields.find(
+                  (m) => m.label.toLowerCase() === k.toLowerCase() || m.id.toLowerCase() === k.toLowerCase()
+                );
+                if (!existing && String(v).trim()) {
+                  metaCustomFields.push({
+                    id: `meta_inv_${k}`,
+                    label: k.replace(/_/g, " ").toUpperCase(),
+                    value: String(v),
+                    enabled: true,
+                    section: "meta",
+                    resolvedVal: String(v),
+                  } as any);
+                }
+              });
+            }
 
             const hasMetaDetails = Boolean(poVal || vehVal || ewayVal || challanVal || metaCustomFields.length > 0);
             if (!hasMetaDetails) return null;

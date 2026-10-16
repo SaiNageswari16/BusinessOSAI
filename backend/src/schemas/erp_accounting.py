@@ -244,6 +244,9 @@ class InvoiceCreate(BaseModel):
     transporter_id: str | None = None
     eway_bill_number: str | None = None
     eway_bill_date: datetime | None = None
+    challan_number: str | None = None
+    delivery_challan_number: str | None = None
+    custom_fields: dict[str, Any] | list[Any] | None = None
     template_id: str | None = None
     print_template_id: str | None = None
     sales_rep_id: uuid.UUID | None = None
@@ -305,6 +308,11 @@ class InvoiceUpdate(BaseModel):
     transporter_id: str | None = None
     eway_bill_number: str | None = None
     eway_bill_date: datetime | None = None
+    challan_number: str | None = None
+    delivery_challan_number: str | None = None
+    custom_fields: dict[str, Any] | list[Any] | None = None
+    template_id: str | None = None
+    print_template_id: str | None = None
     sales_rep_id: uuid.UUID | None = None
     sales_rep_name: str | None = None
     salesperson_name: str | None = None
@@ -348,6 +356,9 @@ class InvoiceResponse(ORMModel):
     transporter_id: str | None = None
     eway_bill_number: str | None = None
     eway_bill_date: datetime | None = None
+    challan_number: str | None = None
+    delivery_challan_number: str | None = None
+    custom_fields: dict[str, Any] | list[Any] | None = None
     template_id: str | None = None
     print_template_id: str | None = None
     sales_rep_id: uuid.UUID | None = None

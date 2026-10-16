@@ -1878,8 +1878,131 @@ def _render_stylish_pdf(invoice: Any, template: dict) -> bytes:
     pdf.set_line_width(0.3)
     pdf.line(10, y_div, 200, y_div)
 
-    # 4. CUSTOMER / DELIVERY / SUPPLY 3-COLUMN CARD
+    # 3.5 COMMERCIAL & SHIPMENT REFERENCES CARD
+    word_cfg = template.get("wordConfig") if isinstance(template.get("wordConfig"), dict) else {}
+    ref_items: list[tuple[str, str]] = []
+
+    # 1. PO Reference
+    po_val = getattr(invoice, "po_number", None) or getattr(invoice, "reference_number", None)
+    if not po_val and isinstance(getattr(invoice, "custom_fields", None), dict):
+        po_val = invoice.custom_fields.get("po_number") or invoice.custom_fields.get("PO Reference") or invoice.custom_fields.get("PO")
+    if not po_val:
+        for cf in (word_cfg.get("customFields") or template.get("customFields") or []):
+            if isinstance(cf, dict) and "po" in str(cf.get("label", "")).lower() and cf.get("value"):
+                po_val = cf.get("value")
+                break
+    if po_val:
+        ref_items.append(("PO REFERENCE", str(po_val)))
+
+    # 2. Vehicle No
+    veh_val = getattr(invoice, "vehicle_number", None)
+    if not veh_val and isinstance(getattr(invoice, "custom_fields", None), dict):
+        veh_val = invoice.custom_fields.get("vehicle_number") or invoice.custom_fields.get("Vehicle No")
+    if not veh_val:
+        for cf in (word_cfg.get("customFields") or template.get("customFields") or []):
+            if isinstance(cf, dict) and "veh" in str(cf.get("label", "")).lower() and cf.get("value"):
+                veh_val = cf.get("value")
+                break
+    if veh_val:
+        ref_items.append(("VEHICLE NO", str(veh_val)))
+
+    # 3. E-Way Bill No
+    eway_val = getattr(invoice, "eway_bill_number", None)
+    if not eway_val and isinstance(getattr(invoice, "custom_fields", None), dict):
+        eway_val = invoice.custom_fields.get("eway_bill_number") or invoice.custom_fields.get("E-Way Bill No")
+    if not eway_val:
+        for cf in (word_cfg.get("customFields") or template.get("customFields") or []):
+            if isinstance(cf, dict) and "eway" in str(cf.get("label", "")).lower() and cf.get("value"):
+                eway_val = cf.get("value")
+                break
+    if eway_val:
+        ref_items.append(("E-WAY BILL NO", str(eway_val)))
+
+    # 4. Challan No
+    challan_val = getattr(invoice, "challan_number", None) or getattr(invoice, "delivery_challan_number", None)
+    if not challan_val and isinstance(getattr(invoice, "custom_fields", None), dict):
+        challan_val = invoice.custom_fields.get("challan_number") or invoice.custom_fields.get("Challan No")
+    if not challan_val:
+        for cf in (word_cfg.get("customFields") or template.get("customFields") or []):
+            if isinstance(cf, dict) and "challan" in str(cf.get("label", "")).lower() and cf.get("value"):
+                challan_val = cf.get("value")
+                break
+    if challan_val:
+        ref_items.append(("CHALLAN NO", str(challan_val)))
+
+    # 5. Driver Details
+    d_name = getattr(invoice, "driver_name", None)
+    d_phone = getattr(invoice, "driver_phone", None)
+    driver_val = " - ".join(filter(None, [d_name, d_phone]))
+    if not driver_val and isinstance(getattr(invoice, "custom_fields", None), dict):
+        driver_val = invoice.custom_fields.get("driver_name_phone") or invoice.custom_fields.get("Driver Name & Phone")
+    if not driver_val:
+        for cf in (word_cfg.get("customFields") or template.get("customFields") or []):
+            if isinstance(cf, dict) and "driver" in str(cf.get("label", "")).lower() and cf.get("value"):
+                driver_val = cf.get("value")
+                break
+    if driver_val:
+        ref_items.append(("DRIVER / CONTACT", str(driver_val)))
+
+    # 6. Additional custom fields from invoice.custom_fields
+    raw_cfs = getattr(invoice, "custom_fields", None)
+    if isinstance(raw_cfs, str):
+        try:
+            raw_cfs = json.loads(raw_cfs)
+        except Exception:
+            raw_cfs = None
+    if isinstance(raw_cfs, dict):
+        standard_keys = {
+            "po_number", "po_reference", "po reference", "vehicle_number", "vehicle_no",
+            "vehicle no", "eway_bill_number", "eway_bill_no", "e-way bill no", "challan_number",
+            "challan no", "driver_name", "driver_phone", "driver", "driver name & phone",
+            "print_template_id", "template_id"
+        }
+        for k, v in raw_cfs.items():
+            if str(k).lower() not in standard_keys and v and not isinstance(v, (dict, list)):
+                ref_items.append((str(k).replace("_", " ").upper(), str(v)))
+
+    # 7. Additional custom fields from template customFields
+    for cf in (word_cfg.get("customFields") or template.get("customFields") or []):
+        if isinstance(cf, dict) and cf.get("enabled", True):
+            lbl = str(cf.get("label") or cf.get("name") or "").strip()
+            val = str(cf.get("value") or "").strip()
+            norm_lbl = lbl.lower()
+            if lbl and val and not any(r[0].lower() == norm_lbl for r in ref_items):
+                if not any(k in norm_lbl for k in ("po", "veh", "eway", "challan", "driver")):
+                    ref_items.append((lbl.upper(), val))
+
     y_card = y_div + 2.5
+    if ref_items:
+        ref_h = 13.0
+        pdf.set_fill_color(248, 250, 252)
+        pdf.set_draw_color(226, 232, 240)
+        pdf.rect(10, y_card, 190, ref_h, style="FD", round_corners=True, corner_radius=1.5)
+
+        pdf.set_xy(13, y_card + 1.2)
+        pdf.set_font("Helvetica", "B", 6.0)
+        pdf.set_text_color(148, 163, 184)
+        pdf.cell(140, 2.8, "COMMERCIAL & SHIPMENT REFERENCES", ln=0)
+        pdf.set_font("Helvetica", "", 5.5)
+        pdf.cell(44, 2.8, "REF-TAG", align="R", ln=1)
+
+        cols_count = min(6, len(ref_items))
+        item_w = 184.0 / max(1, cols_count)
+        for idx, (label, val) in enumerate(ref_items[:6]):
+            it_x = 13 + (idx * item_w)
+            pdf.set_xy(it_x, y_card + 4.2)
+            pdf.set_font("Helvetica", "B", 6.0)
+            pdf.set_text_color(100, 116, 139)
+            pdf.cell(item_w - 2, 2.8, _safe_text(label, 18), ln=1)
+
+            pdf.set_xy(it_x, y_card + 7.2)
+            pdf.set_font("Helvetica", "B", 7.5)
+            pdf.set_text_color(15, 23, 42)
+            pdf.cell(item_w - 2, 3.8, _safe_text(val, 22), ln=1)
+
+        y_card += ref_h + 2.5
+
+    # 4. CUSTOMER / DELIVERY / SUPPLY 3-COLUMN CARD
     card_h = 24
     pdf.set_fill_color(248, 250, 252)  # slate-50
     pdf.set_draw_color(226, 232, 240)  # slate-200

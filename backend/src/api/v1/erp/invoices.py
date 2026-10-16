@@ -280,11 +280,12 @@ async def get_customer_invoice_summary(
     )
     invoices = res.scalars().all()
 
-    total_invoices = len(invoices)
-    total_spent = sum(float(inv.total_amount or 0) for inv in invoices)
+    valid_invoices = [inv for inv in invoices if str(inv.status or "").lower() not in ("cancelled", "voided")]
+    total_invoices = len(valid_invoices)
+    total_spent = sum(float(inv.total_amount or 0) for inv in valid_invoices)
     last_purchase_date = None
-    if invoices:
-        latest = invoices[0]
+    if valid_invoices:
+        latest = valid_invoices[0]
         last_dt = getattr(latest, "invoice_date", None) or getattr(latest, "created_at", None)
         last_purchase_date = last_dt.isoformat() if last_dt else None
 

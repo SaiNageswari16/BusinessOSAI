@@ -836,10 +836,10 @@ export function PosInvoicesHistory() {
               driver_phone: inv.driver_phone || undefined,
               transporter_name: inv.transporter_name || undefined,
               eway_bill_number: inv.eway_bill_number || undefined,
-              eway_bill_date: inv.eway_bill_date || undefined,
-              print_template_id: isThermal ? "thermal" : (inv.print_template_id || inv.template_id || inv.custom_fields?.print_template_id || inv.custom_fields?.template_id || undefined),
-              template_id: isThermal ? "thermal" : (inv.template_id || inv.print_template_id || inv.custom_fields?.template_id || undefined),
+              print_template_id: (!isThermal && inv.print_template_id !== "thermal") ? (inv.print_template_id || inv.template_id || inv.custom_fields?.print_template_id || inv.custom_fields?.template_id || undefined) : (inv.template_id && inv.template_id !== "thermal" ? inv.template_id : undefined),
+              template_id: (!isThermal && inv.template_id !== "thermal") ? (inv.template_id || inv.print_template_id || inv.custom_fields?.template_id || undefined) : undefined,
               is_pos: isThermal || Boolean(matchedTx) || Boolean(inv.is_pos),
+              receipt_format: isThermal ? "thermal" : undefined,
               custom_fields: inv.custom_fields,
               items: lines,
             });
@@ -1154,14 +1154,19 @@ export function PosInvoicesHistory() {
             payment_mode: remote.payment_method || remote.payment_terms || inv.payment_mode,
             terms: remote.terms || remote.terms_and_conditions || (inv as any).terms,
             notes: remote.notes || (inv as any).notes,
-            po_number: remote.po_number || remote.order_number || (inv as any).po_number,
+            po_number: remote.po_number || remote.order_number || (inv as any).po_number || (inv as any).po_reference || remote.custom_fields?.po_number,
             po_date: remote.po_date || (inv as any).po_date,
-            vehicle_number: remote.vehicle_number || (inv as any).vehicle_number,
+            vehicle_number: remote.vehicle_number || (inv as any).vehicle_number || remote.custom_fields?.vehicle_number,
             driver_name: remote.driver_name || (inv as any).driver_name,
             driver_phone: remote.driver_phone || (inv as any).driver_phone,
             transporter_name: remote.transporter_name || (inv as any).transporter_name,
-            eway_bill_number: remote.eway_bill_number || (inv as any).eway_bill_number,
+            eway_bill_number: remote.eway_bill_number || (inv as any).eway_bill_number || remote.custom_fields?.eway_bill_number,
             eway_bill_date: remote.eway_bill_date || (inv as any).eway_bill_date,
+            challan_number: remote.challan_number || remote.delivery_challan_number || (inv as any).challan_number || remote.custom_fields?.challan_number,
+            delivery_challan_number: remote.delivery_challan_number || remote.challan_number || (inv as any).delivery_challan_number || remote.custom_fields?.delivery_challan_number,
+            custom_fields: remote.custom_fields || (inv as any).custom_fields || remote.metadata || (inv as any).metadata,
+            invoice_custom_fields: remote.invoice_custom_fields || (inv as any).invoice_custom_fields || remote.custom_fields || (inv as any).custom_fields,
+            metadata: remote.metadata || (inv as any).metadata || remote.custom_fields || (inv as any).custom_fields,
             items: (remote.lines && remote.lines.length > 0)
               ? remote.lines.map((l: any) => ({
                 id: l.id,
@@ -1236,20 +1241,35 @@ export function PosInvoicesHistory() {
       })),
       terms: fullInvRecord.terms || fullInvRecord.terms_and_conditions,
       notes: fullInvRecord.notes,
-      po_number: fullInvRecord.po_number,
-      po_date: fullInvRecord.po_date,
-      vehicle_number: fullInvRecord.vehicle_number,
-      driver_name: fullInvRecord.driver_name,
-      driver_phone: fullInvRecord.driver_phone,
-      transporter_name: fullInvRecord.transporter_name,
-      eway_bill_number: fullInvRecord.eway_bill_number,
-      eway_bill_date: fullInvRecord.eway_bill_date,
-      challan_number: fullInvRecord.challan_number || fullInvRecord.delivery_challan_number,
-      delivery_challan_number: fullInvRecord.delivery_challan_number || fullInvRecord.challan_number,
-      print_template_id: fullInvRecord.print_template_id || fullInvRecord.template_id || (fullInvRecord as any).templateId || (fullInvRecord as any)?.custom_fields?.print_template_id || (fullInvRecord as any)?.custom_fields?.template_id,
-      template_id: fullInvRecord.template_id || fullInvRecord.print_template_id || (fullInvRecord as any).templateId || (fullInvRecord as any)?.custom_fields?.template_id,
-      custom_fields: fullInvRecord.custom_fields,
-      invoice_custom_fields: fullInvRecord.invoice_custom_fields,
+      po_number: fullInvRecord.po_number || (fullInvRecord as any)?.po_reference || (fullInvRecord.custom_fields && (fullInvRecord.custom_fields.po_number || fullInvRecord.custom_fields.po_reference)) || (inv as any)?.po_number || (inv as any)?.po_reference || undefined,
+      po_date: fullInvRecord.po_date || (fullInvRecord.custom_fields && fullInvRecord.custom_fields.po_date) || (inv as any)?.po_date || undefined,
+      vehicle_number: fullInvRecord.vehicle_number || (fullInvRecord as any)?.vehicle_no || (fullInvRecord.custom_fields && (fullInvRecord.custom_fields.vehicle_number || fullInvRecord.custom_fields.vehicle_no)) || (inv as any)?.vehicle_number || (inv as any)?.vehicle_no || undefined,
+      driver_name: fullInvRecord.driver_name || (fullInvRecord.custom_fields && fullInvRecord.custom_fields.driver_name) || (inv as any)?.driver_name || undefined,
+      driver_phone: fullInvRecord.driver_phone || (fullInvRecord.custom_fields && fullInvRecord.custom_fields.driver_phone) || (inv as any)?.driver_phone || undefined,
+      transporter_name: fullInvRecord.transporter_name || (fullInvRecord.custom_fields && fullInvRecord.custom_fields.transporter_name) || (inv as any)?.transporter_name || undefined,
+      eway_bill_number: fullInvRecord.eway_bill_number || (fullInvRecord as any)?.eway_bill_no || (fullInvRecord.custom_fields && (fullInvRecord.custom_fields.eway_bill_number || fullInvRecord.custom_fields.eway_bill_no)) || (inv as any)?.eway_bill_number || (inv as any)?.eway_bill_no || undefined,
+      eway_bill_date: fullInvRecord.eway_bill_date || (fullInvRecord.custom_fields && fullInvRecord.custom_fields.eway_bill_date) || (inv as any)?.eway_bill_date || undefined,
+      challan_number: fullInvRecord.challan_number || fullInvRecord.delivery_challan_number || (fullInvRecord.custom_fields && (fullInvRecord.custom_fields.challan_number || fullInvRecord.custom_fields.delivery_challan_number)) || (inv as any)?.challan_number || (inv as any)?.delivery_challan_number || undefined,
+      delivery_challan_number: fullInvRecord.delivery_challan_number || fullInvRecord.challan_number || (fullInvRecord.custom_fields && (fullInvRecord.custom_fields.delivery_challan_number || fullInvRecord.custom_fields.challan_number)) || (inv as any)?.delivery_challan_number || (inv as any)?.challan_number || undefined,
+      print_template_id: (() => {
+        const rawTpl = fullInvRecord.print_template_id || fullInvRecord.template_id || (fullInvRecord as any).templateId || (fullInvRecord as any)?.custom_fields?.print_template_id || (fullInvRecord as any)?.custom_fields?.template_id || (inv as any)?.print_template_id || (inv as any)?.template_id;
+        const s = String(rawTpl || "").toLowerCase().trim();
+        if (s && s !== "thermal" && s !== "pos" && !s.startsWith("tpl-thm-") && !s.includes("receipt")) {
+          return rawTpl;
+        }
+        return undefined;
+      })(),
+      template_id: (() => {
+        const rawTpl = fullInvRecord.template_id || fullInvRecord.print_template_id || (fullInvRecord as any).templateId || (fullInvRecord as any)?.custom_fields?.template_id || (inv as any)?.template_id || (inv as any)?.print_template_id;
+        const s = String(rawTpl || "").toLowerCase().trim();
+        if (s && s !== "thermal" && s !== "pos" && !s.startsWith("tpl-thm-") && !s.includes("receipt")) {
+          return rawTpl;
+        }
+        return undefined;
+      })(),
+      custom_fields: fullInvRecord.custom_fields || (inv as any).custom_fields || (inv as any).metadata,
+      invoice_custom_fields: fullInvRecord.invoice_custom_fields || (inv as any).invoice_custom_fields || (inv as any).metadata,
+      metadata: fullInvRecord.metadata || (inv as any).metadata || fullInvRecord.custom_fields || (inv as any).custom_fields,
       payment_terms: fullInvRecord.payment_mode || fullInvRecord.payment_terms,
       copy_type: copyType,
     });
@@ -1269,14 +1289,9 @@ export function PosInvoicesHistory() {
     setIsSendingWhatsApp(true);
     toast.loading(`Sending ${inv.invoice_number} to ${cleanedPhone}...`, { id: `wa-${inv.id}` });
     const isThermalInvoice = Boolean(
-      inv.print_status?.includes("Thermal") ||
-      (inv as any).is_pos ||
-      (inv as any).receipt_number ||
-      (inv as any).order_type === "pos" ||
-      inv.template_id === "thermal" ||
-      inv.print_template_id === "thermal" ||
-      inv.invoice_number?.toLowerCase().startsWith("rec-") ||
-      !(inv as any).is_credit_note
+      (inv.print_status?.includes("Thermal Only") || inv.invoice_number?.toLowerCase().startsWith("rec-") || (inv as any).receipt_number) &&
+      !inv.invoice_number?.toUpperCase().startsWith("INV-") &&
+      !inv.invoice_number?.toUpperCase().startsWith("TAX-")
     );
 
     try {
@@ -1299,14 +1314,33 @@ export function PosInvoicesHistory() {
       }
 
       if (!sent) {
-        const result = await invoicesApi.sendInvoiceToWhatsApp(inv.id, cleanedPhone);
-        if (result.error) {
-          toast.error(`WhatsApp send failed: ${result.error}`, { id: `wa-${inv.id}` });
-          return;
+        try {
+          const result = await invoicesApi.sendInvoiceToWhatsApp(inv.id, cleanedPhone);
+          if (result && !result.error) {
+            sent = true;
+          }
+        } catch (gwErr) {
+          console.warn("[PosInvoicesHistory] Automated WhatsApp gateway send failed, offering direct link:", gwErr);
         }
       }
 
-      toast.success(`Receipt ${inv.invoice_number} sent via WhatsApp to ${cleanedPhone}!`, { id: `wa-${inv.id}` });
+      if (!sent) {
+        // Fallback: Open WhatsApp direct chat with formatted summary
+        const grandTotal = Number(inv.total_amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+        const text = encodeURIComponent(
+          `Hello ${inv.customer_name || 'Customer'},\n\n` +
+          `Here is your Tax Invoice from our store:\n` +
+          `📄 *Invoice No:* ${inv.invoice_number}\n` +
+          `📅 *Date:* ${inv.invoice_date}\n` +
+          `💰 *Total Amount:* ₹${grandTotal}\n\n` +
+          `Thank you for your business!`
+        );
+        window.open(`https://wa.me/${cleanedPhone}?text=${text}`, "_blank");
+        toast.success(`Opened WhatsApp chat for ${cleanedPhone}!`, { id: `wa-${inv.id}` });
+      } else {
+        toast.success(`Invoice ${inv.invoice_number} sent via WhatsApp to ${cleanedPhone}!`, { id: `wa-${inv.id}` });
+      }
+
       setInvoices((prev) =>
         prev.map((item) =>
           item.id === inv.id || item.invoice_number === inv.invoice_number

@@ -12,6 +12,7 @@ import {
   X,
   Calendar,
   DollarSign,
+  TrendingUp,
   ShoppingCart,
   Tag,
   Download,
@@ -595,7 +596,7 @@ export function Customers() {
         <StatCard label={t("Total Customers", "Total Customers")} value={total} icon={<Users className="size-5" />} />
         <StatCard label={t("Active", "Active")} value={stats.active} icon={<UserPlus className="size-5" />} />
         <StatCard label={t("VIP / Corporate", "VIP / Corporate")} value={stats.vip} icon={<Star className="size-5" />} />
-        <StatCard label={t("Lifetime Value", "Lifetime Value")} value={`₹${stats.totalLtv.toLocaleString()}`} icon={<DollarSign className="size-5" />} />
+        <StatCard label={t("Lifetime Value", "Lifetime Value")} value={formatCurrency(stats.totalLtv)} icon={<TrendingUp className="size-5" />} />
       </div>
 
       {/* Create / Edit Form */}

@@ -20,6 +20,12 @@ import { computeGstBreakdown, extractGstState, INDIAN_GST_STATES } from '@/lib/g
 import { loadStoredInvoiceSettings } from './InvoiceQuickSettingsModal';
 import { RealBarcodeSvg } from '@/lib/barcode-svg';
 
+export const isThermalReceiptId = (id: string | null | undefined): boolean => {
+  if (!id) return false;
+  const s = String(id).toLowerCase().trim();
+  return s === 'thermal' || s === 'pos' || s.startsWith('tpl-thm-') || s.includes('thermal') || s.includes('receipt');
+};
+
 const BUILTIN_INVOICE_OPTIONS = [
   { id: 'tpl-word-default', name: 'Custom Word-Designed Invoice', themeName: 'word_studio', isWordTemplate: true, isDefault: true },
   { id: 'tpl-inv-global-stripe', name: 'Stripe Silicon Valley Minimal (Global)', themeName: 'global_stripe', isWordTemplate: true, primaryColor: '#0f172a' },
@@ -144,8 +150,51 @@ export function FullInvoicePrinter({
   const { tenant } = useTenant();
   const printContainerRef = useRef<HTMLDivElement>(null);
 
-  const [availableTemplates, setAvailableTemplates] = useState<any[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [availableTemplates, setAvailableTemplates] = useState<any[]>(() => {
+    if (typeof window === 'undefined') return GLOBAL_INVOICE_TEMPLATES;
+    try {
+      const tid = tenant?.id || getTenantIdFromStorage();
+      const storageKey = getTenantTemplatesKey(tid);
+      const saved = localStorage.getItem(storageKey) || localStorage.getItem('businessos_print_templates_v1');
+      if (saved) {
+        const list = JSON.parse(saved);
+        if (Array.isArray(list)) {
+          const invTpls = list.filter((t: any) => t.category === 'invoices' || t.docType === 'invoice' || t.wordConfig);
+          if (invTpls.length > 0) return invTpls;
+        }
+      }
+    } catch {}
+    return GLOBAL_INVOICE_TEMPLATES;
+  });
+
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'tpl-word-default';
+    try {
+      const tid = tenant?.id || getTenantIdFromStorage();
+      const defaultsKey = getTenantDefaultsKey(tid);
+      const userActiveDefaultsRaw =
+        localStorage.getItem(defaultsKey) ||
+        localStorage.getItem(`user_active_print_templates_v1_${tid}`) ||
+        localStorage.getItem('user_active_print_templates_v1');
+      let userActiveInvoiceId: string | null = null;
+      if (userActiveDefaultsRaw) {
+        try {
+          const parsed = JSON.parse(userActiveDefaultsRaw);
+          userActiveInvoiceId = parsed.invoices || parsed.invoice || null;
+        } catch {}
+      }
+      const savedTplId =
+        userActiveInvoiceId ||
+        (tid ? localStorage.getItem(`bos_active_invoice_template_id_${tid}`) : null) ||
+        localStorage.getItem('bos_active_invoice_template_id') ||
+        localStorage.getItem('bos_default_inv_template_id');
+
+      if (savedTplId && !isThermalReceiptId(savedTplId)) {
+        return savedTplId;
+      }
+    } catch {}
+    return 'tpl-word-default';
+  });
   const [fetchedReviewUrl, setFetchedReviewUrl] = useState<string | null>(null);
   const [invoiceCopyType, setInvoiceCopyType] = useState<string>(invoice?.copy_type || 'ORIGINAL FOR RECIPIENT');
   const [isPdfOverlayModalOpen, setIsPdfOverlayModalOpen] = useState(false);
@@ -168,7 +217,7 @@ export function FullInvoicePrinter({
 
       let targetPhone = phone;
       if (!targetPhone) {
-        const input = window.prompt("Enter customer WhatsApp phone number with country code (e.g. 919876543210):");
+        const input = window.prompt("Enter customer WhatsApp phone number (e.g. 9876543210):");
         if (!input) {
           setIsSendingWhatsApp(false);
           return;
@@ -176,13 +225,38 @@ export function FullInvoicePrinter({
         targetPhone = input.trim();
       }
 
+      let cleanPhone = targetPhone.replace(/[^0-9]/g, '');
+      if (cleanPhone.length === 10) cleanPhone = `91${cleanPhone}`;
+
       const invIdentifier = invoice.id || invoice.invoice_number || (invoice as any)?.proforma_number;
       toast.info(`Sending invoice #${invoice.invoice_number || invIdentifier} via WhatsApp...`);
-      const res = await invoicesApi.sendInvoiceToWhatsApp(invIdentifier, targetPhone);
-      if (res?.success) {
-        toast.success(`Invoice sent to ${targetPhone} via WhatsApp!`);
-      } else {
-        toast.warning(res?.error || "WhatsApp message status received.");
+
+      let sent = false;
+      try {
+        const res = await invoicesApi.sendInvoiceToWhatsApp(invIdentifier, cleanPhone);
+        if (res?.success) {
+          sent = true;
+          toast.success(`Invoice sent to ${cleanPhone} via WhatsApp!`);
+        }
+      } catch (gwErr: any) {
+        console.warn("Automated WhatsApp gateway dispatch failed, offering direct WhatsApp:", gwErr);
+      }
+
+      if (!sent) {
+        const orgName = template?.companyName || template?.storeName || "Our Store";
+        const grandTotal = Number(invoice.total_amount || invoice.grand_total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+        const text = encodeURIComponent(
+          `Hello ${invoice.customerName || invoice.customer_name || 'Customer'},\n\n` +
+          `Thank you for your business! Here is your Tax Invoice from *${orgName}*:\n\n` +
+          `📄 *Invoice No:* ${invoice.invoice_number || invIdentifier}\n` +
+          `📅 *Date:* ${invoice.invoice_date || new Date().toLocaleDateString('en-IN')}\n` +
+          `💰 *Total Amount:* ₹${grandTotal}\n` +
+          `💳 *Status:* ${invoice.payment_status || (invoice.balance_due === 0 ? 'Paid' : 'Due')}\n\n` +
+          (invoice.balance_due > 0 ? `⚠️ *Balance Due:* ₹${Number(invoice.balance_due).toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n\n` : '') +
+          `Please contact us for any assistance.\nRegards,\n*${orgName}*`
+        );
+        window.open(`https://wa.me/${cleanPhone}?text=${text}`, "_blank");
+        toast.success(`Opened WhatsApp chat for ${cleanPhone}!`);
       }
     } catch (err: any) {
       toast.error(err?.message || "Failed to dispatch WhatsApp message");
@@ -251,13 +325,14 @@ export function FullInvoicePrinter({
           }
         }
 
-        // 1. If this specific invoice has its own stamped template ID, prioritize it!
-        const invoiceSpecificTplId =
+        // 1. If this specific invoice has its own stamped template ID, prioritize it (ignoring thermal receipt IDs)!
+        const rawInvoiceSpecificTplId =
           invoice?.print_template_id ||
           invoice?.template_id ||
           invoice?.templateId ||
           (invoice as any)?.custom_fields?.print_template_id ||
           (invoice as any)?.custom_fields?.template_id;
+        const invoiceSpecificTplId = isThermalReceiptId(rawInvoiceSpecificTplId) ? undefined : rawInvoiceSpecificTplId;
 
         // Fetch organization templates saved in database for multi-user synchronization across same tenant
         printTemplatesApi.getTemplates('invoices').then((res) => {
@@ -277,8 +352,8 @@ export function FullInvoicePrinter({
               });
             }
           }
-          if (res?.active_map?.invoices && !invoiceSpecificTplId) {
-            setSelectedTemplateId((prev) => prev || res.active_map.invoices);
+          if (res?.active_map?.invoices && !invoiceSpecificTplId && !isThermalReceiptId(res.active_map.invoices)) {
+            setSelectedTemplateId((prev) => (!prev || isThermalReceiptId(prev) ? res.active_map.invoices : prev));
           }
         }).catch(() => {});
 
@@ -305,12 +380,12 @@ export function FullInvoicePrinter({
           localStorage.getItem('bos_active_invoice_template_id') ||
           localStorage.getItem('bos_default_inv_template_id');
 
-        if (savedTplId) {
+        if (savedTplId && !isThermalReceiptId(savedTplId)) {
           setSelectedTemplateId(savedTplId);
           invoicesApi.setActivePrintTemplate(savedTplId).catch(() => {});
         } else {
           invoicesApi.getActivePrintTemplate().then((res) => {
-            if (res?.active_template?.id) {
+            if (res?.active_template?.id && !isThermalReceiptId(res.active_template.id)) {
               setSelectedTemplateId(res.active_template.id);
             }
           }).catch(() => {});
@@ -403,14 +478,17 @@ export function FullInvoicePrinter({
 
   // ── Robust Template Resolution: Honor Invoice-Specific Stamped Template ──
   const activeMasterTemplate = getActiveInvoicePrintTemplate(tenant?.id || getTenantIdFromStorage());
-  const invoiceSpecificTplId =
+  const rawInvoiceSpecificTplId =
     invoice?.print_template_id ||
     invoice?.template_id ||
     invoice?.templateId ||
     (invoice as any)?.custom_fields?.print_template_id ||
     (invoice as any)?.custom_fields?.template_id;
+  const invoiceSpecificTplId = isThermalReceiptId(rawInvoiceSpecificTplId) ? undefined : rawInvoiceSpecificTplId;
 
-  const targetTplId = selectedTemplateId || invoiceSpecificTplId;
+  const targetTplId = (selectedTemplateId && !isThermalReceiptId(selectedTemplateId))
+    ? selectedTemplateId
+    : (invoiceSpecificTplId || activeMasterTemplate?.id || 'tpl-word-default');
 
   // 1. Direct match by ID in availableTemplates
   let resolvedTpl = availableTemplates.find((t) => t.id === targetTplId || t.themeName === targetTplId);
@@ -458,8 +536,8 @@ export function FullInvoicePrinter({
   // 4. Synthesized fallback matching the target keyword
   if (!resolvedTpl && targetTplId) {
     const norm = targetTplId.toLowerCase();
-    let themeName = 'stylish';
-    let name = 'Stylish Theme';
+    let themeName = (activeMasterTemplate?.themeName || 'word_studio');
+    let name = (activeMasterTemplate?.name || 'Custom Word-Designed Invoice');
     if (norm.includes('marg')) { themeName = 'marg_pharma'; name = 'Marg Pharma & Wholesale GST'; }
     else if (norm.includes('fmcg')) { themeName = 'fmcg_distributor'; name = 'FMCG / Food Multi-Column GST'; }
     else if (norm.includes('parle')) { themeName = 'parle_teal'; name = 'Parle Brand Teal-Header GST'; }
@@ -470,6 +548,8 @@ export function FullInvoicePrinter({
     else if (norm.includes('modern')) { themeName = 'modern'; name = 'Modern Theme'; }
     else if (norm.includes('god')) { themeName = 'culture_god'; name = 'Shubh Labh Vedic Theme'; }
     else if (norm.includes('up')) { themeName = 'culture_up'; name = 'Uttar Pradesh GST Theme'; }
+    else if (norm.includes('stylish')) { themeName = 'stylish'; name = 'Stylish Theme'; }
+    else if (norm.includes('word') || norm.includes('studio') || norm === 'tpl-word-default') { themeName = 'word_studio'; name = 'Custom Word-Designed Invoice'; }
 
     resolvedTpl = {
       id: targetTplId,
@@ -477,12 +557,12 @@ export function FullInvoicePrinter({
       themeName,
       paperSize: 'A4',
       orientation: 'portrait',
-      primaryColor: themeName === 'marg_pharma' ? '#e11d48' : themeName === 'fmcg_distributor' ? '#059669' : themeName === 'parle_teal' ? '#0f766e' : themeName === 'agri_seeds' ? '#15803d' : '#4f46e5',
+      primaryColor: themeName === 'marg_pharma' ? '#e11d48' : themeName === 'fmcg_distributor' ? '#059669' : themeName === 'parle_teal' ? '#0f766e' : themeName === 'agri_seeds' ? '#15803d' : '#0f172a',
       fields: { showHeader: true, showLogo: true, showCompanyDetails: true, showInvoiceDetails: true, showItemTable: true, showHSN: true, showTaxSplit: true, showBankDetails: true, showSignature: true, showCustomerDetails: true, showTotals: true },
     };
   }
 
-  const baseTemplate = resolvedTpl || activeMasterTemplate;
+  const baseTemplate = resolvedTpl || activeMasterTemplate || GLOBAL_INVOICE_TEMPLATES[0];
   const template = {
     ...baseTemplate,
     ...(customTemplate || {}),
@@ -549,6 +629,9 @@ export function FullInvoicePrinter({
     template?.wordConfig ||
     template?.id?.startsWith('tpl-word-') ||
     template?.id?.startsWith('tpl-inv-global-') ||
+    targetTplId === 'tpl-word-default' ||
+    targetTplId?.startsWith('tpl-word-') ||
+    targetTplId?.startsWith('tpl-inv-global-') ||
     theme === 'word_studio' ||
     template?.themeName === 'word_studio' ||
     template?.themeName?.startsWith('global_') ||

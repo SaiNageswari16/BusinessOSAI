@@ -208,13 +208,11 @@ async def send_invoice_whatsapp(
     if not phone:
         raise InvoiceSendError("Customer has no WhatsApp phone number on file.")
 
-    # 2. Load tenant's active invoice template (respect thermal template for POS/thermal bills)
+    # 2. Load tenant's active invoice template (prefer active A4 invoice template for official tax invoices)
+    raw_tpl_id = str(getattr(invoice, "print_template_id", "") or getattr(invoice, "template_id", "") or "").lower()
     is_thermal = (
-        getattr(invoice, "is_pos", False)
-        or getattr(invoice, "invoice_type", "") in ("pos", "thermal", "receipt")
-        or getattr(invoice, "template_id", "") in ("thermal", "receipt")
-        or "thermal" in str(getattr(invoice, "print_status", "")).lower()
-        or bool(getattr(invoice, "receipt_number", None))
+        (raw_tpl_id in ("thermal", "receipt") or "tpl-thm-" in raw_tpl_id)
+        and not str(getattr(invoice, "invoice_number", "")).upper().startswith(("INV-", "TAX-", "QT-", "PI-", "EST-"))
     )
     cat = "thermal" if is_thermal else "invoices"
     template = await get_active_invoice_template(db, invoice.tenant_id, getattr(invoice, "company_id", None), category=cat)
@@ -246,18 +244,13 @@ async def send_invoice_whatsapp(
             "Please connect WhatsApp from CRM → WhatsApp Automation."
         )
 
-    # 4. Use already generated/saved PDF if it exists, or generate once
+    # 4. Generate fresh PDF with the active/selected template
     try:
-        saved_pdf_path = get_invoice_pdf_path(invoice)
-        if not is_thermal and saved_pdf_path.exists() and saved_pdf_path.stat().st_size > 100:
-            logger.info("Using saved invoice PDF for WhatsApp: %s", saved_pdf_path)
-            pdf_b64 = base64.b64encode(saved_pdf_path.read_bytes()).decode("ascii")
-        else:
-            logger.info("Generating invoice PDF for WhatsApp: %s (thermal=%s)", getattr(invoice, "invoice_number", ""), is_thermal)
-            pdf_path = save_invoice_pdf(invoice, template)
-            pdf_b64 = base64.b64encode(pdf_path.read_bytes()).decode("ascii")
+        logger.info("Generating invoice PDF for WhatsApp: %s (thermal=%s)", getattr(invoice, "invoice_number", ""), is_thermal)
+        pdf_path = save_invoice_pdf(invoice, template)
+        pdf_b64 = base64.b64encode(pdf_path.read_bytes()).decode("ascii")
     except Exception as exc:
-        raise InvoiceSendError(f"Failed to retrieve/generate invoice PDF: {exc}") from exc
+        raise InvoiceSendError(f"Failed to generate invoice PDF: {exc}") from exc
 
     # 5. Send via gateway
     try:

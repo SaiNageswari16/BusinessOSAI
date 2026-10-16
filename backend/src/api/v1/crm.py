@@ -92,33 +92,81 @@ async def list_customers(
 
     # Enrich customer stats from real invoices and orders
     cust_ids = [c.id for c in customers]
-    stats_map = {}
+    stats_map = {c.id: {"ltv": 0.0, "due": 0.0, "orders": 0} for c in customers}
     if cust_ids:
         from src.models.erp import Invoice
+        cust_id_set = set(cust_ids)
+        cust_phone_map = {str(c.phone).strip(): c.id for c in customers if c.phone and str(c.phone).strip()}
+        cust_name_map = {str(c.name).strip().lower(): c.id for c in customers if c.name and str(c.name).strip() and str(c.name).strip().lower() != "walk-in customer"}
+
         inv_conds = [
             Invoice.tenant_id == ctx.tenant_id,
-            Invoice.customer_id.in_(cust_ids),
             Invoice.status != "cancelled",
         ]
         if ctx.active_company_id:
-            inv_conds.append(Invoice.company_id == ctx.active_company_id)
-        inv_stmt = (
-            select(
-                Invoice.customer_id,
-                func.coalesce(func.sum(Invoice.total_amount), 0.0).label("ltv"),
-                func.coalesce(func.sum(Invoice.balance_due), 0.0).label("due"),
-                func.count(Invoice.id).label("orders_count"),
-            )
-            .where(*inv_conds)
-            .group_by(Invoice.customer_id)
-        )
+            if getattr(ctx, "is_primary_company", False):
+                inv_conds.append(
+                    or_(
+                        Invoice.company_id == ctx.active_company_id,
+                        Invoice.company_id.is_(None)
+                    )
+                )
+            else:
+                inv_conds.append(Invoice.company_id == ctx.active_company_id)
+
+        target_matches = [Invoice.customer_id.in_(cust_ids)]
+        if cust_phone_map:
+            target_matches.append(Invoice.customer_phone.in_(list(cust_phone_map.keys())))
+        if cust_name_map:
+            for c_name_str in list(cust_name_map.keys())[:20]:
+                target_matches.append(Invoice.customer_name.ilike(f"%{c_name_str}%"))
+
+        inv_conds.append(or_(*target_matches))
+
+        inv_stmt = select(
+            Invoice.id,
+            Invoice.customer_id,
+            Invoice.customer_phone,
+            Invoice.customer_name,
+            Invoice.total_amount,
+            Invoice.balance_due,
+            Invoice.company_id
+        ).where(*inv_conds)
+
         inv_res = await db.execute(inv_stmt)
-        for r in inv_res.all():
-            stats_map[r[0]] = {
-                "ltv": float(r[1] or 0),
-                "due": float(r[2] or 0),
-                "orders": int(r[3] or 0),
-            }
+        invoices_to_link = []
+        for inv_row in inv_res.all():
+            i_id, c_id, c_phone, c_name, tot, due, comp_id = inv_row
+            matched_cust_id = None
+            if c_id and c_id in cust_id_set:
+                matched_cust_id = c_id
+            elif c_phone and str(c_phone).strip() in cust_phone_map:
+                matched_cust_id = cust_phone_map[str(c_phone).strip()]
+            elif c_name and str(c_name).strip().lower() in cust_name_map:
+                matched_cust_id = cust_name_map[str(c_name).strip().lower()]
+
+            if matched_cust_id:
+                stats_map[matched_cust_id]["ltv"] += float(tot or 0)
+                stats_map[matched_cust_id]["due"] += float(due or 0)
+                stats_map[matched_cust_id]["orders"] += 1
+
+                if c_id is None or comp_id is None:
+                    invoices_to_link.append((i_id, matched_cust_id))
+
+        if invoices_to_link:
+            try:
+                for inv_id, c_uuid in invoices_to_link:
+                    update_vals = {"customer_id": c_uuid}
+                    if ctx.active_company_id:
+                        update_vals["company_id"] = ctx.active_company_id
+                    await db.execute(
+                        update(Invoice)
+                        .where(Invoice.id == inv_id)
+                        .values(**update_vals)
+                    )
+                await db.commit()
+            except Exception as e:
+                logger.warning("Could not link orphan invoices to customer: %s", e)
 
     resp_items = []
     for c in customers:

@@ -2421,6 +2421,12 @@ export const GLOBAL_INVOICE_TEMPLATES = [
       headerStyle: "classic_split",
       tableBorderStyle: "subtle",
       primaryColor: "#0f172a",
+      customFields: [
+        { id: "cf_po", label: "PO Reference", value: "PO-2026-9921", enabled: true, section: "meta" },
+        { id: "cf_veh", label: "Vehicle No", value: "TS 09 EA 4412", enabled: true, section: "meta" },
+        { id: "cf_eway", label: "E-Way Bill No", value: "2410098234390", enabled: true, section: "meta" },
+        { id: "cf_challan", label: "Challan No", value: "DC-0045", enabled: true, section: "meta" },
+      ],
     },
     fields: {
       showHeader: true,
@@ -2741,6 +2747,9 @@ export function setActiveInvoicePrintTemplate(templateId: string, tenantId?: str
     localStorage.setItem('bos_active_invoice_template_id', templateId);
     localStorage.setItem('bos_default_inv_template_id', templateId);
 
+    if (!templateId || templateId === 'thermal' || templateId === 'pos' || String(templateId).startsWith('tpl-thm-') || String(templateId).includes('receipt')) {
+      return;
+    }
     const defaultsKey = getTenantDefaultsKey(tid);
     const rawDefaults = localStorage.getItem(defaultsKey) || localStorage.getItem('user_active_print_templates_v1');
     const parsedDefaults = rawDefaults ? JSON.parse(rawDefaults) : {};
@@ -2787,24 +2796,37 @@ export function getActiveInvoicePrintTemplate(tenantId?: string): any {
       const invTemplatesRaw = localStorage.getItem(storageKey) || localStorage.getItem('businessos_print_templates_v1');
       const userActiveDefaultsRaw = localStorage.getItem(defaultsKey) || localStorage.getItem('user_active_print_templates_v1');
 
+      const isThermal = (id: any) => {
+        if (!id) return false;
+        const s = String(id).toLowerCase().trim();
+        return s === 'thermal' || s === 'pos' || s.startsWith('tpl-thm-') || s.includes('receipt') || s.includes('thermal');
+      };
+
       const activeDefaults = userActiveDefaultsRaw ? JSON.parse(userActiveDefaultsRaw) : {};
-      const activeInvoiceId =
+      const rawActiveInvoiceId =
         activeDefaults.invoices ||
         activeDefaults.invoice ||
         (tid ? localStorage.getItem(`bos_active_invoice_template_id_${tid}`) : null) ||
         localStorage.getItem('bos_active_invoice_template_id') ||
         localStorage.getItem('bos_default_inv_template_id');
 
+      const activeInvoiceId = isThermal(rawActiveInvoiceId) ? undefined : rawActiveInvoiceId;
+
       let matched: any = null;
 
       if (invTemplatesRaw) {
         const invTemplates = JSON.parse(invTemplatesRaw);
-        matched = invTemplates.find((t: any) => t.id === activeInvoiceId);
+        if (activeInvoiceId) {
+          matched = invTemplates.find((t: any) => t.id === activeInvoiceId || t.themeName === activeInvoiceId);
+        }
         if (!matched && activeInvoiceId) {
           matched = GLOBAL_INVOICE_TEMPLATES.find((t) => t.id === activeInvoiceId || t.themeName === activeInvoiceId);
         }
         if (!matched) {
-          matched = invTemplates.find((t: any) => (t.category === 'invoices' || t.docType === 'invoice') && t.isDefault) ||
+          matched = invTemplates.find((t: any) => t.id === 'tpl-word-default' || t.themeName === 'word_studio' || t.isWordTemplate) ||
+                    GLOBAL_INVOICE_TEMPLATES.find((t) => t.id === 'tpl-word-default') ||
+                    invTemplates.find((t: any) => (t.category === 'invoices' || t.docType === 'invoice') && t.isDefault && t.id !== 'tpl-inv-stylish') ||
+                    invTemplates.find((t: any) => (t.category === 'invoices' || t.docType === 'invoice') && t.isDefault) ||
                     invTemplates.find((t: any) => t.category === 'invoices' || t.docType === 'invoice');
         }
       }
@@ -2856,38 +2878,29 @@ export function getActiveInvoicePrintTemplate(tenantId?: string): any {
     }
   }
 
-  const base = {
-    id: 'tpl-inv-stylish',
-    name: 'Stylish Theme',
+  const defaultWord = GLOBAL_INVOICE_TEMPLATES[0] || {
+    id: 'tpl-word-default',
+    name: 'Custom Word-Designed Invoice',
     category: 'invoices',
     isDefault: true,
     paperSize: 'A4',
-    primaryColor: '#2563eb',
+    primaryColor: '#0f172a',
     fontFamily: 'Inter, sans-serif',
     headerTitle: 'TAX INVOICE',
-    storeName: activeGst?.trade_name || activeGst?.legal_name || 'Organization',
-    storeAddress: activeGst?.address || '',
-    storePhone: activeGst?.phone || '',
-    gstin: activeGst?.gstin || '',
-    logoUrl: activeGst?.logo_url || '',
-    footerText: 'Thank you for your business!',
-    termsText: '1. Goods once sold will not be taken back.\n2. All disputes subject to local jurisdiction.',
-    bankDetails: '',
-    fields: {
-      showLogo: true,
-      showHSN: true,
-      showTaxSplit: true,
-      showBankDetails: true,
-      showSignature: true,
-      showCustomerDetails: true,
-      showProductName: true,
-      showPrice: true,
-      showMRP: true,
-      showSKU: true,
-      showPartyBalance: true,
-      showItemDescription: true,
-      showTime: true,
-    }
+    themeName: 'word_studio',
+    isWordTemplate: true,
+  };
+
+  const base = {
+    ...defaultWord,
+    storeName: activeGst?.trade_name || activeGst?.legal_name || (defaultWord as any).storeName || 'Organization',
+    storeAddress: activeGst?.address || (defaultWord as any).storeAddress || '',
+    storePhone: activeGst?.phone || (defaultWord as any).storePhone || '',
+    gstin: activeGst?.gstin || (defaultWord as any).gstin || '',
+    logoUrl: activeGst?.logo_url || (defaultWord as any).logoUrl || '',
+    footerText: (defaultWord as any).footerText || 'Thank you for your business!',
+    termsText: activeGst?.terms_and_conditions || (defaultWord as any).termsText || '1. Goods once sold will not be taken back.\n2. All disputes subject to local jurisdiction.',
+    bankDetails: activeGst?.bank_name ? `Bank: ${activeGst.bank_name} | A/C: ${activeGst.bank_account_number || ''} | IFSC: ${activeGst.bank_ifsc || ''}` : '',
   };
 
   return base;

@@ -407,8 +407,19 @@ export function WordInvoiceStudioModal({
       placeOfSupplyLabel: src?.placeOfSupplyLabel || "PLACE OF SUPPLY:",
       placeOfSupplyValue: src?.placeOfSupplyValue || "36 - Telangana",
       sections: src?.sections && Array.isArray(src.sections) && src.sections.length > 0 ? src.sections : DEFAULT_WORD_SECTIONS,
-      columns: src?.columns && Array.isArray(src.columns) && src.columns.length > 0 ? src.columns : (template?.columns && Array.isArray(template.columns) ? template.columns : DEFAULT_WORD_COLUMNS),
-      customFields: src?.customFields && Array.isArray(src.customFields) ? src.customFields : [],
+      customFields:
+        (src?.customFields && Array.isArray(src.customFields) && src.customFields.length > 0)
+          ? src.customFields
+          : (template?.customFields && Array.isArray(template.customFields) && template.customFields.length > 0)
+          ? template.customFields
+          : (template?.metadata?.customFields && Array.isArray(template.metadata.customFields) && template.metadata.customFields.length > 0)
+          ? template.metadata.customFields
+          : [
+              { id: "cf_po", label: "PO Reference", value: "PO-2026-9921", enabled: true, section: "meta" },
+              { id: "cf_veh", label: "Vehicle No", value: "TS 09 EA 4412", enabled: true, section: "meta" },
+              { id: "cf_eway", label: "E-Way Bill No", value: "241098234190", enabled: true, section: "meta" },
+              { id: "cf_challan", label: "Challan No", value: "DC-0045", enabled: true, section: "meta" },
+            ],
       signatureConfig: {
         signatureUrl: src?.signatureConfig?.signatureUrl !== undefined ? src?.signatureConfig?.signatureUrl : (sigDetails.signatureUrl || null),
         stampUrl: src?.signatureConfig?.stampUrl !== undefined ? src?.signatureConfig?.stampUrl : (sigDetails.stampUrl || null),
@@ -636,6 +647,8 @@ export function WordInvoiceStudioModal({
         paperSize: "a4",
         isDefault: config.isDefault,
         wordConfig: config,
+        customFields: config.customFields,
+        custom_fields: config.customFields,
         logoUrl: config.logoUrl,
         storeName: config.companyName,
         companyName: config.companyName,
@@ -725,8 +738,10 @@ export function WordInvoiceStudioModal({
         localStorage.setItem("user_active_print_templates_v1", JSON.stringify(nextDefaults));
         localStorage.setItem(`bos_active_invoice_template_id_${tenantId || 'default'}`, transformedTemplate.id);
         localStorage.setItem('bos_active_invoice_template_id', transformedTemplate.id);
+        localStorage.setItem('bos_word_invoice_custom_fields', JSON.stringify(config.customFields));
         setActiveInvoicePrintTemplate(transformedTemplate.id, tenantId);
         invoicesApi.setActivePrintTemplate(transformedTemplate.id).catch(console.warn);
+        printTemplatesApi.setActiveTemplate(transformedTemplate.id, "invoices").catch(console.warn);
       }
 
       // Persist to backend database as well so it is synced across all users and devices in this organization
