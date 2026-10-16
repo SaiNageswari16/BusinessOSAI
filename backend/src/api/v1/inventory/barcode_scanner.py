@@ -357,6 +357,8 @@ async def lookup_product_by_barcode(
         filters = [or_(Product.barcode == code, Product.sku == code)]
         if ctx and ctx.tenant_id:
             filters.append(Product.tenant_id == ctx.tenant_id)
+        if ctx and ctx.active_company_id:
+            filters.append(or_(Product.company_id == ctx.active_company_id, Product.company_id == None))
         stmt = select(Product).where(*filters)
         res = await db.execute(stmt)
         prod = res.scalars().first()
@@ -626,10 +628,14 @@ async def create_product(
     clean_name = payload.name.strip()
     existing_prod = None
 
+    company_id = ctx.active_company_id if ctx else None
+
     if clean_barcode:
         existing_filters = [Product.barcode == clean_barcode]
         if tenant_id:
             existing_filters.append(Product.tenant_id == tenant_id)
+        if company_id:
+            existing_filters.append(Product.company_id == company_id)
         existing_stmt = select(Product).where(*existing_filters)
         existing_res = await db.execute(existing_stmt)
         existing_prod = existing_res.scalars().first()
@@ -638,6 +644,8 @@ async def create_product(
         existing_filters = [func.lower(Product.name) == clean_name.lower()]
         if tenant_id:
             existing_filters.append(Product.tenant_id == tenant_id)
+        if company_id:
+            existing_filters.append(Product.company_id == company_id)
         existing_stmt = select(Product).where(*existing_filters)
         existing_res = await db.execute(existing_stmt)
         existing_prod = existing_res.scalars().first()
@@ -680,6 +688,8 @@ async def create_product(
     )
     if tenant_id:
         new_product_kwargs["tenant_id"] = tenant_id
+    if company_id:
+        new_product_kwargs["company_id"] = company_id
 
     new_product = Product(**new_product_kwargs)
 

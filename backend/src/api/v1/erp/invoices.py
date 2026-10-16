@@ -123,7 +123,8 @@ def _enrich_invoice_tax_details(invoices: list[Invoice]):
 
         is_interstate = bool(
             float(inv.igst_amount or 0) > 0
-            or (inv.customer_gstin and len(inv.customer_gstin) >= 2 and not inv.customer_gstin.startswith("37") and not inv.customer_gstin.startswith("36"))
+            or any(float(getattr(l, "igst_amount", 0) or 0) > 0 for l in (inv.lines or []))
+            or (getattr(inv, "gst_type", None) == "igst")
         )
 
         lines = inv.lines or []
@@ -144,9 +145,9 @@ def _enrich_invoice_tax_details(invoices: list[Invoice]):
             gross_after_disc = max(0.0, (qty * unit_p) - disc_amt)
 
             line_has_tax = (float(line.cgst_amount or 0) > 0 or float(line.sgst_amount or 0) > 0 or float(line.igst_amount or 0) > 0)
-            line_taxable_differs = float(line.taxable_amount or 0) > 0 and abs(float(line.taxable_amount or 0) - gross_after_disc) > 0.01
+            has_taxable = float(line.taxable_amount or 0) > 0
 
-            if line_has_tax and line_taxable_differs:
+            if line_has_tax and has_taxable:
                 l_taxable = float(line.taxable_amount)
                 l_cgst = float(line.cgst_amount or 0)
                 l_sgst = float(line.sgst_amount or 0)

@@ -95,6 +95,13 @@ async def list_customers(
     stats_map = {}
     if cust_ids:
         from src.models.erp import Invoice
+        inv_conds = [
+            Invoice.tenant_id == ctx.tenant_id,
+            Invoice.customer_id.in_(cust_ids),
+            Invoice.status != "cancelled",
+        ]
+        if ctx.active_company_id:
+            inv_conds.append(Invoice.company_id == ctx.active_company_id)
         inv_stmt = (
             select(
                 Invoice.customer_id,
@@ -102,7 +109,7 @@ async def list_customers(
                 func.coalesce(func.sum(Invoice.balance_due), 0.0).label("due"),
                 func.count(Invoice.id).label("orders_count"),
             )
-            .where(Invoice.tenant_id == ctx.tenant_id, Invoice.customer_id.in_(cust_ids))
+            .where(*inv_conds)
             .group_by(Invoice.customer_id)
         )
         inv_res = await db.execute(inv_stmt)

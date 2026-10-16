@@ -211,101 +211,32 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
         return;
       }
 
-      // Fallback to localStorage
+      // Fallback to localStorage only for real user-saved returns (purge any legacy seed data)
       const raw = localStorage.getItem(storageKey);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setReturnsList(parsed);
+        if (Array.isArray(parsed)) {
+          const cleanReturns = parsed.filter(
+            (r: any) =>
+              !String(r.id || "").startsWith("ret-seed-") &&
+              !String(r.return_number || "").startsWith("SR-20251011-001") &&
+              !String(r.return_number || "").startsWith("SR-20251010-002") &&
+              r.customer_name !== "Rahul Verma" &&
+              r.customer_name !== "Apex Retail Solutions"
+          );
+          if (cleanReturns.length !== parsed.length) {
+            localStorage.setItem(storageKey, JSON.stringify(cleanReturns));
+          }
+          setReturnsList(cleanReturns);
           setLoading(false);
           return;
         }
       }
 
-      // Pre-seed realistic returns for instant visual display
-      const initialSeed: SalesReturnRecord[] = [
-        {
-          id: "ret-seed-1",
-          return_number: "SR-20251011-001",
-          return_date: new Date().toISOString().slice(0, 10),
-          original_invoice_no: "INV-2025-1042",
-          original_invoice_date: new Date(Date.now() - 86400000).toISOString().slice(0, 10),
-          customer_name: "Rahul Verma",
-          customer_phone: "+91 98765 43210",
-          customer_gstin: "",
-          settlement_method: "cash",
-          settlement_status: "COMPLETED",
-          subtotal: 1499.0,
-          tax_amount: 179.88,
-          total_refund: 1678.88,
-          restock_count: 1,
-          total_items_returned: 1,
-          notes: "Item unopened in original box. Verified & restocked.",
-          cashier_name: "Counter 1",
-          created_at: new Date().toISOString(),
-          items: [
-            {
-              id: "item-seed-1",
-              product_name: "Wireless Ergonomic Mouse",
-              sku: "ACC-MOU-09",
-              hsn_code: "84716060",
-              purchased_qty: 1,
-              returned_qty: 1,
-              unit_price: 1499.0,
-              tax_rate: 12,
-              discount_amount: 0,
-              subtotal: 1499.0,
-              tax_amount: 179.88,
-              total_amount: 1678.88,
-              reason: "Customer Changed Mind",
-              restock_disposition: "restock",
-            },
-          ],
-        },
-        {
-          id: "ret-seed-2",
-          return_number: "SR-20251010-002",
-          return_date: new Date(Date.now() - 86400000).toISOString().slice(0, 10),
-          original_invoice_no: "INV-2025-0891",
-          original_invoice_date: new Date(Date.now() - 259200000).toISOString().slice(0, 10),
-          customer_name: "Apex Retail Solutions",
-          customer_phone: "+91 98480 12345",
-          customer_gstin: "37AAACG1234F1Z5",
-          settlement_method: "credit_note",
-          settlement_status: "COMPLETED",
-          subtotal: 4200.0,
-          tax_amount: 756.0,
-          total_refund: 4956.0,
-          restock_count: 2,
-          total_items_returned: 2,
-          notes: "Issued statutory Credit Note CN-00004 against ledger.",
-          cashier_name: "Admin",
-          created_at: new Date(Date.now() - 86400000).toISOString(),
-          items: [
-            {
-              id: "item-seed-2",
-              product_name: "Thermal Barcode Ribbon (Pack of 5)",
-              sku: "SUP-RIB-02",
-              hsn_code: "96121010",
-              purchased_qty: 5,
-              returned_qty: 2,
-              unit_price: 2100.0,
-              tax_rate: 18,
-              discount_amount: 0,
-              subtotal: 4200.0,
-              tax_amount: 756.0,
-              total_amount: 4956.0,
-              reason: "Wrong Item Delivered / Billed",
-              restock_disposition: "restock",
-            },
-          ],
-        },
-      ];
-
-      localStorage.setItem(storageKey, JSON.stringify(initialSeed));
-      setReturnsList(initialSeed);
+      setReturnsList([]);
     } catch (e) {
       console.warn("Sales returns load error:", e);
+      setReturnsList([]);
     } finally {
       setLoading(false);
     }

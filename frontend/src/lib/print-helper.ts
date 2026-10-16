@@ -258,12 +258,22 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
   const totalTax = explicitTax !== null ? explicitTax : (itemsTaxTotal > 0 ? itemsTaxTotal : (isSamplePreview ? (rawSubtotal - totalSavings) * 0.05 : 0));
   const hasGst = (totalTax > 0.001) || Boolean(inv?.cgst_amount > 0 || inv?.sgst_amount > 0 || inv?.igst_amount > 0);
 
-  const isInterstate = Boolean(inv?.is_interstate || inv?.gst_type === 'igst' || (inv?.igst_amount && Number(inv.igst_amount) > 0));
+  const isInterstate = Boolean(
+    inv?.is_interstate ||
+    inv?.gst_type === 'igst' ||
+    (inv?.igst_amount && Number(inv.igst_amount) > 0) ||
+    (storeGstin && customerGstin && storeGstin.trim().slice(0, 2) !== customerGstin.trim().slice(0, 2))
+  );
   const cgstAmount = Number(inv?.cgst_amount ?? (isInterstate ? 0 : totalTax / 2));
   const sgstAmount = Number(inv?.sgst_amount ?? (isInterstate ? 0 : totalTax / 2));
   const igstAmount = Number(inv?.igst_amount ?? (isInterstate ? totalTax : 0));
 
   const grandTotal = Number(inv?.grand_total ?? inv?.total_amount ?? (rawSubtotal - totalSavings + (hasGst ? totalTax : 0)));
+  const taxableSubtotal = Number(
+    inv?.taxable_value ??
+    inv?.taxable_amount ??
+    (rawItems.some((it: any) => it.is_tax_inclusive || it.tax_inclusive) ? (grandTotal - totalTax) : (rawSubtotal - totalSavings))
+  );
   const isWalkInReceipt = isWalkInParty(inv);
   const amountReceived = Number(inv?.amount_received ?? inv?.paid_amount ?? grandTotal);
   const isPaidInFull = isWalkInReceipt || inv?.payment_status?.toUpperCase() === 'PAID' || inv?.payment_status === 'Paid' || (amountReceived > 0 && amountReceived >= grandTotal - 0.05) || true;
@@ -572,7 +582,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
             <div style="border-top: 1px dotted #000; margin-top: 2px; padding-top: 2px;">
               <div class="flex-between" style="font-size: 9.5px;">
                 <span>Taxable Amount:</span>
-                <span>₹${(rawSubtotal - totalSavings).toFixed(2)}</span>
+                <span>₹${taxableSubtotal.toFixed(2)}</span>
               </div>
               ${isInterstate ? `
                 <div class="flex-between" style="font-size: 9.5px;">

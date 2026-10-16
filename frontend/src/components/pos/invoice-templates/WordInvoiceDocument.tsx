@@ -9,7 +9,7 @@ import {
 import { numberToIndianWords } from "@/lib/number-to-words";
 import { formatDisplayDate, formatPartyAddress, isInvoiceLineFree } from "@/lib/utils";
 import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
-import { computeGstBreakdown } from "@/lib/gst-utils";
+import { computeGstBreakdown, checkIsInterstate } from "@/lib/gst-utils";
 import { getActiveBillingGst, getOrgSignatureSettings } from "@/lib/receipt-template-store";
 
 export interface WordInvoiceDocumentProps {
@@ -172,11 +172,20 @@ export function WordInvoiceDocument({
       const disc = isFree ? 0 : Number(it.discount_value || it.discount_amount || it.discount || 0);
       const taxRate = isFree ? 0 : Number(it.tax_rate || it.tax_percent || it.gst_rate || 0);
       const subtotal = isFree ? 0 : Number(it.subtotal || it.total_amount || (qty * unitPrice - disc));
+      const lineGrossAfterDisc = Math.max(0, qty * unitPrice - disc);
+      const isTaxInclusive = Boolean(
+        it.is_tax_inclusive === true ||
+        it.isTaxInclusive === true ||
+        it.tax_inclusive === true ||
+        (invoice.is_tax_inclusive === true && it.is_tax_inclusive !== false) ||
+        (it.taxable_amount && Number(it.taxable_amount) > 0 && Math.abs(Number(it.taxable_amount) - lineGrossAfterDisc) > 0.05)
+      );
 
       return {
         ...it,
         sno: idx + 1,
         isFree,
+        is_free: isFree,
         originalRate,
         description: it.product_name || it.name || it.description || `Item #${idx + 1}`,
         custom_note: it.custom_note || it.description || it.notes || "",
@@ -188,15 +197,35 @@ export function WordInvoiceDocument({
         mrp,
         discount: disc,
         tax_rate: taxRate,
+        is_tax_inclusive: isTaxInclusive,
         total_amount: subtotal,
       };
     });
-  }, [rawItems]);
+  }, [rawItems, invoice.is_tax_inclusive]);
+
+  // Interstate GST Resolution
+  const isInterstate = React.useMemo(() => {
+    if (invoice.is_interstate !== undefined) return Boolean(invoice.is_interstate);
+    if ((invoice as any).gst_type === "igst") return true;
+    if ((invoice as any).gst_type === "cgst_sgst") return false;
+    if (Number(invoice.igst_amount || (invoice as any).igst || 0) > 0) return true;
+
+    const sellGst = sellerGstin || activeGst?.gstin || "";
+    const custGst = invoice.customer_gstin || invoice.customerGstin || (invoice as any)?.customer?.gst_number || (invoice as any)?.customer?.gstin || "";
+    const posState = (invoice.place_of_supply || (invoice as any).placeOfSupply || "").slice(0, 2);
+    const custAddr = (invoice as any).billing_address || (invoice as any).shipping_address || invoice.customerBillingAddress || invoice.customerAddress || "";
+
+    const checkRes = checkIsInterstate(
+      { gstin: sellGst, address: dynamicAddress },
+      { gstin: custGst, state: posState || (invoice as any).customerState, address: typeof custAddr === "string" ? custAddr : "" }
+    );
+    return checkRes.isInterState;
+  }, [invoice, sellerGstin, activeGst, dynamicAddress]);
 
   // Financial Computations
   const gstBreakdown = React.useMemo(() => {
-    return computeGstBreakdown(items);
-  }, [items]);
+    return computeGstBreakdown(items, isInterstate);
+  }, [items, isInterstate]);
 
   const taxableSubtotal = Number(invoice.taxable_value ?? gstBreakdown.totalTaxable);
   const totalTax = Number(invoice.tax_amount ?? gstBreakdown.totalTax);
@@ -208,63 +237,78 @@ export function WordInvoiceDocument({
   const totalBilledQty = items.reduce((sum, it) => sum + Number(it.quantity || 0), 0);
   const totalItemsCount = items.length;
 
+  // Check if we are rendering a pure template designer dummy preview
+  const isPureMockPreview = Boolean(
+    !invoice.invoice_number &&
+    (!invoice.items || invoice.items.length === 0) &&
+    invoice.id?.toString().startsWith("mock-")
+  );
+
   // Determine Customer Information
   const customerName =
     invoice.customerName ||
+    invoice.customer_name ||
     invoice.customerCompany ||
     (invoice as any)?.customer?.name ||
-    config.customerName;
+    (isPureMockPreview ? (config.customerName || "Sample Customer") : "Walk-in Customer");
 
   const rawCustomerBilling =
     invoice.customerBillingAddress ||
+    invoice.customer_billing_address ||
     invoice.customerAddress ||
+    invoice.customer_address ||
     (invoice as any).billing_address ||
-    (invoice as any).customer_billing_address ||
     (invoice as any)?.customer?.address;
 
   const customerAddress =
     formatPartyAddress(rawCustomerBilling) ||
     formatPartyAddress({
       street: typeof rawCustomerBilling === "string" ? rawCustomerBilling : (rawCustomerBilling?.street || ""),
-      city: (invoice as any).billing_city || (invoice as any).city || (invoice as any)?.customer?.city,
-      state: invoice.customerState || (invoice as any).billing_state || (invoice as any)?.customer?.state,
-      pincode: (invoice as any).billing_pincode || (invoice as any).postal_code || (invoice as any)?.customer?.pincode,
+      city: (invoice as any).billing_city || (invoice as any).customer_billing_city || (invoice as any)?.customer?.city,
+      state: invoice.customerState || (invoice as any).customer_billing_state || (invoice as any).billing_state || (invoice as any)?.customer?.state,
+      pincode: (invoice as any).billing_pincode || (invoice as any).customer_billing_pincode || (invoice as any)?.customer?.pincode,
     }) ||
-    (typeof rawCustomerBilling === "string" && rawCustomerBilling !== "[object Object]" ? rawCustomerBilling : "") ||
-    config.customerAddress;
+    (typeof rawCustomerBilling === "string" && rawCustomerBilling !== "[object Object]" && rawCustomerBilling.trim() ? rawCustomerBilling : "") ||
+    (isPureMockPreview ? config.customerAddress : "");
 
   const customerGstin =
     invoice.customerGST ||
+    invoice.customer_gstin ||
     (invoice as any)?.customer?.gstin ||
-    config.customerGstin;
+    (invoice as any)?.customer?.gst_number ||
+    (isPureMockPreview ? config.customerGstin : "");
 
   const customerPhone =
     invoice.customerPhone ||
+    invoice.customer_phone ||
     (invoice as any)?.customer?.phone ||
-    config.customerPhone;
+    (isPureMockPreview ? config.customerPhone : "");
 
   // Determine Shipping Information
   const shippingName =
     invoice.customerShippingName ||
-    config.shippingName ||
-    customerName;
+    (invoice as any).customer_shipping_name ||
+    (invoice as any).shipping_name ||
+    (invoice as any).shipping_customer_name ||
+    (invoice as any)?.customer?.shipping_name ||
+    (invoice as any)?.customer?.company ||
+    (isPureMockPreview ? (config.shippingName || customerName) : customerName);
 
   const rawCustomerShipping =
     invoice.customerShippingAddress ||
-    (invoice as any).shipping_address ||
-    (invoice as any).customer_shipping_address;
+    invoice.customer_shipping_address ||
+    (invoice as any).shipping_address;
 
   const shippingAddress =
     formatPartyAddress(rawCustomerShipping) ||
     formatPartyAddress({
       street: typeof rawCustomerShipping === "string" ? rawCustomerShipping : (rawCustomerShipping?.street || ""),
-      city: (invoice as any).shipping_city,
-      state: (invoice as any).shipping_state || invoice.customerState,
-      pincode: (invoice as any).shipping_pincode,
+      city: (invoice as any).shipping_city || (invoice as any).customer_shipping_city,
+      state: (invoice as any).shipping_state || (invoice as any).customer_shipping_state || invoice.customerState,
+      pincode: (invoice as any).shipping_pincode || (invoice as any).customer_shipping_pincode,
     }) ||
-    (typeof rawCustomerShipping === "string" && rawCustomerShipping !== "[object Object]" ? rawCustomerShipping : "") ||
-    config.shippingAddress ||
-    customerAddress;
+    (typeof rawCustomerShipping === "string" && rawCustomerShipping !== "[object Object]" && rawCustomerShipping.trim() ? rawCustomerShipping : "") ||
+    (isPureMockPreview ? config.shippingAddress : (customerAddress || "Same as Billing Address"));
 
   // Invoice Numbers & Dates
   const invoiceNumber = invoice.invoice_number || invoice.invoiceNumber || (invoice as any)?.id || config.invoiceNumberValue;
@@ -275,7 +319,7 @@ export function WordInvoiceDocument({
   // Resolve Bank Details
   const resolvedBankText = dynamicBank || (activeGst?.bank_name ? `Bank: ${activeGst.bank_name} | A/C: ${activeGst.bank_account_number || ""} | IFSC: ${activeGst.bank_ifsc || ""}` : "");
 
-  // Dynamic Custom Field Value Resolver from Invoice metadata
+  // Dynamic Custom Field Value Resolver from Invoice metadata (Real data only, no mock fallbacks)
   const resolveCustomFieldValue = (f: { id: string; label: string; value: string }) => {
     const norm = f.label.toLowerCase();
     const invAny = invoice as any;
@@ -285,42 +329,42 @@ export function WordInvoiceDocument({
     if (invMeta[f.label] !== undefined && invMeta[f.label] !== "") return String(invMeta[f.label]);
 
     if (norm.includes("po num") || norm.includes("po ref") || norm.includes("order no")) {
-      return invAny.po_number || invAny.po_reference || invAny.purchase_order_number || f.value;
+      return invAny.po_number || invAny.po_reference || invAny.purchase_order_number || (isPureMockPreview ? f.value : "");
     }
     if (norm.includes("po date")) {
-      return invAny.po_date ? formatDisplayDate(invAny.po_date) : f.value;
+      return invAny.po_date ? formatDisplayDate(invAny.po_date) : (isPureMockPreview ? f.value : "");
     }
     if (norm.includes("vehic")) {
-      return invAny.vehicle_number || invAny.vehicle_no || f.value;
+      return invAny.vehicle_number || invAny.vehicle_no || (isPureMockPreview ? f.value : "");
     }
     if (norm.includes("eway") || norm.includes("e-way")) {
-      return invAny.eway_bill_number || invAny.eway_bill_no || f.value;
+      return invAny.eway_bill_number || invAny.eway_bill_no || (isPureMockPreview ? f.value : "");
     }
     if (norm.includes("challan no") || norm.includes("dc no")) {
-      return invAny.challan_number || invAny.delivery_challan || f.value;
+      return invAny.challan_number || invAny.delivery_challan || (isPureMockPreview ? f.value : "");
     }
     if (norm.includes("challan date")) {
-      return invAny.challan_date ? formatDisplayDate(invAny.challan_date) : f.value;
+      return invAny.challan_date ? formatDisplayDate(invAny.challan_date) : (isPureMockPreview ? f.value : "");
     }
     if (norm.includes("dispatch") || norm.includes("transporter")) {
-      return invAny.dispatch_through || invAny.transporter_name || f.value;
+      return invAny.dispatch_through || invAny.transporter_name || (isPureMockPreview ? f.value : "");
     }
     if (norm.includes("lr") || norm.includes("gr")) {
-      return invAny.lr_number || invAny.gr_number || f.value;
+      return invAny.lr_number || invAny.gr_number || (isPureMockPreview ? f.value : "");
     }
     if (norm.includes("driver")) {
-      return invAny.driver_name || invAny.driver_phone || f.value;
+      return [invAny.driver_name, invAny.driver_phone].filter(Boolean).join(" - ") || (isPureMockPreview ? f.value : "");
     }
     if (norm.includes("sales exec")) {
-      return invAny.sales_executive || f.value;
+      return invAny.sales_executive || invAny.sales_rep_name || (isPureMockPreview ? f.value : "");
     }
     if (norm.includes("terms of deliv")) {
-      return invAny.terms_of_delivery || f.value;
+      return invAny.terms_of_delivery || (isPureMockPreview ? f.value : "");
     }
     if (norm.includes("pay") && norm.includes("terms")) {
-      return invAny.payment_terms || f.value;
+      return invAny.payment_terms || (isPureMockPreview ? f.value : "");
     }
-    return f.value;
+    return isPureMockPreview ? f.value : "";
   };
 
   const enabledCols = config.columns.filter((c) => c.enabled);
@@ -732,15 +776,16 @@ export function WordInvoiceDocument({
             const ewayField = config.customFields.find((f) => f.enabled && (f.label.toLowerCase().includes("eway") || f.id.includes("eway")));
             const challanField = config.customFields.find((f) => f.enabled && (f.label.toLowerCase().includes("challan") || f.id.includes("challan")));
 
-            const poVal = (invoice as any)?.po_number || (invoice as any)?.po_reference || poField?.value || "";
-            const vehVal = (invoice as any)?.vehicle_number || (invoice as any)?.vehicle_no || vehField?.value || "";
-            const ewayVal = (invoice as any)?.eway_bill_number || (invoice as any)?.eway_bill_no || ewayField?.value || "";
-            const challanVal = (invoice as any)?.challan_number || (invoice as any)?.delivery_challan || challanField?.value || "";
+            const poVal = (invoice as any)?.po_number || (invoice as any)?.po_reference || (isPureMockPreview ? poField?.value : "") || "";
+            const vehVal = (invoice as any)?.vehicle_number || (invoice as any)?.vehicle_no || (isPureMockPreview ? vehField?.value : "") || "";
+            const ewayVal = (invoice as any)?.eway_bill_number || (invoice as any)?.eway_bill_no || (isPureMockPreview ? ewayField?.value : "") || "";
+            const challanVal = (invoice as any)?.challan_number || (invoice as any)?.delivery_challan || (isPureMockPreview ? challanField?.value : "") || "";
 
-            // Custom metadata fields with standard references filtered out to guarantee NO duplication
-            const metaCustomFields = config.customFields.filter(
-              (f) => f.enabled && (f.section === "meta" || !f.section) && !isStandardRef(f.label)
-            );
+            // Custom metadata fields with standard references filtered out, and ONLY fields that actually have a resolved value!
+            const metaCustomFields = config.customFields
+              .filter((f) => f.enabled && (f.section === "meta" || !f.section) && !isStandardRef(f.label))
+              .map((f) => ({ ...f, resolvedVal: resolveCustomFieldValue(f) }))
+              .filter((f) => Boolean(f.resolvedVal && f.resolvedVal.trim() !== ""));
 
             const hasMetaDetails = Boolean(poVal || vehVal || ewayVal || challanVal || metaCustomFields.length > 0);
             if (!hasMetaDetails) return null;
@@ -806,7 +851,7 @@ export function WordInvoiceDocument({
                         {f.label}
                       </span>
                       <strong className="font-mono font-bold text-slate-900 text-[11px] block truncate">
-                        {resolveCustomFieldValue(f)}
+                        {f.resolvedVal}
                       </strong>
                     </div>
                   ))}
@@ -870,9 +915,11 @@ export function WordInvoiceDocument({
                     {shippingAddress || customerAddress || "Same as Billing Address"}
                   </p>
 
-                  <div className="text-[10px] text-slate-500 pt-1 font-medium">
-                    <span>Dispatch Mode: <strong>Surface Cargo / Road Transport</strong></span>
-                  </div>
+                  {Boolean((invoice as any)?.dispatch_through || (invoice as any)?.transporter_name || (invoice as any)?.dispatch_mode) && (
+                    <div className="text-[10px] text-slate-500 pt-1 font-medium">
+                      <span>Dispatch Mode: <strong>{(invoice as any)?.dispatch_through || (invoice as any)?.transporter_name || (invoice as any)?.dispatch_mode}</strong></span>
+                    </div>
+                  )}
                 </div>
               </div>
             );

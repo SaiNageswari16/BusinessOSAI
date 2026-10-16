@@ -178,8 +178,8 @@ export function GstReportsSuite({
   onBack?: () => void;
 }) {
   const { tenant } = useTenant();
-  const currentTenantId = tenant?.id || "default";
-  const currentCompanyId = tenant?.id || "default";
+  const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
+  const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
   const { formatCurrency } = useCurrency();
 
   const [activeReport, setActiveReport] = useState<GstReportType>(defaultReport);
@@ -365,80 +365,99 @@ export function GstReportsSuite({
       });
     }
 
-    // 3. Stored POS invoices from localStorage
+    // 3. Stored POS invoices from localStorage (strictly scoped to active tenant and company)
     try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && (k.startsWith("pos_saved_invoices") || k.startsWith("pos_offline_invoices"))) {
-          const item = localStorage.getItem(k);
-          if (item) {
-            try {
-              const parsed = JSON.parse(item);
-              if (Array.isArray(parsed)) {
-                parsed.forEach((posBill: any) => {
-                  const receiptNum = normalizePosReceiptNumber(posBill);
-                  const partyName = posBill.customer_name || posBill.customer?.name || "Walk-in Guest";
-                  const invDate = posBill.invoice_date || posBill.date || (posBill.created_at ? new Date(posBill.created_at).toISOString().slice(0, 10) : "");
-                  const rawTotal = Number(posBill.total_amount || posBill.grand_total || posBill.total || 0);
-                  const rawTax = Number(posBill.tax_amount || posBill.total_tax || posBill.tax || 0);
-                  const rawSubtotal = Number(posBill.subtotal || posBill.taxable_amount || (rawTotal > 0 ? (rawTax > 0 ? rawTotal - rawTax : rawTotal / 1.18) : 0));
+      const targetCompanyKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
+      const targetOfflineKey = `pos_offline_invoices_${currentTenantId}_${currentCompanyId}`;
 
-                  const rawLines = (posBill.items || []).map((l: any, idx: number) => ({
-                    id: l.id || `line-${idx}`,
-                    item_name: l.product?.name || l.product_name || l.name || "Item",
-                    product_name: l.product?.name || l.product_name || l.name || "Item",
-                    quantity: Number(l.quantity) || 1,
-                    unit_price: Number(l.unit_price) || (rawTotal / Math.max(1, (posBill.items || []).length)),
-                    hsn_code: l.hsn_code || l.hsn || "84713010",
-                    tax_rate: Number(l.tax_rate) || 18,
-                  }));
+      const isCompanyScoped = Boolean(currentCompanyId && currentCompanyId !== "default");
+      const keysToScan = isCompanyScoped
+        ? [targetCompanyKey, targetOfflineKey]
+        : [targetCompanyKey, targetOfflineKey, `pos_saved_invoices_${currentTenantId}`];
+      const genericKeys = ["pos_saved_invoices", "pos_offline_invoices"];
 
-                  const items = rawLines.length > 0 ? rawLines : [{
-                    id: "line-0",
-                    item_name: "POS Retail Merchandise",
-                    product_name: "POS Retail Merchandise",
-                    quantity: 1,
-                    unit_price: Number(rawSubtotal.toFixed(2)),
-                    hsn_code: "84713010",
-                    tax_rate: 18,
-                  }];
+      const processItem = (itemStr: string) => {
+        try {
+          const parsed = JSON.parse(itemStr);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((posBill: any) => {
+              if (posBill.tenant_id && currentTenantId !== "default" && posBill.tenant_id !== currentTenantId) return;
+              if (isCompanyScoped && posBill.company_id && posBill.company_id !== currentCompanyId) return;
 
-                  const key = receiptNum.toLowerCase();
-                  if (!invoiceMap.has(key)) {
-                    invoiceMap.set(key, {
-                      ...posBill,
-                      id: posBill.id || receiptNum,
-                      invoice_number: receiptNum,
-                      receipt_number: receiptNum,
-                      invoice_no: receiptNum,
-                      date: invDate,
-                      invoice_date: invDate,
-                      created_at: posBill.created_at || invDate,
-                      customer_name: partyName,
-                      party_name: partyName,
-                      customer_gstin: posBill.customer_gstin || posBill.customer?.gst_number || posBill.gstin || "",
-                      party_gstin: posBill.customer_gstin || posBill.customer?.gst_number || posBill.gstin || "URP",
-                      subtotal: Number(rawSubtotal.toFixed(2)),
-                      taxable_amount: Number(rawSubtotal.toFixed(2)),
-                      taxable_value: Number(rawSubtotal.toFixed(2)),
-                      tax_amount: Number(rawTax.toFixed(2)),
-                      total_tax: Number(rawTax.toFixed(2)),
-                      tax: Number(rawTax.toFixed(2)),
-                      grand_total: rawTotal,
-                      total_amount: rawTotal,
-                      total: rawTotal,
-                      amount: rawTotal,
-                      items: items,
-                      is_pos: true,
-                      doc_type: "pos_receipt",
-                      print_status: "Thermal Printed",
-                    });
-                  }
+              const receiptNum = normalizePosReceiptNumber(posBill);
+              const partyName = posBill.customer_name || posBill.customer?.name || "Walk-in Guest";
+              const invDate = posBill.invoice_date || posBill.date || (posBill.created_at ? new Date(posBill.created_at).toISOString().slice(0, 10) : "");
+              const rawTotal = Number(posBill.total_amount || posBill.grand_total || posBill.total || 0);
+              const rawTax = Number(posBill.tax_amount || posBill.total_tax || posBill.tax || 0);
+              const rawSubtotal = Number(posBill.subtotal || posBill.taxable_amount || (rawTotal > 0 ? (rawTax > 0 ? rawTotal - rawTax : rawTotal / 1.18) : 0));
+
+              const rawLines = (posBill.items || []).map((l: any, idx: number) => ({
+                id: l.id || `line-${idx}`,
+                item_name: l.product?.name || l.product_name || l.name || "Item",
+                product_name: l.product?.name || l.product_name || l.name || "Item",
+                quantity: Number(l.quantity) || 1,
+                unit_price: Number(l.unit_price) || (rawTotal / Math.max(1, (posBill.items || []).length)),
+                hsn_code: l.hsn_code || l.hsn || "84713010",
+                tax_rate: Number(l.tax_rate) || 18,
+              }));
+
+              const items = rawLines.length > 0 ? rawLines : [{
+                id: "line-0",
+                item_name: "POS Retail Merchandise",
+                product_name: "POS Retail Merchandise",
+                quantity: 1,
+                unit_price: Number(rawSubtotal.toFixed(2)),
+                hsn_code: "84713010",
+                tax_rate: 18,
+              }];
+
+              const key = receiptNum.toLowerCase();
+              if (!invoiceMap.has(key)) {
+                invoiceMap.set(key, {
+                  ...posBill,
+                  id: posBill.id || receiptNum,
+                  invoice_number: receiptNum,
+                  receipt_number: receiptNum,
+                  invoice_no: receiptNum,
+                  date: invDate,
+                  invoice_date: invDate,
+                  created_at: posBill.created_at || invDate,
+                  customer_name: partyName,
+                  party_name: partyName,
+                  customer_gstin: posBill.customer_gstin || posBill.customer?.gst_number || posBill.gstin || "",
+                  party_gstin: posBill.customer_gstin || posBill.customer?.gst_number || posBill.gstin || "URP",
+                  subtotal: Number(rawSubtotal.toFixed(2)),
+                  taxable_amount: Number(rawSubtotal.toFixed(2)),
+                  taxable_value: Number(rawSubtotal.toFixed(2)),
+                  tax_amount: Number(rawTax.toFixed(2)),
+                  total_tax: Number(rawTax.toFixed(2)),
+                  tax: Number(rawTax.toFixed(2)),
+                  grand_total: rawTotal,
+                  total_amount: rawTotal,
+                  total: rawTotal,
+                  amount: rawTotal,
+                  items: items,
+                  is_pos: true,
+                  doc_type: "pos_receipt",
+                  print_status: "Thermal Printed",
                 });
               }
-            } catch (e) {}
+            });
           }
-        }
+        } catch (e) {}
+      };
+
+      keysToScan.forEach((k) => {
+        const item = localStorage.getItem(k);
+        if (item) processItem(item);
+      });
+
+      // Only scan generic fallback keys if no company is selected and no records found
+      if (!isCompanyScoped && invoiceMap.size === 0) {
+        genericKeys.forEach((k) => {
+          const item = localStorage.getItem(k);
+          if (item) processItem(item);
+        });
       }
     } catch (e) {}
 

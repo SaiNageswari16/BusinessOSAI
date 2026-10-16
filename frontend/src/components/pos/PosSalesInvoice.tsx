@@ -1060,7 +1060,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const custState = defShipping?.state || defBilling?.state || cust.state || "";
     const custGst = defBilling?.gst_number || cust.gst_number || "";
     const custAddr = [defShipping?.street, defShipping?.city, defShipping?.state, defBilling?.street, defBilling?.city, defBilling?.state, cust.address].filter(Boolean).join(", ");
-    if (custState && getIsInterstate(custState, custGst, custAddr)) {
+    if (getIsInterstate(custState, custGst, custAddr)) {
       setGstType("igst");
     } else {
       setGstType("cgst_sgst");
@@ -1261,7 +1261,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     }
 
     const primaryState = inv.state || custShip || custAddr || "";
-    if (primaryState && getIsInterstate(primaryState, custGst, custShip || custAddr)) {
+    if (getIsInterstate(primaryState, custGst, custShip || custAddr)) {
       setGstType("igst");
     } else {
       setGstType("cgst_sgst");
@@ -1291,15 +1291,16 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const invTaxRate = matchedProduct ? getEffectiveTaxRate(matchedProduct) : undefined;
         const invDisc = matchedProduct ? extractProductDiscount(matchedProduct) : undefined;
 
-        const unitP = Number(it.unit_price ?? it.price ?? 0);
+        const isFreeLine = isInvoiceLineFree(it) || Number(it.unit_price ?? it.price ?? 0) <= 0.009 || Number(it.total_amount ?? it.subtotal ?? it.amount ?? 1) <= 0.009;
+        const unitP = isFreeLine ? 0 : Number(it.unit_price ?? it.price ?? 0);
         // Prioritize actual GST rate given in inventory for the product
-        const taxR = invTaxRate !== undefined ? invTaxRate : getEffectiveTaxRate(it);
+        const taxR = isFreeLine ? 0 : (invTaxRate !== undefined ? invTaxRate : getEffectiveTaxRate(it));
         const mrpVal = Number(it.mrp) > 0 ? Number(it.mrp) : (matchedProduct && Number(matchedProduct.mrp) > 0 ? Number(matchedProduct.mrp) : Math.ceil(unitP * (1 + taxR / 100)));
 
         // Prioritize actual discount given in inventory for the product
-        let discVal = Number(it.discount_value ?? it.discount_percent ?? it.discount ?? 0);
+        let discVal = isFreeLine ? 0 : Number(it.discount_value ?? it.discount_percent ?? it.discount ?? 0);
         let discType: "percent" | "amount" = it.discount_type === "amount" || it.discount_type === "fixed" ? "amount" : "percent";
-        if (invDisc && invDisc.discount_value > 0) {
+        if (!isFreeLine && invDisc && invDisc.discount_value > 0) {
           discVal = invDisc.discount_value;
           discType = invDisc.discount_type;
         }
@@ -1333,21 +1334,39 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           custom_note: it.custom_note || it.description || it.notes || it.note || "",
           description: it.description || it.custom_note || it.notes || it.note || "",
           notes: it.notes || it.custom_note || it.description || it.note || "",
-          is_free: isInvoiceLineFree(it) || unitP <= 0.009,
+          is_free: isFreeLine,
         };
       });
       setItems(mappedItems);
     }
 
     // 4. Financial & Discount Settings
-    if (inv.discount_calculation_mode) {
-      setInvoiceDiscountMode(inv.discount_calculation_mode === "after_tax" ? "after_tax" : "before_tax");
+    if (inv.discount_calculation_mode || inv.invoice_discount_mode) {
+      setInvoiceDiscountMode((inv.discount_calculation_mode || inv.invoice_discount_mode) === "after_tax" ? "after_tax" : "before_tax");
     }
-    if (inv.discount_amount || inv.discount || inv.invoice_discount_value) {
-      setInvoiceDiscountValue(Number(inv.discount_amount || inv.discount || inv.invoice_discount_value || 0));
-    }
-    if (inv.discount_type) {
-      setInvoiceDiscountType(inv.discount_type === "amount" || inv.discount_type === "fixed" ? "amount" : "percent");
+
+    const explicitDiscVal = inv.invoice_discount_value !== undefined && inv.invoice_discount_value !== null
+      ? Number(inv.invoice_discount_value)
+      : (inv.discount_value !== undefined && inv.discount_value !== null ? Number(inv.discount_value) : null);
+
+    const explicitDiscType = inv.discount_type || inv.invoice_discount_type;
+
+    if (explicitDiscVal !== null && !isNaN(explicitDiscVal)) {
+      if (explicitDiscType === "amount" || explicitDiscType === "fixed" || explicitDiscVal > 100) {
+        setInvoiceDiscountType("amount");
+        setInvoiceDiscountValue(explicitDiscVal);
+      } else {
+        setInvoiceDiscountType("percent");
+        setInvoiceDiscountValue(Math.min(100, Math.max(0, explicitDiscVal)));
+      }
+    } else if (explicitDiscType === "amount" || explicitDiscType === "fixed") {
+      setInvoiceDiscountType("amount");
+      setInvoiceDiscountValue(Number(inv.discount_amount || inv.discount || 0));
+    } else {
+      // Do NOT set bill-level discount to inv.discount_amount because inv.discount_amount
+      // may be the sum of item-level line discounts!
+      setInvoiceDiscountValue(0);
+      setInvoiceDiscountType("percent");
     }
     if (inv.additional_charges || inv.custom_charges) {
       const chgs = inv.custom_charges || inv.additional_charges;
@@ -1988,7 +2007,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             (item.product_id && p.id === item.product_id) ||
             (item.product_name && p.name && p.name.toLowerCase() === item.product_name.toLowerCase())
         );
-        if (!prod) return item;
+        if (!prod || item.is_free) return item;
         const targetPrimaryPrice = getProductTierPrice(prod, item.quantity || 1, newMode);
         const factor = Number(item.conversion_factor) > 1 ? Number(item.conversion_factor) : 1;
         const effectivePrice =
@@ -2164,7 +2183,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             (p.name && rawProdName && p.name.toLowerCase().trim() === rawProdName.toLowerCase().trim()) ||
             (p.sku && rawSku && p.sku.toLowerCase().trim() === rawSku.toLowerCase().trim())
         );
-        if (!matched) return item;
+        if (!matched || item.is_free) return item;
 
         const invTaxRate = getEffectiveTaxRate(matched);
         const invDisc = extractProductDiscount(matched);
@@ -2550,12 +2569,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           unpaid_invoices: finalUnpaid
         });
 
-        if (totalPending > 0.05) {
-          setShowPendingDueAlert(true);
-        } else {
-          setShowPendingDueAlert(false);
-          setIncludePreviousDueInBill(false);
-        }
+        // Do NOT auto-pop intrusive modal alert. Dues are accessible on-demand via party card / Ledger button
+        setShowPendingDueAlert(false);
+        setIncludePreviousDueInBill(false);
       } catch (err) {
         setCustomerSummary(null);
         setShowPendingDueAlert(false);
@@ -3219,9 +3235,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   // 1. Before-Tax Invoice Discount
   let beforeTaxDiscount = 0;
   if (invoiceDiscountMode === "before_tax" && invoiceDiscountValue > 0) {
-    beforeTaxDiscount = invoiceDiscountType === "percent"
-      ? totalTaxableValue * (invoiceDiscountValue / 100)
-      : Math.min(invoiceDiscountValue, totalTaxableValue);
+    if (invoiceDiscountType === "percent") {
+      const safePct = Math.min(100, Math.max(0, invoiceDiscountValue));
+      beforeTaxDiscount = totalTaxableValue * (safePct / 100);
+    } else {
+      beforeTaxDiscount = Math.min(invoiceDiscountValue, totalTaxableValue);
+    }
   }
 
   const taxableValue = Math.max(0, totalTaxableValue - beforeTaxDiscount);
@@ -3244,9 +3263,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   // 3. After-Tax Invoice Discount
   let afterTaxDiscount = 0;
   if (invoiceDiscountMode === "after_tax" && invoiceDiscountValue > 0) {
-    afterTaxDiscount = invoiceDiscountType === "percent"
-      ? grossBillAmount * (invoiceDiscountValue / 100)
-      : Math.min(invoiceDiscountValue, grossBillAmount);
+    if (invoiceDiscountType === "percent") {
+      const safePct = Math.min(100, Math.max(0, invoiceDiscountValue));
+      afterTaxDiscount = grossBillAmount * (safePct / 100);
+    } else {
+      afterTaxDiscount = Math.min(invoiceDiscountValue, grossBillAmount);
+    }
   }
 
   const activeCustomerObj = customers.find((c) => c.id === selectedCustomer) || (selectedCustomer === "walk-in" || (typeof selectedCustomer === "string" && selectedCustomer.startsWith("walk-in")) ? { id: selectedCustomer || "walk-in", name: customerSearchQuery.trim() || "Walk-in Customer", customer_type: "Walk-in", type: "Retail" } : null);
@@ -3255,7 +3277,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const totalDiscount = itemDiscountTotal + beforeTaxDiscount + afterTaxDiscount;
   const previousDueAmount = (!isWalkInCustomer && !settlingInvoice && includePreviousDueInBill && customerSummary?.total_pending_due) ? Number(customerSummary.total_pending_due) : 0;
   const baseRawTotal = Math.max(0, grossBillAmount - afterTaxDiscount);
-  const rawTotal = baseRawTotal + previousDueAmount;
+  // An invoice's legally recognized Grand Total must strictly equal the goods/services total for this transaction.
+  // Past unpaid bills are tracked in the customer ledger and settled separately to prevent duplicating receivables!
+  const rawTotal = baseRawTotal;
   const roundOff = autoRoundOff ? Math.round(rawTotal) - rawTotal : 0;
   const grandTotal = autoRoundOff ? Math.round(rawTotal) : rawTotal;
 
@@ -4394,6 +4418,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         customer_shipping_city: selectedDeliveryAddress?.city || selectedBillingAddress?.city || customer?.city || "",
         customer_billing_pincode: selectedBillingAddress?.pincode || customer?.postal_code || customer?.pincode || "",
         customer_shipping_pincode: selectedDeliveryAddress?.pincode || selectedBillingAddress?.pincode || customer?.postal_code || customer?.pincode || "",
+        customer_shipping_name: (selectedDeliveryAddress as any)?.contact_person || (selectedDeliveryAddress as any)?.name || customer?.shipping_name || customer?.company || customer?.name || "",
+        customerShippingName: (selectedDeliveryAddress as any)?.contact_person || (selectedDeliveryAddress as any)?.name || customer?.shipping_name || customer?.company || customer?.name || "",
         customerAddress: formattedBillingAddress,
         customerBillingAddress: formattedBillingAddress,
         customerShippingAddress: formattedShippingAddress,
@@ -4422,6 +4448,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         gst_type: gstType,
         is_interstate: gstType === "igst",
         discount_amount: totalDiscount,
+        discount_type: invoiceDiscountType,
+        invoice_discount_type: invoiceDiscountType,
+        invoice_discount_value: invoiceDiscountValue,
+        invoice_discount_mode: invoiceDiscountMode,
         grand_total: grandTotal,
         amount_received: isWalkIn ? grandTotal : (isCredit ? 0 : (amountReceived === "" ? grandTotal : (Number(amountReceived) || 0))),
         print_status: printMode === 'thermal' ? 'Thermal Printed' : printMode === 'a4' ? 'A4 PDF Generated' : 'Pending Print',

@@ -405,8 +405,11 @@ export function isInvoiceLineFree(item?: any): boolean {
   if (discType === "percent" && discVal >= 99.5) return true;
   if (Number(item.discount_percent || 0) >= 99.5) return true;
 
-  // Zero-priced line item
-  if (price <= 0.0001 && total <= 0.0001) {
+  // Zero-priced line item or zero total
+  if (price <= 0.0001) {
+    return true;
+  }
+  if (total <= 0.0001 && (item.total_amount !== undefined || item.subtotal !== undefined || item.line_total !== undefined || item.amount !== undefined || item.total !== undefined)) {
     return true;
   }
 
