@@ -93,12 +93,32 @@ interface StoredAuth {
   refreshToken?: string;
 }
 
+export interface LockoutInfo {
+  isLocked: boolean;
+  message?: string;
+  lockedUntil: string | null;
+  remainingSeconds: number;
+  maxAttempts: number;
+}
+
+export class AuthLockoutError extends Error {
+  lockout: LockoutInfo;
+
+  constructor(message: string, lockout: LockoutInfo) {
+    super(message);
+    this.name = "AuthLockoutError";
+    this.lockout = lockout;
+    Object.setPrototypeOf(this, AuthLockoutError.prototype);
+  }
+}
+
 interface AuthCtx {
   user: AppUser | null;
   accessToken: string | null;
   isAuthed: boolean;
   authReady: boolean;
   login: (payload: LoginPayload) => Promise<{ user: AppUser; token: TokenResponse }>;
+  checkLockout: (email: string, tenantSlug?: string) => Promise<LockoutInfo | null>;
   verifyFirstTimeCode: (payload: VerifyFirstTimePayload) => Promise<{ user: AppUser; token: TokenResponse }>;
   resendVerificationCode: (payload: ResendCodePayload) => Promise<{ message: string }>;
   register: (payload: RegisterPayload) => Promise<{ user: AppUser; token: TokenResponse }>;
@@ -112,20 +132,33 @@ interface AuthCtx {
 
 const Ctx = createContext<AuthCtx | null>(null);
 
-async function parseError(response: Response): Promise<string> {
-  let detail = "Authentication request failed";
+async function parseErrorWithData(response: Response): Promise<{ message: string; data?: any }> {
+  let message = "Authentication request failed";
+  let data: any = null;
   try {
-    const json = (await response.json()) as {
-      detail?: string | { msg?: string }[];
-      message?: string;
-    };
-    if (typeof json.detail === "string") detail = json.detail;
-    else if (Array.isArray(json.detail)) detail = json.detail.map((item: { msg?: string }) => item.msg).join(", ");
-    else if (json.message) detail = json.message;
+    const json = await response.json();
+    data = json;
+    if (typeof json.detail === "string") {
+      message = json.detail;
+    } else if (Array.isArray(json.detail)) {
+      message = json.detail.map((item: { msg?: string }) => item.msg).join(", ");
+    } else if (json.detail && typeof json.detail === "object") {
+      const detailObj = json.detail as { message?: string; msg?: string };
+      if (detailObj.message) message = detailObj.message;
+      else if (detailObj.msg) message = detailObj.msg;
+      else message = JSON.stringify(json.detail);
+    } else if (json.message) {
+      message = json.message;
+    }
   } catch {
     /* ignore */
   }
-  return detail;
+  return { message, data };
+}
+
+async function parseError(response: Response): Promise<string> {
+  const { message } = await parseErrorWithData(response);
+  return message;
 }
 
 function buildAvatar(fullName: string): string {
@@ -327,13 +360,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [accessToken, refreshToken]);
 
+  const checkLockout = async (email: string, tenantSlug?: string): Promise<LockoutInfo | null> => {
+    if (!email || !email.includes("@")) return null;
+    try {
+      const params = new URLSearchParams({ email: email.trim().toLowerCase() });
+      if (tenantSlug) params.append("tenant_slug", tenantSlug.trim());
+      const res = await fetch(`${API_BASE_URL}/auth/check-lockout?${params.toString()}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data.is_locked) {
+        return {
+          isLocked: true,
+          message: data.message,
+          lockedUntil: data.locked_until,
+          remainingSeconds: Number(data.remaining_seconds) || 0,
+          maxAttempts: Number(data.max_attempts) || 5,
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
   const login = async (payload: LoginPayload) => {
     const response = await fetch(`${API_BASE_URL}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (!response.ok) throw new Error(await parseError(response));
+    if (!response.ok) {
+      const { message, data } = await parseErrorWithData(response);
+      const detailObj = data?.detail;
+      const isLocked =
+        response.status === 423 ||
+        detailObj?.code === "ACCOUNT_LOCKED" ||
+        data?.code === "ACCOUNT_LOCKED";
+
+      if (isLocked) {
+        const lockoutData = (detailObj && typeof detailObj === "object") ? detailObj : data;
+        throw new AuthLockoutError(
+          lockoutData?.message || message || "Account temporarily locked due to failed login attempts.",
+          {
+            isLocked: true,
+            message: lockoutData?.message || message,
+            lockedUntil: lockoutData?.locked_until || null,
+            remainingSeconds: Number(lockoutData?.remaining_seconds) || 900,
+            maxAttempts: Number(lockoutData?.max_attempts) || 5,
+          }
+        );
+      }
+      throw new Error(message);
+    }
     const tokenData: TokenResponse = await response.json();
     if (tokenData.requires_verification) {
       return { user: null as unknown as AppUser, token: tokenData };
@@ -503,6 +581,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthed: !!user,
         authReady,
         login,
+        checkLockout,
         verifyFirstTimeCode,
         resendVerificationCode,
         register,

@@ -51,6 +51,7 @@ from src.schemas.erp import (
     UserMeResponse,
     VerifyFirstTimeCodeRequest,
     ResendVerificationCodeRequest,
+    CheckLockoutResponse,
 )
 from src.config import get_settings
 from src.utils.security import (
@@ -273,6 +274,52 @@ async def register_tenant(
     )
 
 
+@router.get("/check-lockout", response_model=CheckLockoutResponse)
+async def check_lockout(
+    email: str,
+    tenant_slug: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Checks if an account is currently locked due to failed login attempts.
+    Returns lockout status, remaining seconds, and ISO unlock timestamp.
+    """
+    clean_email = email.strip().lower() if email else ""
+    if not clean_email or "@" not in clean_email:
+        return CheckLockoutResponse(is_locked=False, remaining_seconds=0, max_attempts=settings.max_login_attempts)
+
+    query = select(User).where(User.email == clean_email)
+    if tenant_slug:
+        query = query.join(Tenant, Tenant.id == User.tenant_id).where(Tenant.slug == tenant_slug.strip())
+
+    user = await db.scalar(query)
+    if not user or not user.locked_until:
+        return CheckLockoutResponse(is_locked=False, remaining_seconds=0, max_attempts=settings.max_login_attempts)
+
+    now_utc = datetime.now(timezone.utc)
+    locked_until = user.locked_until
+    if locked_until.tzinfo is None:
+        locked_until = locked_until.replace(tzinfo=timezone.utc)
+    else:
+        locked_until = locked_until.astimezone(timezone.utc)
+
+    if locked_until > now_utc:
+        remaining_seconds = max(1, int((locked_until - now_utc).total_seconds()))
+        return CheckLockoutResponse(
+            is_locked=True,
+            message=f"Account temporarily locked due to {settings.max_login_attempts} failed login attempts.",
+            locked_until=locked_until.isoformat(),
+            remaining_seconds=remaining_seconds,
+            max_attempts=settings.max_login_attempts,
+        )
+    else:
+        # Lockout expired, clear lockout status
+        user.locked_until = None
+        user.failed_login_attempts = 0
+        await db.commit()
+        return CheckLockoutResponse(is_locked=False, remaining_seconds=0, max_attempts=settings.max_login_attempts)
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
     query = select(User).options(selectinload(User.tenant)).where(User.email == payload.email.lower())
@@ -281,7 +328,15 @@ async def login(payload: LoginRequest, request: Request, db: AsyncSession = Depe
 
     user = await db.scalar(query)
     if user is None:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "INVALID_CREDENTIALS",
+                "message": "Invalid email or password",
+                "remaining_attempts": settings.max_login_attempts,
+                "max_attempts": settings.max_login_attempts,
+            },
+        )
 
     u_status = _get_status_str(user.status)
     t_status = _get_status_str(user.tenant.status) if user.tenant else "active"
@@ -292,15 +347,61 @@ async def login(payload: LoginRequest, request: Request, db: AsyncSession = Depe
             detail="Your workspace account is currently pending administrator approval. Please contact the platform administrator."
         )
 
-    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
-        raise HTTPException(status_code=423, detail="Account temporarily locked due to failed login attempts")
+    now_utc = datetime.now(timezone.utc)
+    if user.locked_until:
+        locked_until = user.locked_until
+        if locked_until.tzinfo is None:
+            locked_until = locked_until.replace(tzinfo=timezone.utc)
+        else:
+            locked_until = locked_until.astimezone(timezone.utc)
+
+        if locked_until > now_utc:
+            remaining_seconds = max(1, int((locked_until - now_utc).total_seconds()))
+            raise HTTPException(
+                status_code=status.HTTP_423_LOCKED,
+                detail={
+                    "code": "ACCOUNT_LOCKED",
+                    "message": f"Account temporarily locked due to {settings.max_login_attempts} failed login attempts.",
+                    "locked_until": locked_until.isoformat(),
+                    "remaining_seconds": remaining_seconds,
+                    "max_attempts": settings.max_login_attempts,
+                },
+            )
+        else:
+            # Lockout period expired: reset counter and unlock
+            user.locked_until = None
+            user.failed_login_attempts = 0
+            await db.commit()
 
     if not verify_password(payload.password, user.password_hash):
-        user.failed_login_attempts += 1
+        user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
         if user.failed_login_attempts >= settings.max_login_attempts:
-            user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=settings.lockout_minutes)
+            new_locked_until = now_utc + timedelta(minutes=settings.lockout_minutes)
+            user.locked_until = new_locked_until
+            await db.commit()
+            remaining_seconds = int(settings.lockout_minutes * 60)
+            raise HTTPException(
+                status_code=status.HTTP_423_LOCKED,
+                detail={
+                    "code": "ACCOUNT_LOCKED",
+                    "message": f"Account temporarily locked due to {settings.max_login_attempts} failed login attempts.",
+                    "locked_until": new_locked_until.isoformat(),
+                    "remaining_seconds": remaining_seconds,
+                    "max_attempts": settings.max_login_attempts,
+                },
+            )
+
+        remaining_attempts = max(0, settings.max_login_attempts - user.failed_login_attempts)
         await db.commit()
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "INVALID_CREDENTIALS",
+                "message": f"Invalid email or password. {remaining_attempts} attempt{'s' if remaining_attempts != 1 else ''} remaining before account lockout.",
+                "remaining_attempts": remaining_attempts,
+                "max_attempts": settings.max_login_attempts,
+            },
+        )
 
     if u_status != "active":
         raise HTTPException(status_code=403, detail="User account is not active")

@@ -1,15 +1,16 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, ShieldCheck, Zap, BarChart3, ArrowLeft, Fingerprint, Usb, MessageSquare, KeyRound, RotateCcw, Lock, CheckCircle2 } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck, Zap, BarChart3, ArrowLeft, Fingerprint, Usb, MessageSquare, KeyRound, RotateCcw, Lock, CheckCircle2, Clock, ShieldAlert, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useAuth, resolvePostAuthRoute } from "@/contexts/auth-context";
+import { useAuth, resolvePostAuthRoute, AuthLockoutError, type LockoutInfo } from "@/contexts/auth-context";
 import { passkeysApi, fingerprintsApi } from "@/lib/api-client";
 import { isBiometricsSupported, getBiometricAssertion } from "@/lib/webauthn";
 import { discoverRDService, captureFingerprint } from "@/lib/rd-service";
+import { formatRegionUnlockTime, getRegionTimezoneDisplay } from "@/lib/utils";
 import { toast } from "sonner";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
@@ -26,7 +27,7 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
-  const { login, verifyFirstTimeCode, resendVerificationCode, loginWithToken, isAuthed, user } = useAuth();
+  const { login, checkLockout, verifyFirstTimeCode, resendVerificationCode, loginWithToken, isAuthed, user } = useAuth();
   const navigate = useNavigate();
   const search = Route.useSearch();
   const initialRedirectTriedRef = useRef(false);
@@ -54,6 +55,105 @@ function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
   const [resending, setResending] = useState(false);
+
+  // Account Lockout State & Region Time
+  const [lockout, setLockout] = useState<LockoutInfo | null>(null);
+  const regionInfo = getRegionTimezoneDisplay();
+
+  // Restore lockout from sessionStorage when email changes
+  useEffect(() => {
+    if (!email || !email.includes("@")) return;
+    try {
+      const stored = sessionStorage.getItem(`bos_lockout_${email.toLowerCase().trim()}`);
+      if (stored) {
+        const parsed: LockoutInfo = JSON.parse(stored);
+        if (parsed.lockedUntil) {
+          const targetMs = new Date(parsed.lockedUntil).getTime();
+          const nowMs = Date.now();
+          const diffSec = Math.max(0, Math.ceil((targetMs - nowMs) / 1000));
+          if (diffSec > 0) {
+            setLockout({
+              ...parsed,
+              isLocked: true,
+              remainingSeconds: diffSec,
+            });
+            return;
+          } else {
+            sessionStorage.removeItem(`bos_lockout_${email.toLowerCase().trim()}`);
+          }
+        }
+      }
+    } catch {}
+  }, [email]);
+
+  // Persist lockout state in sessionStorage
+  useEffect(() => {
+    if (!email) return;
+    try {
+      if (lockout?.isLocked && lockout.remainingSeconds > 0) {
+        sessionStorage.setItem(`bos_lockout_${email.toLowerCase().trim()}`, JSON.stringify(lockout));
+      } else if (lockout && !lockout.isLocked) {
+        sessionStorage.removeItem(`bos_lockout_${email.toLowerCase().trim()}`);
+      }
+    } catch {}
+  }, [lockout, email]);
+
+  // Live countdown timer for account lockout
+  useEffect(() => {
+    if (!lockout || !lockout.isLocked) return;
+
+    const interval = setInterval(() => {
+      if (lockout.lockedUntil) {
+        const targetMs = new Date(lockout.lockedUntil).getTime();
+        const nowMs = Date.now();
+        const diffSec = Math.max(0, Math.ceil((targetMs - nowMs) / 1000));
+
+        if (diffSec <= 0) {
+          setLockout((prev) => (prev ? { ...prev, isLocked: false, remainingSeconds: 0 } : null));
+          toast.success("Account lockout has expired. You can now try logging in again.");
+          try {
+            if (email) sessionStorage.removeItem(`bos_lockout_${email.toLowerCase().trim()}`);
+          } catch {}
+        } else {
+          setLockout((prev) => (prev ? { ...prev, remainingSeconds: diffSec } : null));
+        }
+      } else {
+        setLockout((prev) => {
+          if (!prev) return null;
+          if (prev.remainingSeconds <= 1) {
+            toast.success("Account lockout has expired. You can now try logging in again.");
+            return { ...prev, isLocked: false, remainingSeconds: 0 };
+          }
+          return { ...prev, remainingSeconds: prev.remainingSeconds - 1 };
+        });
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [lockout?.isLocked, lockout?.lockedUntil, email]);
+
+  const handleEmailBlur = async () => {
+    if (mode !== "login" || !email || !email.includes("@")) return;
+    try {
+      const info = await checkLockout(email, tenantSlug);
+      if (info && info.isLocked) {
+        setLockout(info);
+      } else if (lockout?.isLocked) {
+        setLockout(null);
+      }
+    } catch {
+      // Ignore
+    }
+  };
+
+  const formatCountdown = (totalSeconds: number) => {
+    const mins = Math.floor(Math.max(0, totalSeconds) / 60);
+    const secs = Math.max(0, totalSeconds) % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
+
+  const isAccountLocked = Boolean(mode === "login" && lockout?.isLocked && lockout.remainingSeconds > 0);
+  const regionUnlockTime = lockout?.lockedUntil ? formatRegionUnlockTime(lockout.lockedUntil, regionInfo.timeZone) : "";
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -145,9 +245,22 @@ function LoginPage() {
         setRegistrationSuccess(json.message || "Registration submitted for System Admin approval.");
         toast.success("Registration submitted for approval!");
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Authentication failed";
-      toast.error(message);
+    } catch (error: any) {
+      if (error instanceof AuthLockoutError || error?.name === "AuthLockoutError" || error?.lockout) {
+        const lInfo: LockoutInfo = error.lockout || {
+          isLocked: true,
+          lockedUntil: null,
+          remainingSeconds: 900,
+          maxAttempts: 5,
+        };
+        setLockout(lInfo);
+        toast.error(error.message || "Account temporarily locked due to 5 failed login attempts.", {
+          duration: 7000,
+        });
+      } else {
+        const message = error instanceof Error ? error.message : "Authentication failed";
+        toast.error(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -480,6 +593,98 @@ function LoginPage() {
                 </p>
               </div>
 
+              {/* Account Lockout Live Countdown Banner (Region Time) */}
+              {isAccountLocked && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.96, y: -6 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  className="mb-6 p-4 rounded-2xl bg-gradient-to-br from-rose-50 via-amber-50/60 to-rose-50 border-2 border-rose-300 text-rose-950 shadow-sm relative overflow-hidden"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="p-2.5 rounded-xl bg-rose-600 text-white shadow-sm shrink-0 mt-0.5 animate-pulse">
+                      <Lock className="size-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="font-bold text-sm text-rose-900 tracking-tight flex items-center gap-1.5">
+                          Account Temporarily Locked
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-200 text-rose-900 border border-rose-300">
+                            5 Failed Attempts
+                          </span>
+                        </span>
+                      </div>
+
+                      <p className="mt-1 text-xs text-rose-800 leading-relaxed">
+                        For security reasons, sign-in is temporarily locked due to 5 failed login attempts.
+                      </p>
+
+                      {/* Live Timer & Region-Based Unlock Schedule Card */}
+                      <div className="mt-3 p-3 bg-white/95 rounded-xl border border-rose-200/90 shadow-2xs space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold uppercase text-slate-600 tracking-wider flex items-center gap-1.5">
+                            <Clock className="size-3.5 text-rose-600" />
+                            Time Remaining:
+                          </span>
+                          <span className="font-mono text-2xl font-black text-rose-600 tracking-wider">
+                            {formatCountdown(lockout?.remainingSeconds ?? 0)}
+                          </span>
+                        </div>
+
+                        {/* Visual Cooldown Bar */}
+                        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            className="bg-rose-500 h-full transition-all duration-1000 ease-linear rounded-full"
+                            style={{
+                              width: `${Math.min(100, Math.max(0, ((lockout?.remainingSeconds ?? 0) / 900) * 100))}%`,
+                            }}
+                          />
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-100 flex flex-col gap-1.5 text-[11px]">
+                          <div className="flex items-center justify-between text-slate-700">
+                            <span className="font-medium text-slate-500 flex items-center gap-1">
+                              <ShieldAlert className="size-3 text-amber-600" />
+                              Unlocks At (Region Time):
+                            </span>
+                            <span className="font-bold text-slate-900 font-mono text-xs">
+                              {regionUnlockTime || "Calculating..."}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-slate-500 text-[10px]">
+                            <span className="flex items-center gap-1">
+                              <Globe className="size-3 text-slate-400" />
+                              Local Region / Timezone:
+                            </span>
+                            <span className="font-semibold text-slate-700">
+                              {regionInfo.timeZone} {regionInfo.offset ? `(${regionInfo.offset})` : ""}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 text-[10px] text-slate-500 text-center font-medium">
+                        Sign-in will automatically unlock when the countdown reaches 00:00.
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Lockout expired notification */}
+              {lockout && !lockout.isLocked && lockout.remainingSeconds === 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mb-5 p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-950 flex items-center gap-2.5 text-xs font-medium"
+                >
+                  <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+                  <div>
+                    <strong className="text-emerald-900 font-bold">Lockout Expired: </strong>
+                    You may now enter your password to sign in.
+                  </div>
+                </motion.div>
+              )}
+
               <form onSubmit={handleSubmit} className="space-y-5">
                 {mode === "register" ? (
                   <>
@@ -556,7 +761,16 @@ function LoginPage() {
 
             <div className="space-y-2">
               <Label htmlFor="email" className="text-sm font-medium text-slate-700">Work email</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-purple-600" placeholder="you@company.com" required />
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onBlur={handleEmailBlur}
+                className="h-11 bg-slate-50/50 border-slate-200 focus-visible:ring-purple-600"
+                placeholder="you@company.com"
+                required
+              />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -568,7 +782,16 @@ function LoginPage() {
                 ) : null}
               </div>
               <div className="relative">
-                <Input id="password" type={show ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} className="h-11 pr-10 bg-slate-50/50 border-slate-200 focus-visible:ring-purple-600" placeholder="••••••••" required />
+                <Input
+                  id="password"
+                  type={show ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isAccountLocked}
+                  className="h-11 pr-10 bg-slate-50/50 border-slate-200 focus-visible:ring-purple-600 disabled:bg-slate-100 disabled:cursor-not-allowed"
+                  placeholder={isAccountLocked ? "Account locked — wait for timer" : "••••••••"}
+                  required
+                />
                 <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
                   {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
@@ -596,12 +819,18 @@ function LoginPage() {
               </div>
             )}
 
-            <Button type="submit" disabled={loading || (mode === "register" && selectedModules.length === 0)} className="w-full h-11 text-base gradient-brand hover:opacity-95 text-white shadow-xs transition-all font-semibold mt-2 border-0">
+            <Button
+              type="submit"
+              disabled={loading || isAccountLocked || (mode === "register" && selectedModules.length === 0)}
+              className="w-full h-11 text-base gradient-brand hover:opacity-95 text-white shadow-xs transition-all font-semibold mt-2 border-0 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               {loading ? (
                 <div className="flex items-center gap-2">
                   <div className="size-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   Please wait...
                 </div>
+              ) : isAccountLocked ? (
+                `Account Locked (${formatCountdown(lockout?.remainingSeconds ?? 0)})`
               ) : mode === "login" ? (
                 "Sign in with Password"
               ) : (
@@ -615,8 +844,8 @@ function LoginPage() {
                   type="button"
                   variant="outline"
                   onClick={handleBiometricLogin}
-                  disabled={loading}
-                  className="w-full h-10 text-xs font-semibold border-purple-300/80 bg-purple-50/70 hover:bg-purple-100 text-purple-900 shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  disabled={loading || isAccountLocked}
+                  className="w-full h-10 text-xs font-semibold border-purple-300/80 bg-purple-50/70 hover:bg-purple-100 text-purple-900 shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Fingerprint className="size-4 text-purple-700 animate-pulse" />
                   Sign in with Touch ID / Face ID / Windows Hello
@@ -626,8 +855,8 @@ function LoginPage() {
                   type="button"
                   variant="outline"
                   onClick={handleOpticalFingerprintLogin}
-                  disabled={loading}
-                  className="w-full h-10 text-xs font-semibold border-emerald-300/80 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-900 shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  disabled={loading || isAccountLocked}
+                  className="w-full h-10 text-xs font-semibold border-emerald-300/80 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-900 shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Usb className="size-4 text-emerald-600 animate-bounce" />
                   Login with USB Scanner (Mantra / Morpho / SecuGen)

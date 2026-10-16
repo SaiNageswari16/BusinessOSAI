@@ -64,6 +64,14 @@ class ResendVerificationCodeRequest(BaseModel):
     tenant_slug: str | None = None
 
 
+class CheckLockoutResponse(BaseModel):
+    is_locked: bool
+    message: str | None = None
+    locked_until: str | None = None
+    remaining_seconds: int = 0
+    max_attempts: int = 5
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str
 

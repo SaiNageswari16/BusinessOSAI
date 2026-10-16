@@ -256,6 +256,60 @@ export function formatDisplayDateTime(dateInput?: string | Date | number | null,
   }
 }
 
+export function formatRegionUnlockTime(
+  dateInput?: string | Date | number | null,
+  timeZone = getSystemTimezone()
+): string {
+  if (!dateInput) return "";
+  try {
+    const ts = parseSafeDateTimestamp(dateInput);
+    if (!ts) return String(dateInput || "");
+    const d = new Date(ts);
+    return new Intl.DateTimeFormat(undefined, {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+      timeZoneName: "short",
+    }).format(d);
+  } catch {
+    return String(dateInput || "");
+  }
+}
+
+export function getRegionTimezoneDisplay(timeZone = getSystemTimezone()): {
+  timeZone: string;
+  offset: string;
+  shortName: string;
+} {
+  try {
+    const d = new Date();
+    const formatter = new Intl.DateTimeFormat(undefined, {
+      timeZone,
+      timeZoneName: "short",
+    });
+    const parts = formatter.formatToParts(d);
+    const shortName = parts.find((p) => p.type === "timeZoneName")?.value || timeZone;
+
+    let offset = "";
+    try {
+      const offsetFormatter = new Intl.DateTimeFormat(undefined, {
+        timeZone,
+        timeZoneName: "longOffset",
+      });
+      const offsetParts = offsetFormatter.formatToParts(d);
+      offset = offsetParts.find((p) => p.type === "timeZoneName")?.value || "";
+    } catch {
+      // Fallback
+    }
+
+    return { timeZone, offset, shortName };
+  } catch {
+    return { timeZone, offset: "", shortName: timeZone };
+  }
+}
+
 export function isValidUUID(id: any): boolean {
   return typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 }

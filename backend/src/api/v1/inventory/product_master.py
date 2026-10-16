@@ -331,7 +331,7 @@ async def list_product_categories(
 ):
     query = select(ProductCategory).where(ProductCategory.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(ProductCategory.company_id == ctx.active_company_id)
+        query = query.where(or_(ProductCategory.company_id == ctx.active_company_id, ProductCategory.company_id == None))
     if search:
         query = query.where(ProductCategory.name.ilike(f"%{search}%"))
         
@@ -511,7 +511,7 @@ async def list_brands(
 ):
     query = select(Brand).where(Brand.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        query = query.where(Brand.company_id == ctx.active_company_id)
+        query = query.where(or_(Brand.company_id == ctx.active_company_id, Brand.company_id == None))
     if search:
         query = query.where(Brand.name.ilike(f"%{search}%"))
         
@@ -1506,7 +1506,10 @@ async def master_import_products(
     # 2. Sync Brands
     brand_map = {}
     if brand_names:
-        existing_brands = await db.execute(select(Brand).where(Brand.tenant_id == tenant_id, Brand.name.in_(brand_names)))
+        brand_stmt = select(Brand).where(Brand.tenant_id == tenant_id, Brand.name.in_(brand_names))
+        if company_id:
+            brand_stmt = brand_stmt.where(or_(Brand.company_id == company_id, Brand.company_id == None))
+        existing_brands = await db.execute(brand_stmt)
         for b in existing_brands.scalars().all():
             brand_map[b.name.lower()] = b.id
         
@@ -1520,7 +1523,10 @@ async def master_import_products(
     # 3. Sync Categories (Auto-create missing categories so products are organized properly)
     category_map = {}
     if category_names:
-        existing_cats = await db.execute(select(ProductCategory).where(ProductCategory.tenant_id == tenant_id, ProductCategory.name.in_(category_names)))
+        cat_stmt = select(ProductCategory).where(ProductCategory.tenant_id == tenant_id, ProductCategory.name.in_(category_names))
+        if company_id:
+            cat_stmt = cat_stmt.where(or_(ProductCategory.company_id == company_id, ProductCategory.company_id == None))
+        existing_cats = await db.execute(cat_stmt)
         for c in existing_cats.scalars().all():
             category_map[c.name.lower()] = c.id
         for c_name in category_names:
@@ -1534,7 +1540,10 @@ async def master_import_products(
     sub_category_map = {}
     if sub_category_names:
         sub_cat_names_only = {sub for (_, sub) in sub_category_names}
-        existing_sub_cats = await db.execute(select(ProductCategory).where(ProductCategory.tenant_id == tenant_id, ProductCategory.name.in_(sub_cat_names_only), ProductCategory.parent_id.isnot(None)))
+        sub_cat_stmt = select(ProductCategory).where(ProductCategory.tenant_id == tenant_id, ProductCategory.name.in_(sub_cat_names_only), ProductCategory.parent_id.isnot(None))
+        if company_id:
+            sub_cat_stmt = sub_cat_stmt.where(or_(ProductCategory.company_id == company_id, ProductCategory.company_id == None))
+        existing_sub_cats = await db.execute(sub_cat_stmt)
         for sc in existing_sub_cats.scalars().all():
             sub_category_map[sc.name.lower()] = sc.id
 
@@ -1544,7 +1553,10 @@ async def master_import_products(
     # 4.5 Sync UOMs
     uom_map = {}
     if uom_names:
-        existing_uoms = await db.execute(select(UnitOfMeasure).where(UnitOfMeasure.tenant_id == tenant_id, UnitOfMeasure.name.in_(uom_names)))
+        uom_stmt = select(UnitOfMeasure).where(UnitOfMeasure.tenant_id == tenant_id, UnitOfMeasure.name.in_(uom_names))
+        if company_id:
+            uom_stmt = uom_stmt.where(or_(UnitOfMeasure.company_id == company_id, UnitOfMeasure.company_id == None))
+        existing_uoms = await db.execute(uom_stmt)
         for u in existing_uoms.scalars().all():
             uom_map[u.name.lower()] = u.id
             
@@ -1565,11 +1577,14 @@ async def master_import_products(
         for hsn_c, gst_r in hsn_res.all():
             hsn_tax_map[hsn_c.strip()] = float(gst_r)
 
-    # 5. Lookup existing products by SKU for Upsert
+    # 5. Lookup existing products by SKU for Upsert (Scoped to the active company)
     all_skus = {item.sku.strip() for item in payload.items if item.sku and str(item.sku).strip()}
     existing_products_map = {}
     if all_skus:
-        existing_res = await db.execute(select(Product).where(Product.tenant_id == tenant_id, Product.sku.in_(all_skus)))
+        sku_stmt = select(Product).where(Product.tenant_id == tenant_id, Product.sku.in_(all_skus))
+        if company_id:
+            sku_stmt = sku_stmt.where(Product.company_id == company_id)
+        existing_res = await db.execute(sku_stmt)
         for p in existing_res.scalars().all():
             existing_products_map[p.sku.strip().lower()] = p
 

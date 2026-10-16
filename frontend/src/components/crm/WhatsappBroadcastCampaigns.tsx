@@ -57,6 +57,14 @@ export function WhatsappBroadcastCampaigns() {
   const { tenant } = useTenant();
   const { currency, formatCurrency } = useCurrency();
 
+  const activeCompany = useMemo(() => {
+    try {
+      const stored = localStorage.getItem("bos_active_company");
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return tenant || null;
+  }, [tenant]);
+
   // Active Tab
   const [activeTab, setActiveTab] = useState<"broadcast" | "templates" | "history">("broadcast");
 

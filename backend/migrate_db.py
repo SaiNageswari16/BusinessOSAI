@@ -626,6 +626,9 @@ async def migrate():
         "ALTER TABLE erp_product_qrcodes ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
         "ALTER TABLE erp_product_rfids ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
         "ALTER TABLE erp_traceability_events ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;",
+        "DROP INDEX IF EXISTS uq_erp_products_tenant_barcode;",
+        "ALTER TABLE erp_products DROP CONSTRAINT IF EXISTS uq_erp_products_tenant_barcode;",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_erp_products_company_barcode ON erp_products (tenant_id, COALESCE(company_id, '00000000-0000-0000-0000-000000000000'::uuid), barcode) WHERE barcode IS NOT NULL AND barcode <> '';",
     ]
 
     for stmt in inventory_company_stmts:

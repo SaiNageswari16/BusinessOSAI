@@ -68,7 +68,7 @@ async def clean_and_repair_duplicate_barcodes(engine) -> None:
             ranked_res = await conn.execute(text("""
                 WITH ranked AS (
                     SELECT id, tenant_id, barcode,
-                           ROW_NUMBER() OVER (PARTITION BY tenant_id, barcode ORDER BY created_at ASC, id ASC) as rn
+                           ROW_NUMBER() OVER (PARTITION BY tenant_id, COALESCE(company_id, '00000000-0000-0000-0000-000000000000'::uuid), barcode ORDER BY created_at ASC, id ASC) as rn
                     FROM erp_products
                     WHERE barcode IS NOT NULL AND barcode <> '' AND barcode NOT LIKE '%-DUP-%' AND barcode NOT LIKE '%dup%'
                 )
@@ -665,8 +665,14 @@ async def init_database() -> None:
         );
         """,
         """
-        CREATE UNIQUE INDEX IF NOT EXISTS uq_erp_products_tenant_barcode
-        ON erp_products (tenant_id, barcode)
+        DROP INDEX IF EXISTS uq_erp_products_tenant_barcode;
+        """,
+        """
+        ALTER TABLE erp_products DROP CONSTRAINT IF EXISTS uq_erp_products_tenant_barcode;
+        """,
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_erp_products_company_barcode
+        ON erp_products (tenant_id, COALESCE(company_id, '00000000-0000-0000-0000-000000000000'::uuid), barcode)
         WHERE barcode IS NOT NULL AND barcode <> '';
         """,
         """

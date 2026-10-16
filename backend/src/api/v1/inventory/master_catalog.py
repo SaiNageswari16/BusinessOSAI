@@ -2283,7 +2283,10 @@ async def import_to_local_inventory(
     brand_id = None
     if payload.brand_name and payload.brand_name.strip():
         b_name = payload.brand_name.strip()
-        b_res = await db.execute(select(Brand).where(Brand.tenant_id == tenant_id, Brand.name.ilike(b_name)))
+        brand_stmt = select(Brand).where(Brand.tenant_id == tenant_id, Brand.name.ilike(b_name))
+        if company_id:
+            brand_stmt = brand_stmt.where(or_(Brand.company_id == company_id, Brand.company_id == None))
+        b_res = await db.execute(brand_stmt)
         existing_brand = b_res.scalars().first()
         if existing_brand:
             brand_id = existing_brand.id
@@ -2301,14 +2304,18 @@ async def import_to_local_inventory(
         category_id = payload.category_id
     elif payload.sub_category_name and payload.sub_category_name.strip():
         sc_name = payload.sub_category_name.strip()
-        sc_res = await db.execute(select(ProductCategory).where(ProductCategory.tenant_id == tenant_id, ProductCategory.name.ilike(sc_name)))
-        existing_sc = sc_res.scalars().first()
+        sc_stmt = select(ProductCategory).where(ProductCategory.tenant_id == tenant_id, ProductCategory.name.ilike(sc_name))
+        if company_id:
+            sc_stmt = sc_stmt.where(or_(ProductCategory.company_id == company_id, ProductCategory.company_id == None))
+        existing_sc = (await db.execute(sc_stmt)).scalars().first()
         if existing_sc:
             category_id = existing_sc.id
     elif payload.category_name and payload.category_name.strip():
         c_name = payload.category_name.strip()
-        c_res = await db.execute(select(ProductCategory).where(ProductCategory.tenant_id == tenant_id, ProductCategory.name.ilike(c_name)))
-        existing_cat = c_res.scalars().first()
+        cat_stmt = select(ProductCategory).where(ProductCategory.tenant_id == tenant_id, ProductCategory.name.ilike(c_name))
+        if company_id:
+            cat_stmt = cat_stmt.where(or_(ProductCategory.company_id == company_id, ProductCategory.company_id == None))
+        existing_cat = (await db.execute(cat_stmt)).scalars().first()
         if existing_cat:
             category_id = existing_cat.id
 
@@ -2321,8 +2328,11 @@ async def import_to_local_inventory(
             import string, random
             sku = f"SKU-{''.join(random.choices(string.ascii_uppercase + string.digits, k=8))}"
             
-    # Check duplicate SKU in tenant
-    sku_res = await db.execute(select(Product).where(Product.tenant_id == tenant_id, Product.sku == sku))
+    # Check duplicate SKU in current company
+    sku_query = select(Product).where(Product.tenant_id == tenant_id, Product.sku == sku)
+    if company_id:
+        sku_query = sku_query.where(Product.company_id == company_id)
+    sku_res = await db.execute(sku_query)
     if sku_res.scalars().first():
         import string, random
         sku = f"{sku}-{''.join(random.choices(string.ascii_uppercase, k=3))}"
@@ -2331,6 +2341,29 @@ async def import_to_local_inventory(
     product_barcode = payload.barcode
     if not product_barcode and sku and sku.strip().isdigit() and len(sku.strip()) in [8, 12, 13, 14]:
         product_barcode = sku.strip()
+
+    # Check if this company already has a product with this barcode (Upsert / prevent crash)
+    existing_product = None
+    if product_barcode:
+        bar_query = select(Product).where(Product.tenant_id == tenant_id, Product.barcode == product_barcode)
+        if company_id:
+            bar_query = bar_query.where(Product.company_id == company_id)
+        existing_product = (await db.execute(bar_query)).scalars().first()
+
+    if existing_product:
+        if payload.name: existing_product.name = payload.name
+        if payload.mrp and payload.mrp > 0: existing_product.mrp = payload.mrp
+        if payload.selling_price and payload.selling_price > 0: existing_product.selling_price = payload.selling_price
+        if payload.purchase_price and payload.purchase_price > 0: existing_product.purchase_price = payload.purchase_price
+        if payload.image_url and not existing_product.image_url: existing_product.image_url = payload.image_url
+        if brand_id: existing_product.brand_id = brand_id
+        if category_id: existing_product.category_id = category_id
+        stock_qty = payload.initial_stock or 0
+        if stock_qty > 0:
+            existing_product.initial_stock = (existing_product.initial_stock or 0) + stock_qty
+        await db.commit()
+        await db.refresh(existing_product, ["category", "brand", "uom"])
+        return existing_product
 
     # 5. Create Product in erp_products
     new_product = Product(
