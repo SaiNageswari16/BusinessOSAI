@@ -502,13 +502,21 @@ export function PurchaseReturnForm({ onClose, onSaved, initialData }: PurchaseRe
 
                         {item.is_search_open && (
                           <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-100">
-                            {matchingProducts.slice(0, 8).map((prod) => (
+                            {matchingProducts.slice(0, 10).map((prod) => (
                               <div
                                 key={prod.id}
                                 onClick={() => selectCatalogProduct(item.id, prod)}
-                                className="p-2 hover:bg-rose-50 cursor-pointer text-xs font-bold text-slate-800"
+                                className="p-2 hover:bg-rose-50 cursor-pointer flex items-center justify-between text-xs"
                               >
-                                {prod.name}
+                                <div>
+                                  <div className="font-bold text-slate-900">{prod.name}</div>
+                                  <div className="text-[10px] text-slate-500">
+                                    SKU: {prod.sku || "N/A"}{prod.barcode ? ` | Barcode: ${prod.barcode}` : ""}
+                                  </div>
+                                </div>
+                                <div className="text-right font-bold text-rose-700">
+                                  {formatCurrency(Number(prod.purchase_price || prod.cost_price || prod.selling_price || 0))}
+                                </div>
                               </div>
                             ))}
                           </div>

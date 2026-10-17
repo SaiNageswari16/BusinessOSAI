@@ -1242,6 +1242,8 @@ async def create_goods_received_note(
             add_qty = float(it.quantity_accepted if it.quantity_accepted is not None else it.quantity_received)
             curr_stock = prod.initial_stock if prod.initial_stock is not None else 0
             prod.initial_stock = int(curr_stock + add_qty)
+            curr_on_hand = prod.on_hand_stock if prod.on_hand_stock is not None else curr_stock
+            prod.on_hand_stock = int(curr_on_hand + add_qty)
 
         from src.schemas.procurement import GoodsReceivedNoteItemResponse
         created_items.append(

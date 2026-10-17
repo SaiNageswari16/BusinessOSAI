@@ -734,7 +734,12 @@ export function PurchaseQuotationForm({ onClose, onSaved, initialData }: Purchas
                                 >
                                   <div>
                                     <div className="font-bold text-slate-900">{prod.name}</div>
-                                    <div className="text-[10px] text-slate-500">SKU: {prod.sku || "N/A"}</div>
+                                    <div className="text-[10px] text-slate-500">
+                                      SKU: {prod.sku || "N/A"}{prod.barcode ? ` | Barcode: ${prod.barcode}` : ""}
+                                    </div>
+                                  </div>
+                                  <div className="text-right font-bold text-blue-700">
+                                    {formatCurrency(Number(prod.purchase_price || prod.cost_price || prod.selling_price || 0))}
                                   </div>
                                 </div>
                               ))
