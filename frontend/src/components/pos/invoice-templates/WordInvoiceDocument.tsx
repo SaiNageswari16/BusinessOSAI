@@ -139,6 +139,13 @@ export function WordInvoiceDocument({
       placeOfSupplyLabel: raw?.placeOfSupplyLabel || "Place of Supply",
       placeOfSupplyValue: raw?.placeOfSupplyValue || "36 - Telangana",
       sections: Array.isArray(raw?.sections) && raw.sections.length > 0 ? raw.sections : DEFAULT_WORD_SECTIONS,
+      columns: Array.isArray(raw?.columns) && raw.columns.length > 0
+        ? raw.columns
+        : Array.isArray(template?.columns) && template.columns.length > 0
+        ? template.columns
+        : Array.isArray(template?.wordConfig?.columns) && template.wordConfig.columns.length > 0
+        ? template.wordConfig.columns
+        : DEFAULT_WORD_COLUMNS,
       customFields: (Array.isArray(raw?.customFields) && raw.customFields.length > 0)
         ? raw.customFields
         : (Array.isArray(template?.customFields) && template.customFields.length > 0)
@@ -403,8 +410,8 @@ export function WordInvoiceDocument({
     return f.value || "";
   };
 
-  const enabledCols = config.columns.filter((c) => c.enabled);
-  const enabledSections = [...config.sections].sort((a, b) => a.order - b.order).filter((s) => s.enabled);
+  const enabledCols = (config?.columns || DEFAULT_WORD_COLUMNS).filter((c) => c.enabled);
+  const enabledSections = [...(config?.sections || DEFAULT_WORD_SECTIONS)].sort((a, b) => a.order - b.order).filter((s) => s.enabled);
 
   // Accent Color Helpers
   const brandPrimary = config.primaryColor || "#0f172a";
@@ -821,7 +828,7 @@ export function WordInvoiceDocument({
             const challanVal = (invoice as any)?.challan_number || (invoice as any)?.delivery_challan || (invoice as any)?.delivery_challan_number || invCust?.challan_number || invCust?.delivery_challan || invCust?.delivery_challan_number || invCust?.challan || invMeta?.challan_number || (challanField ? resolveCustomFieldValue(challanField) : "") || challanField?.value || "";
 
             // Custom metadata fields with standard references filtered out, and ONLY fields that actually have a resolved value!
-            const metaCustomFields = config.customFields
+            const metaCustomFields = (config?.customFields || [])
               .filter((f) => f.enabled && (f.section === "meta" || !f.section) && !isStandardRef(f.label))
               .map((f) => ({ ...f, resolvedVal: resolveCustomFieldValue(f) || f.value || "" }))
               .filter((f) => Boolean(f.resolvedVal && f.resolvedVal.trim() !== ""));

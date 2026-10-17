@@ -1647,7 +1647,7 @@ export function PrintTemplates() {
   // Directly track active template ID
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(() => {
     const activeUserTplId = userActiveDefaults[selectedDocType] || (selectedDocType === "invoice" ? userActiveDefaults.invoices : selectedDocType === "thermal" ? userActiveDefaults.thermal : selectedDocType === "barcode" ? userActiveDefaults.barcodes : undefined);
-    const candidateList = templates.filter((t) => {
+    const candidateList = (templates || []).filter((t) => {
       if (selectedDocType === "invoice") {
         return (t.category === "invoices" || t.docType === "invoice" || (!t.docType && !t.category)) && t.category !== "thermal" && t.docType !== "thermal" && t.category !== "barcodes";
       }
@@ -1670,7 +1670,7 @@ export function PrintTemplates() {
 
   // Filter & sort templates strictly for current selected category/doctype
   const currentCategoryTemplates = React.useMemo(() => {
-    const list = templates.filter((t) => {
+    const list = (templates || []).filter((t) => {
       if (selectedDocType === "invoice") {
         return (t.category === "invoices" || t.docType === "invoice" || (!t.docType && !t.category)) && t.category !== "thermal" && t.docType !== "thermal" && t.category !== "barcodes";
       }
@@ -1721,7 +1721,7 @@ export function PrintTemplates() {
 
   // When selectedDocType changes, pick the active/default template for that category
   useEffect(() => {
-    const list = templates.filter((t) => {
+    const list = (templates || []).filter((t) => {
       if (selectedDocType === "invoice") {
         return (t.category === "invoices" || t.docType === "invoice" || (!t.docType && !t.category)) && t.category !== "thermal" && t.docType !== "thermal" && t.category !== "barcodes";
       }
@@ -2017,7 +2017,7 @@ export function PrintTemplates() {
   }, []);
 
   const currentBarcodeElements: BarcodeElementBlock[] =
-    (activeTemplate.elements && Array.isArray(activeTemplate.elements) && activeTemplate.elements.length > 0)
+    (activeTemplate?.elements && Array.isArray(activeTemplate.elements) && activeTemplate.elements.length > 0)
       ? activeTemplate.elements.filter((el) => {
           if (el.visible === false) return false;
           if (el.id === "el_sku" && activeTemplate?.fields?.showSKU !== true && activeTemplate?.fields?.showHSN !== true) return false;
@@ -2026,7 +2026,7 @@ export function PrintTemplates() {
           if (el.id === "el_footer" && activeTemplate?.fields?.showCustomTagline !== true && activeTemplate?.fields?.showMfgExpDate !== true) return false;
           return true;
         })
-      : getDefaultBarcodeElements(activeTemplate).filter((el) => {
+      : (getDefaultBarcodeElements(activeTemplate) || []).filter((el) => {
           if (el.visible === false) return false;
           if (el.id === "el_sku" && activeTemplate?.fields?.showSKU !== true && activeTemplate?.fields?.showHSN !== true) return false;
           if (el.id === "el_footer" && activeTemplate?.fields?.showCustomTagline !== true && activeTemplate?.fields?.showMfgExpDate !== true) return false;
@@ -3129,7 +3129,7 @@ export function PrintTemplates() {
               {DOCUMENT_TYPES_CONFIG.map((doc) => {
                 const IconComp = doc.icon;
                 const isActive = selectedDocType === doc.type;
-                const count = templates.filter((t) => t.docType === doc.type || t.category === doc.category).length;
+                const count = (templates || []).filter((t) => t.docType === doc.type || t.category === doc.category).length;
                 return (
                   <button
                     key={doc.type}
@@ -3170,7 +3170,7 @@ export function PrintTemplates() {
               {DOCUMENT_TYPES_CONFIG.map((doc) => {
                 const IconComp = doc.icon;
                 const isActive = selectedDocType === doc.type;
-                const count = templates.filter((t) => t.docType === doc.type || t.category === doc.category).length;
+                const count = (templates || []).filter((t) => t.docType === doc.type || t.category === doc.category).length;
                 return (
                   <button
                     key={doc.type}
@@ -9809,7 +9809,7 @@ function TemplateStoreModal({
   const { t } = useI18n();
   const [search, setSearch] = useState("");
 
-  const filtered = templates.filter(
+  const filtered = (templates || []).filter(
     (t) =>
       t.name.toLowerCase().includes(search.toLowerCase()) ||
       t.description.toLowerCase().includes(search.toLowerCase())
@@ -9830,7 +9830,7 @@ function TemplateStoreModal({
             </div>
             <div>
               <h2 className="text-base font-bold text-foreground">
-                All Available Master Templates ({templates.length})
+                All Available Master Templates ({(templates || []).length})
               </h2>
               <p className="text-xs text-muted-foreground">{t("Browse, select, or duplicate pre-built ERP & retail formats.", "Browse, select, or duplicate pre-built ERP & retail formats.")}</p>
             </div>

@@ -407,6 +407,13 @@ export function WordInvoiceStudioModal({
       placeOfSupplyLabel: src?.placeOfSupplyLabel || "PLACE OF SUPPLY:",
       placeOfSupplyValue: src?.placeOfSupplyValue || "36 - Telangana",
       sections: src?.sections && Array.isArray(src.sections) && src.sections.length > 0 ? src.sections : DEFAULT_WORD_SECTIONS,
+      columns: src?.columns && Array.isArray(src.columns) && src.columns.length > 0
+        ? src.columns
+        : template?.columns && Array.isArray(template.columns) && template.columns.length > 0
+        ? template.columns
+        : template?.wordConfig?.columns && Array.isArray(template.wordConfig.columns) && template.wordConfig.columns.length > 0
+        ? template.wordConfig.columns
+        : DEFAULT_WORD_COLUMNS,
       customFields:
         (src?.customFields && Array.isArray(src.customFields) && src.customFields.length > 0)
           ? src.customFields
@@ -552,7 +559,7 @@ export function WordInvoiceStudioModal({
   const handleDeleteColumn = (id: string) => {
     setConfig({
       ...config,
-      columns: config.columns.filter((c) => c.id !== id && c.fieldKey !== id),
+      columns: (config.columns || DEFAULT_WORD_COLUMNS).filter((c) => c.id !== id && c.fieldKey !== id),
     });
     toast.info("Column removed from invoice layout");
   };
@@ -582,7 +589,7 @@ export function WordInvoiceStudioModal({
   const handleDeleteCustomField = (id: string) => {
     setConfig({
       ...config,
-      customFields: config.customFields.filter((f) => f.id !== id),
+      customFields: (config.customFields || []).filter((f) => f.id !== id),
     });
     if (selectedElementId === id) setSelectedElementId(null);
     toast.info("Field removed");
@@ -664,8 +671,8 @@ export function WordInvoiceStudioModal({
         fontFamily: config.fontFamily,
         paperBgColor: config.paperBgColor,
         watermarkText: config.watermarkText,
-        columns: config.columns,
-        customItemColumns: config.columns
+        columns: config.columns || DEFAULT_WORD_COLUMNS,
+        customItemColumns: (config.columns || DEFAULT_WORD_COLUMNS)
           .filter((c) => c.isCustom || !DEFAULT_WORD_COLUMNS.some((dc) => dc.id === c.id || dc.fieldKey === c.fieldKey))
           .map((c) => ({
             id: c.id,
@@ -690,7 +697,7 @@ export function WordInvoiceStudioModal({
           showEmail: true,
         },
         body: {
-          columns: config.columns.filter((c) => c.enabled).map((c) => ({
+          columns: (config.columns || DEFAULT_WORD_COLUMNS).filter((c) => c.enabled).map((c) => ({
             key: c.fieldKey,
             label: c.headerTitle,
             width: `${c.widthPercent}%`,
@@ -1657,7 +1664,7 @@ export function WordInvoiceStudioModal({
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  {config.sections.filter((s) => s.enabled).length} Active Block{config.sections.filter((s) => s.enabled).length === 1 ? "" : "s"}
+                  {(config.sections || DEFAULT_WORD_SECTIONS).filter((s) => s.enabled).length} Active Block{(config.sections || DEFAULT_WORD_SECTIONS).filter((s) => s.enabled).length === 1 ? "" : "s"}
                 </span>
               </div>
             </div>
@@ -1686,7 +1693,7 @@ export function WordInvoiceStudioModal({
 
               {/* RENDER ACTIVE SECTIONS IN ORDER */}
               <div className="space-y-4 z-10 flex-1 flex flex-col">
-                {config.sections.filter((s) => s.enabled).length === 0 ? (
+                {(config.sections || DEFAULT_WORD_SECTIONS).filter((s) => s.enabled).length === 0 ? (
                   <div className="my-auto py-12 px-6 border-2 border-dashed border-slate-300 hover:border-indigo-400 rounded-2xl bg-slate-50/70 flex flex-col items-center justify-center text-center transition-all">
                     <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 mb-3 shadow-inner">
                       <FileText className="w-7 h-7 text-indigo-500" />
@@ -1740,7 +1747,7 @@ export function WordInvoiceStudioModal({
                     </button>
                   </div>
                 ) : (
-                  config.sections
+                  (config.sections || DEFAULT_WORD_SECTIONS)
                     .filter((s) => s.enabled)
                     .map((section) => {
                     
@@ -2172,7 +2179,7 @@ export function WordInvoiceStudioModal({
                           </div>
 
                           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                            {config.customFields
+                            {(config.customFields || [])
                               .filter((f) => f.enabled && (f.section === "meta" || !f.section))
                               .map((f) => (
                                 <div
@@ -2305,7 +2312,7 @@ export function WordInvoiceStudioModal({
 
                     // 4. Dynamic Items Table Grid (Matches Live Preview)
                     if (section.id === "items_table") {
-                      const enabledCols = config.columns.filter((c) => c.enabled);
+                      const enabledCols = (config.columns || DEFAULT_WORD_COLUMNS).filter((c) => c.enabled);
                       return (
                         <div
                           key={section.id}
