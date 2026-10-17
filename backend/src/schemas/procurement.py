@@ -432,6 +432,10 @@ class VendorBillCreate(BaseModel):
     status: Optional[str] = "Unpaid"
 
 
+class CancelVendorBillPayload(BaseModel):
+    reason: Optional[str] = None
+
+
 class VendorBillResponse(VendorBillBase):
     id: uuid.UUID
     po_number: Optional[str] = None

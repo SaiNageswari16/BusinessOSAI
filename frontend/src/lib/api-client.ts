@@ -4876,7 +4876,7 @@ export const inventoryApi = {
   getSuppliers: (params?: { search?: string; status?: string }) => request<any[]>("GET", "/inventory/procurement/suppliers", undefined, params),
   createSupplier: (data: any) => request<any>("POST", "/inventory/procurement/suppliers", data),
   updateSupplier: (id: string, data: any) => request<any>("PATCH", `/inventory/procurement/suppliers/${id}`, data),
-  deleteSupplier: (id: string) => request<any>("DELETE", `/inventory/procurement/suppliers/${id}`),
+  deleteSupplier: (id: string, force?: boolean) => request<any>("DELETE", `/inventory/procurement/suppliers/${id}${force ? '?force=true' : ''}`),
 
   getSupplierCategories: () => request<any[]>("GET", "/inventory/procurement/supplier-categories"),
   createSupplierCategory: (data: any) => request<any>("POST", "/inventory/procurement/supplier-categories", data),
@@ -4942,6 +4942,7 @@ export const inventoryApi = {
 
   getVendorBills: () => request<any[]>("GET", "/inventory/procurement/vendor-bills"),
   createVendorBill: (data: any) => request<any>("POST", "/inventory/procurement/vendor-bills", data),
+  cancelVendorBill: (id: string, reason?: string) => request<any>("POST", `/inventory/procurement/vendor-bills/${id}/cancel`, { reason }),
 
   getVendorPayments: () => request<any[]>("GET", "/inventory/procurement/vendor-payments"),
   createVendorPayment: (data: any) => request<any>("POST", "/inventory/procurement/vendor-payments", data),

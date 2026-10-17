@@ -261,6 +261,108 @@ export function WordInvoiceDocument({
   const roundOff = Number(invoice.round_off || 0);
   const grandTotal = Number(invoice.grand_total ?? invoice.total_amount ?? (taxableSubtotal + totalTax + roundOff));
 
+  // Payment Status & Actual Amount Due Computations
+  let paymentsList: any[] = [];
+  if (Array.isArray((invoice as any).payments) && (invoice as any).payments.length > 0) {
+    paymentsList = (invoice as any).payments;
+  } else if ((invoice as any).split_payments && typeof (invoice as any).split_payments === "object") {
+    paymentsList = Object.entries((invoice as any).split_payments)
+      .filter(([_, amt]) => Number(amt) > 0)
+      .map(([m, amt]) => ({ payment_method: m, amount: Number(amt) }));
+  }
+
+  const paymentsSum = paymentsList.reduce((acc: number, p: any) => acc + Number(p.amount || 0), 0);
+
+  const rawPaidAmount = Number(
+    invoice.amount_paid ??
+    invoice.paid_amount ??
+    invoice.amount_received ??
+    (paymentsSum > 0 ? paymentsSum : 0)
+  );
+
+  const statusStr = String(invoice.status || invoice.payment_status || "").toUpperCase();
+  const isExplicitlyPaid = statusStr === "PAID" || statusStr === "COMPLETED";
+
+  const isPaidInFull = Boolean(
+    isExplicitlyPaid ||
+    (rawPaidAmount > 0 && rawPaidAmount >= grandTotal - 0.05)
+  );
+
+  const amountPaid = isPaidInFull ? Math.max(grandTotal, rawPaidAmount) : rawPaidAmount;
+
+  const balanceDue = isPaidInFull
+    ? 0
+    : (invoice.balance_due !== undefined && invoice.balance_due !== null)
+    ? Math.max(0, Number(invoice.balance_due))
+    : Math.max(0, grandTotal - amountPaid);
+
+  // Dynamic Payment Method Resolution & Classification (Guarded to prevent mix-ups)
+  const rawMethod = String(
+    invoice.payment_method ||
+    invoice.payment_terms ||
+    (invoice as any).payment_mode ||
+    (paymentsList.length > 0 ? paymentsList[0]?.payment_method : "") ||
+    ""
+  ).trim();
+
+  const lowerMethod = rawMethod.toLowerCase();
+
+  const isSplit =
+    paymentsList.length > 1 ||
+    lowerMethod.includes("split") ||
+    (rawMethod.includes(",") && !lowerMethod.includes("terms"));
+
+  // Card check takes precedence to prevent "Credit Card" being misidentified as "Credit"
+  const isCard = !isSplit && (lowerMethod.includes("card") || lowerMethod.includes("pos") || lowerMethod.includes("visa") || lowerMethod.includes("mastercard") || lowerMethod.includes("debit"));
+  const isCash = !isSplit && (lowerMethod.includes("cash") || (!rawMethod && isPaidInFull));
+  const isUpi = !isSplit && (lowerMethod.includes("upi") || lowerMethod.includes("gpay") || lowerMethod.includes("phonepe") || lowerMethod.includes("paytm") || lowerMethod.includes("qr") || lowerMethod.includes("bhim"));
+  const isBank = !isSplit && (lowerMethod.includes("bank") || lowerMethod.includes("neft") || lowerMethod.includes("rtgs") || lowerMethod.includes("imps") || lowerMethod.includes("transfer") || lowerMethod.includes("netbanking"));
+  const isWallet = !isSplit && (lowerMethod.includes("wallet"));
+  // Guarded: credit card is NOT credit/pay later
+  const isCredit = !isSplit && !isCard && (lowerMethod.includes("pay later") || lowerMethod.includes("unpaid") || lowerMethod.includes("due") || lowerMethod.includes("on account") || lowerMethod === "credit" || (!isCard && lowerMethod.includes("credit")) || (!isPaidInFull && balanceDue > 0.01 && !rawMethod));
+
+  // Cash tendered & change returned (if POS recorded it)
+  const cashTendered = Number(
+    invoice.tendered_amount ??
+    (invoice as any).cash_tendered ??
+    (invoice as any).tendered ??
+    0
+  );
+  const changeReturned = Number(
+    invoice.change_amount ??
+    (invoice as any).change_returned ??
+    (invoice as any).change ??
+    0
+  );
+
+  // Reference / Transaction ID
+  const paymentRef =
+    invoice.reference_number ||
+    invoice.transaction_id ||
+    (invoice as any).payment_reference ||
+    (paymentsList.length > 0 ? paymentsList[0]?.reference_number : null) ||
+    "";
+
+  // Friendly payment method badge label, icon & styling
+  const getPaymentMethodDisplay = () => {
+    if (isSplit) return { label: "Split Payment", icon: "🔀", color: "text-indigo-700 bg-indigo-50 border-indigo-200" };
+    if (isCash) return { label: "Cash", icon: "💵", color: "text-emerald-700 bg-emerald-50 border-emerald-200" };
+    if (isUpi) return { label: "UPI Instant Pay", icon: "⚡", color: "text-sky-700 bg-sky-50 border-sky-200" };
+    if (isCard) return { label: "Card / POS", icon: "💳", color: "text-purple-700 bg-purple-50 border-purple-200" };
+    if (isBank) return { label: "Bank Transfer", icon: "🏦", color: "text-blue-700 bg-blue-50 border-blue-200" };
+    if (isWallet) return { label: "Wallet", icon: "👛", color: "text-amber-700 bg-amber-50 border-amber-200" };
+    if (isCredit) return { label: "Credit / Pay Later", icon: "⏳", color: "text-rose-700 bg-rose-50 border-rose-200" };
+    if (rawMethod) return { label: rawMethod, icon: "💳", color: "text-slate-700 bg-slate-50 border-slate-200" };
+    return {
+      label: isPaidInFull ? "Paid" : "Pending",
+      icon: isPaidInFull ? "✓" : "⏳",
+      color: isPaidInFull ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-amber-700 bg-amber-50 border-amber-200"
+    };
+  };
+
+  const paymentDisplay = getPaymentMethodDisplay();
+  const resolvedPaymentMethod = paymentDisplay.label;
+
   // Total Billed Quantity & Item Counts
   const totalBilledQty = items.reduce((sum, it) => sum + Number(it.quantity || 0), 0);
   const totalItemsCount = items.length;
@@ -1354,11 +1456,110 @@ export function WordInvoiceDocument({
                       style={{ backgroundColor: brandPrimary }}
                     >
                       <span className="font-bold text-xs uppercase tracking-wider">
-                        Total Amount Due:
+                        Grand Total:
                       </span>
                       <span className="font-mono font-black text-base sm:text-lg">
                         {currency.symbol}{(Number(grandTotal) || 0).toFixed(2)}
                       </span>
+                    </div>
+
+                    {/* Payment Status, Method & Dynamic Breakdown */}
+                    <div className="pt-2 border-t border-slate-200/90 space-y-1.5">
+                      {/* Primary Payment Mode Badge */}
+                      <div className="flex justify-between items-center text-[10.5px]">
+                        <span className="text-slate-600 font-medium">Payment Mode:</span>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold border ${paymentDisplay.color}`}>
+                          <span>{paymentDisplay.icon}</span>
+                          <span>{paymentDisplay.label}</span>
+                        </span>
+                      </div>
+
+                      {/* Split Payment Breakdown (if multiple modes) */}
+                      {isSplit && paymentsList.length > 1 && (
+                        <div className="bg-slate-50/80 rounded-lg p-1.5 border border-slate-200/80 space-y-1 my-1">
+                          <span className="text-[8.5px] font-bold uppercase tracking-wider text-slate-500 block">
+                            Split Breakdown:
+                          </span>
+                          {paymentsList.map((p: any, idx: number) => (
+                            <div key={idx} className="flex justify-between items-center text-[9px] text-slate-700">
+                              <span className="capitalize font-medium text-slate-600">
+                                • {p.payment_method || `Payment ${idx + 1}`}:
+                              </span>
+                              <span className="font-mono font-bold">
+                                {currency.symbol}{Number(p.amount || 0).toFixed(2)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Cash Tendered & Change (if Cash transaction recorded) */}
+                      {isCash && (cashTendered > 0 || changeReturned > 0) && (
+                        <div className="bg-emerald-50/50 rounded-lg p-1.5 border border-emerald-100 space-y-0.5 text-[9.5px]">
+                          {cashTendered > 0 && (
+                            <div className="flex justify-between text-slate-600">
+                              <span>Cash Tendered:</span>
+                              <span className="font-mono font-medium">{currency.symbol}{cashTendered.toFixed(2)}</span>
+                            </div>
+                          )}
+                          {changeReturned > 0 && (
+                            <div className="flex justify-between text-emerald-700 font-medium">
+                              <span>Change Returned:</span>
+                              <span className="font-mono font-bold">{currency.symbol}{changeReturned.toFixed(2)}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Transaction / UTR Reference if recorded */}
+                      {paymentRef && (
+                        <div className="flex justify-between items-center text-[9px] text-slate-500 font-mono">
+                          <span>Ref / UTR:</span>
+                          <span className="text-slate-800 font-semibold">{paymentRef}</span>
+                        </div>
+                      )}
+
+                      {/* Amount Paid */}
+                      <div className="flex justify-between items-center text-[10.5px]">
+                        <span className="text-slate-600 font-medium">Amount Paid:</span>
+                        <span className="font-mono font-bold text-emerald-600">
+                          {currency.symbol}{amountPaid.toFixed(2)}
+                        </span>
+                      </div>
+
+                      {/* Due Date if Credit / Pending */}
+                      {balanceDue > 0.01 && (invoice.due_date || (invoice as any).payment_due_date) && (
+                        <div className="flex justify-between items-center text-[9px] text-rose-600 font-medium">
+                          <span>Payment Due By:</span>
+                          <span>{new Date(invoice.due_date || (invoice as any).payment_due_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span>
+                        </div>
+                      )}
+
+                      {/* Actual Amount Due */}
+                      <div className="flex justify-between items-center text-[11px] pt-0.5 border-t border-slate-100">
+                        <span className={`font-bold uppercase tracking-wider ${balanceDue <= 0.01 ? "text-emerald-700" : "text-rose-600"}`}>
+                          Amount Due:
+                        </span>
+                        <span className="font-mono font-black flex items-center gap-1.5">
+                          {balanceDue <= 0.01 ? (
+                            <>
+                              <span className="text-emerald-700">{currency.symbol}0.00</span>
+                              <span className="px-2 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                Fully Paid
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-rose-600">
+                                {currency.symbol}{balanceDue.toFixed(2)}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300">
+                                {amountPaid > 0 ? "Partial Due" : "Unpaid"}
+                              </span>
+                            </>
+                          )}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1387,30 +1588,60 @@ export function WordInvoiceDocument({
                   )}
                 </div>
 
-                <div className="flex items-center gap-3.5 bg-white p-2.5 rounded-xl border border-slate-200/90 shadow-xs shrink-0">
-                  <img
-                    src={generateQRCodeSVG(
-                      buildUpiPayUrl({
-                        vpa: activeGst?.upi_vpa || "merchant@upi",
-                        payeeName: config.companyName || "Merchant",
-                        amount: grandTotal,
-                        invoiceNumber: invoiceNumber,
-                      }),
-                      88
-                    )}
-                    alt="Scan & Pay UPI"
-                    className="w-16 h-16 object-contain"
-                  />
-                  <div className="text-left text-[9px] space-y-0.5">
-                    <span className="font-bold text-slate-900 block flex items-center gap-1">
-                      ⚡ Instant UPI Payment
-                    </span>
-                    <span className="text-slate-500 block">Scan using any UPI App</span>
-                    <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400 pt-0.5">
-                      <span>GPay</span> • <span>PhonePe</span> • <span>Paytm</span>
+                {balanceDue > 0.01 ? (
+                  <div className="flex items-center gap-3.5 bg-white p-2.5 rounded-xl border border-slate-200/90 shadow-xs shrink-0">
+                    <img
+                      src={generateQRCodeSVG(
+                        buildUpiPayUrl({
+                          vpa: activeGst?.upi_vpa || "merchant@upi",
+                          payeeName: config.companyName || "Merchant",
+                          amount: balanceDue,
+                          invoiceNumber: invoiceNumber,
+                        }),
+                        88
+                      )}
+                      alt="Scan & Pay UPI"
+                      className="w-16 h-16 object-contain"
+                    />
+                    <div className="text-left text-[9px] space-y-0.5">
+                      <span className="font-bold text-slate-900 block flex items-center gap-1">
+                        ⚡ Instant UPI Payment
+                      </span>
+                      <span className="text-slate-500 block">
+                        {amountPaid > 0 ? "Scan to pay balance:" : "Scan to pay total:"}{" "}
+                        <strong className="text-slate-900">{currency.symbol}{balanceDue.toFixed(2)}</strong>
+                      </span>
+                      <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400 pt-0.5">
+                        <span>GPay</span> • <span>PhonePe</span> • <span>Paytm</span> • <span>BHIM</span>
+                      </div>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex items-center gap-3 bg-emerald-50 px-4 py-3 rounded-xl border border-emerald-200 text-emerald-800 shadow-2xs shrink-0">
+                    <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
+                      ✓
+                    </div>
+                    <div className="text-left text-[9.5px] space-y-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-black uppercase tracking-wider text-emerald-900">
+                          Paid in Full
+                        </span>
+                        <span className="px-1.5 py-0.2 rounded text-[8.5px] font-bold bg-emerald-200/80 text-emerald-800">
+                          {paymentDisplay.icon} {paymentDisplay.label}
+                        </span>
+                      </div>
+                      <span className="text-emerald-700 font-medium block">
+                        {isCash && "Cash payment received & receipt confirmed"}
+                        {isUpi && (paymentRef ? `Verified via UPI (Ref: ${paymentRef})` : "Verified via UPI instant transfer")}
+                        {isCard && "Electronic POS card transaction approved"}
+                        {isBank && "Bank transfer remittance confirmed"}
+                        {isWallet && "Settled from store wallet digital balance"}
+                        {isSplit && "All split payment portions successfully settled"}
+                        {!isCash && !isUpi && !isCard && !isBank && !isWallet && !isSplit && "No outstanding dues on this invoice"}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           }

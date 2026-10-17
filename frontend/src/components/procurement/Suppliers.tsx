@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Search, Plus, Building2, Edit2, Trash, Star, Loader2, Store } from "lucide-react";
+import { toast } from "sonner";
 import { inventoryApi } from "../../lib/api-client";
 import { SupplierForm } from "./SupplierForm";
 import { AddVendorModal } from "./AddVendorModal";
@@ -26,6 +27,7 @@ export function Suppliers() {
   const { currency, formatCurrency } = useCurrency();
   const [suppliers, setSuppliers] = useState<SupplierItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
@@ -78,14 +80,44 @@ export function Suppliers() {
     );
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this supplier?")) return;
+  const handleDelete = async (supplier: SupplierItem) => {
+    if (deletingId) return;
+    if (!confirm(`Are you sure you want to delete supplier "${supplier.name}"?`)) return;
+
+    setDeletingId(supplier.id);
+    const toastId = toast.loading(`Deleting supplier "${supplier.name}"...`);
+
     try {
-      await inventoryApi.deleteSupplier(id);
-      toast.success("Supplier deleted successfully");
-      fetchSuppliers();
+      await inventoryApi.deleteSupplier(supplier.id);
+      toast.success("Supplier deleted successfully", { id: toastId });
+      await fetchSuppliers();
     } catch (err: any) {
-      toast.error(err.message || "Failed to delete supplier");
+      const errMsg = err?.message || err?.detail || "Failed to delete supplier";
+      if (
+        errMsg.toLowerCase().includes("force") ||
+        errMsg.toLowerCase().includes("bills") ||
+        errMsg.toLowerCase().includes("purchase")
+      ) {
+        toast.dismiss(toastId);
+        if (
+          confirm(
+            `${errMsg}\n\nDo you want to force delete this supplier (unlinks cancelled purchase bills)?`
+          )
+        ) {
+          const forceToastId = toast.loading("Force deleting supplier...");
+          try {
+            await inventoryApi.deleteSupplier(supplier.id, true);
+            toast.success("Supplier deleted successfully", { id: forceToastId });
+            await fetchSuppliers();
+          } catch (forceErr: any) {
+            toast.error(forceErr?.message || "Failed to force delete supplier", { id: forceToastId });
+          }
+        }
+      } else {
+        toast.error(errMsg, { id: toastId });
+      }
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -164,7 +196,12 @@ export function Suppliers() {
                 </tr>
               ) : (
                 suppliers.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((supplier) => (
-                  <tr key={supplier.id} className="hover:bg-muted/30 transition-colors">
+                  <tr 
+                    key={supplier.id} 
+                    className={`hover:bg-muted/30 transition-colors ${
+                      deletingId === supplier.id ? "opacity-50 pointer-events-none bg-rose-50/20" : ""
+                    }`}
+                  >
                     <td className="py-4 px-6">
                       <div className="flex items-center gap-3">
                         <div className="size-10 rounded-lg bg-muted flex items-center justify-center">
@@ -211,17 +248,24 @@ export function Suppliers() {
                           onClick={() => handleOpenEdit(supplier)} 
                           variant="ghost" 
                           size="icon" 
-                          className="h-8 w-8 text-primary hover:bg-muted"
+                          disabled={Boolean(deletingId)}
+                          className="h-8 w-8 text-primary hover:bg-muted disabled:opacity-40"
                         >
                           <Edit2 className="size-4" />
                         </Button>
                         <Button 
-                          onClick={() => handleDelete(supplier.id)} 
+                          onClick={() => handleDelete(supplier)} 
                           variant="ghost" 
                           size="icon" 
-                          className="h-8 w-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                          disabled={Boolean(deletingId)}
+                          title={deletingId === supplier.id ? "Deleting supplier..." : "Delete Supplier"}
+                          className="h-8 w-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50 disabled:opacity-50"
                         >
-                          <Trash className="size-4" />
+                          {deletingId === supplier.id ? (
+                            <Loader2 className="size-4 animate-spin text-rose-600" />
+                          ) : (
+                            <Trash className="size-4" />
+                          )}
                         </Button>
                       </div>
                     </td>

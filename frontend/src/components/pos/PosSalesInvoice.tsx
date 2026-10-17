@@ -3993,6 +3993,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       payment_status: walkInPreview ? 'PAID' : (paymentMode === "Credit" ? 'UNPAID' : (amountReceived === "" || Number(amountReceived) >= grandTotal ? 'PAID' : 'PARTIAL')),
       amount_received: walkInPreview ? grandTotal : (paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0),
       paid_amount: walkInPreview ? grandTotal : (paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0),
+      amount_paid: walkInPreview ? grandTotal : (paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0),
+      balance_due: walkInPreview ? 0 : (paymentMode === "Credit" ? grandTotal : Math.max(0, grandTotal - (amountReceived === "" ? grandTotal : Number(amountReceived)))),
       print_payment_qr: showPaymentQR,
       terms: termsAndConditions || undefined,
       notes: notes || undefined,

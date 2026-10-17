@@ -900,35 +900,44 @@ export function PdfStationeryOverlayTemplate({
               )}
 
               {paymentQrSrc && (
-                <div className="flex items-center gap-2.5 p-2 bg-slate-50 border border-slate-200 rounded">
-                  <img src={paymentQrSrc} alt="UPI QR" className="size-14 object-contain bg-white rounded p-0.5 border border-slate-200" />
-                  <div>
-                    <span
-                      contentEditable={isEditable}
-                      suppressContentEditableWarning
-                      className={`font-bold uppercase tracking-wider text-[8pt] block ${editClass}`}
-                      style={{ color: primaryColor }}
-                    >
-                      ⚡ Scan to Pay via UPI / QR
-                    </span>
-                    <span
-                      contentEditable={isEditable}
-                      suppressContentEditableWarning
-                      className={`font-black text-[11pt] text-slate-950 ${editClass}`}
-                    >
-                      {currency.symbol}{targetAmount.toFixed(2)}
-                    </span>
-                    {resolvedUpiVpa && (
+                balanceDue > 0.01 ? (
+                  <div className="flex items-center gap-2.5 p-2 bg-slate-50 border border-slate-200 rounded">
+                    <img src={paymentQrSrc} alt="UPI QR" className="size-14 object-contain bg-white rounded p-0.5 border border-slate-200" />
+                    <div>
                       <span
                         contentEditable={isEditable}
                         suppressContentEditableWarning
-                        className={`text-[8pt] text-slate-600 font-mono block mt-0.5 ${editClass}`}
+                        className={`font-bold uppercase tracking-wider text-[8pt] block ${editClass}`}
+                        style={{ color: primaryColor }}
                       >
-                        {resolvedUpiVpa}
+                        ⚡ Scan to Pay Balance
                       </span>
-                    )}
+                      <span
+                        contentEditable={isEditable}
+                        suppressContentEditableWarning
+                        className={`font-black text-[11pt] text-slate-950 ${editClass}`}
+                      >
+                        {currency.symbol}{balanceDue.toFixed(2)}
+                      </span>
+                      {resolvedUpiVpa && (
+                        <span
+                          contentEditable={isEditable}
+                          suppressContentEditableWarning
+                          className={`text-[8pt] text-slate-600 font-mono block mt-0.5 ${editClass}`}
+                        >
+                          {resolvedUpiVpa}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex items-center gap-2 p-2 bg-emerald-50 border border-emerald-200 rounded text-emerald-800">
+                    <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-[9px]">
+                      ✓
+                    </div>
+                    <span className="font-bold text-[8.5pt]">Paid in Full</span>
+                  </div>
+                )
               )}
 
               {!hideFooterTerms && (

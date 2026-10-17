@@ -37,7 +37,7 @@ from src.schemas.procurement import (
     PurchaseOrderCreate, PurchaseOrderUpdate, PurchaseOrderResponse,
     GoodsReceivedNoteCreate, GoodsReceivedNoteUpdate, GoodsReceivedNoteResponse,
     PurchaseReturnCreate, PurchaseReturnResponse,
-    VendorBillCreate, VendorBillResponse,
+    VendorBillCreate, CancelVendorBillPayload, VendorBillResponse,
     VendorPaymentCreate, VendorPaymentResponse,
     VendorCreditNoteCreate, VendorCreditNoteResponse,
     VendorDebitNoteCreate, VendorDebitNoteResponse
@@ -247,10 +247,96 @@ async def delete_supplier(
     supplier = await db.get(Supplier, id)
     if not supplier or supplier.tenant_id != ctx.tenant_id:
         raise HTTPException(status_code=404, detail="Supplier not found.")
-        
+
+    # Check linked Purchase Orders
+    pos_res = await db.execute(
+        select(PurchaseOrder).where(
+            PurchaseOrder.supplier_id == id,
+            PurchaseOrder.tenant_id == ctx.tenant_id
+        )
+    )
+    pos = pos_res.scalars().all()
+    po_ids = [p.id for p in pos]
+
+    if po_ids:
+        # Check for vendor bills
+        bills_res = await db.execute(
+            select(VendorBill).where(
+                VendorBill.purchase_order_id.in_(po_ids),
+                VendorBill.tenant_id == ctx.tenant_id
+            )
+        )
+        bills = bills_res.scalars().all()
+
+        # If any bill was active, reverse product stock
+        for b in bills:
+            if (b.status or "").lower() != "cancelled":
+                po_it_res = await db.execute(
+                    select(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == b.purchase_order_id)
+                )
+                for it in po_it_res.scalars().all():
+                    prod = await db.scalar(
+                        select(Product).where(Product.id == it.product_id, Product.tenant_id == ctx.tenant_id).with_for_update()
+                    )
+                    if prod:
+                        qty = int(it.quantity)
+                        prod.initial_stock = max(0, (prod.initial_stock or 0) - qty)
+                        if prod.on_hand_stock is not None:
+                            prod.on_hand_stock = max(0, (prod.on_hand_stock or 0) - qty)
+
+        # Clean up vendor bills and payments
+        bill_ids = [b.id for b in bills]
+        if bill_ids:
+            await db.execute(delete(VendorPayment).where(VendorPayment.vendor_bill_id.in_(bill_ids)))
+            await db.execute(delete(VendorBill).where(VendorBill.id.in_(bill_ids)))
+            await db.flush()
+
+        # Clean up Goods Received Notes
+        grns_res = await db.execute(
+            select(GoodsReceivedNote).where(GoodsReceivedNote.purchase_order_id.in_(po_ids))
+        )
+        grns = grns_res.scalars().all()
+        grn_ids = [g.id for g in grns]
+        if grn_ids:
+            await db.execute(delete(GoodsReceivedNoteItem).where(GoodsReceivedNoteItem.grn_id.in_(grn_ids)))
+            await db.execute(delete(GoodsReceivedNote).where(GoodsReceivedNote.id.in_(grn_ids)))
+            await db.flush()
+
+        # Clean up Purchase Returns
+        returns_res = await db.execute(
+            select(PurchaseReturn).where(PurchaseReturn.purchase_order_id.in_(po_ids))
+        )
+        returns = returns_res.scalars().all()
+        ret_ids = [r.id for r in returns]
+        if ret_ids:
+            await db.execute(delete(PurchaseReturnItem).where(PurchaseReturnItem.purchase_return_id.in_(ret_ids)))
+            await db.execute(delete(PurchaseReturn).where(PurchaseReturn.id.in_(ret_ids)))
+            await db.flush()
+
+        # Clean up Purchase Orders and items
+        await db.execute(delete(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id.in_(po_ids)))
+        await db.execute(delete(PurchaseOrder).where(PurchaseOrder.id.in_(po_ids)))
+        await db.flush()
+
+    # Clean up Vendor Credit Notes & Debit Notes
+    await db.execute(delete(VendorCreditNote).where(VendorCreditNote.supplier_id == id))
+    await db.execute(delete(VendorDebitNote).where(VendorDebitNote.supplier_id == id))
+    await db.flush()
+
+    # Clean up Purchase Quotations
+    quotes_res = await db.execute(
+        select(PurchaseQuotation).where(PurchaseQuotation.supplier_id == id)
+    )
+    quotes = quotes_res.scalars().all()
+    quote_ids = [q.id for q in quotes]
+    if quote_ids:
+        await db.execute(delete(PurchaseQuotationItem).where(PurchaseQuotationItem.purchase_quotation_id.in_(quote_ids)))
+        await db.execute(delete(PurchaseQuotation).where(PurchaseQuotation.id.in_(quote_ids)))
+        await db.flush()
+
     await db.delete(supplier)
     await db.commit()
-    return {"message": "Supplier deleted successfully"}
+    return {"message": f"Supplier '{supplier.name}' deleted successfully."}
 
 
 # ─── GSTIN Verification & Auto-Fill Service ─────────────────────────
@@ -1412,7 +1498,7 @@ async def list_vendor_bills(
                 bill_date=bill.bill_date,
                 due_date=bill.due_date,
                 total_amount=float(bill.total_amount),
-                paid_amount=float(bill.paid_amount),
+                paid_amount=0.0 if (bill.status or "").lower() == "cancelled" else float(bill.paid_amount),
                 status=bill.status,
                 created_at=bill.created_at,
                 updated_at=bill.updated_at
@@ -1616,6 +1702,143 @@ async def create_vendor_bill(
         created_at=bill.created_at,
         updated_at=bill.updated_at
     )
+
+
+@router.post("/vendor-bills/{bill_id}/cancel")
+async def cancel_vendor_bill(
+    bill_id: str,
+    payload: CancelVendorBillPayload,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    bill = None
+    try:
+        u_id = uuid.UUID(str(bill_id))
+        bill = await db.scalar(
+            select(VendorBill)
+            .where(VendorBill.id == u_id, VendorBill.tenant_id == ctx.tenant_id)
+            .with_for_update()
+        )
+    except Exception:
+        bill = await db.scalar(
+            select(VendorBill)
+            .where(VendorBill.bill_number == bill_id, VendorBill.tenant_id == ctx.tenant_id)
+            .with_for_update()
+        )
+
+    if not bill:
+        raise HTTPException(status_code=404, detail="Purchase invoice (vendor bill) not found.")
+
+    if (bill.status or "").lower() == "cancelled":
+        raise HTTPException(status_code=400, detail="This purchase invoice is already cancelled.")
+
+    # Deduct / reverse product stock that was added when this purchase invoice was created
+    reversed_items = []
+    po = None
+    if bill.purchase_order_id:
+        po = await db.get(PurchaseOrder, bill.purchase_order_id)
+        if po:
+            items_res = await db.execute(
+                select(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == po.id)
+            )
+            items = items_res.scalars().all()
+            for it in items:
+                prod = await db.scalar(
+                    select(Product).where(Product.id == it.product_id, Product.tenant_id == ctx.tenant_id).with_for_update()
+                )
+                if prod:
+                    qty = int(it.quantity)
+                    current_initial = prod.initial_stock if prod.initial_stock is not None else 0
+                    current_on_hand = prod.on_hand_stock if prod.on_hand_stock is not None else current_initial
+                    new_initial = max(0, current_initial - qty)
+                    new_on_hand = max(0, current_on_hand - qty)
+                    prod.initial_stock = new_initial
+                    prod.on_hand_stock = new_on_hand
+
+                    # Record StockMovement
+                    try:
+                        from src.models.inventory import StockMovement
+                        movement_num = f"SM-PCAN-{uuid.uuid4().hex[:6].upper()}"
+                        sm = StockMovement(
+                            tenant_id=ctx.tenant_id,
+                            company_id=bill.company_id or ctx.active_company_id,
+                            movement_number=movement_num,
+                            product_id=prod.id,
+                            source_location="Main Warehouse / Store",
+                            destination_location="Supplier Return (Purchase Cancelled)",
+                            quantity=qty,
+                            notes=f"Cancelled Purchase Invoice {bill.bill_number}: -{qty} returned to supplier (Reason: {payload.reason or 'Not specified'})",
+                            status="Completed"
+                        )
+                        db.add(sm)
+                    except Exception:
+                        pass
+
+                    # Record InventoryTransaction
+                    try:
+                        from src.models.inventory import InventoryTransaction
+                        inv_tx = InventoryTransaction(
+                            tenant_id=ctx.tenant_id,
+                            company_id=bill.company_id or ctx.active_company_id,
+                            product_id=prod.id,
+                            transaction_type="PURCHASE_CANCEL",
+                            quantity=-qty,
+                            before_on_hand=int(current_on_hand),
+                            after_on_hand=int(new_on_hand),
+                            before_reserved=int(prod.reserved_stock or 0),
+                            after_reserved=int(prod.reserved_stock or 0),
+                            reference_type="PURCHASE_INVOICE",
+                            reference_id=bill.bill_number or str(bill.id),
+                            user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
+                            notes=f"Purchase invoice #{bill.bill_number} cancelled ({payload.reason or 'Admin cancelled'}): deducted {qty} units",
+                        )
+                        db.add(inv_tx)
+                    except Exception:
+                        pass
+
+                    reversed_items.append({
+                        "product_id": str(prod.id),
+                        "product_name": prod.name,
+                        "quantity_reversed": qty,
+                        "remaining_stock": new_on_hand
+                    })
+
+    # Update linked GRN to Cancelled if present
+    if bill.grn_id:
+        grn = await db.get(GoodsReceivedNote, bill.grn_id)
+        if grn:
+            grn.status = "Cancelled"
+
+    # Update PO status to Cancelled if no other active bills exist
+    if po:
+        other_active_bills_count = await db.scalar(
+            select(func.count(VendorBill.id)).where(
+                VendorBill.purchase_order_id == po.id,
+                VendorBill.id != bill.id,
+                VendorBill.status != "Cancelled"
+            )
+        )
+        if not other_active_bills_count:
+            po.status = "Cancelled"
+
+    # Update bill status to Cancelled and reset paid amount
+    bill.status = "Cancelled"
+    bill.paid_amount = 0.0
+    bill.updated_at = datetime.utcnow()
+
+    # Clean up any vendor payments recorded for this bill
+    await db.execute(delete(VendorPayment).where(VendorPayment.vendor_bill_id == bill.id))
+
+    await db.commit()
+    await db.refresh(bill)
+
+    return {
+        "message": f"Purchase Invoice {bill.bill_number} has been cancelled successfully.",
+        "bill_id": str(bill.id),
+        "bill_number": bill.bill_number,
+        "status": bill.status,
+        "reversed_items": reversed_items
+    }
 
 
 # ─── Vendor Payments CRUD ──────────────────────────────────────────

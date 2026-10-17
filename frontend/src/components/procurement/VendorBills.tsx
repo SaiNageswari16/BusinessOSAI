@@ -20,7 +20,10 @@ import {
   TrendingUp,
   X,
   Clock,
-  Sparkles
+  Sparkles,
+  Ban,
+  AlertTriangle,
+  XCircle
 } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
@@ -42,6 +45,39 @@ export function VendorBills() {
   const [isCreateMode, setIsCreateMode] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
   const [shareDoc, setShareDoc] = useState<any | null>(null);
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [cancellingBill, setCancellingBill] = useState<any | null>(null);
+  const [cancellationReason, setCancellationReason] = useState("");
+  const [isCancelling, setIsCancelling] = useState(false);
+
+  const handleOpenCancelModal = (bill: any) => {
+    if ((bill.status || "").toLowerCase() === "cancelled") {
+      toast.error("This purchase invoice is already cancelled.");
+      return;
+    }
+    setCancellingBill(bill);
+    setCancellationReason("");
+    setIsCancelModalOpen(true);
+  };
+
+  const handleConfirmCancellation = async () => {
+    if (!cancellingBill) return;
+    setIsCancelling(true);
+    try {
+      const res = await inventoryApi.cancelVendorBill(
+        cancellingBill.id || cancellingBill.bill_number,
+        cancellationReason
+      );
+      toast.success(res?.message || `Purchase Invoice ${cancellingBill.bill_number} cancelled successfully. Inventory stock has been reversed.`);
+      setIsCancelModalOpen(false);
+      setCancellingBill(null);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to cancel purchase invoice");
+    } finally {
+      setIsCancelling(false);
+    }
+  };
 
   // ── Filters & Search State ──────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
@@ -251,7 +287,9 @@ export function VendorBills() {
     let totalOutstanding = 0;
     let matchedCount = 0;
 
-    filteredBills.forEach((b: any) => {
+    const activeList = filteredBills.filter((b: any) => (b.status || "").toLowerCase() !== "cancelled");
+
+    activeList.forEach((b: any) => {
       const inv = Number(b.total_amount || 0);
       const pd = Number(b.paid_amount || 0);
       totalInvoiced += inv;
@@ -260,7 +298,14 @@ export function VendorBills() {
       if (b.grn_number || b.grn_id) matchedCount++;
     });
 
-    return { totalInvoiced, totalPaid, totalOutstanding, matchedCount };
+    return { 
+      totalInvoiced, 
+      totalPaid, 
+      totalOutstanding, 
+      matchedCount, 
+      activeCount: activeList.length,
+      cancelledCount: filteredBills.length - activeList.length
+    };
   }, [filteredBills]);
 
   if (isCreateMode || selectedDoc) {
@@ -311,7 +356,9 @@ export function VendorBills() {
               <h3 className="text-2xl font-black text-slate-900 dark:text-white mt-1">
                 {currency.symbol}{stats.totalInvoiced.toLocaleString("en-IN")}
               </h3>
-              <p className="text-[11px] text-muted-foreground mt-0.5">{filteredBills.length} Invoices logged</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {stats.activeCount} Active Invoices {stats.cancelledCount > 0 ? `(${stats.cancelledCount} cancelled)` : ""}
+              </p>
             </div>
             <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-sm">
               <Receipt className="w-5 h-5" />
@@ -354,10 +401,10 @@ export function VendorBills() {
             <div>
               <p className="text-xs font-bold text-purple-700 dark:text-purple-400 uppercase tracking-wider">3-Way Matched</p>
               <h3 className="text-2xl font-black text-purple-600 dark:text-purple-400 mt-1">
-                {stats.matchedCount} / {filteredBills.length}
+                {stats.matchedCount} / {stats.activeCount}
               </h3>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                {filteredBills.length > 0 ? `${Math.round((stats.matchedCount / filteredBills.length) * 100)}% Verified` : "0% Verified"}
+                {stats.activeCount > 0 ? `${Math.round((stats.matchedCount / stats.activeCount) * 100)}% Verified` : "0% Verified"}
               </p>
             </div>
             <div className="p-3 bg-purple-600 text-white rounded-2xl shadow-sm">
@@ -525,6 +572,7 @@ export function VendorBills() {
                 <option value="Paid">Paid (Settled)</option>
                 <option value="Partial">Partial</option>
                 <option value="Unpaid">Unpaid / Due</option>
+                <option value="Cancelled">Cancelled</option>
               </select>
             </div>
 
@@ -625,10 +673,14 @@ export function VendorBills() {
                       )}
                     </td>
                     <td className="py-4 px-6 text-right font-black text-foreground">
-                      {currency.symbol}{Number(b.total_amount || 0).toLocaleString("en-IN")}
+                      <span className={b.status === 'Cancelled' ? 'line-through text-muted-foreground/70 font-semibold' : ''}>
+                        {currency.symbol}{Number(b.total_amount || 0).toLocaleString("en-IN")}
+                      </span>
                     </td>
                     <td className="py-4 px-6 text-right font-bold text-emerald-600 dark:text-emerald-400">
-                      {currency.symbol}{Number(b.paid_amount || 0).toLocaleString("en-IN")}
+                      <span className={b.status === 'Cancelled' ? 'line-through text-muted-foreground/70 font-semibold' : ''}>
+                        {currency.symbol}{Number(b.status === 'Cancelled' ? 0 : (b.paid_amount || 0)).toLocaleString("en-IN")}
+                      </span>
                     </td>
                     <td className="py-4 px-6 text-muted-foreground font-medium text-xs">
                       {b.due_date ? formatDisplayDate(b.due_date) : "Net 30"}
@@ -639,9 +691,12 @@ export function VendorBills() {
                           ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' 
                           : b.status === 'Partial' 
                           ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20' 
+                          : b.status === 'Cancelled'
+                          ? 'bg-slate-500/10 text-slate-500 border border-slate-500/20 line-through'
                           : 'bg-rose-500/10 text-rose-600 border border-rose-500/20'
                       }`}>
                         {b.status === 'Paid' && <CheckCircle2 className="w-3 h-3" />}
+                        {b.status === 'Cancelled' && <Ban className="w-3 h-3 text-slate-400" />}
                         {b.status || 'Unpaid'}
                       </span>
                     </td>
@@ -663,6 +718,21 @@ export function VendorBills() {
                         >
                           <Eye className="size-3.5" /> View / Edit
                         </Button>
+                        {b.status === 'Cancelled' ? (
+                          <span className="text-[11px] font-bold text-slate-400 italic px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-md">
+                            Cancelled
+                          </span>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenCancelModal(b)}
+                            className="h-8 gap-1 font-bold rounded-lg border-rose-200 text-rose-700 bg-rose-50/50 hover:bg-rose-100 dark:bg-rose-950/30 dark:border-rose-900/50 dark:text-rose-400 shadow-2xs cursor-pointer"
+                            title="Cancel purchase invoice & reverse stock"
+                          >
+                            <Ban className="size-3.5 text-rose-600" /> Cancel
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -681,6 +751,145 @@ export function VendorBills() {
           itemLabel="vendor bills"
         />
       </Card>
+
+      {/* Cancel Purchase Invoice Confirmation Modal */}
+      {isCancelModalOpen && cancellingBill && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-card border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-4 bg-rose-500/10 border-b border-rose-500/20 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-rose-600 text-white rounded-xl shadow-xs">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-rose-600 dark:text-rose-400">
+                    Cancel Purchase Invoice
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Reverse inventory stock & cancel bill #{cancellingBill.bill_number}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCancelModalOpen(false);
+                  setCancellingBill(null);
+                }}
+                className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-muted cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4 text-xs">
+              {/* Warning Notice */}
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/50 rounded-xl space-y-1 text-rose-900 dark:text-rose-300">
+                <p className="font-bold flex items-center gap-1.5 text-rose-700 dark:text-rose-400">
+                  <Ban className="w-4 h-4 shrink-0" />
+                  Inventory Stock Reversal Warning
+                </p>
+                <p className="text-[11px] leading-relaxed">
+                  Cancelling this purchase invoice will automatically reverse received quantities from your warehouse inventory stock, mark the linked GRN as Cancelled, and log an audit movement.
+                </p>
+              </div>
+
+              {/* Invoice Summary Details */}
+              <div className="p-3.5 bg-muted/30 border border-border rounded-xl space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-muted-foreground font-medium">Bill Number:</span>
+                  <span className="font-mono font-bold text-primary">{cancellingBill.bill_number}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-muted-foreground font-medium">Supplier / Vendor:</span>
+                  <span className="font-bold text-foreground">{cancellingBill.supplier_name || "Unknown Vendor"}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-muted-foreground font-medium">Linked PO:</span>
+                  <span className="font-medium text-foreground">{cancellingBill.po_number || "Direct Inward"}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs pt-1.5 border-t border-border">
+                  <span className="text-muted-foreground font-medium">Total Invoiced Amount:</span>
+                  <span className="font-black text-foreground text-sm">
+                    {currency.symbol}{Number(cancellingBill.total_amount || 0).toLocaleString("en-IN")}
+                  </span>
+                </div>
+              </div>
+
+              {/* Items stock to be deducted */}
+              {cancellingBill.items && cancellingBill.items.length > 0 && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-foreground">
+                    Items & Quantities to Deduct from Inventory:
+                  </label>
+                  <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                    {cancellingBill.items.map((it: any, idx: number) => (
+                      <div key={idx} className="flex justify-between items-center p-2 bg-muted/40 rounded-lg text-[11px]">
+                        <span className="font-medium text-foreground truncate max-w-[240px]">
+                          {it.product_name || "Product Item"}
+                        </span>
+                        <span className="font-mono font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded border border-rose-200 dark:border-rose-800 shrink-0">
+                          -{it.quantity || 1} units
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Reason Field */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-foreground">
+                  Cancellation Reason <span className="text-muted-foreground font-normal">(Optional)</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={cancellationReason}
+                  onChange={(e) => setCancellationReason(e.target.value)}
+                  placeholder="e.g., Goods damaged / Incorrect billing rate / Duplicate entry / Order cancelled with vendor"
+                  className="w-full p-2.5 bg-background border border-input rounded-xl text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-rose-500 transition-all placeholder:text-muted-foreground shadow-2xs"
+                />
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-muted/20 border-t border-border flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isCancelling}
+                onClick={() => {
+                  setIsCancelModalOpen(false);
+                  setCancellingBill(null);
+                }}
+                className="rounded-xl font-bold text-xs cursor-pointer"
+              >
+                Keep Invoice
+              </Button>
+              <Button
+                size="sm"
+                disabled={isCancelling}
+                onClick={handleConfirmCancellation}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs gap-1.5 cursor-pointer disabled:opacity-50 shadow-sm"
+              >
+                {isCancelling ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Reversing Stock...</span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-3.5 h-3.5" />
+                    <span>Confirm & Cancel Purchase Invoice</span>
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Full Document PDF & WhatsApp/Email Share Modal */}
       <ProcurementShareModal
