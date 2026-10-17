@@ -260,9 +260,9 @@ function startClient(rawId, forceRestart = false) {
             clientId: id,
             dataPath: AUTH_DIR
         }),
-        authTimeoutMs: 120000,
-        qrTimeoutMs: 120000,
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+        webVersionCache: {
+            type: 'none'
+        },
         puppeteer: puppeteerOptions
     });
 
