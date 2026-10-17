@@ -295,6 +295,14 @@ def _resolve_state(gstin: str | None, address: str | None = None) -> tuple[str, 
 
 # Built-in Template Definitions matching frontend
 _BUILTIN_TEMPLATES = {
+    "tpl-word-default": {
+        "id": "tpl-word-default",
+        "name": "Custom Word-Designed Invoice",
+        "themeName": "word_studio",
+        "primaryColor": "#0f172a",
+        "category": "invoices",
+        "isWordTemplate": True,
+    },
     "tpl-inv-parle-teal": {
         "id": "tpl-inv-parle-teal",
         "name": "Parle Brand Teal-Header GST (A4)",
@@ -414,8 +422,9 @@ async def get_active_invoice_template(
             tpl = dict(templates_map[active_id])
         elif active_id and active_id in _BUILTIN_TEMPLATES:
             tpl = dict(_BUILTIN_TEMPLATES[active_id])
+        elif "tpl-word-default" in _BUILTIN_TEMPLATES:
+            tpl = dict(_BUILTIN_TEMPLATES.get(active_id or "tpl-word-default", _DEFAULT_INVOICE_TEMPLATE))
         elif "tpl-inv-parle-teal" in _BUILTIN_TEMPLATES:
-            # Check if default is Parle Teal or Stylish
             tpl = dict(_BUILTIN_TEMPLATES.get(active_id or "tpl-inv-parle-teal", _DEFAULT_INVOICE_TEMPLATE))
         else:
             tpl = dict(_DEFAULT_INVOICE_TEMPLATE)
@@ -1262,12 +1271,20 @@ def render_invoice_pdf(invoice: Any, template: dict) -> bytes:
     paper_size = str(template.get("paperSize") or "").lower()
     category = str(template.get("category") or "").lower()
 
-    is_thermal = (
+    is_explicit_a4 = (
+        category in ["invoices", "invoice"]
+        or paper_size in ["a4", "letter"]
+        or any(k in theme_name for k in ["word", "studio", "stylish", "parle", "fmcg", "marg", "agri", "luxury", "tally", "modern"])
+        or bool(template.get("isWordTemplate"))
+        or bool(template.get("wordConfig"))
+    )
+
+    is_thermal = not is_explicit_a4 and (
         "thermal" in theme_name
         or "receipt" in theme_name
         or paper_size in ["80mm", "58mm"]
         or category in ["thermal", "thermals", "receipt", "receipts"]
-        or getattr(invoice, "is_pos", False)
+        or (getattr(invoice, "is_pos", False) and not str(getattr(invoice, "invoice_number", "")).upper().startswith(("INV-", "TAX-", "QT-", "PI-", "EST-")))
         or getattr(invoice, "template_id", "") in ("thermal", "receipt")
         or getattr(invoice, "print_template_id", "") in ("thermal", "receipt")
         or "thermal" in str(getattr(invoice, "print_status", "")).lower()
@@ -1704,6 +1721,8 @@ def _render_stylish_pdf(invoice: Any, template: dict) -> bytes:
     custom_color = template.get("primaryColor")
     if custom_color and custom_color.startswith("#"):
         primary_rgb = _hex_to_rgb(custom_color)
+    elif "word" in theme_name or "studio" in theme_name or template.get("isWordTemplate") or template.get("wordConfig"):
+        primary_rgb = _hex_to_rgb("#0f172a")  # Dark Slate 900 (Word Executive)
     elif "parle" in theme_name or "teal" in theme_name:
         primary_rgb = _hex_to_rgb("#0f766e")  # Teal 700 (Parle Distributor)
     elif "agri" in theme_name or "seed" in theme_name:

@@ -1,6 +1,7 @@
 """ERP Schemas — Accounting, AR, Bank, Fixed Assets, Expenses, Vouchers, Tax."""
 import uuid
 from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
