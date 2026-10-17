@@ -640,15 +640,7 @@ async def create_product(
         existing_res = await db.execute(existing_stmt)
         existing_prod = existing_res.scalars().first()
 
-    if not existing_prod and clean_name:
-        existing_filters = [func.lower(Product.name) == clean_name.lower()]
-        if tenant_id:
-            existing_filters.append(Product.tenant_id == tenant_id)
-        if company_id:
-            existing_filters.append(Product.company_id == company_id)
-        existing_stmt = select(Product).where(*existing_filters)
-        existing_res = await db.execute(existing_stmt)
-        existing_prod = existing_res.scalars().first()
+
 
     if existing_prod:
         existing_prod.name = payload.name.strip()

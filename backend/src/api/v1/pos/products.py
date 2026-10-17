@@ -181,9 +181,10 @@ async def create_product(
     data.pop("category_name", None)
 
     barcode = (data.get("barcode") or "").strip()
+    sku = (data.get("sku") or "").strip()
     name = (data.get("name") or "").strip()
 
-    # Search for existing product by barcode or by name within active workspace
+    # Search for existing product by barcode or by sku within active workspace
     existing_prod = None
     if barcode:
         stmt = select(Product).where(
@@ -195,10 +196,10 @@ async def create_product(
         res = await db.execute(stmt)
         existing_prod = res.scalars().first()
 
-    if not existing_prod and name:
+    if not existing_prod and sku:
         stmt = select(Product).where(
             Product.tenant_id == ctx.tenant_id,
-            func.lower(Product.name) == name.lower()
+            Product.sku == sku
         )
         if ctx.active_company_id:
             stmt = stmt.where(Product.company_id == ctx.active_company_id)
@@ -278,6 +279,7 @@ async def bulk_create_products(
     for item in payload.products:
         data = item.model_dump()
         barcode = (data.get("barcode") or "").strip()
+        sku = (data.get("sku") or "").strip()
         name = (data.get("name") or "").strip()
 
         # Check duplicate
@@ -289,8 +291,8 @@ async def bulk_create_products(
             res = await db.execute(dup_stmt)
             exists = res.scalar_one_or_none()
 
-        if not exists and name:
-            dup_stmt = select(Product.id).where(Product.tenant_id == ctx.tenant_id, func.lower(Product.name) == name.lower())
+        if not exists and sku:
+            dup_stmt = select(Product.id).where(Product.tenant_id == ctx.tenant_id, Product.sku == sku)
             if ctx.active_company_id:
                 dup_stmt = dup_stmt.where(Product.company_id == ctx.active_company_id)
             res = await db.execute(dup_stmt)
