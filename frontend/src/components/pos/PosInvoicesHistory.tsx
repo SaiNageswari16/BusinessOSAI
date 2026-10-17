@@ -51,7 +51,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { posApi, invoicesApi, salesReturnsApi, marketplaceApi, resolveImageUrl } from "@/lib/api-client";
+import { posApi, invoicesApi, salesReturnsApi, marketplaceApi, crmQuotationsApi, resolveImageUrl } from "@/lib/api-client";
 import { getActiveBillingGst, getOrgPaymentQrSettings, getActiveReceiptTemplate } from "@/lib/receipt-template-store";
 import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
 import { printThermalReceiptInvoice, generateThermalReceiptHtml, thermalReceiptHtmlToPdfBase64 } from "@/lib/print-helper";
@@ -132,6 +132,7 @@ export function PosInvoicesHistory() {
   const [salesRepFilter, setSalesRepFilter] = useState<string>("All");
   const [customStartDate, setCustomStartDate] = useState<string>("");
   const [customEndDate, setCustomEndDate] = useState<string>("");
+  const [docTypeFilter, setDocTypeFilter] = useState<string>("All");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest" | "amount_desc" | "amount_asc">("newest");
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(25);
@@ -139,7 +140,7 @@ export function PosInvoicesHistory() {
   // Reset pagination to page 1 on filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, statusFilter, paymentModeFilter, printFilter, locationFilter, salesRepFilter, dateFilter, customStartDate, customEndDate, sortOrder]);
+  }, [searchQuery, docTypeFilter, statusFilter, paymentModeFilter, printFilter, locationFilter, salesRepFilter, dateFilter, customStartDate, customEndDate, sortOrder]);
 
   const handleCollectInSalesInvoice = (inv: LocalInvoiceRecord) => {
     try {
@@ -506,33 +507,47 @@ export function PosInvoicesHistory() {
     const remoteRecords: LocalInvoiceRecord[] = [];
 
     try {
-      // 1. Gather ONLY active tenant's & company's scoped local storage invoices
+      // 1. Gather all local storage invoices across relevant scoped keys
+      const scannedLocalMap = new Map<string, any>();
       try {
-        const raw = localStorage.getItem(storageKey);
-        if (raw) {
+        const keysToScan = new Set<string>();
+        if (storageKey) keysToScan.add(storageKey);
+        if (currentTenantId) {
+          keysToScan.add(`pos_saved_invoices_${currentTenantId}`);
+          keysToScan.add(`pos_saved_invoices_${currentTenantId}_default`);
+          if (currentCompanyId) {
+            keysToScan.add(`pos_saved_invoices_${currentTenantId}_${currentCompanyId}`);
+          }
+        }
+        keysToScan.add("pos_saved_invoices_default_default");
+        keysToScan.add("pos_saved_invoices");
+        try {
+          Object.keys(localStorage).forEach((k) => {
+            if (k.startsWith("pos_saved_invoices_") || k === "pos_saved_invoices") {
+              keysToScan.add(k);
+            }
+          });
+        } catch (e) {}
+
+        keysToScan.forEach((key) => {
           try {
-            const list = JSON.parse(raw);
-            if (Array.isArray(list)) {
-              list.forEach((inv) => {
-                if (inv && (inv.id || inv.invoice_number)) {
-                  const invNum = String(inv.invoice_number || "").toUpperCase();
-                  const invType = String(inv.invoice_type || inv.doc_type || "").toUpperCase();
-                  const isExplicitTaxInvoice = invType === "TAX_INVOICE" || invType === "INVOICE" || invNum.startsWith("INV-") || invNum.includes("2026-") || invNum.includes("2025-");
-                  const isQuoteOrProforma =
-                    !isExplicitTaxInvoice && (
-                      invType === "QUOTATION" ||
-                      invType === "PROFORMA" ||
-                      invNum.startsWith("QT-") ||
-                      invNum.startsWith("PI-")
-                    );
-                  if (!isQuoteOrProforma) {
-                    localRecords.push(inv);
+            const raw = localStorage.getItem(key);
+            if (raw) {
+              const list = JSON.parse(raw);
+              if (Array.isArray(list)) {
+                list.forEach((inv) => {
+                  if (inv && (inv.id || inv.invoice_number)) {
+                    const idKey = String(inv.invoice_number || inv.id).toLowerCase().trim();
+                    if (!scannedLocalMap.has(idKey)) {
+                      scannedLocalMap.set(idKey, inv);
+                      localRecords.push(inv);
+                    }
                   }
-                }
-              });
+                });
+              }
             }
           } catch (e) {}
-        }
+        });
       } catch (e) {}
 
       // Check sales returns from localStorage & backend to identify returned invoices
@@ -617,15 +632,9 @@ export function PosInvoicesHistory() {
           invoiceItems.forEach((inv: any) => {
             const invNum = String(inv.invoice_number || "").toUpperCase();
             const invType = String(inv.invoice_type || inv.doc_type || "").toUpperCase();
-            const isExplicitTaxInvoice = invType === "TAX_INVOICE" || invType === "INVOICE" || invNum.startsWith("INV-") || invNum.includes("2026-") || invNum.includes("2025-");
-            const isQuoteOrProforma =
-              !isExplicitTaxInvoice && (
-                invType === "QUOTATION" ||
-                invType === "PROFORMA" ||
-                invNum.startsWith("QT-") ||
-                invNum.startsWith("PI-")
-              );
-            if (isQuoteOrProforma) return;
+            const isQuote = invType === "QUOTATION" || invNum.startsWith("QT-");
+            const isProforma = invType === "PROFORMA" || invNum.startsWith("PI-");
+            const resolvedDocType = isQuote ? "quotation" : isProforma ? "proforma" : "tax_invoice";
             const isTaxInclusive = inv.is_tax_inclusive === true || (inv.lines || []).some((l: any) => l.is_tax_inclusive === true);
             const lines = (inv.lines || []).map((l: any) => ({
               id: l.id,
@@ -824,18 +833,21 @@ export function PosInvoicesHistory() {
               grand_total: finalGrandTotal,
               amount_received: isPaid ? finalGrandTotal : amtPaid,
               print_status: determinedPrintStatus,
-              invoice_type: inv.invoice_type || (isCreditNote ? "credit_note" : "tax_invoice"),
+              invoice_type: inv.invoice_type || (isCreditNote ? "credit_note" : resolvedDocType),
               is_credit_note: isCreditNote,
               payments: invPayments,
               terms: inv.terms || inv.terms_and_conditions || undefined,
               notes: inv.notes || undefined,
-              po_number: inv.po_number || inv.order_number || undefined,
-              po_date: inv.po_date || undefined,
-              vehicle_number: inv.vehicle_number || undefined,
-              driver_name: inv.driver_name || undefined,
-              driver_phone: inv.driver_phone || undefined,
-              transporter_name: inv.transporter_name || undefined,
-              eway_bill_number: inv.eway_bill_number || undefined,
+              po_number: inv.po_number || inv.order_number || inv.custom_fields?.po_number || inv.custom_fields?.po_reference || undefined,
+              po_date: inv.po_date || inv.custom_fields?.po_date || undefined,
+              vehicle_number: inv.vehicle_number || inv.custom_fields?.vehicle_number || inv.custom_fields?.vehicle_no || undefined,
+              driver_name: inv.driver_name || inv.custom_fields?.driver_name || undefined,
+              driver_phone: inv.driver_phone || inv.custom_fields?.driver_phone || undefined,
+              transporter_name: inv.transporter_name || inv.custom_fields?.transporter_name || undefined,
+              eway_bill_number: inv.eway_bill_number || inv.custom_fields?.eway_bill_number || inv.custom_fields?.eway_bill_no || undefined,
+              eway_bill_date: inv.eway_bill_date || inv.custom_fields?.eway_bill_date || undefined,
+              challan_number: inv.challan_number || inv.delivery_challan_number || inv.custom_fields?.challan_number || inv.custom_fields?.challan_no || inv.custom_fields?.delivery_challan || undefined,
+              delivery_challan_number: inv.delivery_challan_number || inv.challan_number || inv.custom_fields?.delivery_challan || inv.custom_fields?.challan_number || undefined,
               print_template_id: (!isThermal && inv.print_template_id !== "thermal") ? (inv.print_template_id || inv.template_id || inv.custom_fields?.print_template_id || inv.custom_fields?.template_id || undefined) : (inv.template_id && inv.template_id !== "thermal" ? inv.template_id : undefined),
               template_id: (!isThermal && inv.template_id !== "thermal") ? (inv.template_id || inv.print_template_id || inv.custom_fields?.template_id || undefined) : undefined,
               is_pos: isThermal || Boolean(matchedTx) || Boolean(inv.is_pos),

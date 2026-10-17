@@ -212,18 +212,14 @@ async def list_invoices(
     date_to: str | None = None,
     search: str | None = None,
 ):
+    query = select(Invoice).where(Invoice.tenant_id == ctx.tenant_id)
     if ctx.active_company_id:
-        if ctx.is_primary_company:
-            query = select(Invoice).where(
-                or_(
-                    Invoice.company_id == ctx.active_company_id,
-                    and_(Invoice.tenant_id == ctx.tenant_id, Invoice.company_id == None)
-                )
+        query = query.where(
+            or_(
+                Invoice.company_id == ctx.active_company_id,
+                Invoice.company_id.is_(None)
             )
-        else:
-            query = select(Invoice).where(Invoice.company_id == ctx.active_company_id)
-    else:
-        query = select(Invoice).where(Invoice.tenant_id == ctx.tenant_id)
+        )
     if status_filter:
         query = query.where(Invoice.status == status_filter)
     if invoice_type:

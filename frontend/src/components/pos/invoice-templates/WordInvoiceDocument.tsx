@@ -812,10 +812,13 @@ export function WordInvoiceDocument({
             const ewayField = config.customFields.find((f) => f.enabled && (f.label.toLowerCase().includes("eway") || f.id.includes("eway")));
             const challanField = config.customFields.find((f) => f.enabled && (f.label.toLowerCase().includes("challan") || f.id.includes("challan")));
 
-            const poVal = (invoice as any)?.po_number || (invoice as any)?.po_reference || (poField ? resolveCustomFieldValue(poField) : "") || poField?.value || "";
-            const vehVal = (invoice as any)?.vehicle_number || (invoice as any)?.vehicle_no || (vehField ? resolveCustomFieldValue(vehField) : "") || vehField?.value || "";
-            const ewayVal = (invoice as any)?.eway_bill_number || (invoice as any)?.eway_bill_no || (ewayField ? resolveCustomFieldValue(ewayField) : "") || ewayField?.value || "";
-            const challanVal = (invoice as any)?.challan_number || (invoice as any)?.delivery_challan || (challanField ? resolveCustomFieldValue(challanField) : "") || challanField?.value || "";
+            const invCust = ((invoice as any)?.custom_fields && typeof (invoice as any)?.custom_fields === "object" ? (invoice as any).custom_fields : {}) || {};
+            const invMeta = ((invoice as any)?.metadata && typeof (invoice as any)?.metadata === "object" ? (invoice as any).metadata : {}) || {};
+
+            const poVal = (invoice as any)?.po_number || (invoice as any)?.po_reference || invCust?.po_number || invCust?.po_reference || invCust?.po || invMeta?.po_number || invMeta?.po_reference || (poField ? resolveCustomFieldValue(poField) : "") || poField?.value || "";
+            const vehVal = (invoice as any)?.vehicle_number || (invoice as any)?.vehicle_no || invCust?.vehicle_number || invCust?.vehicle_no || invCust?.vehicle || invMeta?.vehicle_number || invMeta?.vehicle_no || (vehField ? resolveCustomFieldValue(vehField) : "") || vehField?.value || "";
+            const ewayVal = (invoice as any)?.eway_bill_number || (invoice as any)?.eway_bill_no || invCust?.eway_bill_number || invCust?.eway_bill_no || invCust?.eway_bill || invMeta?.eway_bill_number || invMeta?.eway_bill_no || (ewayField ? resolveCustomFieldValue(ewayField) : "") || ewayField?.value || "";
+            const challanVal = (invoice as any)?.challan_number || (invoice as any)?.delivery_challan || (invoice as any)?.delivery_challan_number || invCust?.challan_number || invCust?.delivery_challan || invCust?.delivery_challan_number || invCust?.challan || invMeta?.challan_number || (challanField ? resolveCustomFieldValue(challanField) : "") || challanField?.value || "";
 
             // Custom metadata fields with standard references filtered out, and ONLY fields that actually have a resolved value!
             const metaCustomFields = config.customFields
