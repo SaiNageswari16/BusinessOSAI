@@ -56,3 +56,8 @@ backend/upload_images/
 backend/whatsapp_gateway/.wwebjs_auth/
 backend/whatsapp_gateway/.wwebjs_cache/
 backend/whatsapp_gateway/sessions.json
+
+# Large desktop installers (deploy directly / host externally to prevent git bloat)
+frontend/public/downloads/*.dmg
+frontend/public/downloads/*.exe
+frontend/public/downloads/*.zip

@@ -1,0 +1,64 @@
+{
+  "name": "business-os-ai",
+  "productName": "BusinessOS AI",
+  "version": "1.0.0",
+  "description": "LazyMonkey BusinessOS AI - Smart AI for Enterprise Operations, POS, ERP, CRM & Retail",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win"
+  },
+  "author": "LazyMonkey AI Inc.",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.lazymonkeyai.businessos",
+    "productName": "BusinessOS AI",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "assets/**/*"
+    ],
+    "mac": {
+      "icon": "assets/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["universal", "arm64", "x64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["universal", "arm64", "x64"]
+        }
+      ],
+      "category": "public.app-category.business",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "BusinessOS AI",
+      "artifactName": "BusinessOS-AI-Setup-${version}.${ext}"
+    }
+  }
+}

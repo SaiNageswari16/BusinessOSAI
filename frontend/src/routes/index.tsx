@@ -37,7 +37,10 @@ import {
   Boxes,
   HelpCircle,
   Clock,
-  Sparkle
+  Sparkle,
+  Download,
+  Laptop,
+  Smartphone
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +48,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth, resolvePostAuthRoute } from "@/contexts/auth-context";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { DownloadAppModal } from "@/components/common/DownloadAppModal";
 
 export const Route = createFileRoute("/")({
   component: MarketingLandingPage,
@@ -68,6 +72,7 @@ function MarketingLandingPage() {
   const [selectedModuleModal, setSelectedModuleModal] = useState<any | null>(null);
   const [serviceModal, setServiceModal] = useState<any | null>(null);
   const [pricingCycle, setPricingCycle] = useState<"monthly" | "yearly">("yearly");
+  const [downloadModalOpen, setDownloadModalOpen] = useState<boolean>(false);
   const { currency } = useCurrency();
 
   // Calculator State
@@ -431,6 +436,18 @@ function MarketingLandingPage() {
                 </Button>
               </>
             )}
+
+            {/* DOWNLOAD APP BUTTON - RIGHT SIDE OF CREATE WORKSPACE */}
+            <Button
+              onClick={() => setDownloadModalOpen(true)}
+              className="bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-white font-extrabold px-4 h-11 rounded-xl shadow-md shadow-emerald-500/20 transition-all border-0 flex items-center gap-2 group hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+            >
+              <Download className="size-4 text-white group-hover:-translate-y-0.5 transition-transform" />
+              <span>Download App</span>
+              <span className="hidden lg:inline-flex text-[9px] font-black uppercase tracking-wider bg-white/25 text-white px-1.5 py-0.5 rounded-md backdrop-blur-sm">
+                Win / iOS
+              </span>
+            </Button>
           </div>
 
           {/* Mobile Menu Toggle */}
@@ -453,6 +470,12 @@ function MarketingLandingPage() {
             <div className="pt-4 flex flex-col gap-2">
               <Button onClick={() => { setMobileMenuOpen(false); navigate({ to: "/login" }); }} className="gradient-brand text-white font-bold h-11 border-0">
                 Sign In / Login
+              </Button>
+              <Button
+                onClick={() => { setMobileMenuOpen(false); setDownloadModalOpen(true); }}
+                className="bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-white font-bold h-11 border-0 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Download className="size-4" /> Download App (Windows & iOS)
               </Button>
             </div>
           </div>
@@ -1029,6 +1052,12 @@ function MarketingLandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* ── DOWNLOAD APP MODAL (WINDOWS & IOS / MACOS) ── */}
+      <DownloadAppModal
+        isOpen={downloadModalOpen}
+        onClose={() => setDownloadModalOpen(false)}
+      />
 
     </div>
   );
