@@ -30,6 +30,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
+import { safeSetItem, sanitizeForStorage } from "@/lib/safe-storage";
 import { PaymentGateways } from "./PaymentGateways";
 import {
   getActiveBillingGst,
@@ -757,8 +758,9 @@ function CompanyFormModal({
       const tid = tenant?.id || getTenantIdFromStorage();
       const updatedOrg = savedCompanyResult || { ...company, ...payload };
       if (updatedOrg) {
-        localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(updatedOrg));
-        localStorage.setItem("bos_active_company", JSON.stringify(updatedOrg));
+        const sanitized = sanitizeForStorage(updatedOrg);
+        safeSetItem(`bos_active_company_${tid}`, JSON.stringify(sanitized));
+        safeSetItem("bos_active_company", JSON.stringify(sanitized));
       }
 
       if (primaryReg && primaryReg.gstin) {
@@ -2562,14 +2564,15 @@ export function CompanyManagement() {
           google_review_enabled: activeCompany.google_review_enabled !== false,
           terms_and_conditions: activeCompany.terms_and_conditions || null,
         };
-        localStorage.setItem("bos_active_company", JSON.stringify(activeCompany));
+        const sanitized = sanitizeForStorage(activeCompany);
+        safeSetItem("bos_active_company", JSON.stringify(sanitized));
         const current = getActiveBillingGst();
         if (!current || (activeCompany.gst_registrations?.length && !activeCompany.gst_registrations.some((r) => r.gstin === current.gstin))) {
           setActiveBillingGst(details);
           setActiveBillingGstState(details);
         }
       } else {
-        localStorage.setItem("bos_active_company", JSON.stringify(activeCompany));
+        safeSetItem("bos_active_company", JSON.stringify(sanitizeForStorage(activeCompany)));
         const tid = tenant?.id || getTenantIdFromStorage();
         clearActiveBillingGst(tid);
         setActiveBillingGstState(null);
@@ -2727,8 +2730,9 @@ export function CompanyManagement() {
   useEffect(() => {
     if (activeCompany && tenant?.id) {
       const tid = tenant.id;
-      localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(activeCompany));
-      localStorage.setItem("bos_active_company", JSON.stringify(activeCompany));
+      const sanitized = sanitizeForStorage(activeCompany);
+      safeSetItem(`bos_active_company_${tid}`, JSON.stringify(sanitized));
+      safeSetItem("bos_active_company", JSON.stringify(sanitized));
       const primaryReg = activeCompany.gst_registrations?.find((r: any) => r.is_primary) || activeCompany.gst_registrations?.[0];
       const gstin = primaryReg?.gstin || activeCompany.gst_number || '';
       setActiveBillingGst({

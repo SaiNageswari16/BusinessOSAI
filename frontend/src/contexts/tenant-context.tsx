@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { companies as mockCompanies } from "@/data/mock";
 import { companiesApi, branchesApi, clearApiCache, type Company as RealCompany, type Branch as RealBranch } from "@/lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
+import { safeSetItem, sanitizeForStorage } from "@/lib/safe-storage";
 
 export interface TenantCompany {
   id: string;
@@ -204,12 +205,13 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   const setTenant = useCallback((c: TenantCompany) => {
     setTenantState(c);
-    localStorage.setItem("bos-tenant", JSON.stringify(c));
-    localStorage.setItem("bos_active_company_id", c.id);
-    localStorage.setItem("bos_active_company", JSON.stringify(c.raw || c));
+    const sanitizedCompany = sanitizeForStorage(c.raw || c);
+    safeSetItem("bos-tenant", JSON.stringify(c));
+    safeSetItem("bos_active_company_id", c.id);
+    safeSetItem("bos_active_company", JSON.stringify(sanitizedCompany));
     const tid = c.raw?.tenant_id || (c as any).tenant_id || c.id;
-    if (tid && (c.raw || c)) {
-      localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(c.raw || c));
+    if (tid && sanitizedCompany) {
+      safeSetItem(`bos_active_company_${tid}`, JSON.stringify(sanitizedCompany));
     }
     // Synchronize active billing GST details snapshot so invoices and POS instantly show the right company
     try {
@@ -217,7 +219,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       const primaryReg = cRaw.gst_registrations?.find((r: any) => r.is_primary) || cRaw.gst_registrations?.[0];
       const gstin = primaryReg?.gstin || cRaw.gst_number || cRaw.gstin || '';
       const address = primaryReg?.address || cRaw.address || '';
-      const billingGst = {
+      const billingGst = sanitizeForStorage({
         trade_name: cRaw.name,
         legal_name: cRaw.legal_name || cRaw.name,
         gstin: gstin,
@@ -226,9 +228,9 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         email: cRaw.email || '',
         logo_url: cRaw.logo_url || null,
         google_review_url: cRaw.google_review_url || null,
-      };
+      });
       if (tid) {
-        localStorage.setItem(`bos_active_billing_gst_details_${tid}`, JSON.stringify(billingGst));
+        safeSetItem(`bos_active_billing_gst_details_${tid}`, JSON.stringify(billingGst));
       }
     } catch {}
     clearApiCache();
@@ -381,12 +383,13 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       const activeMatch = mappedCompanies.find(c => c.id === storedCompanyId || c.id === currentTenant?.id);
       if (activeMatch) {
         setTenantState(activeMatch);
-        localStorage.setItem("bos-tenant", JSON.stringify(activeMatch));
-        localStorage.setItem("bos_active_company_id", activeMatch.id);
-        localStorage.setItem("bos_active_company", JSON.stringify(activeMatch.raw || activeMatch));
+        const sanitizedMatch = sanitizeForStorage(activeMatch.raw || activeMatch);
+        safeSetItem("bos-tenant", JSON.stringify(activeMatch));
+        safeSetItem("bos_active_company_id", activeMatch.id);
+        safeSetItem("bos_active_company", JSON.stringify(sanitizedMatch));
         const tid = activeMatch.raw?.tenant_id || (activeMatch as any).tenant_id || activeMatch.id;
         if (tid) {
-          localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(activeMatch.raw || activeMatch));
+          safeSetItem(`bos_active_company_${tid}`, JSON.stringify(sanitizedMatch));
         }
       } else if (mappedCompanies.length > 0) {
         // Fallback to default company in list
@@ -397,12 +400,13 @@ export function TenantProvider({ children }: { children: ReactNode }) {
                (authTenantName && c.name.toLowerCase() === authTenantName.toLowerCase())
         ) || mappedCompanies[0];
         setTenantState(defaultMatch);
-        localStorage.setItem("bos-tenant", JSON.stringify(defaultMatch));
-        localStorage.setItem("bos_active_company_id", defaultMatch.id);
-        localStorage.setItem("bos_active_company", JSON.stringify(defaultMatch.raw || defaultMatch));
+        const sanitizedDefault = sanitizeForStorage(defaultMatch.raw || defaultMatch);
+        safeSetItem("bos-tenant", JSON.stringify(defaultMatch));
+        safeSetItem("bos_active_company_id", defaultMatch.id);
+        safeSetItem("bos_active_company", JSON.stringify(sanitizedDefault));
         const tid = defaultMatch.raw?.tenant_id || (defaultMatch as any).tenant_id || defaultMatch.id;
         if (tid) {
-          localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(defaultMatch.raw || defaultMatch));
+          safeSetItem(`bos_active_company_${tid}`, JSON.stringify(sanitizedDefault));
         }
       }
 
@@ -411,7 +415,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       const branchIsValid = mappedBranches.some(b => b.id === currentBranch?.id);
       if (!branchIsValid && mappedBranches.length > 0) {
         setActiveBranchState(mappedBranches[0]);
-        localStorage.setItem("bos-branch", JSON.stringify(mappedBranches[0]));
+        safeSetItem("bos-branch", JSON.stringify(mappedBranches[0]));
       }
     } catch (err) {
       console.error("Failed to load tenant workspace list:", err);

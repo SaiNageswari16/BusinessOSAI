@@ -56,6 +56,7 @@ import { companiesApi, numberSeriesApi, taxApi, printTemplatesApi, type TaxCode,
 import { INDIAN_STATES } from "@/data/indian-states";
 import { lookupGstinDetails } from "@/lib/gst-helper";
 import { WordInvoiceStudioModal } from "./WordInvoiceStudioModal";
+import { safeSetItem, sanitizeForStorage } from "@/lib/safe-storage";
 
 export interface InvoiceCustomField {
   id: string;
@@ -587,7 +588,7 @@ export function InvoiceQuickSettingsModal({
   // Switch Active Company or GSTIN Profile
   const handleSelectCompany = (comp: Company) => {
     setActiveCompany(comp);
-    localStorage.setItem("bos_active_company", JSON.stringify(comp));
+    safeSetItem("bos_active_company", JSON.stringify(sanitizeForStorage(comp)));
     const primaryReg = comp.gst_registrations?.find((r) => r.is_primary) || comp.gst_registrations?.[0];
     const gstin = primaryReg?.gstin || comp.gst_number || "";
     const stateCode = primaryReg?.state_code || (gstin ? gstin.slice(0, 2) : "37");
