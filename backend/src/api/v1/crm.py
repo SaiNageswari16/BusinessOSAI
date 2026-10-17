@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, U
 import io
 import csv
 from fastapi.responses import StreamingResponse, Response
-from sqlalchemy import func, or_, and_, select, text
+from sqlalchemy import func, or_, and_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
