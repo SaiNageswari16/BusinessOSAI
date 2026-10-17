@@ -639,6 +639,20 @@ async def migrate():
             except Exception as e:
                 logger.info(f"Migration note for inventory update: {e}")
 
+    # AR Invoices – add missing columns introduced in the model
+    ar_invoice_stmts = [
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS challan_number VARCHAR(100);",
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS delivery_challan_number VARCHAR(100);",
+        "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS custom_fields JSONB DEFAULT '{}'::jsonb;",
+    ]
+    for stmt in ar_invoice_stmts:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(stmt))
+                logger.info(f"Successfully executed AR invoice schema update: {stmt}")
+            except Exception as e:
+                logger.info(f"Migration note for AR invoice update: {e}")
+
     hrms_schema_stmts = [
         "ALTER TABLE departments ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES departments(id) ON DELETE SET NULL;",
         "ALTER TABLE departments ADD COLUMN IF NOT EXISTS head_user_id UUID REFERENCES users(id) ON DELETE SET NULL;",
