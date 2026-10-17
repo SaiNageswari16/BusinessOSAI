@@ -2574,8 +2574,8 @@ export function generateBarcodeLabelHtml(
               ? "border-radius: 8pt;"
               : "border-radius: 2pt;";
 
-          const renderedCompanyName = customTexts.storeName || storeName;
-          const renderedProdName = customTexts.productName || item.product_name || "Product";
+          const renderedCompanyName = storeName || customTexts.storeName || "STORE";
+          const renderedProdName = item.product_name || customTexts.productName || "Product";
 
           const elementsToRender = (
             Array.isArray(template?.elements) && template.elements.length > 0
