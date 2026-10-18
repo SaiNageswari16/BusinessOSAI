@@ -251,34 +251,80 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
         { product_name: 'Parle-G Biscuit', quantity: 4, unit: 'Pcs', unit_price: 25, mrp: 25, hsn_code: '1905', tax_rate: 0 },
       ] : []);
 
-  const rawSubtotal = Number(inv?.subtotal ?? rawItems.reduce((s: number, i: any) => s + (Number(i.quantity || 1) * Number(i.unit_price || i.price || i.rate || 0)), 0));
+  const itemsSum = rawItems.reduce((s: number, i: any) => s + (Number(i.quantity || 1) * Number(i.unit_price || i.price || i.rate || 0)), 0);
+  const rawSubtotal = itemsSum > 0 ? itemsSum : Number(inv?.subtotal ?? 0);
   const itemSavingsTotal = rawItems.reduce((acc: number, it: any) => {
     const rate = Number(it.unit_price ?? it.rate ?? it.price ?? 0);
     const mrp = Number(it.mrp ?? it.product?.mrp ?? 0);
     return acc + (mrp > rate ? (mrp - rate) * Number(it.quantity || 1) : 0);
   }, 0);
-  const totalSavings = Number(inv?.discount_amount ?? inv?.discount ?? inv?.total_discount ?? 0) + itemSavingsTotal;
+  const explicitDiscount = Number(inv?.discount_amount ?? inv?.discount ?? inv?.total_discount ?? 0);
+  const totalSavings = explicitDiscount + itemSavingsTotal;
+
+  // Discount percentage and mode label
+  const rawDiscValue = Number(inv?.invoice_discount_value ?? inv?.discount_value ?? inv?.discount_percent ?? inv?.discount_percentage ?? 0);
+  const discType = String(inv?.invoice_discount_type ?? inv?.discount_type ?? (rawDiscValue > 0 ? 'percent' : 'amount')).toLowerCase();
+  const discMode = String(inv?.invoice_discount_mode ?? inv?.discount_calculation_mode ?? '').toLowerCase();
+
+  let discountLabel = '';
+  if (explicitDiscount > 0) {
+    if (discType === 'percent' && rawDiscValue > 0) {
+      discountLabel = `${rawDiscValue}%`;
+    } else if (rawSubtotal > 0) {
+      const computedPct = Math.round((explicitDiscount / rawSubtotal) * 100);
+      if (computedPct > 0 && computedPct <= 100) {
+        discountLabel = `${computedPct}%`;
+      }
+    }
+    if (discMode === 'before_tax') {
+      discountLabel = discountLabel ? `${discountLabel} Pre-Tax` : 'Pre-Tax';
+    } else if (discMode === 'after_tax') {
+      discountLabel = discountLabel ? `${discountLabel} Post-Tax` : 'Post-Tax';
+    }
+  }
+
   const itemsTaxTotal = rawItems.reduce((acc: number, it: any) => acc + Number(it.tax_amount ?? it.tax ?? 0), 0);
-  const explicitTax = inv?.total_tax != null ? Number(inv.total_tax) : (inv?.tax_amount != null ? Number(inv.tax_amount) : (inv?.tax != null ? Number(inv.tax) : null));
-  const totalTax = explicitTax !== null ? explicitTax : (itemsTaxTotal > 0 ? itemsTaxTotal : (isSamplePreview ? (rawSubtotal - totalSavings) * 0.05 : 0));
-  const hasGst = (totalTax > 0.001) || Boolean(Number(inv?.cgst_amount || 0) > 0 || Number(inv?.sgst_amount || 0) > 0 || Number(inv?.igst_amount || 0) > 0);
+  
+  const rawCgst = Number(inv?.cgst_amount ?? 0);
+  const rawSgst = Number(inv?.sgst_amount ?? 0);
+  const rawIgst = Number(inv?.igst_amount ?? 0);
+  const sumOfTaxParts = (rawCgst + rawSgst + rawIgst);
+
+  const explicitTax = (inv?.total_tax != null && Number(inv.total_tax) > 0)
+    ? Number(inv.total_tax)
+    : (inv?.tax_amount != null && Number(inv.tax_amount) > 0)
+    ? Number(inv.tax_amount)
+    : (inv?.tax != null && Number(inv.tax) > 0)
+    ? Number(inv.tax)
+    : (sumOfTaxParts > 0 ? sumOfTaxParts : (itemsTaxTotal > 0 ? itemsTaxTotal : null));
+
+  const totalTax = explicitTax !== null ? explicitTax : (isSamplePreview ? (rawSubtotal - totalSavings) * 0.05 : 0);
+  const hasGst = (totalTax > 0.001) || (sumOfTaxParts > 0);
 
   const isInterstate = Boolean(
     inv?.is_interstate ||
     inv?.gst_type === 'igst' ||
-    (inv?.igst_amount && Number(inv.igst_amount) > 0) ||
+    (rawIgst > 0) ||
     (storeGstin && customerGstin && storeGstin.trim().slice(0, 2) !== customerGstin.trim().slice(0, 2))
   );
-  const cgstAmount = Number(inv?.cgst_amount ?? (isInterstate ? 0 : totalTax / 2));
-  const sgstAmount = Number(inv?.sgst_amount ?? (isInterstate ? 0 : totalTax / 2));
-  const igstAmount = Number(inv?.igst_amount ?? (isInterstate ? totalTax : 0));
+  const cgstAmount = rawCgst > 0 ? rawCgst : (isInterstate ? 0 : totalTax / 2);
+  const sgstAmount = rawSgst > 0 ? rawSgst : (isInterstate ? 0 : totalTax / 2);
+  const igstAmount = rawIgst > 0 ? rawIgst : (isInterstate ? totalTax : 0);
 
   const grandTotal = Number(inv?.grand_total ?? inv?.total_amount ?? (rawSubtotal - totalSavings + (hasGst ? totalTax : 0)));
-  const taxableSubtotal = Number(
-    inv?.taxable_value ??
-    inv?.taxable_amount ??
-    (rawItems.some((it: any) => it.is_tax_inclusive || it.tax_inclusive) ? (grandTotal - totalTax) : (rawSubtotal - totalSavings))
-  );
+  
+  const explicitTaxable = (inv?.taxable_value != null && Number(inv.taxable_value) > 0)
+    ? Number(inv.taxable_value)
+    : (inv?.taxable_amount != null && Number(inv.taxable_amount) > 0)
+    ? Number(inv.taxable_amount)
+    : null;
+
+  const taxableSubtotal = explicitTaxable !== null
+    ? explicitTaxable
+    : (hasGst && totalTax > 0)
+    ? Math.max(0, grandTotal - totalTax)
+    : Math.max(0, rawSubtotal - totalSavings);
+
   const isWalkInReceipt = isWalkInParty(inv);
   const amountReceived = Number(inv?.amount_received ?? inv?.paid_amount ?? grandTotal);
   const isPaidInFull = isWalkInReceipt || inv?.payment_status?.toUpperCase() === 'PAID' || inv?.payment_status === 'Paid' || (amountReceived > 0 && amountReceived >= grandTotal - 0.05) || true;
@@ -577,10 +623,21 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
               <span>₹${rawSubtotal.toFixed(2)}</span>
             </div>
           ` : ''}
-          ${(f.showTotalDiscount !== false && totalSavings > 0) ? `
+          ${(explicitDiscount > 0) ? `
+            <div class="flex-between" style="font-weight: 900;">
+              <span>DISCOUNT APPLIED${discountLabel ? ` (${discountLabel})` : ''}:</span>
+              <span>- ₹${explicitDiscount.toFixed(2)}</span>
+            </div>
+          ` : (f.showTotalDiscount !== false && totalSavings > 0) ? `
             <div class="flex-between" style="font-weight: 900;">
               <span>TOTAL SAVINGS TODAY:</span>
               <span>- ₹${totalSavings.toFixed(2)}</span>
+            </div>
+          ` : ''}
+          ${(f.showTotalDiscount !== false && explicitDiscount > 0 && itemSavingsTotal > 0) ? `
+            <div class="flex-between" style="font-size: 9px; color: #444;">
+              <span>MRP SAVINGS:</span>
+              <span>- ₹${itemSavingsTotal.toFixed(2)}</span>
             </div>
           ` : ''}
           ${f.showTaxBreakdown !== false ? `

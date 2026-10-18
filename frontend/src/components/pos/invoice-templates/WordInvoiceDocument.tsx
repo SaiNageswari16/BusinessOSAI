@@ -1417,7 +1417,31 @@ export function WordInvoiceDocument({
                     {/* Discount */}
                     {Number(totalDiscount || 0) > 0 && (
                       <div className="flex justify-between items-center text-emerald-600">
-                        <span className="font-medium">Discount Applied:</span>
+                        <span className="font-medium">
+                          Discount Applied
+                          {(() => {
+                            const discVal = Number((invoice as any).invoice_discount_value ?? (invoice as any).discount_value ?? (invoice as any).discount_percent ?? (invoice as any).discount_percentage ?? 0);
+                            const discType = String((invoice as any).invoice_discount_type ?? (invoice as any).discount_type ?? (discVal > 0 ? "percent" : "fixed")).toLowerCase();
+                            const discMode = String((invoice as any).invoice_discount_mode ?? (invoice as any).discount_calculation_mode ?? "").toLowerCase();
+                            
+                            let label = "";
+                            if (discType === "percent" && discVal > 0) {
+                              label = `${discVal}%`;
+                            } else if (Number(taxableSubtotal) > 0 && Number(totalDiscount) > 0) {
+                              const baseForCalc = Number(taxableSubtotal) + (invoice.is_tax_inclusive ? 0 : Number(totalDiscount));
+                              const computedPct = Math.round((Number(totalDiscount) / baseForCalc) * 100);
+                              if (computedPct > 0 && computedPct <= 100) {
+                                label = `${computedPct}%`;
+                              }
+                            }
+                            if (discMode === "before_tax") {
+                              label = label ? `${label} Pre-Tax` : "Pre-Tax";
+                            } else if (discMode === "after_tax") {
+                              label = label ? `${label} Post-Tax` : "Post-Tax";
+                            }
+                            return label ? ` (${label})` : "";
+                          })()}:
+                        </span>
                         <span className="font-mono font-bold">
                           -{currency.symbol}{(Number(totalDiscount) || 0).toFixed(2)}
                         </span>

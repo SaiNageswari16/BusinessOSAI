@@ -1535,8 +1535,15 @@ function PosTerminalInner() {
 
       const payload = {
         subtotal: subtotal,
+        taxable_value: taxableAmount,
         tax_amount: tax,
         discount_amount: totalDiscount,
+        total_discount: totalDiscount,
+        discount_value: cartDiscountValue,
+        discount_type: cartDiscountType,
+        invoice_discount_value: cartDiscountValue,
+        invoice_discount_type: cartDiscountType,
+        invoice_discount_mode: discountMode,
         total_amount: total,
         session_id: currentSession.id,
         customer_id: (!isWalkInParty(selectedCustomer) && selectedCustomer?.id && isValidUUID(selectedCustomer.id)) ? selectedCustomer.id : null,
