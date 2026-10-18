@@ -194,9 +194,9 @@ function ReportsModule() {
 
   if (isFullBleed) {
     return (
-      <div className="flex h-full w-full flex-col bg-background overflow-hidden">
-        <div className="flex-1 relative bg-background/50 p-0 overflow-hidden h-full">
-          <div key={activeTab} className="h-full w-full overflow-hidden">
+      <div className="flex min-h-full w-full flex-col bg-background">
+        <div className="flex-1 relative bg-background/50 p-0 min-h-full">
+          <div key={activeTab} className="min-h-full w-full">
             <ComponentErrorBoundary componentName={activeTab}>
               <ActiveComponent />
             </ComponentErrorBoundary>

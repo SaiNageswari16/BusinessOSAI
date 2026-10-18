@@ -324,9 +324,9 @@ export function EmployeeSalesReportSuite({ onBack }: EmployeeSalesReportSuitePro
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-white text-slate-800 overflow-hidden font-sans">
+    <div className="flex-1 flex flex-col min-h-full w-full bg-white text-slate-800 font-sans pb-24">
       {/* Top Header Row matching screenshot */}
-      <header className="px-6 py-3.5 border-b border-slate-200 flex items-center justify-between shrink-0 bg-white">
+      <header className="sticky top-0 z-20 px-6 py-3.5 border-b border-slate-200 flex items-center justify-between shrink-0 bg-white/95 backdrop-blur-md shadow-2xs">
         {/* Left: Back button + Title + Favourite badge */}
         <div className="flex items-center gap-3">
           <button
@@ -411,7 +411,7 @@ export function EmployeeSalesReportSuite({ onBack }: EmployeeSalesReportSuitePro
       </header>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5 bg-white">
+      <div className="flex-1 px-6 py-5 flex flex-col gap-5 bg-white">
         {/* Metric Cards Row */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="border border-slate-200 rounded-xl p-4 bg-white shadow-2xs min-w-[240px]">

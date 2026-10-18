@@ -864,9 +864,9 @@ export function GstReportsSuite({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-white">
+    <div className="flex-1 flex flex-col min-h-full w-full bg-white font-sans pb-24">
       {/* Top Action & Filtering Toolbar matching Reference Screenshots */}
-      <header className="bg-white border-b border-slate-200 px-6 py-3.5 shrink-0">
+      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-slate-200 px-6 py-3.5 shrink-0 shadow-2xs">
         <div className="flex flex-wrap items-center justify-between gap-3">
           {/* Back button + Report Title + Favourite button */}
           <div className="flex items-center gap-3">
@@ -1009,8 +1009,8 @@ export function GstReportsSuite({
         </div>
       </header>
 
-      {/* Scrollable Report Content matching Reference Screenshots */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar bg-white">
+      {/* Report Content matching Reference Screenshots */}
+      <div className="flex-1 bg-white">
         {renderReportContent(activeReport, filteredData, searchTerm, formatCurrency, activeSubTab, setActiveSubTab)}
       </div>
     </div>

@@ -533,11 +533,11 @@ export function PaymentModeSalesReportSuite({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-50 text-slate-800 overflow-hidden font-sans">
+    <div className="flex-1 flex flex-col min-h-full w-full bg-slate-50 text-slate-800 font-sans pb-24">
       {/* ──────────────────────────────────────────────────────────────────────────
           TOP HEADER TOOLBAR
       ────────────────────────────────────────────────────────────────────────── */}
-      <header className="px-6 py-3.5 border-b border-slate-200/90 flex flex-wrap items-center justify-between gap-3 shrink-0 bg-white shadow-2xs">
+      <header className="sticky top-0 z-20 px-6 py-3.5 border-b border-slate-200/90 flex flex-wrap items-center justify-between gap-3 shrink-0 bg-white/95 backdrop-blur-md shadow-2xs">
         {/* Left: Back button + Title + Favorite star */}
         <div className="flex items-center gap-3">
           {onBack && (
@@ -648,9 +648,9 @@ export function PaymentModeSalesReportSuite({
       </header>
 
       {/* ──────────────────────────────────────────────────────────────────────────
-          MAIN SCROLLABLE CONTENT
+          MAIN CONTENT AREA
       ────────────────────────────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5 custom-scrollbar">
+      <div className="flex-1 px-6 py-5 flex flex-col gap-5">
         {/* ────────────────────────────────────────────────────────────────────────
             1. FILTER BAR
         ──────────────────────────────────────────────────────────────────────── */}
