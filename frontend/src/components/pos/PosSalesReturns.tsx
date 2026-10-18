@@ -826,9 +826,14 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
       selectedBillNormalizedItems.forEach((it) => {
         const state = returnItemsState[it.id];
         if (state && state.selected && state.returned_qty > 0) {
-          const itemSubtotal = Number((it.unit_price * state.returned_qty).toFixed(2));
-          const itemTax = Number((itemSubtotal * (it.tax_rate / 100)).toFixed(2));
-          const lineTot = Number((itemSubtotal + itemTax).toFixed(2));
+          const refundRate = it.unit_refund_rate || it.unit_price;
+          const lineTot = Number((refundRate * state.returned_qty).toFixed(2));
+          let itemTax = 0;
+          let itemSubtotal = lineTot;
+          if (it.tax_rate > 0) {
+            itemSubtotal = Number((lineTot / (1 + it.tax_rate / 100)).toFixed(2));
+            itemTax = Number((lineTot - itemSubtotal).toFixed(2));
+          }
 
           returnedItemsList.push({
             id: `ret-item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
