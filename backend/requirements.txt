@@ -1,0 +1,68 @@
+# RestaurantOS — Backend Dependencies
+# Python 3.11+
+
+# ─── Web framework ───
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+websockets==14.1
+
+# ─── Database ───
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0            # installed but unused — schema changes are inline ALTER in init_db.py
+psycopg2-binary==2.9.10    # for pgAdmin/psql-side tooling and sync scripts
+
+# ─── Settings & validation ───
+pydantic==2.10.4
+pydantic-settings==2.7.0
+python-dotenv==1.0.1
+email-validator==2.2.0
+
+# ─── Security ───
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.1
+cryptography==44.0.0
+
+# ─── Cache / queue ───
+redis==5.2.1
+
+# ─── HTTP clients ───
+httpx==0.28.1
+
+# ─── Storage ───
+minio==7.2.12
+
+# ─── AI providers ───
+openai==1.59.6
+anthropic==0.42.0
+google-generativeai==0.8.3
+
+# ─── PDF / documents ───
+reportlab==4.2.5
+xhtml2pdf==0.2.17
+fpdf2==2.8.2
+
+# ─── Email ───
+resend==2.6.0
+aiosmtplib==3.0.2
+
+# ─── Payments ───
+razorpay==1.4.2
+stripe==11.4.0
+
+# ─── Thermal printing (ESC/POS over network) ───
+python-escpos==3.1
+pyusb==1.3.1
+
+# ─── Utilities ───
+python-dateutil==2.9.0.post0
+pytz==2024.2
+pillow==11.0.0
+qrcode==8.0
+openpyxl==3.1.5
+
+# ─── Testing ───
+pytest==8.3.4
+pytest-asyncio==0.25.0

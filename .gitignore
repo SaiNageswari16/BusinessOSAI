@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Python
+__pycache__/
+*/__pycache__/
+*/*/__pycache__/
+*/*/*/__pycache__/
+*/*/*/*/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+
+# Virtual environments
+.env
+backend/.env
+.venv
+env/
+venv/
+ENV/
+
+# Local microservice fleet logs / runtime pids
+backend/.services/
+*.log
+
+# TanStack / Vite / Nitro build outputs
+frontend/.output/
+frontend/.tanstack/
+frontend/.wrangler/
+frontend/.nitro/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vinxi/
+frontend/*.local
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.claude/

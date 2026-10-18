@@ -1,0 +1,48 @@
+/**
+ * Unified Order Service.
+ * Preserves the original orderService API and extends it with payments,
+ * shared tables, and full restaurant workflow.
+ *
+ * Mapped to in-memory restaurantStore (which prepares for FastAPI endpoints).
+ */
+export {
+  useOrders,
+  useTables,
+  useReservations,
+  useMenu,
+  useInventory,
+  useCustomers,
+  useStaff,
+  useStaffShifts,
+  usePayments,
+  useSuppliers,
+  usePurchaseOrders,
+  useRecipes,
+  useSettings,
+  createOrder,
+  setOrderStatus,
+  settleOrder,
+  recordPayment,
+  setTableStatus,
+  seatTable,
+  toggleMenuItemAvailability,
+  addMenuItem,
+  updateMenuItem,
+  deleteMenuItem,
+  adjustStock,
+  createPurchaseOrder,
+  receivePurchaseOrder,
+  autoGenerateCriticalPOs,
+  addCustomer,
+  awardPoints,
+  createReservation,
+  updateReservationStatus,
+  seatReservation,
+  updateStaffStatus,
+  clockInStaff,
+  clockOutStaff,
+  addStaffMember,
+  updateSettings,
+  switchBranch,
+  getLiveAiInsights,
+} from "./restaurantStore";
