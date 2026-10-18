@@ -1921,7 +1921,7 @@ export function FullInvoicePrinter({
                                   <span className="text-[9px] text-slate-500">MRP: {currency.symbol}{mrpPrice.toFixed(2)}</span>
                                 )}
                               </td>
-                              {f.showHSN && <td className="py-2 px-3 print:py-1 print:px-2 text-center font-mono text-slate-600 text-[10px]">{item.hsn_code || '9988'}</td>}
+                              {f.showHSN && <td className="py-2 px-3 print:py-1 print:px-2 text-center font-mono text-slate-600 text-[10px]">{item.hsn_code || (item as any).hsn || (item as any).hsn_sac || '—'}</td>}
                               <td className="py-2 px-3 print:py-1 print:px-2 text-center font-extrabold text-slate-800">
                                 <div>
                                   <span>{qty}</span>

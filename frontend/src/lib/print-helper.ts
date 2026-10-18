@@ -311,7 +311,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
   const sgstAmount = rawSgst > 0 ? rawSgst : (isInterstate ? 0 : totalTax / 2);
   const igstAmount = rawIgst > 0 ? rawIgst : (isInterstate ? totalTax : 0);
 
-  const grandTotal = Number(inv?.grand_total ?? inv?.total_amount ?? (rawSubtotal - totalSavings + (hasGst ? totalTax : 0)));
+  const grandTotal = Number(inv?.grand_total ?? inv?.total_amount ?? (rawSubtotal - explicitDiscount + (hasGst ? totalTax : 0)));
   
   const explicitTaxable = (inv?.taxable_value != null && Number(inv.taxable_value) > 0)
     ? Number(inv.taxable_value)
@@ -323,7 +323,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
     ? explicitTaxable
     : (hasGst && totalTax > 0)
     ? Math.max(0, grandTotal - totalTax)
-    : Math.max(0, rawSubtotal - totalSavings);
+    : Math.max(0, rawSubtotal - explicitDiscount);
 
   const isWalkInReceipt = isWalkInParty(inv);
   const amountReceived = Number(inv?.amount_received ?? inv?.paid_amount ?? grandTotal);

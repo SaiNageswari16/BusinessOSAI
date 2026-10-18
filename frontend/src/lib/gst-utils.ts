@@ -260,7 +260,7 @@ export function computeGstBreakdown(
     const breakdownItem: GstTaxBreakdownItem = {
       id: item.id,
       name: item.product_name || item.name || "Item",
-      hsn: item.hsn_code || item.hsn || "9988",
+      hsn: item.hsn_code || item.hsn || item.hsn_sac || "",
       taxRate,
       taxableAmount: lineTaxable,
       cgstRate,

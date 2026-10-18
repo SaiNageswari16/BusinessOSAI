@@ -65,7 +65,7 @@ export function EWayBillModal({ isOpen, onClose, onGenerated, invoiceData }: EWa
   const [transporterName, setTransporterName] = useState('VRL Logistics');
   const [transporterId, setTransporterId] = useState('');
   const [lrNumber, setLrNumber] = useState('');
-  const [vehicleNumber, setVehicleNumber] = useState('AP04TX9988');
+  const [vehicleNumber, setVehicleNumber] = useState('');
   const [transportMode, setTransportMode] = useState('1'); // 1 = Road
   const [approxDistance, setApproxDistance] = useState<number>(120);
   const [vehicleType, setVehicleType] = useState('R'); // R = Regular
@@ -145,7 +145,7 @@ export function EWayBillModal({ isOpen, onClose, onGenerated, invoiceData }: EWa
         transporter_id: transporterId.trim(),
         transporter_name: transporterName.trim(),
         lr_number: lrNumber.trim() || '1',
-        vehicle_number: (vehicleNumber.trim() || 'AP04TX9988').toUpperCase(),
+        vehicle_number: vehicleNumber.trim().toUpperCase(),
         transport_mode: transportMode,
         approx_distance_km: Number(approxDistance) || 120,
         vehicle_type: vehicleType,

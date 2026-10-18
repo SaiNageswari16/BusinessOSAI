@@ -366,7 +366,7 @@ export function Quotations() {
         product_id: item.product_id || item.id,
         product_name: item.name || item.product_name || item.title || "Item",
         sku: item.sku || item.product_code || "",
-        hsn_code: item.hsn_code || item.hsn || item.hsn_sac || "9988",
+        hsn_code: item.hsn_code || item.hsn || item.hsn_sac || "",
         quantity: qty,
         unit: item.unit || item.uom || "Pcs",
         unit_price: price,

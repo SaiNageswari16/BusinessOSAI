@@ -105,8 +105,8 @@ export function WordInvoiceDocument({
         (template?.headerTitle || "TAX INVOICE")
       ),
       logoUrl: raw?.logoUrl || template?.logoUrl || dynamicLogoUrl || "",
-      companyName: raw?.companyName || template?.storeName || template?.companyName || dynamicStoreName || activeGst?.trade_name || activeGst?.legal_name || "ACME ENTERPRISES",
-      companyTagline: raw?.companyTagline || template?.companyTagline || "AUTHORIZED BILLING & COMMERCIAL INVOICING",
+      companyName: raw?.companyName || template?.storeName || template?.companyName || dynamicStoreName || activeGst?.trade_name || activeGst?.legal_name || "Store",
+      companyTagline: raw?.companyTagline || template?.companyTagline || "",
       companyAddress: raw?.companyAddress || template?.storeAddress || dynamicAddress || activeGst?.address || "",
       companyPhone: raw?.companyPhone || template?.storePhone || dynamicPhone || activeGst?.phone || "",
       companyEmail: raw?.companyEmail || template?.storeEmail || dynamicEmail || activeGst?.email || "",
@@ -126,7 +126,7 @@ export function WordInvoiceDocument({
         (invoice.doc_type === 'proforma' || invoice.invoice_type === 'PROFORMA' || String(invoice.invoice_number || '').toUpperCase().startsWith('PI-')) ? "Proforma No" :
         "Invoice No"
       ),
-      invoiceNumberValue: raw?.invoiceNumberValue || "INV-2026-0001",
+      invoiceNumberValue: raw?.invoiceNumberValue || (invoice.invoice_number ? String(invoice.invoice_number) : ""),
       invoiceDateLabel: raw?.invoiceDateLabel || (
         (invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? "Quote Date" :
         (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? "Estimate Date" :
@@ -137,7 +137,7 @@ export function WordInvoiceDocument({
       dueDateLabel: raw?.dueDateLabel || "Due Date",
       dueDateValue: raw?.dueDateValue || "",
       placeOfSupplyLabel: raw?.placeOfSupplyLabel || "Place of Supply",
-      placeOfSupplyValue: raw?.placeOfSupplyValue || "36 - Telangana",
+      placeOfSupplyValue: raw?.placeOfSupplyValue || "",
       sections: Array.isArray(raw?.sections) && raw.sections.length > 0 ? raw.sections : DEFAULT_WORD_SECTIONS,
       columns: Array.isArray(raw?.columns) && raw.columns.length > 0
         ? raw.columns
@@ -162,12 +162,7 @@ export function WordInvoiceDocument({
                 if (Array.isArray(parsed) && parsed.length > 0) return parsed;
               }
             } catch {}
-            return [
-              { id: "cf_po", label: "PO Reference", value: "PO-2026-9921", enabled: true, section: "meta" },
-              { id: "cf_veh", label: "Vehicle No", value: "TS 09 EA 4412", enabled: true, section: "meta" },
-              { id: "cf_eway", label: "E-Way Bill No", value: "241098234190", enabled: true, section: "meta" },
-              { id: "cf_challan", label: "Challan No", value: "DC-0045", enabled: true, section: "meta" },
-            ];
+            return [];
           })(),
       signatureConfig: {
         signatureUrl: raw?.signatureConfig?.signatureUrl !== undefined ? raw?.signatureConfig?.signatureUrl : (activeSig.signatureUrl || null),
@@ -217,7 +212,7 @@ export function WordInvoiceDocument({
         originalRate,
         description: it.product_name || it.name || it.description || `Item #${idx + 1}`,
         custom_note: it.custom_note || it.description || it.notes || "",
-        hsn: it.hsn_code || it.hsn || "9988",
+        hsn: it.hsn_code || it.hsn || it.hsn_sac || "",
         quantity: qty,
         unit: it.selected_uom || it.uom || it.measuring_unit || it.unit || "PCS",
         unit_type: it.secondary_uom && it.selected_uom === it.secondary_uom ? "Secondary Unit" : "Primary Unit",
@@ -473,43 +468,45 @@ export function WordInvoiceDocument({
       if (key && invMeta[key] !== undefined && invMeta[key] !== "") return String(invMeta[key]);
     }
 
+    const sampleVal = isPureMockPreview ? (f.value || "") : "";
+
     if (norm.includes("po num") || norm.includes("po ref") || norm.includes("order no")) {
-      return invAny.po_number || invAny.po_reference || invAny.purchase_order_number || (typeof invMeta === "object" && (invMeta.po_number || invMeta.po_reference)) || f.value || "";
+      return invAny.po_number || invAny.po_reference || invAny.purchase_order_number || (typeof invMeta === "object" && (invMeta.po_number || invMeta.po_reference)) || sampleVal;
     }
     if (norm.includes("po date")) {
-      return invAny.po_date ? formatDisplayDate(invAny.po_date) : (f.value || "");
+      return invAny.po_date ? formatDisplayDate(invAny.po_date) : sampleVal;
     }
     if (norm.includes("vehic")) {
-      return invAny.vehicle_number || invAny.vehicle_no || (typeof invMeta === "object" && (invMeta.vehicle_number || invMeta.vehicle_no)) || f.value || "";
+      return invAny.vehicle_number || invAny.vehicle_no || (typeof invMeta === "object" && (invMeta.vehicle_number || invMeta.vehicle_no)) || sampleVal;
     }
     if (norm.includes("eway") || norm.includes("e-way")) {
-      return invAny.eway_bill_number || invAny.eway_bill_no || (typeof invMeta === "object" && (invMeta.eway_bill_number || invMeta.eway_bill_no)) || f.value || "";
+      return invAny.eway_bill_number || invAny.eway_bill_no || (typeof invMeta === "object" && (invMeta.eway_bill_number || invMeta.eway_bill_no)) || sampleVal;
     }
     if (norm.includes("challan no") || norm.includes("dc no")) {
-      return invAny.challan_number || invAny.delivery_challan || (typeof invMeta === "object" && (invMeta.challan_number || invMeta.delivery_challan)) || f.value || "";
+      return invAny.challan_number || invAny.delivery_challan || (typeof invMeta === "object" && (invMeta.challan_number || invMeta.delivery_challan)) || sampleVal;
     }
     if (norm.includes("challan date")) {
-      return invAny.challan_date ? formatDisplayDate(invAny.challan_date) : (f.value || "");
+      return invAny.challan_date ? formatDisplayDate(invAny.challan_date) : sampleVal;
     }
     if (norm.includes("dispatch") || norm.includes("transporter")) {
-      return invAny.dispatch_through || invAny.transporter_name || (typeof invMeta === "object" && (invMeta.dispatch_through || invMeta.transporter_name)) || f.value || "";
+      return invAny.dispatch_through || invAny.transporter_name || (typeof invMeta === "object" && (invMeta.dispatch_through || invMeta.transporter_name)) || sampleVal;
     }
     if (norm.includes("lr") || norm.includes("gr")) {
-      return invAny.lr_number || invAny.gr_number || (typeof invMeta === "object" && (invMeta.lr_number || invMeta.gr_number)) || f.value || "";
+      return invAny.lr_number || invAny.gr_number || (typeof invMeta === "object" && (invMeta.lr_number || invMeta.gr_number)) || sampleVal;
     }
     if (norm.includes("driver")) {
-      return [invAny.driver_name, invAny.driver_phone].filter(Boolean).join(" - ") || f.value || "";
+      return [invAny.driver_name, invAny.driver_phone].filter(Boolean).join(" - ") || sampleVal;
     }
     if (norm.includes("sales exec")) {
-      return invAny.sales_executive || invAny.sales_rep_name || (typeof invMeta === "object" && invMeta.sales_executive) || f.value || "";
+      return invAny.sales_executive || invAny.sales_rep_name || (typeof invMeta === "object" && invMeta.sales_executive) || sampleVal;
     }
     if (norm.includes("terms of deliv")) {
-      return invAny.terms_of_delivery || (typeof invMeta === "object" && invMeta.terms_of_delivery) || f.value || "";
+      return invAny.terms_of_delivery || (typeof invMeta === "object" && invMeta.terms_of_delivery) || sampleVal;
     }
     if (norm.includes("pay") && norm.includes("terms")) {
-      return invAny.payment_terms || (typeof invMeta === "object" && invMeta.payment_terms) || f.value || "";
+      return invAny.payment_terms || (typeof invMeta === "object" && invMeta.payment_terms) || sampleVal;
     }
-    return f.value || "";
+    return sampleVal;
   };
 
   const enabledCols = (config?.columns || DEFAULT_WORD_COLUMNS).filter((c) => c.enabled);
@@ -924,15 +921,15 @@ export function WordInvoiceDocument({
             const invCust = ((invoice as any)?.custom_fields && typeof (invoice as any)?.custom_fields === "object" ? (invoice as any).custom_fields : {}) || {};
             const invMeta = ((invoice as any)?.metadata && typeof (invoice as any)?.metadata === "object" ? (invoice as any).metadata : {}) || {};
 
-            const poVal = (invoice as any)?.po_number || (invoice as any)?.po_reference || invCust?.po_number || invCust?.po_reference || invCust?.po || invMeta?.po_number || invMeta?.po_reference || (poField ? resolveCustomFieldValue(poField) : "") || poField?.value || "";
-            const vehVal = (invoice as any)?.vehicle_number || (invoice as any)?.vehicle_no || invCust?.vehicle_number || invCust?.vehicle_no || invCust?.vehicle || invMeta?.vehicle_number || invMeta?.vehicle_no || (vehField ? resolveCustomFieldValue(vehField) : "") || vehField?.value || "";
-            const ewayVal = (invoice as any)?.eway_bill_number || (invoice as any)?.eway_bill_no || invCust?.eway_bill_number || invCust?.eway_bill_no || invCust?.eway_bill || invMeta?.eway_bill_number || invMeta?.eway_bill_no || (ewayField ? resolveCustomFieldValue(ewayField) : "") || ewayField?.value || "";
-            const challanVal = (invoice as any)?.challan_number || (invoice as any)?.delivery_challan || (invoice as any)?.delivery_challan_number || invCust?.challan_number || invCust?.delivery_challan || invCust?.delivery_challan_number || invCust?.challan || invMeta?.challan_number || (challanField ? resolveCustomFieldValue(challanField) : "") || challanField?.value || "";
+            const poVal = (invoice as any)?.po_number || (invoice as any)?.po_reference || invCust?.po_number || invCust?.po_reference || invCust?.po || invMeta?.po_number || invMeta?.po_reference || (poField ? resolveCustomFieldValue(poField) : "") || (isPureMockPreview ? poField?.value : "") || "";
+            const vehVal = (invoice as any)?.vehicle_number || (invoice as any)?.vehicle_no || invCust?.vehicle_number || invCust?.vehicle_no || invCust?.vehicle || invMeta?.vehicle_number || invMeta?.vehicle_no || (vehField ? resolveCustomFieldValue(vehField) : "") || (isPureMockPreview ? vehField?.value : "") || "";
+            const ewayVal = (invoice as any)?.eway_bill_number || (invoice as any)?.eway_bill_no || invCust?.eway_bill_number || invCust?.eway_bill_no || invCust?.eway_bill || invMeta?.eway_bill_number || invMeta?.eway_bill_no || (ewayField ? resolveCustomFieldValue(ewayField) : "") || (isPureMockPreview ? ewayField?.value : "") || "";
+            const challanVal = (invoice as any)?.challan_number || (invoice as any)?.delivery_challan || (invoice as any)?.delivery_challan_number || invCust?.challan_number || invCust?.delivery_challan || invCust?.delivery_challan_number || invCust?.challan || invMeta?.challan_number || (challanField ? resolveCustomFieldValue(challanField) : "") || (isPureMockPreview ? challanField?.value : "") || "";
 
             // Custom metadata fields with standard references filtered out, and ONLY fields that actually have a resolved value!
             const metaCustomFields = (config?.customFields || [])
               .filter((f) => f.enabled && (f.section === "meta" || !f.section) && !isStandardRef(f.label))
-              .map((f) => ({ ...f, resolvedVal: resolveCustomFieldValue(f) || f.value || "" }))
+              .map((f) => ({ ...f, resolvedVal: resolveCustomFieldValue(f) || (isPureMockPreview ? f.value : "") || "" }))
               .filter((f) => Boolean(f.resolvedVal && f.resolvedVal.trim() !== ""));
 
             // Also include any invoice-level custom_fields / metadata not already covered
@@ -1428,7 +1425,7 @@ export function WordInvoiceDocument({
                             if (discType === "percent" && discVal > 0) {
                               label = `${discVal}%`;
                             } else if (Number(taxableSubtotal) > 0 && Number(totalDiscount) > 0) {
-                              const baseForCalc = Number(taxableSubtotal) + (invoice.is_tax_inclusive ? 0 : Number(totalDiscount));
+                              const baseForCalc = Number(taxableSubtotal);
                               const computedPct = Math.round((Number(totalDiscount) / baseForCalc) * 100);
                               if (computedPct > 0 && computedPct <= 100) {
                                 label = `${computedPct}%`;
