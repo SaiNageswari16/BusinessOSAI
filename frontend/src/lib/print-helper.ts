@@ -28,7 +28,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
   const printableWidth = is58mm ? '48mm' : '72mm';
   const clarity = activeTemplate?.printClarity || 'ultra_dark';
   const fontFamilyChoice = activeTemplate?.thermalFontFamily || activeTemplate?.fontFamily || 'monospace';
-  const dividerStyle = activeTemplate?.dividerStyle || 'double';
+  const dividerStyle = activeTemplate?.dividerStyle || 'dashed';
 
   const fontFam =
     fontFamilyChoice === 'sans-serif'
@@ -37,7 +37,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
       ? "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
       : fontFamilyChoice === 'courier'
       ? "'Courier New', Courier, monospace"
-      : "'Courier New', Courier, monospace";
+      : "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace";
 
   const dividerChar =
     dividerStyle === 'solid'
@@ -252,11 +252,16 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
       ] : []);
 
   const rawSubtotal = Number(inv?.subtotal ?? rawItems.reduce((s: number, i: any) => s + (Number(i.quantity || 1) * Number(i.unit_price || i.price || i.rate || 0)), 0));
-  const totalSavings = Number(inv?.discount_amount ?? inv?.discount ?? 0);
-  const itemsTaxTotal = rawItems.reduce((acc: number, it: any) => acc + Number(it.tax_amount || it.tax || 0), 0);
+  const itemSavingsTotal = rawItems.reduce((acc: number, it: any) => {
+    const rate = Number(it.unit_price ?? it.rate ?? it.price ?? 0);
+    const mrp = Number(it.mrp ?? it.product?.mrp ?? 0);
+    return acc + (mrp > rate ? (mrp - rate) * Number(it.quantity || 1) : 0);
+  }, 0);
+  const totalSavings = Number(inv?.discount_amount ?? inv?.discount ?? inv?.total_discount ?? 0) + itemSavingsTotal;
+  const itemsTaxTotal = rawItems.reduce((acc: number, it: any) => acc + Number(it.tax_amount ?? it.tax ?? 0), 0);
   const explicitTax = inv?.total_tax != null ? Number(inv.total_tax) : (inv?.tax_amount != null ? Number(inv.tax_amount) : (inv?.tax != null ? Number(inv.tax) : null));
   const totalTax = explicitTax !== null ? explicitTax : (itemsTaxTotal > 0 ? itemsTaxTotal : (isSamplePreview ? (rawSubtotal - totalSavings) * 0.05 : 0));
-  const hasGst = (totalTax > 0.001) || Boolean(inv?.cgst_amount > 0 || inv?.sgst_amount > 0 || inv?.igst_amount > 0);
+  const hasGst = (totalTax > 0.001) || Boolean(Number(inv?.cgst_amount || 0) > 0 || Number(inv?.sgst_amount || 0) > 0 || Number(inv?.igst_amount || 0) > 0);
 
   const isInterstate = Boolean(
     inv?.is_interstate ||
@@ -358,14 +363,14 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
       const lineQty = Number(it.quantity ?? it.qty ?? 1);
       const lineRate = isFree ? 0 : Number(it.unit_price ?? it.rate ?? it.price ?? 0);
       const lineAmt = isFree ? 0 : Number(it.amount ?? it.total ?? (lineQty * lineRate));
-      const mrp = it.mrp ? Number(it.mrp) : 0;
+      const mrp = it.mrp ? Number(it.mrp) : (it.product?.mrp ? Number(it.product.mrp) : 0);
       const saved = (mrp > lineRate) ? (mrp - lineRate) * lineQty : 0;
-      const hsn = (it.hsn_code || it.hsn || (isSamplePreview ? (idx === 0 ? '1006' : '1512') : '') || '').trim();
-      const itTaxRate = Number(it.tax_rate ?? it.gst_rate ?? 0);
+      const hsn = (it.hsn_code || it.hsn || it.hsn_sac || (it.product && (it.product.hsn_code || it.product.hsn || it.product.hsn_sac)) || (isSamplePreview ? (idx === 0 ? '1006' : '1512') : '') || '').trim();
+      const itTaxRate = Number(it.tax_rate ?? it.gst_rate ?? it.tax_percent ?? (it.product && (it.product.tax_rate ?? it.product.gst_rate ?? it.product.tax_percent)) ?? 0);
       const itTaxAmt = Number(it.tax_amount ?? it.tax ?? 0);
-      const batch = (it.batch_number || it.batch || (isSamplePreview ? (idx === 0 ? 'BR-992' : 'SF-201') : '') || '').trim();
-      const exp = (it.expiry_date || it.exp_date || (isSamplePreview ? '12/2027' : '') || '').trim();
-      const description = (it.description || (isSamplePreview ? (idx === 0 ? 'Premium Long Grain Aged Rice' : '') : '') || '').trim();
+      const batch = (it.batch_number || it.batch || it.batch_no || (it.product && (it.product.batch_number || it.product.batch)) || (isSamplePreview ? (idx === 0 ? 'BR-992' : 'SF-201') : '') || '').trim();
+      const exp = (it.expiry_date || it.exp_date || it.expiry || (it.product && (it.product.expiry_date || it.product.exp_date)) || (isSamplePreview ? '12/2027' : '') || '').trim();
+      const description = (it.description || (it.product && it.product.description) || (isSamplePreview ? (idx === 0 ? 'Premium Long Grain Aged Rice' : '') : '') || '').trim();
       
       const hasSubDetails = Boolean(
         (f.showHSN !== false && hsn) ||
@@ -491,7 +496,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
         <div class="center" style="margin-bottom: 3px; text-align: center;">
           ${(f.showLogo !== false && resolvedLogoUrl) ? `
             <div style="margin-bottom: 6px; text-align: center;">
-              <img src="${resolvedLogoUrl}" alt="Logo" style="max-height: 48px; max-width: 140px; object-fit: contain; margin: 0 auto 4px auto; display: block; filter: grayscale(100%) contrast(200%);" />
+              <img src="${resolvedLogoUrl}" alt="Logo" style="max-height: 56px; max-width: 160px; object-fit: contain; margin: 0 auto 4px auto; display: block; filter: grayscale(100%) contrast(200%);" />
             </div>
           ` : ''}
           ${f.showStoreName !== false ? `<h1 style="font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; text-align: center;">${storeName}</h1>` : ''}
@@ -578,13 +583,13 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
               <span>- ₹${totalSavings.toFixed(2)}</span>
             </div>
           ` : ''}
-          ${(hasGst && f.showTaxBreakdown !== false && totalTax > 0) ? `
+          ${f.showTaxBreakdown !== false ? `
             <div style="border-top: 1px dotted #000; margin-top: 2px; padding-top: 2px;">
               <div class="flex-between" style="font-size: 9.5px;">
                 <span>Taxable Amount:</span>
                 <span>₹${taxableSubtotal.toFixed(2)}</span>
               </div>
-              ${isInterstate ? `
+              ${hasGst ? (isInterstate ? `
                 <div class="flex-between" style="font-size: 9.5px;">
                   <span>IGST Tax:</span>
                   <span>₹${igstAmount.toFixed(2)}</span>
@@ -597,6 +602,11 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
                 <div class="flex-between" style="font-size: 9.5px;">
                   <span>State GST (SGST):</span>
                   <span>₹${sgstAmount.toFixed(2)}</span>
+                </div>
+              `) : `
+                <div class="flex-between" style="font-size: 9.5px;">
+                  <span>GST (0% / Exempt):</span>
+                  <span>₹0.00</span>
                 </div>
               `}
               <div class="flex-between" style="font-size: 9.5px; font-weight: 900;">

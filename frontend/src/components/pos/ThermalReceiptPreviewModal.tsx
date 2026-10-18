@@ -30,6 +30,40 @@ export function ThermalReceiptPreviewModal({
   const { currency, formatCurrency } = useCurrency();
   const [paperSize, setPaperSize] = useState<'80mm' | '58mm'>('80mm');
   const [zoomLevel, setZoomLevel] = useState<number>(100);
+  const [resolvedInvoice, setResolvedInvoice] = useState<any>(invoice);
+
+  // Fetch complete backend invoice data (items, HSN, batches, taxes, customer details)
+  useEffect(() => {
+    if (!invoice) return;
+    setResolvedInvoice(invoice);
+
+    const invId = invoice.id || invoice.invoice_id;
+    if (invId && typeof invId === 'string' && invId.length > 5) {
+      invoicesApi.getInvoice(invId).then((remote: any) => {
+        if (remote) {
+          setResolvedInvoice((prev: any) => ({
+            ...prev,
+            ...remote,
+            items: remote.items && remote.items.length > 0 ? remote.items : prev?.items,
+            customer_name: remote.customer_name || remote.customer?.name || prev?.customer_name,
+            customer_phone: remote.customer_phone || remote.customer?.phone || prev?.customer_phone,
+            customer_gstin: remote.customer_gstin || remote.customer?.tax_number || remote.customer?.gst_number || prev?.customer_gstin,
+            customer_address: remote.billing_address || remote.customer?.billing_address || prev?.customer_address || prev?.customer_billing_address,
+            cgst_amount: remote.cgst_amount ?? prev?.cgst_amount,
+            sgst_amount: remote.sgst_amount ?? prev?.sgst_amount,
+            igst_amount: remote.igst_amount ?? prev?.igst_amount,
+            total_tax: remote.tax_amount ?? remote.total_tax ?? prev?.total_tax,
+            subtotal: remote.subtotal ?? prev?.subtotal,
+            grand_total: remote.total_amount ?? remote.grand_total ?? prev?.grand_total,
+            amount_received: remote.amount_paid ?? remote.amount_received ?? prev?.amount_received,
+          }));
+        }
+      }).catch((err) => {
+        console.warn("Could not fetch remote invoice for thermal print:", err);
+      });
+    }
+  }, [invoice]);
+
   const [htmlPreview, setHtmlPreview] = useState<string>(() => {
     if (!invoice) return '';
     try {
@@ -44,7 +78,7 @@ export function ThermalReceiptPreviewModal({
   const hasAutoPrintedRef = useRef(false);
 
   useEffect(() => {
-    if (isOpen && invoice && autoPrint && !hasAutoPrintedRef.current) {
+    if (isOpen && resolvedInvoice && autoPrint && !hasAutoPrintedRef.current) {
       hasAutoPrintedRef.current = true;
       const timer = setTimeout(() => {
         handleDirectPrint();
@@ -54,14 +88,14 @@ export function ThermalReceiptPreviewModal({
     if (!isOpen) {
       hasAutoPrintedRef.current = false;
     }
-  }, [isOpen, invoice, autoPrint]);
+  }, [isOpen, resolvedInvoice, autoPrint]);
 
   useEffect(() => {
-    if (!invoice || !isOpen) return;
+    if (!resolvedInvoice || !isOpen) return;
 
     // First regenerate with current localStorage data
     try {
-      const html = generateThermalReceiptHtml(invoice, { paperSize }, tenant?.id);
+      const html = generateThermalReceiptHtml(resolvedInvoice, { paperSize }, tenant?.id);
       setHtmlPreview(html);
     } catch (e) {
       console.error('Failed to generate thermal preview HTML:', e);
@@ -91,20 +125,20 @@ export function ThermalReceiptPreviewModal({
           } catch {}
           // Re-generate HTML with freshly updated localStorage
           try {
-            const freshHtml = generateThermalReceiptHtml(invoice, { paperSize }, tenant?.id);
+            const freshHtml = generateThermalReceiptHtml(resolvedInvoice, { paperSize }, tenant?.id);
             setHtmlPreview(freshHtml);
           } catch {}
         }
       }
     }).catch(() => {});
-  }, [invoice, isOpen, paperSize, tenant?.id]);
+  }, [resolvedInvoice, isOpen, paperSize, tenant?.id]);
 
   if (!isOpen || !invoice) return null;
 
   const handleDirectPrint = () => {
     setIsPrinting(true);
     try {
-      printThermalReceiptInvoice(invoice, { paperSize }, tenant?.id);
+      printThermalReceiptInvoice(resolvedInvoice || invoice, { paperSize }, tenant?.id);
       toast.success(t('Thermal print command sent to printer', 'Thermal print command sent to printer'));
     } catch (e: any) {
       toast.error(e?.message || t('Failed to send to printer', 'Failed to send to printer'));
@@ -114,7 +148,8 @@ export function ThermalReceiptPreviewModal({
   };
 
   const handleSendWhatsApp = async () => {
-    let phone = (invoice.customer_phone || invoice.phone || '').trim();
+    const curInv = resolvedInvoice || invoice;
+    let phone = (curInv.customer_phone || curInv.phone || '').trim();
     if (!phone) {
       const input = window.prompt("Enter customer WhatsApp phone number (10 digits):");
       if (!input) return;
@@ -127,16 +162,16 @@ export function ThermalReceiptPreviewModal({
     }
     try {
       setIsSendingWhatsApp(true);
-      toast.loading("Preparing & sending thermal receipt via WhatsApp...", { id: `wa-modal-${invoice.id || invoice.invoice_number}` });
+      toast.loading("Preparing & sending thermal receipt via WhatsApp...", { id: `wa-modal-${curInv.id || curInv.invoice_number}` });
       const pdfBase64 = await thermalReceiptHtmlToPdfBase64(htmlPreview, paperSize);
-      const res = await posApi.sendThermalReceiptWhatsApp(invoice.id || invoice.invoice_number, pdfBase64, cleanPhone);
+      const res = await posApi.sendThermalReceiptWhatsApp(curInv.id || curInv.invoice_number, pdfBase64, cleanPhone);
       if (res?.success) {
-        toast.success(`Thermal receipt sent via WhatsApp to ${cleanPhone}!`, { id: `wa-modal-${invoice.id || invoice.invoice_number}` });
+        toast.success(`Thermal receipt sent via WhatsApp to ${cleanPhone}!`, { id: `wa-modal-${curInv.id || curInv.invoice_number}` });
       } else {
-        toast.error(`WhatsApp send failed: ${res?.error || 'Unknown error'}`, { id: `wa-modal-${invoice.id || invoice.invoice_number}` });
+        toast.error(`WhatsApp send failed: ${res?.error || 'Unknown error'}`, { id: `wa-modal-${curInv.id || curInv.invoice_number}` });
       }
     } catch (err: any) {
-      toast.error(err?.message || "Failed to send receipt via WhatsApp", { id: `wa-modal-${invoice.id || invoice.invoice_number}` });
+      toast.error(err?.message || "Failed to send receipt via WhatsApp", { id: `wa-modal-${curInv.id || curInv.invoice_number}` });
     } finally {
       setIsSendingWhatsApp(false);
     }

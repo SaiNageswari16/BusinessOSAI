@@ -858,7 +858,7 @@ export function getActiveReceiptTemplate(tenantId?: string): ReceiptTemplate {
             paperSize: matched.paperSize === '58mm' ? '58mm' : '80mm',
             fontDensity: matched.fontDensity || 'normal',
             printClarity: matched.printClarity || matched.thermalContrast || 'ultra_dark',
-            dividerStyle: matched.dividerStyle || 'double',
+            dividerStyle: matched.dividerStyle || 'dashed',
             fontFamily: matched.thermalFontFamily || matched.fontFamily || 'monospace',
             storeName: activeGst?.trade_name || activeGst?.legal_name || (!isGenericBusinessTerm(matched.storeName) && !matched.storeName?.includes('Smart Bazaar') ? matched.storeName : '') || 'Store',
             branchName: resolvedBranch,
@@ -900,6 +900,7 @@ export function getActiveReceiptTemplate(tenantId?: string): ReceiptTemplate {
               showQrCode: fields.showQR !== false,
               showGoogleReviewQR: matched.showGoogleReviewQR !== false,
               showPaidInFullStamp: matched.showPaidInFullStamp !== false,
+              showDeclaration: matched.showDeclaration !== false,
             },
 
             showLogo: fields.showLogo !== false,
@@ -913,10 +914,10 @@ export function getActiveReceiptTemplate(tenantId?: string): ReceiptTemplate {
             showPaymentMode: fields.showPaymentDetails !== false,
             showQR: fields.showQR !== false,
             showQrCode: fields.showQR !== false,
-            showDeclaration: Boolean(matched.termsText),
+            showDeclaration: matched.showDeclaration !== false,
             showFooterNote: Boolean(matched.footerText),
 
-            declarationText: matched.termsText || 'We declare that this invoice shows the actual price of the goods described.',
+            declarationText: matched.declarationText || matched.termsText || 'We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.',
             footerNote: matched.footerText || matched.thankYouNote || 'THANK YOU FOR SHOPPING WITH US!\nVISIT AGAIN',
             qrType: matched.qrType || 'upi',
           };

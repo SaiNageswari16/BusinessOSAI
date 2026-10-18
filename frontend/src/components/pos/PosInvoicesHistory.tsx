@@ -1422,10 +1422,29 @@ export function PosInvoicesHistory() {
   };
 
   // Open Thermal Receipt In-App Preview & Print Modal
-  const handlePrintThermal = (inv: LocalInvoiceRecord) => {
+  const handlePrintThermal = async (inv: LocalInvoiceRecord) => {
     setThermalReceiptModalData(inv);
     setIsThermalReceiptOpen(true);
     updateInvoicePrintStatus(inv.invoice_number, "Thermal Printed");
+
+    if (inv.id) {
+      try {
+        const remote: any = await invoicesApi.getInvoice(inv.id);
+        if (remote) {
+          setThermalReceiptModalData((prev: any) => ({
+            ...prev,
+            ...remote,
+            items: remote.items && remote.items.length > 0 ? remote.items : prev?.items,
+            customer_name: remote.customer_name || remote.customer?.name || prev?.customer_name,
+            customer_phone: remote.customer_phone || remote.customer?.phone || prev?.customer_phone,
+            customer_gstin: remote.customer_gstin || remote.customer?.tax_number || remote.customer?.gst_number || prev?.customer_gstin,
+            customer_address: remote.billing_address || remote.customer?.billing_address || prev?.customer_address,
+          }));
+        }
+      } catch (e) {
+        console.warn("Could not fetch remote invoice for thermal print:", e);
+      }
+    }
   };
 
   // Open E-Way Bill Generator / Viewer Modal
