@@ -8,7 +8,7 @@ import { generateThermalReceiptHtml, printThermalReceiptInvoice, printHtmlInPage
 import { useTenant } from '@/contexts/tenant-context';
 import { useCurrency } from '@/hooks/use-currency';
 import { getActiveBillingGst } from '@/lib/receipt-template-store';
-import { companiesApi, posApi } from '@/lib/api-client';
+import { companiesApi, posApi, invoicesApi } from '@/lib/api-client';
 
 export interface ThermalReceiptPreviewModalProps {
   invoice: any | null;
