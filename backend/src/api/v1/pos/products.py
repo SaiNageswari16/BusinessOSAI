@@ -99,7 +99,7 @@ async def list_products(
     category_id: Optional[uuid.UUID] = Query(None),
     search: Optional[str] = Query(None),
     active_only: bool = Query(True),
-    limit: int = Query(2000, le=5000),
+    limit: int = Query(2000, le=50000),
     ctx: CurrentUserContext = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db),
 ):

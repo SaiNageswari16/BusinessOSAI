@@ -534,8 +534,8 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
     async function fetchLiveStock() {
       try {
         const [invRes, posRes, batchRes] = await Promise.allSettled([
-          inventoryApi.getProducts({ page_size: 500 }),
-          posApi.getProducts({ limit: 500 }),
+          inventoryApi.getProducts({ page_size: 10000 }),
+          posApi.getProducts({ limit: 10000 }),
           inventoryApi.getBatches(),
         ]);
 
@@ -1143,24 +1143,49 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
   // Summary Metrics
   const metrics = useMemo(() => {
     let totalStockQty = 0;
-    let totalStockValue = 0;
+    let positiveQty = 0;
+    let negativeQty = 0;
+    let netStockValue = 0;
+    let positiveStockValue = 0;
+    let negativeStockValue = 0;
     let lowStockCount = 0;
     let lowStockVal = 0;
 
     inventoryItems.forEach((it) => {
-      totalStockQty += it.stockQuantity;
+      const qty = Number(it.stockQuantity || 0);
+      totalStockQty += qty;
+      if (qty > 0) {
+        positiveQty += qty;
+      } else if (qty < 0) {
+        negativeQty += qty;
+      }
+
       const buyPrice = Number(it.purchasePrice || 0);
-      const positiveVal = it.stockQuantity > 0 ? it.stockQuantity * buyPrice : 0;
-      totalStockValue += positiveVal;
-      if (it.stockQuantity <= it.lowStockLevel) {
+      if (buyPrice > 0) {
+        const itemVal = qty * buyPrice;
+        netStockValue += itemVal;
+        if (itemVal > 0) {
+          positiveStockValue += itemVal;
+        } else if (itemVal < 0) {
+          negativeStockValue += itemVal;
+        }
+      }
+
+      if (qty <= (it.lowStockLevel || 0)) {
         lowStockCount += 1;
-        lowStockVal += positiveVal;
+        if (qty > 0 && buyPrice > 0) {
+          lowStockVal += qty * buyPrice;
+        }
       }
     });
 
     return {
       totalStockQty,
-      totalStockValue,
+      positiveQty,
+      negativeQty,
+      totalStockValue: netStockValue,
+      positiveStockValue,
+      negativeStockValue,
       totalItems: inventoryItems.length,
       lowStockCount,
       lowStockVal,
@@ -1185,28 +1210,85 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
 
     switch (activeReport) {
       case "stock_summary": {
-        rows.push(["Item Name", "Batch Number", "Item Code", "Purchase Price (₹)", "Selling Price (₹)", "Stock Quantity", "Stock Value (₹)"]);
+        const companyName = tenant?.name || "I Smart Bazaar";
+        const companyPhone = (tenant as any)?.phone || (tenant as any)?.raw?.phone || "9849344919";
+
+        let dateRangeText = "01/04/2025 - 31/03/2026";
+        if (dateFilter === "today") {
+          const nowStr = new Date().toLocaleDateString("en-GB");
+          dateRangeText = `${nowStr} - ${nowStr}`;
+        } else if (customStartDate && customEndDate) {
+          dateRangeText = `${customStartDate} - ${customEndDate}`;
+        }
+
+        // 1. Business Report Header metadata block matching exact company export
+        rows.push([`Company Name: ${companyName}`]);
+        rows.push([`Phone No: ${companyPhone}`]);
+        rows.push([]);
+        rows.push(["Stock Summary Report"]);
+        rows.push([`Dated: ${dateRangeText}`]);
+        rows.push([`Total Stock Value: ${Number(metrics.totalStockValue.toFixed(2))}`]);
+        rows.push([]);
+
+        // 2. Canonical Column Headers
+        rows.push([
+          "Name",
+          "Batch No.",
+          "Item Code",
+          "Purchase Price",
+          "Selling Price",
+          "Stock Quantity",
+          "Stock Value",
+          "Item Category Name",
+          "MRP",
+          "exp. date",
+          "mfg date"
+        ]);
+
         let sumQty = 0;
         let sumVal = 0;
+
         currentFilteredItems.forEach((r) => {
           const qty = Number(r.stockQuantity || 0);
           const buyPrice = Number(r.purchasePrice || 0);
           const sellPrice = Number(r.sellingPrice || 0);
-          const val = qty > 0 ? qty * buyPrice : 0;
+          const mrpVal = Number(r.mrp || sellPrice || 0);
+          // Stock Value: mathematically qty * purchasePrice
+          const val = qty !== 0 && buyPrice > 0 ? Number((qty * buyPrice).toFixed(2)) : 0;
           sumQty += qty;
-          sumVal += val;
+          if (buyPrice > 0) {
+            sumVal += qty * buyPrice;
+          }
 
           rows.push([
             r.name,
-            r.batchNumber || "-",
-            r.itemCode || "-",
-            buyPrice > 0 ? buyPrice : "-",
-            sellPrice > 0 ? sellPrice : "-",
-            `${qty} PCS`,
-            val > 0 ? Number(val.toFixed(2)) : 0,
+            r.batchNumber || "",
+            r.itemCode || "",
+            buyPrice,
+            sellPrice,
+            `${qty.toFixed(1)} PCS`,
+            val,
+            r.category || "",
+            mrpVal,
+            r.expiryDate || "",
+            r.mfgDate || "",
           ]);
         });
-        rows.push(["Total", "", "", "", "", `${sumQty} PCS`, Number(sumVal.toFixed(2))]);
+
+        // 3. Tallying Total row
+        rows.push([
+          "Total",
+          "",
+          "",
+          "",
+          "",
+          `${sumQty.toFixed(1)} PCS`,
+          Number(sumVal.toFixed(2)),
+          "",
+          "",
+          "",
+          ""
+        ]);
         break;
       }
 
@@ -1425,18 +1507,25 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                   <span>Email Excel</span>
                 </button>
 
-                <div className="relative">
+                <div className="relative inline-flex rounded-lg shadow-2xs">
                   <button
-                    onClick={() => setShowExcelDropdown(!showExcelDropdown)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                    onClick={() => handleExport("xlsx")}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-l-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 border-r-0 transition-colors cursor-pointer"
+                    title="Download directly as Microsoft Excel (.xlsx)"
                   >
-                    <Download className="w-3.5 h-3.5 text-slate-400" />
+                    <Download className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Download Excel</span>
                     <span className="w-3.5 h-3.5 rounded-full border border-slate-300 text-[9px] font-bold text-slate-400 flex items-center justify-center">i</span>
+                  </button>
+                  <button
+                    onClick={() => setShowExcelDropdown(!showExcelDropdown)}
+                    className="px-1.5 py-1.5 rounded-r-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
+                    title="Export format options"
+                  >
                     <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
                   </button>
                   {showExcelDropdown && (
-                    <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
+                    <div className="absolute right-0 top-full mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
                       <button
                         onClick={() => {
                           handleExport("xlsx");
@@ -1444,7 +1533,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                         }}
                         className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
                       >
-                        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Download Excel (.xlsx)
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Excel Workbook (.xlsx)
                       </button>
                       <button
                         onClick={() => {
@@ -1453,7 +1542,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                         }}
                         className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
                       >
-                        <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Download CSV (.csv)
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> CSV Text File (.csv)
                       </button>
                     </div>
                   )}
@@ -1472,25 +1561,60 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
             {/* Row 2: Metric Summary Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 pt-3 border-t border-slate-100">
               <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
-                <div className="flex items-center gap-2 text-slate-500 text-xs font-medium mb-1">
-                  <FileSpreadsheet className="size-3.5 text-indigo-500" />
-                  <span>Total Stock Value</span>
+                <div className="flex items-center justify-between text-slate-500 text-xs font-medium mb-1">
+                  <div className="flex items-center gap-2">
+                    <FileSpreadsheet className="size-3.5 text-indigo-500" />
+                    <span>Total Stock Value</span>
+                  </div>
+                  {metrics.negativeStockValue < 0 && (
+                    <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded font-mono">
+                      Net Total
+                    </span>
+                  )}
                 </div>
                 <div className="text-xl font-bold text-slate-900">
                   {formatCurrency(metrics.totalStockValue)}
                 </div>
+                {metrics.positiveStockValue > 0 && metrics.negativeStockValue < 0 && (
+                  <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2 font-medium">
+                    <span className="text-emerald-700">In-Stock: {formatCurrency(metrics.positiveStockValue)}</span>
+                    <span className="text-slate-300">•</span>
+                    <span className="text-rose-600">Deficit: {formatCurrency(metrics.negativeStockValue)}</span>
+                  </div>
+                )}
               </div>
 
               <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
-                <div className="flex items-center gap-2 text-slate-500 text-xs font-medium mb-1">
-                  <Boxes className="size-3.5 text-blue-500" />
-                  <span>Total Stock Quantity</span>
+                <div className="flex items-center justify-between text-slate-500 text-xs font-medium mb-1">
+                  <div className="flex items-center gap-2">
+                    <Boxes className="size-3.5 text-blue-500" />
+                    <span>Total Stock Quantity</span>
+                  </div>
+                  {metrics.negativeQty < 0 && (
+                    <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded font-mono">
+                      Net Qty
+                    </span>
+                  )}
                 </div>
                 <div className="text-xl font-bold text-slate-900">
                   {metrics.totalStockQty}
                 </div>
+                {metrics.negativeQty < 0 && (
+                  <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2 font-medium">
+                    <span className="text-emerald-700">Available: +{metrics.positiveQty.toLocaleString()} PCS</span>
+                    <span className="text-slate-300">•</span>
+                    <span className="text-rose-600">Deficit: {metrics.negativeQty.toLocaleString()} PCS</span>
+                  </div>
+                )}
               </div>
             </div>
+
+            {/* Threshold Banner when records >= 500 */}
+            {inventoryItems.length >= 500 && (
+              <div className="mt-2.5 text-center text-xs text-rose-500 font-medium">
+                This report has more than 500 records. To view the full report, please select the &apos;Email Excel&apos; option and we will send you the full stock summary report over email.
+              </div>
+            )}
 
             {/* Row 3: Search Category + Period Selector */}
             <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-2 border-t border-slate-100">
@@ -2453,9 +2577,9 @@ function renderInventoryReport(
   });
 
   switch (type) {
-    // ── Stock Summary - Exact layout from Reference UI ──
+    // ── Stock Summary - Exact layout from Reference UI & Excel Tally ──
     case "stock_summary": {
-      // Columns: Item Name | Batch Number | Item Code | Purchase Price | Selling Price | Stock Quantity | Stock Value
+      // Columns tallied with Excel: Item Name | Batch Number | Item Code | Category | Purchase Price | Selling Price | MRP | Stock Quantity | Stock Value
       return (
         <div className="p-0">
           <div className="overflow-x-auto">
@@ -2465,8 +2589,10 @@ function renderInventoryReport(
                   <th className="px-4 py-3 font-semibold text-slate-800">Item Name</th>
                   <th className="px-4 py-3 font-semibold text-slate-800">Batch Number</th>
                   <th className="px-4 py-3 font-semibold text-slate-800">Item Code</th>
+                  <th className="px-4 py-3 font-semibold text-slate-800">Category</th>
                   <th className="px-4 py-3 text-right font-semibold text-slate-800">Purchase Price</th>
                   <th className="px-4 py-3 text-right font-semibold text-slate-800">Selling Price</th>
+                  <th className="px-4 py-3 text-right font-semibold text-slate-800">MRP</th>
                   <th className="px-4 py-3 text-right font-semibold text-slate-800">Stock Quantity</th>
                   <th className="px-4 py-3 text-right font-semibold text-slate-800">Stock Value</th>
                 </tr>
@@ -2474,33 +2600,57 @@ function renderInventoryReport(
               <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
                 {filteredItems.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-16 text-center text-slate-400 text-xs font-semibold">
+                    <td colSpan={9} className="py-16 text-center text-slate-400 text-xs font-semibold">
                       No stock items found matching your filters
                     </td>
                   </tr>
                 ) : (
                   filteredItems.map((r, i) => {
-                    const stockVal = r.stockQuantity > 0 ? r.stockQuantity * (r.purchasePrice || 0) : 0;
+                    const buyPrice = Number(r.purchasePrice || 0);
+                    const sellPrice = Number(r.sellingPrice || 0);
+                    const mrpVal = Number(r.mrp || sellPrice || 0);
+                    const qty = Number(r.stockQuantity || 0);
+                    const stockVal = buyPrice > 0 ? qty * buyPrice : 0;
+                    const isDeficit = qty < 0;
+
                     return (
-                      <tr key={r.id || i} className="hover:bg-slate-50/80 transition-colors">
+                      <tr key={r.id || i} className={`hover:bg-slate-50/80 transition-colors ${isDeficit ? "bg-rose-50/25" : ""}`}>
                         <td className="px-4 py-3 font-medium text-slate-900 max-w-xs truncate" title={r.name}>
                           {r.name}
                         </td>
                         <td className="px-4 py-3 font-mono text-xs text-slate-500">{r.batchNumber || "-"}</td>
                         <td className="px-4 py-3 font-mono text-xs text-slate-700">{r.itemCode || "-"}</td>
-                        <td className="px-4 py-3 text-right text-slate-700">
-                          {r.purchasePrice ? formatCurrency(r.purchasePrice) : "-"}
+                        <td className="px-4 py-3 text-xs text-slate-600">
+                          {r.category && r.category !== "General" ? (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-[11px] border border-slate-200">
+                              {r.category}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
                         </td>
-                        <td className="px-4 py-3 text-right text-slate-700">
-                          {r.sellingPrice ? formatCurrency(r.sellingPrice) : "-"}
+                        <td className="px-4 py-3 text-right text-slate-700 font-mono">
+                          {buyPrice > 0 ? formatCurrency(buyPrice) : "-"}
                         </td>
-                        <td className="px-4 py-3 text-right font-medium text-slate-800">
-                          {typeof r.stockQuantity === "number"
-                            ? (Number.isInteger(r.stockQuantity) ? `${r.stockQuantity}.0 PCS` : `${r.stockQuantity} PCS`)
-                            : `${r.stockQuantity} PCS`}
+                        <td className="px-4 py-3 text-right text-slate-700 font-mono">
+                          {sellPrice > 0 ? formatCurrency(sellPrice) : "-"}
                         </td>
-                        <td className="px-4 py-3 text-right font-medium text-slate-900">
-                          {formatCurrency(stockVal)}
+                        <td className="px-4 py-3 text-right text-slate-700 font-mono">
+                          {mrpVal > 0 ? formatCurrency(mrpVal) : "-"}
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium">
+                          <span className={isDeficit ? "text-rose-600 font-semibold" : "text-slate-800"}>
+                            {qty.toFixed(1)} PCS
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium">
+                          {stockVal !== 0 ? (
+                            <span className={stockVal < 0 ? "text-rose-600 font-semibold font-mono" : "text-slate-900 font-mono font-medium"}>
+                              {formatCurrency(stockVal)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 font-mono">₹ 0</span>
+                          )}
                         </td>
                       </tr>
                     );
