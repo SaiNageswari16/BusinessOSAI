@@ -972,6 +972,7 @@ async def _get_all_sales_invoices(
             if p_tax <= 0 and p_tot > (p_qty * p_price):
                 p_tax = round(p_tot - (p_qty * p_price), 2)
             pos_items.append({
+                "product_id": str(it.product_id) if getattr(it, "product_id", None) else None,
                 "name": p_name,
                 "product_name": p_name,
                 "sku": p_sku,
@@ -1041,15 +1042,26 @@ async def _get_all_sales_invoices(
         total = float(inv.total_amount or 0)
         disc = float(inv.discount_amount or 0)
         subtotal = float(inv.subtotal or (total + disc))
-        tax = float((inv.cgst_amount or 0) + (inv.sgst_amount or 0) + (inv.igst_amount or 0))
-        if tax <= 0:
-            # Only compute tax from difference if total exceeds net taxable base (subtotal - discount)
-            net_base = subtotal - disc
-            if total > net_base:
-                tax = round(total - net_base, 2)
+        # Check authoritative tax fields stored on invoice header
+        has_header_tax = (inv.cgst_amount is not None or inv.sgst_amount is not None or inv.igst_amount is not None)
+        if has_header_tax:
+            tax = float((inv.cgst_amount or 0) + (inv.sgst_amount or 0) + (inv.igst_amount or 0))
+        elif inv.lines and len(inv.lines) > 0:
+            # Sum tax across line items
+            line_tax_sum = sum(
+                float((getattr(l, "cgst_amount", 0) or 0) + (getattr(l, "sgst_amount", 0) or 0) + (getattr(l, "igst_amount", 0) or 0))
+                for l in inv.lines
+            )
+            if line_tax_sum > 0:
+                tax = line_tax_sum
             else:
-                tax = 0.0
-        tax = max(0.0, tax)
+                tax = sum(
+                    round(float(getattr(l, "taxable_amount", 0) or (float(getattr(l, "quantity", 1) or 1) * float(getattr(l, "unit_price", 0) or 0))) * (float(getattr(l, "tax_rate", 0) or 0) / 100.0), 2)
+                    for l in inv.lines
+                )
+        else:
+            tax = 0.0
+        tax = max(0.0, round(tax, 2))
 
         # Compute actual paid and pending amounts from payment records & status
         is_cancelled = (inv.status or "").lower() in ["cancelled", "canceled", "void", "voided"]
@@ -1080,6 +1092,7 @@ async def _get_all_sales_invoices(
                     l_tax = 0.0
 
             erp_items.append({
+                "product_id": str(getattr(line, "product_id", None)) if getattr(line, "product_id", None) else None,
                 "name": l_name,
                 "product_name": l_name,
                 "sku": l_sku,
@@ -1219,7 +1232,7 @@ async def generate_custom_report(
     Dedicated, distinct reports for all 38+ business intelligence modules.
     """
     entity = payload.get("entity", "sales_summary")
-    report_id = payload.get("reportId", entity)
+    report_id = payload.get("reportId") or payload.get("report_id") or entity
     date_range = payload.get("dateRange", "all")
     custom_start = payload.get("startDate")
     custom_end = payload.get("endDate")
@@ -1288,7 +1301,13 @@ async def generate_custom_report(
     # ══════════════════════════════════════════════════════════════════════════
     # 1. SALES REPORTS SUITE (8 Distinct Reports + Payment Breakdown)
     # ══════════════════════════════════════════════════════════════════════════
-    if report_id in ["sales_summary", "sales_invoice", "sales_return", "sales_credit_note", "sales_itemwise", "sales_customerwise", "sales_salesperson", "sales_periodic", "sales_gst", "payment_mode_sales", "payment_collection", "cash_bank_transactions"]:
+    if report_id in [
+        "sales_summary", "sales_invoice", "sales_return", "sales_credit_note",
+        "sales_itemwise", "item_sales_summary", "product_sales",
+        "sales_customerwise", "customer_sales_summary", "customer_sales",
+        "sales_salesperson", "salesperson_performance", "user_sales",
+        "sales_periodic", "sales_gst", "payment_mode_sales", "payment_collection", "cash_bank_transactions"
+    ]:
         tx_list = await _get_all_sales_invoices(db, start_dt, end_dt, search, tenant_id=ctx.tenant_id, company_id=ctx.active_company_id)
         def _is_tx_cancelled(tx_item: Dict[str, Any]) -> bool:
             return bool(
@@ -1304,6 +1323,7 @@ async def generate_custom_report(
         total_discount = sum(float(tx["discount"] or 0) for tx in active_tx_list)
         total_tax = sum(max(0.0, float(tx["tax"] or 0)) for tx in active_tx_list)
         total_subtotal = sum(max(0.0, float(tx["subtotal"] or 0)) for tx in active_tx_list)
+        total_taxable_base = sum(float(tx["subtotal"] or 0) for tx in active_tx_list if float(tx.get("tax", 0) or 0) > 0)
         total_cancelled_amount = sum(float(tx["total_amount"] or 0) for tx in cancelled_tx_list)
         total_active_tx = len(active_tx_list)
         total_cancelled_tx = len(cancelled_tx_list)
@@ -1327,7 +1347,8 @@ async def generate_custom_report(
                 if src not in channels:
                     channels[src] = {"count": 0, "taxable": 0.0, "tax": 0.0, "discount": 0.0, "turnover": 0.0}
                 channels[src]["count"] += 1
-                channels[src]["taxable"] += float(tx["subtotal"] or 0)
+                if float(tx.get("tax", 0) or 0) > 0:
+                    channels[src]["taxable"] += float(tx["subtotal"] or 0)
                 channels[src]["tax"] += float(tx["tax"] or 0)
                 channels[src]["discount"] += float(tx["discount"] or 0)
                 channels[src]["turnover"] += float(tx["total_amount"] or 0)
@@ -1363,7 +1384,7 @@ async def generate_custom_report(
                 "cancelled_repaid_invoices": total_cancelled_tx,
                 "net_gross_turnover": f"₹{total_revenue:,.2f}",
                 "amount_repaid_cancelled": f"₹{total_cancelled_amount:,.2f}",
-                "total_taxable": f"₹{total_subtotal:,.2f}",
+                "total_taxable": f"₹{total_taxable_base:,.2f}",
                 "total_gst": f"₹{total_tax:,.2f}",
                 "total_discounts": f"₹{total_discount:,.2f}",
                 "overall_aov": f"₹{(total_revenue / max(1, total_active_tx)):,.2f}" if total_active_tx > 0 else "₹0.00",
@@ -1390,7 +1411,7 @@ async def generate_custom_report(
                     "customer": tx["customer"],
                     "source": tx.get("source", "Sales Invoice"),
                     "payment_mode": tx["payment_mode"] + (" (Repaid)" if _is_tx_cancelled(tx) else ""),
-                    "subtotal": f"₹{float(tx['subtotal']):,.2f}",
+                    "subtotal": f"₹{float(tx['subtotal']):,.2f}" if float(tx.get("tax", 0) or 0) > 0 else "₹0.00",
                     "tax": f"₹{float(tx['tax']):,.2f}",
                     "discount": f"₹{float(tx['discount']):,.2f}",
                     "total_amount": f"₹{float(tx['total_amount']):,.2f}",
@@ -1403,7 +1424,7 @@ async def generate_custom_report(
                 "cancelled_invoices": total_cancelled_tx,
                 "net_revenue": f"₹{total_revenue:,.2f}",
                 "amount_repaid_cancelled": f"₹{total_cancelled_amount:,.2f}",
-                "total_taxable": f"₹{total_subtotal:,.2f}",
+                "total_taxable": f"₹{total_taxable_base:,.2f}",
                 "total_tax_collected": f"₹{total_tax:,.2f}",
             }
 
@@ -1424,16 +1445,19 @@ async def generate_custom_report(
                 {"header": "Return Status", "key": "status"},
             ]
             ret_rows = []
-            # 1. Real Cancelled & Repaid Invoices inwarded to stock
+            
+            # 1. Real Cancelled & Repaid Invoices inwarded back to stock
             for ctx_inv in cancelled_tx_list:
                 tot = float(ctx_inv.get("total_amount", 0) or 0)
-                taxable = tot / 1.18
-                tax_rev = tot - taxable
+                inv_tax = float(ctx_inv.get("tax", 0) or 0)
+                inv_sub = float(ctx_inv.get("subtotal", 0) or 0)
+                taxable = inv_sub if inv_tax > 0 else 0.0
+                tax_rev = inv_tax
                 items = ctx_inv.get("items") or []
                 item_label = items[0].get("name", "Store Item") if items else "Store Items Package"
                 if len(items) > 1:
                     item_label += f" (+{len(items)-1} more)"
-                qty = sum(int(it.get("quantity", 1)) for it in items) if items else 1
+                qty = sum(abs(int(float(it.get("qty", 1) or 1))) for it in items) if items else 1
                 ret_rows.append({
                     "date": ctx_inv["date"],
                     "return_no": f"SR-CAN-{str(ctx_inv['id'])[:6].upper()}",
@@ -1449,48 +1473,53 @@ async def generate_custom_report(
                     "status": "Cancelled & Repaid (Restocked)",
                 })
 
-            reasons = [
-                "Customer Exchange / Size Mismatch",
-                "Defective Packaging / Seal Broken",
-                "Damaged In Transit / Courier Return",
-                "Wrong SKU Delivered",
-                "Customer Mind Change / Policy Return"
-            ]
-            dispositions = [
-                "Restocked to Active Inventory",
-                "Restocked to Active Inventory",
-                "Quarantined for Inspection",
-                "Damaged / Scrapped",
-                "Restocked to Active Inventory"
-            ]
-            for i, tx in enumerate(active_tx_list[:20]):
-                tot = float(tx.get("total_amount", 0) or 1000) * 0.35
-                taxable = tot / 1.18
-                tax_rev = tot - taxable
-                qty = (i % 3) + 1
-                disp = dispositions[i % len(dispositions)]
-                ret_rows.append({
-                    "date": tx["date"],
-                    "return_no": f"SR-{str(tx['id'])[:6].upper()}",
-                    "invoice_no": tx["invoice_no"],
-                    "customer": tx["customer"],
-                    "items_summary": tx.get("items", [{}])[0].get("name", "Product Catalog Item") if tx.get("items") else f"Item #{i+1} Package",
-                    "qty_returned": f"{qty} Units",
-                    "reason": reasons[i % len(reasons)],
-                    "disposition": disp,
-                    "taxable_val": f"₹{taxable:,.2f}",
-                    "tax_reversed": f"₹{tax_rev:,.2f}",
-                    "total_return_val": f"₹{tot:,.2f}",
-                    "status": "Approved & Restocked" if "Restocked" in disp else "Pending QC",
-                })
+            # 2. Genuine Sales Returns & Credit Notes from database (negative totals or return slips)
+            for ctx_inv in tx_list:
+                tot = float(ctx_inv.get("total_amount", 0) or 0)
+                inv_no = str(ctx_inv.get("invoice_no") or "").upper()
+                is_ret = (
+                    tot < 0 or
+                    ctx_inv.get("is_credit_note") is True or
+                    ctx_inv.get("invoice_type") == "credit_note" or
+                    inv_no.startswith("CN") or
+                    inv_no.startswith("CR-") or
+                    "return" in str(ctx_inv.get("source", "")).lower()
+                )
+                if is_ret and ctx_inv not in cancelled_tx_list:
+                    ret_val = abs(tot)
+                    inv_tax = abs(float(ctx_inv.get("tax", 0) or 0))
+                    inv_sub = abs(float(ctx_inv.get("subtotal", 0) or 0))
+                    taxable = inv_sub if inv_tax > 0 else 0.0
+                    tax_rev = inv_tax
+                    items = ctx_inv.get("items") or []
+                    item_label = items[0].get("name", "Returned Product") if items else "Returned Merchandise"
+                    if len(items) > 1:
+                        item_label += f" (+{len(items)-1} more)"
+                    qty = sum(abs(int(float(it.get("qty", 1) or 1))) for it in items) if items else 1
+                    ret_rows.append({
+                        "date": ctx_inv["date"],
+                        "return_no": f"SR-{str(ctx_inv['id'])[:6].upper()}",
+                        "invoice_no": ctx_inv["invoice_no"],
+                        "customer": ctx_inv["customer"],
+                        "items_summary": item_label,
+                        "qty_returned": f"{qty} Units",
+                        "reason": "Customer Return / Credit Note Issued",
+                        "disposition": "Restocked to Active Inventory",
+                        "taxable_val": f"₹{taxable:,.2f}",
+                        "tax_reversed": f"₹{tax_rev:,.2f}",
+                        "total_return_val": f"₹{ret_val:,.2f}",
+                        "status": "Approved & Restocked",
+                    })
+
             result["tableData"] = ret_rows
             total_ret_sum = sum(float(r["total_return_val"].replace("₹", "").replace(",", "")) for r in ret_rows)
+            total_tax_rev_sum = sum(float(r["tax_reversed"].replace("₹", "").replace(",", "")) for r in ret_rows)
             result["summaryTotals"] = {
                 "total_return_slips": len(ret_rows),
                 "cancelled_repaid_returns": total_cancelled_tx,
                 "total_return_value": f"₹{total_ret_sum:,.2f}",
                 "amount_repaid_to_customers": f"₹{total_cancelled_amount:,.2f}",
-                "total_tax_reversed": f"₹{sum(float(r['tax_reversed'].replace('₹', '').replace(',', '')) for r in ret_rows):,.2f}",
+                "total_tax_reversed": f"₹{total_tax_rev_sum:,.2f}",
                 "restocked_items_count": f"{sum(1 for r in ret_rows if 'Restocked' in r['disposition'])} Items Restocked",
             }
 
@@ -1509,28 +1538,12 @@ async def generate_custom_report(
                 {"header": "Unadjusted Balance (₹)", "key": "unadjusted_balance"},
             ]
             cn_rows = []
+            
             # 1. Real Cancelled & Repaid Invoices as settled credit vouchers
             for ctx_inv in cancelled_tx_list:
                 inv_tot = float(ctx_inv.get("total_amount", 0) or 0)
-                cn_rows.append({
-                    "date": ctx_inv["date"],
-                    "cn_no": f"CN-CAN-{str(ctx_inv['id'])[:6].upper()}",
-                    "invoice_no": ctx_inv["invoice_no"],
-                    "customer": ctx_inv["customer"],
-                    "invoice_amount": f"₹{inv_tot:,.2f}",
-                    "credit_amount": f"₹{inv_tot:,.2f}",
-                    "days_count": "0 Days Old",
-                    "aging_bracket": "0–30 Days (Current)",
-                    "status": "Cash / UPI Repaid to Customer",
-                    "unadjusted_balance": "₹0.00",
-                })
-            statuses = ["Open / Unadjusted", "Partially Adjusted", "Fully Settled", "Cash / UPI Refunded", "Open / Unadjusted"]
-            
-            for i, tx in enumerate(active_tx_list[:20]):
-                inv_tot = float(tx.get("total_amount", 0) or 1500)
-                cn_val = inv_tot * (0.25 if i % 2 == 0 else 0.5)
-                # Days count calculation from issue date
-                days_old = (i * 7 + 4) % 115
+                inv_dt = ctx_inv.get("raw_date") or now
+                days_old = max(0, (now.date() - inv_dt.date()).days) if hasattr(inv_dt, "date") else 0
                 if days_old <= 30:
                     slab = "0–30 Days (Current)"
                 elif days_old <= 60:
@@ -1539,26 +1552,65 @@ async def generate_custom_report(
                     slab = "61–90 Days (Overdue)"
                 else:
                     slab = "90+ Days (Dormant)"
-                
-                status = statuses[i % len(statuses)]
-                unadj = cn_val if "Open" in status else (cn_val * 0.4 if "Partially" in status else 0.0)
-                
+
                 cn_rows.append({
-                    "date": (now - timedelta(days=days_old)).strftime("%d/%m/%Y"),
-                    "cn_no": f"CN-{str(tx['id'])[:6].upper()}",
-                    "invoice_no": tx["invoice_no"],
-                    "customer": tx["customer"],
+                    "date": ctx_inv["date"],
+                    "cn_no": f"CN-CAN-{str(ctx_inv['id'])[:6].upper()}",
+                    "invoice_no": ctx_inv["invoice_no"],
+                    "customer": ctx_inv["customer"],
                     "invoice_amount": f"₹{inv_tot:,.2f}",
-                    "credit_amount": f"₹{cn_val:,.2f}",
+                    "credit_amount": f"₹{inv_tot:,.2f}",
                     "days_count": f"{days_old} Days Old",
                     "aging_bracket": slab,
-                    "status": status,
-                    "unadjusted_balance": f"₹{unadj:,.2f}",
+                    "status": "Cash / UPI Repaid to Customer",
+                    "unadjusted_balance": "₹0.00",
                 })
+
+            # 2. Genuine Credit Notes & Negative Invoices
+            for ctx_inv in tx_list:
+                tot = float(ctx_inv.get("total_amount", 0) or 0)
+                inv_no = str(ctx_inv.get("invoice_no") or "").upper()
+                is_cn = (
+                    tot < 0 or
+                    ctx_inv.get("is_credit_note") is True or
+                    ctx_inv.get("invoice_type") == "credit_note" or
+                    inv_no.startswith("CN") or
+                    inv_no.startswith("CR-") or
+                    "credit note" in str(ctx_inv.get("payment_mode", "")).lower()
+                )
+                if is_cn and ctx_inv not in cancelled_tx_list:
+                    cn_val = abs(tot)
+                    inv_dt = ctx_inv.get("raw_date") or now
+                    days_old = max(0, (now.date() - inv_dt.date()).days) if hasattr(inv_dt, "date") else 0
+                    if days_old <= 30:
+                        slab = "0–30 Days (Current)"
+                    elif days_old <= 60:
+                        slab = "31–60 Days (Aging)"
+                    elif days_old <= 90:
+                        slab = "61–90 Days (Overdue)"
+                    else:
+                        slab = "90+ Days (Dormant)"
+
+                    unadj = float(ctx_inv.get("pending_amount", 0) or 0.0)
+                    st = "Fully Settled" if unadj <= 0.01 else "Open / Unadjusted"
+
+                    cn_rows.append({
+                        "date": ctx_inv["date"],
+                        "cn_no": inv_no if inv_no.startswith("CN") else f"CN-{str(ctx_inv['id'])[:6].upper()}",
+                        "invoice_no": ctx_inv.get("notes") or ctx_inv["invoice_no"],
+                        "customer": ctx_inv["customer"],
+                        "invoice_amount": f"₹{cn_val:,.2f}",
+                        "credit_amount": f"₹{cn_val:,.2f}",
+                        "days_count": f"{days_old} Days Old",
+                        "aging_bracket": slab,
+                        "status": st,
+                        "unadjusted_balance": f"₹{unadj:,.2f}",
+                    })
+
             result["tableData"] = cn_rows
             tot_cn_val = sum(float(r["credit_amount"].replace("₹", "").replace(",", "")) for r in cn_rows)
             tot_unadj = sum(float(r["unadjusted_balance"].replace("₹", "").replace(",", "")) for r in cn_rows)
-            avg_days = round(sum(int(r["days_count"].split()[0]) for r in cn_rows) / max(1, len(cn_rows)))
+            avg_days = round(sum(int(r["days_count"].split()[0]) for r in cn_rows) / max(1, len(cn_rows))) if cn_rows else 0
             result["summaryTotals"] = {
                 "total_credit_notes": len(cn_rows),
                 "gross_credit_issued": f"₹{tot_cn_val:,.2f}",
@@ -1568,7 +1620,7 @@ async def generate_custom_report(
                 "active_unadjusted_count": f"{sum(1 for r in cn_rows if float(r['unadjusted_balance'].replace('₹', '').replace(',', '')) > 0)} Open Notes",
             }
 
-        elif report_id == "sales_itemwise":
+        elif report_id in ["sales_itemwise", "item_sales_summary", "product_sales"]:
             result["title"] = "Item-wise Sales Report"
             result["tableColumns"] = [
                 {"header": "Product / Item Name", "key": "item_name"},
@@ -1580,41 +1632,99 @@ async def generate_custom_report(
                 {"header": "Total Sales (₹)", "key": "total_sales"},
                 {"header": "Estimated Margin (₹)", "key": "margin"},
             ]
-            p_stmt = select(Product).options(selectinload(Product.category), selectinload(Product.uom)).where(Product.tenant_id == ctx.tenant_id).limit(100)
+            # Aggregate actual items sold across all active non-cancelled transactions
+            item_sales_map: Dict[str, Dict[str, Any]] = {}
+            for tx in active_tx_list:
+                for it in (tx.get("items") or []):
+                    p_name = it.get("product_name") or it.get("name") or "Retail Product"
+                    p_sku = it.get("sku") or "SKU-GEN"
+                    key = p_sku if p_sku not in ("POS-SKU", "ERP-LINE", "SKU-GEN") else p_name.strip().lower()
+                    
+                    p_qty = float(it.get("qty", 1) or 1)
+                    p_price = float(it.get("raw_price", 0) or 0)
+                    p_total = float(it.get("raw_total", 0) or (p_qty * p_price))
+                    
+                    if key not in item_sales_map:
+                        item_sales_map[key] = {
+                            "name": p_name,
+                            "sku": p_sku if p_sku not in ("POS-SKU", "ERP-LINE") else "—",
+                            "qty_sold": 0.0,
+                            "total_sales": 0.0,
+                            "unit_prices": [],
+                            "discounts": 0.0,
+                            "product_id": it.get("product_id"),
+                        }
+                    item_sales_map[key]["qty_sold"] += p_qty
+                    item_sales_map[key]["total_sales"] += p_total
+                    if p_price > 0:
+                        item_sales_map[key]["unit_prices"].append(p_price)
+
+            p_stmt = select(Product).options(selectinload(Product.category), selectinload(Product.uom)).where(Product.tenant_id == ctx.tenant_id)
             if search:
                 p_stmt = p_stmt.where(or_(Product.name.ilike(f"%{search}%"), Product.sku.ilike(f"%{search}%")))
             prods = (await db.execute(p_stmt)).scalars().all()
-            
+            prod_by_sku = {p.sku: p for p in prods if p.sku}
+            prod_by_name = {p.name.strip().lower(): p for p in prods if p.name}
+            prod_by_id = {str(p.id): p for p in prods}
+
             table_rows = []
-            total_qty_sold = 0
-            for i, p in enumerate(prods):
-                qty = max(1, (i * 2 + 3)) if tx_list else (i + 2)
-                sell_p = float(p.selling_price or 100)
-                cost_p = float(p.purchase_price or (sell_p * 0.7))
-                disc = sell_p * 0.05
-                sales_val = sell_p * qty
-                margin = (sell_p - cost_p) * qty
+            total_qty_sold = 0.0
+            total_sales_sum = 0.0
+            total_margin_sum = 0.0
+
+            # If items were sold in this period, output them with real aggregates
+            for key, data in item_sales_map.items():
+                p_obj = prod_by_id.get(str(data.get("product_id"))) or prod_by_sku.get(data["sku"]) or prod_by_name.get(data["name"].strip().lower())
+                cat_name = p_obj.category.name if (p_obj and getattr(p_obj, "category", None)) else "General Merchandise"
+                uom_symbol = p_obj.uom.unit_symbol if (p_obj and getattr(p_obj, "uom", None)) else "Units"
+                
+                cost_p = float(p_obj.purchase_price or 0.0) if p_obj else 0.0
+                qty = data["qty_sold"]
+                sales_val = data["total_sales"]
+                unit_p = (sales_val / max(1.0, qty)) if qty > 0 else (data["unit_prices"][0] if data["unit_prices"] else 0.0)
+                
+                cogs = cost_p * qty if cost_p > 0 else (sales_val * 0.7)
+                margin = max(0.0, sales_val - cogs)
+                
                 total_qty_sold += qty
-                cat_name = p.category.name if getattr(p, "category", None) else (getattr(p, "category_name", None) or "General")
-                uom_symbol = p.uom.unit_symbol if getattr(p, "uom", None) else (getattr(p, "uom_name", None) or "Pcs")
+                total_sales_sum += sales_val
+                total_margin_sum += margin
+                
                 table_rows.append({
-                    "item_name": p.name,
-                    "sku": p.sku or f"SKU-{100+i}",
+                    "item_name": data["name"],
+                    "sku": data["sku"] if data["sku"] != "—" else (p_obj.sku if p_obj and p_obj.sku else "—"),
                     "category": cat_name,
-                    "qty_sold": f"{qty} {uom_symbol}",
-                    "unit_rate": f"₹{sell_p:,.2f}",
-                    "discount": f"₹{disc:,.2f}",
+                    "qty_sold": f"{qty:g} {uom_symbol}",
+                    "unit_rate": f"₹{unit_p:,.2f}",
+                    "discount": "₹0.00",
                     "total_sales": f"₹{sales_val:,.2f}",
                     "margin": f"₹{margin:,.2f}",
                 })
+
+            # If no items were sold in this period, display catalog products with 0 qty sold
+            if not table_rows and prods:
+                for p in prods[:50]:
+                    cat_name = p.category.name if getattr(p, "category", None) else "General"
+                    uom_symbol = p.uom.unit_symbol if getattr(p, "uom", None) else "Units"
+                    table_rows.append({
+                        "item_name": p.name,
+                        "sku": p.sku or "—",
+                        "category": cat_name,
+                        "qty_sold": f"0 {uom_symbol}",
+                        "unit_rate": f"₹{float(p.selling_price or 0):,.2f}",
+                        "discount": "₹0.00",
+                        "total_sales": "₹0.00",
+                        "margin": "₹0.00",
+                    })
+
             result["tableData"] = table_rows
             result["summaryTotals"] = {
-                "total_items_sold": f"{total_qty_sold} Units",
-                "total_sales_value": f"₹{sum(float(r['total_sales'].replace('₹', '').replace(',', '')) for r in table_rows):,.2f}",
-                "total_estimated_profit": f"₹{sum(float(r['margin'].replace('₹', '').replace(',', '')) for r in table_rows):,.2f}",
+                "total_items_sold": f"{total_qty_sold:g} Units",
+                "total_sales_value": f"₹{total_sales_sum:,.2f}",
+                "total_estimated_profit": f"₹{total_margin_sum:,.2f}",
             }
 
-        elif report_id == "sales_customerwise":
+        elif report_id in ["sales_customerwise", "customer_sales_summary", "customer_sales"]:
             result["title"] = "Customer-wise Sales Report & Bill Breakdown"
             result["tableColumns"] = [
                 {"header": "Customer / Client Name", "key": "customer_name"},
@@ -1637,45 +1747,46 @@ async def generate_custom_report(
             for i, c in enumerate(custs):
                 c_name = c.name or f"Customer #{i+1}"
                 seen_customers.add(c_name.strip().lower())
-                matching_txs = [tx for tx in tx_list if c_name.lower() in (tx.get("customer") or "").lower() or (c.phone and c.phone in (tx.get("customer_phone") or ""))]
+                matching_txs = [tx for tx in active_tx_list if c_name.lower() in (tx.get("customer") or "").lower() or (c.phone and c.phone in (tx.get("customer_phone") or ""))]
                 
                 if matching_txs:
                     billed = sum(float(tx.get("total_amount", 0) or 0) for tx in matching_txs)
                     bal = sum(float(tx.get("pending_amount", 0) or 0) for tx in matching_txs)
                     bills_cnt = len(matching_txs)
                 else:
-                    billed = float(getattr(c, "credit_limit", 0) or 5000.0) + (i * 850)
-                    bal = float(getattr(c, "outstanding_balance", 0) or 0)
+                    billed = 0.0
+                    bal = float(getattr(c, "outstanding_balance", 0) or 0.0)
                     bills_cnt = 0
                     matching_txs = []
 
-                c_rows.append({
-                    "customer_name": c_name,
-                    "contact": c.phone or c.alternate_phone or "—",
-                    "gstin": c.gst_number or "Unregistered (B2C)",
-                    "location": f"{c.city or ''} {c.state or ''}".strip() or "Standard Retail",
-                    "bills_count": f"{bills_cnt} Bills",
-                    "total_billed": f"₹{billed:,.2f}",
-                    "balance": f"₹{bal:,.2f}",
-                    "status": "Active Client" if bal <= 0.01 else "Pending Dues",
-                    "bills": [
-                        {
-                            "invoice_no": tx.get("invoice_no"),
-                            "date": tx.get("date"),
-                            "total_amount": f"₹{float(tx.get('total_amount', 0)):,.2f}",
-                            "paid_amount": f"₹{float(tx.get('paid_amount', 0)):,.2f}",
-                            "pending_amount": f"₹{float(tx.get('pending_amount', 0)):,.2f}",
-                            "status": tx.get("status", "Paid"),
-                            "payment_mode": tx.get("payment_mode", "Cash / UPI"),
-                            "items": tx.get("items", []),
-                        }
-                        for tx in matching_txs
-                    ],
-                })
+                if bills_cnt > 0 or bal > 0.01 or search:
+                    c_rows.append({
+                        "customer_name": c_name,
+                        "contact": c.phone or c.alternate_phone or "—",
+                        "gstin": c.gst_number or "Unregistered (B2C)",
+                        "location": f"{c.city or ''} {c.state or ''}".strip() or "Standard Retail",
+                        "bills_count": f"{bills_cnt} Bills",
+                        "total_billed": f"₹{billed:,.2f}",
+                        "balance": f"₹{bal:,.2f}",
+                        "status": "Active Client" if bal <= 0.01 else "Pending Dues",
+                        "bills": [
+                            {
+                                "invoice_no": tx.get("invoice_no"),
+                                "date": tx.get("date"),
+                                "total_amount": f"₹{float(tx.get('total_amount', 0)):,.2f}",
+                                "paid_amount": f"₹{float(tx.get('paid_amount', 0)):,.2f}",
+                                "pending_amount": f"₹{float(tx.get('pending_amount', 0)):,.2f}",
+                                "status": tx.get("status", "Paid"),
+                                "payment_mode": tx.get("payment_mode", "Cash / UPI"),
+                                "items": tx.get("items", []),
+                            }
+                            for tx in matching_txs
+                        ],
+                    })
 
-            # Also group transactions for customers not in the master customer list
+            # Also group active transactions for walk-in / ad-hoc customers not in the master customer table
             tx_cust_groups: Dict[str, List[Dict[str, Any]]] = {}
-            for tx in tx_list:
+            for tx in active_tx_list:
                 c_n = (tx.get("customer") or "").strip()
                 if c_n and c_n.lower() not in seen_customers:
                     if not search or (search.lower() in c_n.lower() or search.lower() in (tx.get("customer_phone") or "").lower()):
@@ -1717,8 +1828,7 @@ async def generate_custom_report(
                 "total_outstanding_receivable": f"₹{sum(float(r['balance'].replace('₹', '').replace(',', '')) for r in c_rows):,.2f}",
             }
 
-        elif report_id == "sales_salesperson":
-            # ── Fixed Salesperson Tab: Safe DB query & aggregates ────────────────────
+        elif report_id in ["sales_salesperson", "salesperson_performance", "user_sales"]:
             result["title"] = "Salesperson-wise Sales Report"
             result["tableColumns"] = [
                 {"header": "Sales Rep / Staff Name", "key": "name"},
@@ -1729,6 +1839,20 @@ async def generate_custom_report(
                 {"header": "Average Ticket (₹)", "key": "avg_ticket"},
                 {"header": "Target Quota Attainment", "key": "target"},
             ]
+            rep_groups: Dict[str, Dict[str, Any]] = {}
+            for tx in active_tx_list:
+                rep_name = (tx.get("sales_executive") or "Store Staff").strip()
+                if rep_name not in rep_groups:
+                    rep_groups[rep_name] = {
+                        "name": rep_name,
+                        "invoices": 0,
+                        "turnover": 0.0,
+                        "discounts": 0.0,
+                    }
+                rep_groups[rep_name]["invoices"] += 1
+                rep_groups[rep_name]["turnover"] += float(tx.get("total_amount") or 0.0)
+                rep_groups[rep_name]["discounts"] += float(tx.get("discount") or 0.0)
+
             try:
                 e_stmt = select(Employee).options(selectinload(Employee.designation)).where(Employee.tenant_id == ctx.tenant_id).limit(50)
                 if search:
@@ -1736,25 +1860,38 @@ async def generate_custom_report(
                 emps = (await db.execute(e_stmt)).scalars().all()
             except Exception:
                 emps = []
-            
+            emp_by_name = {e.full_name.strip().lower(): e for e in emps if e.full_name}
+
             s_rows = []
-            emp_source = emps if emps else [None, None, None]
-            for i, e in enumerate(emp_source):
-                e_name = getattr(e, "full_name", None) or f"Sales Rep #{i+1}"
-                e_code = getattr(e, "employee_code", None) or f"EMP-{101+i}"
-                e_invoices = max(1, len(active_tx_list) // max(1, len(emp_source))) + (i * 2)
-                e_turnover = (total_revenue / max(1, len(emp_source))) * (1.0 + (i % 3) * 0.1)
-                e_disc = (total_discount / max(1, len(emp_source))) + (i * 120)
-                avg_t = e_turnover / max(1, e_invoices)
+            for rep_name, data in rep_groups.items():
+                e_obj = emp_by_name.get(rep_name.lower())
+                e_code = e_obj.employee_code if e_obj else "STAFF"
+                inv_cnt = data["invoices"]
+                turnover = data["turnover"]
+                disc = data["discounts"]
+                avg_t = turnover / max(1, inv_cnt)
                 s_rows.append({
-                    "name": e_name,
+                    "name": rep_name,
                     "code": e_code,
-                    "invoices": f"{e_invoices} Active Bills",
-                    "turnover": f"₹{e_turnover:,.2f}",
-                    "discounts": f"₹{e_disc:,.2f}",
+                    "invoices": f"{inv_cnt} Active Bills",
+                    "turnover": f"₹{turnover:,.2f}",
+                    "discounts": f"₹{disc:,.2f}",
                     "avg_ticket": f"₹{avg_t:,.2f}",
-                    "target": f"{95 + (i * 7)}% Achieved",
+                    "target": "100% Target Attained" if turnover > 0 else "0% Attained",
                 })
+
+            if not s_rows and emps:
+                for e in emps:
+                    s_rows.append({
+                        "name": e.full_name,
+                        "code": e.employee_code or "STAFF",
+                        "invoices": "0 Active Bills",
+                        "turnover": "₹0.00",
+                        "discounts": "₹0.00",
+                        "avg_ticket": "₹0.00",
+                        "target": "0% Attained",
+                    })
+
             result["tableData"] = s_rows
             result["summaryTotals"] = {
                 "active_sales_reps": len(s_rows),
@@ -1772,26 +1909,45 @@ async def generate_custom_report(
                 {"header": "Gross Turnover (₹)", "key": "gross_total"},
                 {"header": "Average Invoice (₹)", "key": "avg_ticket"},
             ]
-            days_count = 14
+            daily_groups: Dict[str, Dict[str, Any]] = {}
+            for tx in active_tx_list:
+                raw_dt = tx.get("raw_date")
+                dt_key = raw_dt.strftime("%d/%m/%Y") if raw_dt else (tx.get("date", "").split()[0] if tx.get("date") else now.strftime("%d/%m/%Y"))
+                if dt_key not in daily_groups:
+                    daily_groups[dt_key] = {
+                        "date_sort": raw_dt or now,
+                        "invoices": 0,
+                        "taxable": 0.0,
+                        "tax": 0.0,
+                        "gross": 0.0,
+                    }
+                daily_groups[dt_key]["invoices"] += 1
+                if float(tx.get("tax", 0) or 0) > 0:
+                    daily_groups[dt_key]["taxable"] += float(tx.get("subtotal") or 0.0)
+                daily_groups[dt_key]["tax"] += float(tx.get("tax") or 0.0)
+                daily_groups[dt_key]["gross"] += float(tx.get("total_amount") or 0.0)
+
+            sorted_days = sorted(daily_groups.items(), key=lambda kv: kv[1]["date_sort"], reverse=True)
             p_rows = []
-            for i in range(days_count):
-                d_date = (now - timedelta(days=i)).strftime("%d/%m/%Y")
-                d_invoices = max(1, (total_active_tx // days_count) + (i % 3))
-                d_gross = (total_revenue / max(1, days_count)) * (1.0 + (i % 4) * 0.08)
-                d_tax = d_gross * 0.15
-                d_taxable = d_gross - d_tax
+            for d_date, d_data in sorted_days:
+                inv_cnt = d_data["invoices"]
+                gross = d_data["gross"]
+                taxable = d_data["taxable"]
+                tax = d_data["tax"]
+                avg_t = gross / max(1, inv_cnt)
                 p_rows.append({
                     "period": d_date,
-                    "invoices_count": f"{d_invoices} Bills",
-                    "taxable": f"₹{d_taxable:,.2f}",
-                    "tax": f"₹{d_tax:,.2f}",
-                    "gross_total": f"₹{d_gross:,.2f}",
-                    "avg_ticket": f"₹{(d_gross / max(1, d_invoices)):,.2f}",
+                    "invoices_count": f"{inv_cnt} Bills",
+                    "taxable": f"₹{taxable:,.2f}",
+                    "tax": f"₹{tax:,.2f}",
+                    "gross_total": f"₹{gross:,.2f}",
+                    "avg_ticket": f"₹{avg_t:,.2f}",
                 })
+
             result["tableData"] = p_rows
             result["summaryTotals"] = {
-                "period_days": f"{days_count} Days",
-                "gross_turnover": f"₹{sum(float(r['gross_total'].replace('₹', '').replace(',', '')) for r in p_rows):,.2f}",
+                "period_days": f"{len(p_rows)} Active Days",
+                "gross_turnover": f"₹{total_revenue:,.2f}",
                 "amount_repaid_cancelled": f"₹{total_cancelled_amount:,.2f}",
             }
 
@@ -1803,17 +1959,21 @@ async def generate_custom_report(
                 {"header": "Customer GSTIN", "key": "gstin"},
                 {"header": "Supply Type", "key": "supply_type"},
                 {"header": "Taxable Value (₹)", "key": "taxable"},
-                {"header": "CGST @ 9% (₹)", "key": "cgst"},
-                {"header": "SGST @ 9% (₹)", "key": "sgst"},
+                {"header": "CGST Tax (₹)", "key": "cgst"},
+                {"header": "SGST Tax (₹)", "key": "sgst"},
                 {"header": "Gross Invoice Value (₹)", "key": "total_val"},
             ]
             result["tableData"] = [
                 {
                     "date": tx["date"],
                     "inv_no": tx["invoice_no"],
-                    "gstin": tx.get("customer_gstin") or ("29ABCDE1234F1Z5" if i % 3 == 0 else "Unregistered (B2C)"),
-                    "supply_type": "Cancelled Supply (Reversed & Repaid)" if _is_tx_cancelled(tx) else ("B2B Supply" if (i % 3 == 0 or tx.get("customer_gstin")) else "B2C Retail"),
-                    "taxable": "₹0.00" if _is_tx_cancelled(tx) else f"₹{float(tx['subtotal']):,.2f}",
+                    "gstin": tx.get("customer_gstin") or "Unregistered (B2C)",
+                    "supply_type": (
+                        "Cancelled Supply (Reversed & Repaid)"
+                        if _is_tx_cancelled(tx)
+                        else ("B2B Registered Supply" if tx.get("customer_gstin") else "B2C Retail Supply")
+                    ),
+                    "taxable": "₹0.00" if (_is_tx_cancelled(tx) or float(tx.get("tax", 0) or 0) <= 0) else f"₹{float(tx['subtotal']):,.2f}",
                     "cgst": "₹0.00" if _is_tx_cancelled(tx) else f"₹{(float(tx['tax']) / 2):,.2f}",
                     "sgst": "₹0.00" if _is_tx_cancelled(tx) else f"₹{(float(tx['tax']) / 2):,.2f}",
                     "total_val": f"₹{float(tx['total_amount']):,.2f} (Cancelled)" if _is_tx_cancelled(tx) else f"₹{float(tx['total_amount']):,.2f}",
@@ -1823,8 +1983,8 @@ async def generate_custom_report(
             result["summaryTotals"] = {
                 "active_invoices": total_active_tx,
                 "cancelled_repaid_invoices": total_cancelled_tx,
-                "total_taxable": f"₹{(total_revenue / 1.18):,.2f}",
-                "total_gst": f"₹{(total_revenue - (total_revenue / 1.18)):,.2f}",
+                "total_taxable": f"₹{total_taxable_base:,.2f}",
+                "total_gst": f"₹{total_tax:,.2f}",
                 "net_gross_turnover": f"₹{total_revenue:,.2f}",
                 "amount_repaid_cancelled": f"₹{total_cancelled_amount:,.2f}",
             }
@@ -1846,7 +2006,9 @@ async def generate_custom_report(
             bank_tx = []
             credit_tx = []
             cn_tx = []
-            for tx in tx_list:
+            
+            # Active transactions only for payment collection breakdown
+            for tx in active_tx_list:
                 inv_no = str(tx.get("invoice_no") or "").upper()
                 mode_str = str(tx.get("payment_mode") or "").lower()
                 is_cn = (
@@ -1894,7 +2056,9 @@ async def generate_custom_report(
                 _mode_row("UPI / QR Payments", upi_tx),
                 _mode_row("Bank / Card / Online", bank_tx),
                 _mode_row("Credit / Pay Later", credit_tx),
-                {
+            ]
+            if cn_tx:
+                result["tableData"].append({
                     "mode": "Credit Notes & Returns",
                     "invoices_count": f"{len(cn_tx)} Notes",
                     "total_billed": f"₹{sum(float(x.get('total_amount') or 0) for x in cn_tx):,.2f}",
@@ -1903,8 +2067,19 @@ async def generate_custom_report(
                     "dues_count": "0 Invoices",
                     "percentage": "0.0%",
                     "avg_ticket": f"₹{(sum(float(x.get('total_amount') or 0) for x in cn_tx) / max(1, len(cn_tx))):,.2f}",
-                },
-            ]
+                })
+            if cancelled_tx_list:
+                result["tableData"].append({
+                    "mode": "Cancelled Invoices (Repaid to Customer)",
+                    "invoices_count": f"{total_cancelled_tx} Invoices",
+                    "total_billed": f"-₹{total_cancelled_amount:,.2f}",
+                    "collected": "₹0.00",
+                    "dues": "₹0.00",
+                    "dues_count": "0 Invoices",
+                    "percentage": "0.0%",
+                    "avg_ticket": f"-₹{(total_cancelled_amount / max(1, total_cancelled_tx)):,.2f}",
+                })
+
             all_dues = sum(float(x.get("pending_amount") or 0) for x in all_sales)
             all_dues_cnt = sum(1 for x in all_sales if float(x.get("pending_amount") or 0) > 0.01)
             result["summaryTotals"] = {
@@ -1917,6 +2092,7 @@ async def generate_custom_report(
                 "total_outstanding_dues": f"₹{all_dues:,.2f}",
                 "dues_invoices_count": f"{all_dues_cnt} Invoices",
                 "total_credit_notes": f"₹{sum(float(x.get('total_amount') or 0) for x in cn_tx):,.2f}",
+                "amount_repaid_cancelled": f"₹{total_cancelled_amount:,.2f}",
             }
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -4240,9 +4416,12 @@ async def get_employee_sales_report(
         tax_val = float(tx.tax_amount or 0)
         discount_val = float(tx.discount_amount or 0)
         total_val = float(tx.total_amount or 0)
-        if total_val > 0 and subtotal_val == 0:
-            subtotal_val = round(total_val / 1.18, 2)
-            tax_val = round(total_val - subtotal_val, 2)
+        if tax_val > 0 and subtotal_val == 0:
+            subtotal_val = round(max(0.0, total_val - tax_val), 2)
+        elif tax_val <= 0:
+            if subtotal_val == 0:
+                subtotal_val = total_val
+            tax_val = 0.0
 
         creator_name = login_user_name or emp_name or "Admin"
         status_clean = (tx.status or "COMPLETED").upper()
@@ -4368,30 +4547,38 @@ async def get_employee_sales_report(
         })
 
     # 3. Apply Filters strictly on real DB rows
+    start_date_str = start_date if isinstance(start_date, str) else None
+    end_date_str = end_date if isinstance(end_date, str) else None
+    employee_id_str = employee_id if isinstance(employee_id, str) else None
+    user_id_str = user_id if isinstance(user_id, str) else None
+    invoice_type_str = invoice_type if isinstance(invoice_type, str) else None
+    invoice_status_str = invoice_status if isinstance(invoice_status, str) else None
+    search_str = search if isinstance(search, str) else None
+
     filtered = all_invoices
 
-    if start_date:
-        filtered = [inv for inv in filtered if inv["date"] >= start_date]
-    if end_date:
-        filtered = [inv for inv in filtered if inv["date"] <= end_date]
-    if employee_id and employee_id.lower() != "all":
+    if start_date_str:
+        filtered = [inv for inv in filtered if inv["date"] >= start_date_str]
+    if end_date_str:
+        filtered = [inv for inv in filtered if inv["date"] <= end_date_str]
+    if employee_id_str and employee_id_str.lower() != "all":
         filtered = [
             inv for inv in filtered 
-            if inv["employee_id"] == employee_id 
-            or inv["employee_code"].lower() == employee_id.lower() 
-            or inv["employee_name"].lower() == employee_id.lower()
-            or inv["created_by"].lower() == employee_id.lower()
+            if inv["employee_id"] == employee_id_str 
+            or inv["employee_code"].lower() == employee_id_str.lower() 
+            or inv["employee_name"].lower() == employee_id_str.lower() 
+            or inv["created_by"].lower() == employee_id_str.lower()
         ]
-    if user_id and user_id.lower() != "all":
-        filtered = [inv for inv in filtered if inv["user_id"] == user_id or inv["login_user_name"].lower() == user_id.lower() or inv["created_by"].lower() == user_id.lower()]
-    if invoice_type and invoice_type.lower() != "all":
-        it_clean = invoice_type.lower().replace(" ", "").replace("_", "")
+    if user_id_str and user_id_str.lower() != "all":
+        filtered = [inv for inv in filtered if inv["user_id"] == user_id_str or inv["login_user_name"].lower() == user_id_str.lower() or inv["created_by"].lower() == user_id_str.lower()]
+    if invoice_type_str and invoice_type_str.lower() != "all":
+        it_clean = invoice_type_str.lower().replace(" ", "").replace("_", "")
         filtered = [inv for inv in filtered if it_clean in inv["invoice_type"].lower().replace(" ", "").replace("_", "")]
-    if invoice_status and invoice_status.lower() != "all":
-        st_clean = invoice_status.lower().strip()
+    if invoice_status_str and invoice_status_str.lower() != "all":
+        st_clean = invoice_status_str.lower().strip()
         filtered = [inv for inv in filtered if st_clean == inv["invoice_status"].lower().strip()]
-    if search:
-        q = search.lower().strip()
+    if search_str:
+        q = search_str.lower().strip()
         filtered = [
             inv for inv in filtered
             if q in inv["invoice_number"].lower()
@@ -4617,14 +4804,19 @@ async def get_payment_mode_sales_report(
     """
     start_dt = None
     end_dt = None
-    if start_date:
+    start_str = start_date if isinstance(start_date, str) else None
+    end_str = end_date if isinstance(end_date, str) else None
+    search_str = search if isinstance(search, str) else None
+    mode_str_arg = mode if isinstance(mode, str) else "all"
+
+    if start_str:
         try:
-            start_dt = datetime.strptime(start_date.strip(), "%Y-%m-%d").replace(hour=0, minute=0, second=0)
+            start_dt = datetime.strptime(start_str.strip(), "%Y-%m-%d").replace(hour=0, minute=0, second=0)
         except Exception:
             start_dt = None
-    if end_date:
+    if end_str:
         try:
-            end_dt = datetime.strptime(end_date.strip(), "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+            end_dt = datetime.strptime(end_str.strip(), "%Y-%m-%d").replace(hour=23, minute=59, second=59)
         except Exception:
             end_dt = None
 
@@ -4632,7 +4824,7 @@ async def get_payment_mode_sales_report(
         db,
         start_dt,
         end_dt,
-        search=search,
+        search=search_str,
         tenant_id=ctx.tenant_id,
         company_id=ctx.active_company_id,
     )
@@ -4642,6 +4834,7 @@ async def get_payment_mode_sales_report(
     bank_invoices = []
     credit_invoices = []
     credit_notes = []
+    cancelled_invoices = []
     all_sales_invoices = []
 
     for tx in tx_list:
@@ -4653,6 +4846,11 @@ async def get_payment_mode_sales_report(
             inv_no.startswith("CN") or
             inv_no.startswith("CR-") or
             "credit note" in mode_str
+        )
+        is_canc = bool(
+            tx.get("is_cancelled")
+            or str(tx.get("status", "")).lower() in ["cancelled", "canceled", "void", "voided"]
+            or str(tx.get("payment_status", "")).lower() in ["cancelled", "canceled"]
         )
         total_amt = float(tx.get("total_amount") or 0.0)
         paid_amt = float(tx.get("paid_amount") or 0.0)
@@ -4679,11 +4877,18 @@ async def get_payment_mode_sales_report(
             "subtotal": round(float(tx.get("subtotal") or total_amt), 2),
             "tax": round(max(0.0, float(tx.get("tax") or 0.0)), 2),
             "discount": round(float(tx.get("discount") or 0.0), 2),
-            "paid_amount": round(paid_amt, 2),
-            "pending_amount": round(pending_amt, 2),
-            "status": "Due" if pending_amt > 0.01 else ("Paid" if paid_amt > 0 else (tx.get("status") or "Paid")),
+            "paid_amount": 0.0 if is_canc else round(paid_amt, 2),
+            "pending_amount": 0.0 if is_canc else round(pending_amt, 2),
+            "status": "Cancelled & Repaid" if is_canc else ("Due" if pending_amt > 0.01 else ("Paid" if paid_amt > 0 else (tx.get("status") or "Paid"))),
             "is_credit_note": is_cn,
+            "is_cancelled": is_canc,
         }
+
+        if is_canc:
+            tx_item["category"] = "cancelled"
+            tx_item["category_label"] = "Cancelled & Repaid"
+            cancelled_invoices.append(tx_item)
+            continue
 
         if is_cn:
             tx_item["category"] = "credit_note"
@@ -4714,7 +4919,7 @@ async def get_payment_mode_sales_report(
         tx_item["category"] = cat
         tx_item["category_label"] = cat_label
 
-    # Compute KPI totals
+    # Compute KPI totals strictly across active invoices
     grand_total_revenue = sum(x["total_amount"] for x in all_sales_invoices)
     total_sales_invoices_cnt = len(all_sales_invoices)
     avg_bill = (grand_total_revenue / total_sales_invoices_cnt) if total_sales_invoices_cnt > 0 else 0.0
@@ -4743,9 +4948,11 @@ async def get_payment_mode_sales_report(
     grand_dues = sum(x["pending_amount"] for x in all_sales_invoices)
     grand_dues_cnt = sum(1 for x in all_sales_invoices if x["pending_amount"] > 0.01)
 
-    # Credit Notes
+    # Credit Notes & Cancelled Totals
     cn_total = sum(x["total_amount"] for x in credit_notes)
     cn_cnt = len(credit_notes)
+    total_cancelled_val = sum(x["total_amount"] for x in cancelled_invoices)
+    cancelled_cnt = len(cancelled_invoices)
 
     # Mode breakdown summary table rows
     mode_breakdown = [
@@ -4817,8 +5024,21 @@ async def get_payment_mode_sales_report(
         },
     ]
 
+    if cancelled_cnt > 0:
+        mode_breakdown.append({
+            "mode_key": "cancelled",
+            "payment_mode": "Cancelled Invoices (Repaid to Customer)",
+            "invoices_count": cancelled_cnt,
+            "percentage_share": 0.0,
+            "total_billed": round(-total_cancelled_val, 2),
+            "collected_amount": 0.0,
+            "dues_amount": 0.0,
+            "dues_invoices_count": 0,
+            "average_ticket": round(total_cancelled_val / max(1, cancelled_cnt), 2),
+        })
+
     # Filter detailed invoices if mode filter is specified
-    selected_mode = (mode or "all").lower().strip()
+    selected_mode = (mode_str_arg or "all").lower().strip()
     if selected_mode == "cash":
         detailed_list = cash_invoices
     elif selected_mode == "upi":
@@ -4831,8 +5051,10 @@ async def get_payment_mode_sales_report(
         detailed_list = [x for x in all_sales_invoices if x["pending_amount"] > 0.01]
     elif selected_mode == "credit_notes":
         detailed_list = credit_notes
+    elif selected_mode in ["cancelled", "repaid"]:
+        detailed_list = cancelled_invoices
     else:
-        detailed_list = all_sales_invoices + credit_notes
+        detailed_list = all_sales_invoices + credit_notes + cancelled_invoices
 
     return {
         "summary": {
@@ -4855,6 +5077,8 @@ async def get_payment_mode_sales_report(
             "dues_count": grand_dues_cnt,
             "credit_notes_total": round(cn_total, 2),
             "credit_notes_count": cn_cnt,
+            "amount_repaid_cancelled": round(total_cancelled_val, 2),
+            "cancelled_count": cancelled_cnt,
         },
         "mode_breakdown": mode_breakdown,
         "detailed_invoices": detailed_list,

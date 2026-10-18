@@ -19,6 +19,7 @@ import {
   Sparkles,
   Leaf
 } from "lucide-react";
+import { useStoreTheme } from "@/contexts/StoreThemeContext";
 
 interface NurseryHeaderProps {
   onOpenCart: () => void;
@@ -26,6 +27,8 @@ interface NurseryHeaderProps {
 }
 
 export function NurseryHeader({ onOpenCart, onOpenMenu }: NurseryHeaderProps) {
+  const navigate = useNavigate();
+  const { theme, branding } = useStoreTheme();
   const { totalItems = 0, cartCount = 0 } = useStoreCart();
   const { totalWishlistItems = 0, wishlistItems = [] } = useWishlist();
   const safeTotalItems = totalItems || cartCount || 0;
@@ -43,18 +46,21 @@ export function NurseryHeader({ onOpenCart, onOpenMenu }: NurseryHeaderProps) {
   return (
     <header className="w-full bg-[#FAF8F5] border-b border-[#E6E0D5] text-[#1B4D3E] font-sans sticky top-0 z-40 transition-colors shadow-2xs">
       {/* ── Top Botanical Announcement Bar ── */}
-      <div className="bg-[#1B4D3E] text-[#E8F3EE] px-4 py-1.5 text-xs font-semibold flex items-center justify-between">
+      <div
+        className="px-4 py-1.5 text-xs font-semibold flex items-center justify-between text-[#E8F3EE]"
+        style={{ backgroundColor: theme.primaryColor }}
+      >
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Leaf className="w-3.5 h-3.5 text-[#86EFAC]" />
-            <span>100% Organically Nurtured Plants &bull; Free Plant Health Guarantee &bull; Same-Day Eco Dispatch</span>
+            <span>{branding.announcementText || "100% Organically Nurtured Plants • Free Plant Health Guarantee • Same-Day Eco Dispatch"}</span>
           </div>
           <div className="hidden md:flex items-center gap-4 text-[11px] text-[#A7F3D0]">
             <span className="flex items-center gap-1">
               <Sun className="w-3 h-3 text-amber-300" /> Free Sunlight & Care Guide With Every Plant
             </span>
             <span className="flex items-center gap-1 font-bold text-white">
-              <PhoneCall className="w-3 h-3" /> Plant Doctor: +91 98450 12345
+              <PhoneCall className="w-3 h-3" /> Plant Doctor: {branding.supportPhone || "+91 98450 12345"}
             </span>
           </div>
         </div>
@@ -73,18 +79,21 @@ export function NurseryHeader({ onOpenCart, onOpenMenu }: NurseryHeaderProps) {
 
         {/* Brand Logo */}
         <Link to="/store" className="flex items-center gap-2.5 text-decoration-none group">
-          <div className="size-10 rounded-2xl bg-gradient-to-br from-[#1B4D3E] to-[#2D735C] text-white flex items-center justify-center shadow-md shadow-[#1B4D3E]/20 group-hover:scale-105 transition-transform">
+          <div
+            className="size-10 rounded-2xl text-white flex items-center justify-center shadow-md transition-transform group-hover:scale-105"
+            style={{ backgroundColor: theme.primaryColor }}
+          >
             <Sprout className="w-6 h-6 text-[#86EFAC]" />
           </div>
           <div>
             <div className="text-xl font-black tracking-tight text-[#1B4D3E] leading-none font-serif flex items-center gap-1.5">
-              <span>GreenFlora</span>
+              <span>{theme.name || "GreenFlora"}</span>
               <span className="text-[10px] font-sans font-extrabold uppercase px-1.5 py-0.2 rounded-md bg-[#E8F3EE] text-[#1B4D3E] border border-[#C5E1D4]">
-                Nursery
+                {theme.sector ? theme.sector.split("&")[0].trim() : "Nursery"}
               </span>
             </div>
             <p className="text-[10px] text-[#5A7A6D] font-medium tracking-wide mt-0.5">
-              Botanicals, Ceramic Pots & Living Decor
+              {theme.tagline || "Botanicals, Ceramic Pots & Living Decor"}
             </p>
           </div>
         </Link>

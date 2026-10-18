@@ -1,10 +1,15 @@
 import React from "react";
 import { Link } from "@tanstack/react-router";
 import { Sprout, PhoneCall, Mail, MapPin, ShieldCheck, Heart, Leaf, Sun, Droplets } from "lucide-react";
+import { useStoreTheme } from "@/contexts/StoreThemeContext";
 
 export function NurseryFooter() {
+  const { theme, branding } = useStoreTheme();
   return (
-    <footer className="w-full bg-[#1B4D3E] text-[#E8F3EE] pt-14 pb-8 border-t border-[#153D31] font-sans">
+    <footer
+      className="w-full text-[#E8F3EE] pt-14 pb-8 border-t border-[#153D31] font-sans"
+      style={{ backgroundColor: theme.primaryColor }}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         {/* ── Top Guarantee Strip ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 pb-12 border-b border-[#2D735C]/40">
@@ -65,13 +70,13 @@ export function NurseryFooter() {
               <div className="size-9 rounded-xl bg-gradient-to-br from-[#86EFAC] to-[#22C55E] text-[#1B4D3E] flex items-center justify-center shadow-md">
                 <Sprout className="w-5 h-5 font-bold" />
               </div>
-              <span className="text-xl font-bold font-serif text-white tracking-tight">GreenFlora Nursery</span>
+              <span className="text-xl font-bold font-serif text-white tracking-tight">{theme.name || "GreenFlora"}</span>
             </div>
             <p className="text-xs text-[#A7F3D0] leading-relaxed max-w-sm">
-              We connect urban plant lovers with certified organic botanicals. Sourced directly from local nursery farmers and dispatched in breathable eco-packaging.
+              {theme.tagline || "We connect urban plant lovers with certified organic botanicals. Sourced directly from local nursery farmers and dispatched in breathable eco-packaging."}
             </p>
             <div className="pt-2 text-[11px] text-[#86EFAC]">
-              <span>Helpline: <strong>+91 98450 12345</strong> (9 AM – 7 PM)</span>
+              <span>Helpline: <strong>{branding.supportPhone || "+91 98450 12345"}</strong> (9 AM – 7 PM)</span>
             </div>
           </div>
 

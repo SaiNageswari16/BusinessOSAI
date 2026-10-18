@@ -24,6 +24,7 @@ import { DeliveryTracking } from "@/components/marketplace/DeliveryTracking";
 import { B2BPricingRules } from "@/components/marketplace/B2BPricingRules";
 import { MarketplaceRFQ } from "@/components/marketplace/MarketplaceRFQ";
 import { TradeCreditManager } from "@/components/marketplace/TradeCreditManager";
+import { MarketplaceThemeStudio } from "@/components/marketplace/MarketplaceThemeStudio";
 import {
   AddVendorModal, AddProductModal, AddCouponModal, CreatePayoutModal
 } from "@/components/marketplace/MarketplaceModals";
@@ -233,6 +234,13 @@ function MarketplaceModule() {
 
   const renderContent = () => {
     switch (activeTab) {
+      case "themes":
+      case "storefront_theme":
+      case "marketplace_themes":
+      case "store_branding":
+      case "store_settings":
+        return <MarketplaceThemeStudio />;
+
       case "vendors":
         return <Vendors />;
 

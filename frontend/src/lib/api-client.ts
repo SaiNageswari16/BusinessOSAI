@@ -5808,6 +5808,8 @@ export const marketplaceApi = {
   acceptRFQBid: (rfqId: string, bidId: string) => request<any>("PUT", `/marketplace/rfqs/${rfqId}/accept-bid?bid_id=${bidId}`),
 
   getTradeCredits: () => request<any[]>("GET", `/marketplace/trade-credit`),
+  getThemeSettings: () => request<any>("GET", `/marketplace/theme`),
+  updateThemeSettings: (data: any) => request<any>("PUT", `/marketplace/theme`, data),
 };
 
 // ─── CRM AI Calling API ────────────────────────────────────────────────────────

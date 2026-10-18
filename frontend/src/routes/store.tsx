@@ -5,7 +5,6 @@ import { WishlistProvider } from "@/contexts/StoreWishlistContext";
 import { StoreUserProvider } from "@/contexts/StoreUserContext";
 import { StoreThemeProvider, useStoreTheme } from "@/contexts/StoreThemeContext";
 import { DynamicStoreHeader, DynamicStoreFooter } from "@/components/storefront/UniversalTemplateRouter";
-import { ThemePreviewSwitcherDock } from "@/components/storefront/ThemePreviewSwitcherDock";
 import { OrganicOffcanvasCart } from "@/components/storefront/organic/OrganicOffcanvasCart";
 import { OrganicOffcanvasMenu } from "@/components/storefront/organic/OrganicOffcanvasMenu";
 import "@/styles/organic-theme.css";
@@ -63,9 +62,6 @@ function StoreLayoutContent() {
         isOpen={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}
       />
-
-      {/* Floating Theme Switcher Dock (Multi-SaaS Preview Engine) */}
-      <ThemePreviewSwitcherDock />
     </div>
   );
 }

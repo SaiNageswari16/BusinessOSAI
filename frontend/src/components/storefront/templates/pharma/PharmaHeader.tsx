@@ -25,6 +25,7 @@ interface PharmaHeaderProps {
 }
 
 export function PharmaHeader({ onOpenCart, onOpenMenu }: PharmaHeaderProps) {
+  const navigate = useNavigate();
   const { totalItems = 0, cartCount = 0 } = useStoreCart();
   const { totalWishlistItems = 0, wishlistItems = [] } = useWishlist();
   const safeTotalItems = totalItems || cartCount || 0;

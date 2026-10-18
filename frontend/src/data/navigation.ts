@@ -494,6 +494,16 @@ export const nav: NavGroup[] = [
           { to: "/marketplace?tab=ai_recommendations", label: "AI Recommendations", icon: Sparkles, permission: "view:analytics" },
         ]
       },
+      {
+        to: "/marketplace?tab=themes",
+        label: "Storefront & Themes",
+        icon: Palette,
+        permission: "view:marketplace",
+        subItems: [
+          { to: "/marketplace?tab=themes", label: "Theme & Template Studio", icon: Palette, permission: "view:marketplace" },
+          { to: "/marketplace?tab=store_branding", label: "Store Branding & Settings", icon: Sparkles, permission: "view:marketplace" },
+        ]
+      },
     ]
   },
   {

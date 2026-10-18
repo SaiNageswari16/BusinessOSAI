@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useStoreCart } from "@/contexts/StoreCartContext";
 import { useStoreUser } from "@/contexts/StoreUserContext";
+import { useStoreTheme } from "@/contexts/StoreThemeContext";
 import { useCurrency } from "@/hooks/use-currency";
 import { organicCategories as fallbackCategories } from "@/data/mockOrganicData";
 import { fetchStorefrontCategories } from "@/lib/storefront-api";
@@ -20,6 +21,7 @@ interface Props {
 export function OrganicHeader({ onOpenCart, onOpenMenu }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { theme, branding } = useStoreTheme();
   const { cartCount, wishlistItems } = useStoreCart();
   const { user, isLoggedIn } = useStoreUser();
 
@@ -94,17 +96,18 @@ export function OrganicHeader({ onOpenCart, onOpenMenu }: Props) {
             </button>
 
             <Link to="/store" className="flex items-center gap-2 group">
-              {/* Cute monkey logo with leaf matching ss2 */}
-              <div className="size-9 rounded-full bg-amber-50 border border-amber-200/60 flex items-center justify-center text-xl shadow-2xs group-hover:scale-105 transition-transform overflow-hidden relative">
-                <span className="text-xl select-none">🐵</span>
-                <span className="absolute -top-0.5 right-0 text-[10px] text-emerald-600 font-black">🌱</span>
+              <div
+                className="size-9 rounded-xl flex items-center justify-center text-white shadow-2xs group-hover:scale-105 transition-transform overflow-hidden relative"
+                style={{ backgroundColor: theme.primaryColor || "#16A34A" }}
+              >
+                <span className="text-lg select-none">🛍️</span>
               </div>
               <div className="flex flex-col">
                 <span className="font-extrabold text-lg text-gray-900 tracking-tight leading-tight flex items-center">
-                  LazyMonkey<span className="text-[#16A34A]">AI</span>
+                  {theme.name || "LazyMonkeyAI"}
                 </span>
-                <span className="text-[7.5px] sm:text-[8px] font-bold text-gray-400 tracking-[0.2em] uppercase">
-                  WORK SMARTER • LIVE BETTER
+                <span className="text-[7.5px] sm:text-[8px] font-bold text-gray-400 tracking-[0.2em] uppercase truncate max-w-[150px]">
+                  {theme.tagline || "WORK SMARTER • LIVE BETTER"}
                 </span>
               </div>
             </Link>

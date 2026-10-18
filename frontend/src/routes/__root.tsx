@@ -153,6 +153,7 @@ import { ThemeProvider } from "../contexts/theme-context";
 import { AuthProvider } from "../contexts/auth-context";
 import { RbacProvider } from "../contexts/rbac-context";
 import { I18nProvider } from "../contexts/i18n-context";
+import { StoreThemeProvider } from "@/contexts/StoreThemeContext";
 import { Toaster } from "@/components/ui/sonner";
 
 function RootComponent() {
@@ -161,14 +162,16 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <I18nProvider>
-          <AuthProvider>
-            <RbacProvider>
-              <Outlet />
-              <Toaster position="top-right" />
-            </RbacProvider>
-          </AuthProvider>
-        </I18nProvider>
+        <StoreThemeProvider>
+          <I18nProvider>
+            <AuthProvider>
+              <RbacProvider>
+                <Outlet />
+                <Toaster position="top-right" />
+              </RbacProvider>
+            </AuthProvider>
+          </I18nProvider>
+        </StoreThemeProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

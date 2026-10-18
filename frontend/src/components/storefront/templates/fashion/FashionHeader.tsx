@@ -18,6 +18,7 @@ interface FashionHeaderProps {
 }
 
 export function FashionHeader({ onOpenCart, onOpenMenu }: FashionHeaderProps) {
+  const navigate = useNavigate();
   const { totalItems = 0, cartCount = 0 } = useStoreCart();
   const { totalWishlistItems = 0, wishlistItems = [] } = useWishlist();
   const safeTotalItems = totalItems || cartCount || 0;

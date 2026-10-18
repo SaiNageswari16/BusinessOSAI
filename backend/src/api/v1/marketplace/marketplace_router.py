@@ -1,4 +1,7 @@
 import uuid
+import os
+import json
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from typing import List, Optional, Dict, Any
 from datetime import datetime
@@ -953,4 +956,55 @@ async def get_marketplace_stats(db: AsyncSession = Depends(get_db)):
         "totalRevenue": platform_revenue,
         "totalPayouts": total_payouts,
     }
+
+
+# ── STOREFRONT THEME & TEMPLATE SETTINGS ──
+DEFAULT_STOREFRONT_THEME = {
+    "theme_id": "speed_mart",
+    "store_name": "ExpressMart",
+    "tagline": "10-Minute Hyperlocal Quick Commerce",
+    "sector": "Quick Commerce",
+    "announcement_text": "⚡ 10-Minute Hyperlocal Quick Commerce • Free Transit Health Guarantee • Same-Day Dispatch",
+    "support_phone": "+91 98450 12345",
+    "support_email": "support@businessos.store",
+    "primary_color": "#7C3AED",
+    "accent_color": "#F59E0B",
+    "bg_tone": "#FDF4FF",
+    "updated_at": datetime.utcnow().isoformat()
+}
+
+THEME_STORAGE_FILE = Path(__file__).resolve().parents[4] / "data" / "storefront_theme_settings.json"
+
+def _load_stored_theme() -> Dict[str, Any]:
+    try:
+        if THEME_STORAGE_FILE.exists():
+            with open(THEME_STORAGE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                merged = dict(DEFAULT_STOREFRONT_THEME)
+                merged.update(data)
+                return merged
+    except Exception as e:
+        print(f"Warning loading theme file: {e}")
+    return dict(DEFAULT_STOREFRONT_THEME)
+
+def _save_stored_theme(theme_data: Dict[str, Any]):
+    try:
+        THEME_STORAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(THEME_STORAGE_FILE, "w", encoding="utf-8") as f:
+            json.dump(theme_data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"Warning saving theme file: {e}")
+
+@router.get("/theme")
+async def get_marketplace_theme():
+    return _load_stored_theme()
+
+@router.put("/theme")
+async def update_marketplace_theme(payload: Dict[str, Any]):
+    theme = _load_stored_theme()
+    theme.update(payload)
+    theme["updated_at"] = datetime.utcnow().isoformat()
+    _save_stored_theme(theme)
+    return {"message": "Storefront theme settings updated successfully", "theme": theme}
+
 
