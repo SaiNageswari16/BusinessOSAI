@@ -1766,7 +1766,20 @@ export function PrintTemplates() {
           res.templates.forEach((t: any) => {
             if (t && t.id) {
               const existing = map.get(t.id);
-              map.set(t.id, { ...(existing || {}), ...t });
+              const base = INITIAL_TEMPLATES.find((it) => it.id === t.id) ||
+                           INITIAL_TEMPLATES.find((it) => it.name?.toLowerCase() === t.name?.toLowerCase());
+              map.set(t.id, {
+                ...(base || {}),
+                ...(existing || {}),
+                ...t,
+                fields: {
+                  ...DEFAULT_ELEMENT_TOGGLES,
+                  ...(base?.fields || {}),
+                  ...(existing?.fields || {}),
+                  ...(t?.fields || {}),
+                  showLogo: t?.fields?.showLogo ?? (existing?.fields as any)?.showLogo ?? (t as any)?.showLogo ?? true,
+                },
+              });
             }
           });
           return Array.from(map.values());
@@ -1817,13 +1830,29 @@ export function PrintTemplates() {
     }).catch(() => {});
   }, [tenantId, selectedDocType]);
 
-  // Derived active template object strictly scoped to current category
-  const activeTemplate: PrintTemplate =
+  // Derived active template object strictly scoped to current category with guaranteed safe fields
+  const rawActiveTemplate: PrintTemplate =
     currentCategoryTemplates.find((t) => t.id === selectedTemplateId) ||
     currentCategoryTemplates.find((t) => t.isDefault) ||
     currentCategoryTemplates[0] ||
     INITIAL_TEMPLATES.find((t) => (selectedDocType === "invoice" ? (t.category === "invoices" || t.docType === "invoice") : t.docType === selectedDocType)) ||
     INITIAL_TEMPLATES[0];
+
+  const activeTemplate: PrintTemplate = React.useMemo(() => {
+    const raw = rawActiveTemplate || INITIAL_TEMPLATES[0];
+    const base = INITIAL_TEMPLATES.find((it) => it.id === raw.id) ||
+                 INITIAL_TEMPLATES.find((it) => it.name?.toLowerCase() === raw.name?.toLowerCase());
+    return {
+      ...(base || {}),
+      ...raw,
+      fields: {
+        ...DEFAULT_ELEMENT_TOGGLES,
+        ...(base?.fields || {}),
+        ...((raw as any)?.fields || {}),
+        showLogo: (raw as any)?.fields?.showLogo ?? (raw as any)?.showLogo ?? true,
+      },
+    };
+  }, [rawActiveTemplate]);
 
   const activeBillingGst = getActiveBillingGst(tenant?.id);
 
@@ -1964,9 +1993,10 @@ export function PrintTemplates() {
 
   // Field Toggles updater
   const toggleElementField = (fieldKey: keyof PrintTemplate["fields"]) => {
+    const curFields = activeTemplate?.fields || DEFAULT_ELEMENT_TOGGLES;
     const nextFields = {
-      ...activeTemplate.fields,
-      [fieldKey]: !activeTemplate.fields[fieldKey],
+      ...curFields,
+      [fieldKey]: !curFields[fieldKey],
     };
     const updatedTemplates = templates.map((t) =>
       t.id === activeTemplate.id ? { ...t, fields: nextFields } : t
@@ -2503,10 +2533,10 @@ export function PrintTemplates() {
     reader.onload = (e) => {
       const dataUrl = e.target?.result as string;
       updateTemplateProperty(targetProp as any, dataUrl);
-      if (targetProp === 'logoUrl') updateTemplateProperty("fields", { ...activeTemplate.fields, showLogo: true });
+      if (targetProp === 'logoUrl') updateTemplateProperty("fields", { ...(activeTemplate?.fields || DEFAULT_ELEMENT_TOGGLES), showLogo: true });
       if (targetProp === 'signatureUrl') {
         updateTemplateProperty("showSignature" as any, true);
-        updateTemplateProperty("fields", { ...activeTemplate.fields, showSignature: true });
+        updateTemplateProperty("fields", { ...(activeTemplate?.fields || DEFAULT_ELEMENT_TOGGLES), showSignature: true });
       }
       if (targetProp === 'stampUrl') {
         updateTemplateProperty("showStamp" as any, true);
@@ -2902,55 +2932,55 @@ export function PrintTemplates() {
         cin: (activeTemplate as any).cin || "",
         pan: (activeTemplate as any).pan || "",
         logoUrl: activeTemplate.logoUrl || "",
-        showLogo: Boolean(activeTemplate.fields.showLogo),
-        showStoreName: Boolean(activeTemplate.fields.showCompanyName ?? activeTemplate.fields.showStoreName ?? true),
-        showBranchName: Boolean((activeTemplate.fields as any).showBranchName ?? true),
-        showStoreAddress: Boolean(activeTemplate.fields.showCompanyDetails ?? true),
-        showStoreContact: Boolean(activeTemplate.fields.showCompanyDetails ?? true),
-        showTaxId: Boolean(activeTemplate.fields.showHSN ?? true),
-        showCin: Boolean((activeTemplate.fields as any).showCin ?? true),
-        showInvoiceTitle: Boolean(activeTemplate.fields.showInvoiceDetails ?? true),
-        showTagline: Boolean(activeTemplate.fields.showCustomTagline ?? true),
-        showCashier: Boolean((activeTemplate.fields as any).showCashier ?? true),
-        showTime: Boolean(activeTemplate.fields.showTime ?? true),
-        showCustomerDetails: Boolean(activeTemplate.fields.showCustomerDetails ?? true),
-        showCustomerAddress: Boolean((activeTemplate.fields as any).showCustomerAddress ?? true),
-        showCustomerPhone: Boolean((activeTemplate.fields as any).showCustomerPhone ?? true),
-        showShippingAddress: Boolean((activeTemplate.fields as any).showShippingAddress ?? true),
-        showPoNumber: Boolean((activeTemplate.fields as any).showPoNumber ?? true),
-        showVehicleNumber: Boolean((activeTemplate.fields as any).showVehicleNumber ?? true),
-        showEwayBill: Boolean((activeTemplate.fields as any).showEwayBill ?? true),
-        showChallanNumber: Boolean((activeTemplate.fields as any).showChallanNumber ?? true),
-        showItemIndex: Boolean((activeTemplate.fields as any).showItemIndex ?? true),
-        showItemName: Boolean(activeTemplate.fields.showProductName ?? true),
-        showItemDescription: Boolean(activeTemplate.fields.showItemDescription ?? true),
-        showItemHSN: Boolean(activeTemplate.fields.showHSN ?? true),
-        showItemSKU: Boolean(activeTemplate.fields.showSKU ?? false),
-        showItemQty: Boolean(activeTemplate.fields.showItemTable ?? true),
-        showItemUom: Boolean((activeTemplate.fields as any).showItemUom ?? true),
-        showItemRate: Boolean(activeTemplate.fields.showPrice ?? true),
-        showItemMrp: Boolean(activeTemplate.fields.showMRP ?? true),
-        showItemDiscount: Boolean(activeTemplate.fields.showDiscountBadge ?? true),
-        showItemTax: Boolean(activeTemplate.fields.showTaxSplit ?? true),
-        showItemTotal: Boolean(activeTemplate.fields.showTotals ?? true),
-        showSubtotal: Boolean(activeTemplate.fields.showTotals ?? true),
-        showTotalDiscount: Boolean(activeTemplate.fields.showDiscountBadge ?? true),
-        showSavingsBanner: Boolean((activeTemplate.fields as any).showSavingsBanner ?? true),
-        showTaxBreakdown: Boolean(activeTemplate.fields.showTaxSplit ?? true),
-        showRoundOff: Boolean((activeTemplate.fields as any).showRoundOff ?? true),
-        showGrandTotal: Boolean(activeTemplate.fields.showTotals ?? true),
-        showLoyaltyPoints: Boolean((activeTemplate.fields as any).showLoyaltyPoints ?? true),
-        showPaymentMode: Boolean(activeTemplate.fields.showPaymentDetails ?? true),
-        showQrCode: Boolean(activeTemplate.fields.showQR !== false),
+        showLogo: Boolean(activeTemplate.fields?.showLogo ?? (activeTemplate as any)?.showLogo ?? true),
+        showStoreName: Boolean(activeTemplate.fields?.showCompanyName ?? activeTemplate.fields?.showStoreName ?? (activeTemplate as any)?.showStoreName ?? true),
+        showBranchName: Boolean((activeTemplate.fields as any)?.showBranchName ?? (activeTemplate as any)?.showBranchName ?? true),
+        showStoreAddress: Boolean(activeTemplate.fields?.showCompanyDetails ?? (activeTemplate as any)?.showStoreAddress ?? true),
+        showStoreContact: Boolean(activeTemplate.fields?.showCompanyDetails ?? (activeTemplate as any)?.showStoreContact ?? true),
+        showTaxId: Boolean(activeTemplate.fields?.showHSN ?? (activeTemplate as any)?.showTaxId ?? true),
+        showCin: Boolean((activeTemplate.fields as any)?.showCin ?? (activeTemplate as any)?.showCin ?? true),
+        showInvoiceTitle: Boolean(activeTemplate.fields?.showInvoiceDetails ?? (activeTemplate as any)?.showInvoiceTitle ?? true),
+        showTagline: Boolean(activeTemplate.fields?.showCustomTagline ?? (activeTemplate as any)?.showTagline ?? true),
+        showCashier: Boolean((activeTemplate.fields as any)?.showCashier ?? (activeTemplate as any)?.showCashier ?? true),
+        showTime: Boolean(activeTemplate.fields?.showTime ?? (activeTemplate as any)?.showTime ?? true),
+        showCustomerDetails: Boolean(activeTemplate.fields?.showCustomerDetails ?? (activeTemplate as any)?.showCustomerDetails ?? true),
+        showCustomerAddress: Boolean((activeTemplate.fields as any)?.showCustomerAddress ?? true),
+        showCustomerPhone: Boolean((activeTemplate.fields as any)?.showCustomerPhone ?? true),
+        showShippingAddress: Boolean((activeTemplate.fields as any)?.showShippingAddress ?? true),
+        showPoNumber: Boolean((activeTemplate.fields as any)?.showPoNumber ?? true),
+        showVehicleNumber: Boolean((activeTemplate.fields as any)?.showVehicleNumber ?? true),
+        showEwayBill: Boolean((activeTemplate.fields as any)?.showEwayBill ?? true),
+        showChallanNumber: Boolean((activeTemplate.fields as any)?.showChallanNumber ?? true),
+        showItemIndex: Boolean((activeTemplate.fields as any)?.showItemIndex ?? true),
+        showItemName: Boolean(activeTemplate.fields?.showProductName ?? true),
+        showItemDescription: Boolean(activeTemplate.fields?.showItemDescription ?? true),
+        showItemHSN: Boolean(activeTemplate.fields?.showHSN ?? true),
+        showItemSKU: Boolean(activeTemplate.fields?.showSKU ?? false),
+        showItemQty: Boolean(activeTemplate.fields?.showItemTable ?? true),
+        showItemUom: Boolean((activeTemplate.fields as any)?.showItemUom ?? true),
+        showItemRate: Boolean(activeTemplate.fields?.showPrice ?? true),
+        showItemMrp: Boolean(activeTemplate.fields?.showMRP ?? true),
+        showItemDiscount: Boolean(activeTemplate.fields?.showDiscountBadge ?? true),
+        showItemTax: Boolean(activeTemplate.fields?.showTaxSplit ?? true),
+        showItemTotal: Boolean(activeTemplate.fields?.showTotals ?? true),
+        showSubtotal: Boolean(activeTemplate.fields?.showTotals ?? true),
+        showTotalDiscount: Boolean(activeTemplate.fields?.showDiscountBadge ?? true),
+        showSavingsBanner: Boolean((activeTemplate.fields as any)?.showSavingsBanner ?? true),
+        showTaxBreakdown: Boolean(activeTemplate.fields?.showTaxSplit ?? true),
+        showRoundOff: Boolean((activeTemplate.fields as any)?.showRoundOff ?? true),
+        showGrandTotal: Boolean(activeTemplate.fields?.showTotals ?? true),
+        showLoyaltyPoints: Boolean((activeTemplate.fields as any)?.showLoyaltyPoints ?? true),
+        showPaymentMode: Boolean(activeTemplate.fields?.showPaymentDetails ?? true),
+        showQrCode: Boolean(activeTemplate.fields?.showQR !== false),
         showGoogleReviewQR: (activeTemplate as any).showGoogleReviewQR !== false,
         googleReviewUrl: (activeTemplate as any).googleReviewUrl || "",
-        showTermsAndConditions: Boolean(activeTemplate.fields.showTerms !== false),
+        showTermsAndConditions: Boolean(activeTemplate.fields?.showTerms !== false),
         termsAndConditionsText: activeTemplate.termsText || (activeTemplate as any).termsAndConditionsText || "",
-        showDeclaration: Boolean((activeTemplate.fields as any).showDeclaration !== false),
+        showDeclaration: Boolean((activeTemplate.fields as any)?.showDeclaration !== false),
         declarationText: (activeTemplate as any).declarationText || "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.",
-        showFooterNote: Boolean(activeTemplate.fields.showThankYou !== false),
+        showFooterNote: Boolean(activeTemplate.fields?.showThankYou !== false),
         footerNote: activeTemplate.thankYouNote || activeTemplate.footerText || "THANK YOU FOR SHOPPING WITH US! VISIT AGAIN",
-        showSignature: Boolean(activeTemplate.fields.showSignature !== false || (activeTemplate as any).showSignature !== false),
+        showSignature: Boolean(activeTemplate.fields?.showSignature !== false || (activeTemplate as any).showSignature !== false),
         showStamp: Boolean((activeTemplate as any).showStamp !== false),
         signatureUrl: (activeTemplate as any).signatureUrl || "",
         stampUrl: (activeTemplate as any).stampUrl || "",
@@ -6509,7 +6539,7 @@ export function PrintTemplates() {
                     <input
                       type="checkbox"
                       id="thermal-logo-toggle"
-                      checked={activeTemplate.fields.showLogo !== false}
+                      checked={activeTemplate.fields?.showLogo !== false}
                       onChange={() => toggleElementField("showLogo")}
                       className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
                     />
@@ -6523,7 +6553,7 @@ export function PrintTemplates() {
                   </span>
                 </div>
 
-                {activeTemplate.fields.showLogo !== false && (
+                {activeTemplate.fields?.showLogo !== false && (
                   <div className="space-y-3 pt-1">
                     <div className="flex items-center gap-3">
                       {activeTemplate.logoUrl ? (
@@ -7877,8 +7907,26 @@ function LiveDocumentPreview({
 }) {
   const { t } = useI18n();
   const { tenant } = useTenant();
-  const f = template.fields;
-  const theme = template.themeName || "stylish";
+  const f = {
+    ...DEFAULT_ELEMENT_TOGGLES,
+    ...(template?.fields || {}),
+    ...(template ? {
+      showLogo: template?.fields?.showLogo ?? (template as any)?.showLogo ?? true,
+      showSignature: template?.fields?.showSignature ?? (template as any)?.showSignature ?? true,
+      showCustomerDetails: template?.fields?.showCustomerDetails ?? (template as any)?.showCustomerDetails ?? true,
+      showItemTable: template?.fields?.showItemTable ?? (template as any)?.showItemTable ?? true,
+      showTotals: template?.fields?.showTotals ?? (template as any)?.showTotals ?? true,
+      showTaxSplit: template?.fields?.showTaxSplit ?? (template as any)?.showTaxSplit ?? true,
+      showHSN: template?.fields?.showHSN ?? (template as any)?.showHSN ?? (template as any)?.showTaxId ?? true,
+      showTime: template?.fields?.showTime ?? (template as any)?.showTime ?? true,
+      showPartyBalance: template?.fields?.showPartyBalance ?? (template as any)?.showPartyBalance ?? true,
+      showItemDescription: template?.fields?.showItemDescription ?? (template as any)?.showItemDescription ?? true,
+      showQR: template?.fields?.showQR ?? (template as any)?.showQrCode ?? true,
+      showTerms: template?.fields?.showTerms ?? (template as any)?.showTermsAndConditions ?? true,
+      showThankYou: template?.fields?.showThankYou ?? (template as any)?.showFooterNote ?? true,
+    } : {}),
+  };
+  const theme = template?.themeName || "stylish";
 
   // ── Structural Layout Themes (Stylish, Luxury, Tally, BillBook, Modern, Simple, etc.) ──
   const layoutTheme = template.themeName || "stylish";
