@@ -96,6 +96,11 @@ interface LocalInvoiceRecord {
   is_whatsapp_sent?: boolean;
   invoice_type?: string;
   is_credit_note?: boolean;
+  display_number?: string;
+  secondary_number?: string;
+  receipt_number?: string;
+  is_thermal?: boolean;
+  print_mode?: "thermal" | "a4";
   payments?: any[];
   items?: any[];
   [key: string]: any;
@@ -734,7 +739,8 @@ export function PosInvoicesHistory() {
               });
             }
             if (matchedTx) {
-              matchedPosTxIds.add(String(matchedTx.id || matchedTx.receipt_number));
+              if (matchedTx.id) matchedPosTxIds.add(String(matchedTx.id).toLowerCase());
+              if (matchedTx.receipt_number) matchedPosTxIds.add(String(matchedTx.receipt_number).toLowerCase());
             }
 
             const isThermal = Boolean(
@@ -796,16 +802,27 @@ export function PosInvoicesHistory() {
               effectivePaymentMode = isCreditNote ? "Credit Note" : "Cash";
             }
 
+            const posReceiptNumber = matchedTx?.receipt_number || (rawRefNum.startsWith("rec-") ? inv.reference_number : undefined) || (invNumClean.startsWith("rec-") ? inv.invoice_number : undefined) || "";
+            const erpInvoiceNumber = inv.invoice_number || `INV-${String(inv.id).slice(0, 6).toUpperCase()}`;
+            // In thermal mode, user's counter sequence REC-... is primary, ERP Tax Inv is secondary
+            const displayNumber = (isThermal && posReceiptNumber) ? posReceiptNumber : erpInvoiceNumber;
+            const secondaryNumber = (isThermal && posReceiptNumber) ? (erpInvoiceNumber !== posReceiptNumber ? erpInvoiceNumber : undefined) : (posReceiptNumber || undefined);
+
             remoteRecords.push({
               id: inv.id,
               realId: inv.id,
               tenant_id: inv.tenant_id,
               company_id: inv.company_id,
-              invoice_number: inv.invoice_number || `INV-${String(inv.id).slice(0, 6).toUpperCase()}`,
+              invoice_number: erpInvoiceNumber,
               reference_number: inv.reference_number || (matchedTx ? matchedTx.receipt_number : undefined),
-              customer_name: inv.customer_name || inv.customer?.name || "Walk-in Customer",
-              customer_phone: inv.customer?.phone || inv.customer_phone || "",
-              customer_email: inv.customer?.email || inv.customer_email || "",
+              receipt_number: posReceiptNumber || undefined,
+              display_number: displayNumber,
+              secondary_number: secondaryNumber,
+              is_thermal: isThermal,
+              print_mode: isThermal ? "thermal" : "a4",
+              customer_name: inv.customer_name || inv.customer?.name || (matchedTx?.customer?.name) || "Walk-in Customer",
+              customer_phone: inv.customer?.phone || inv.customer_phone || (matchedTx?.customer?.phone) || "",
+              customer_email: inv.customer?.email || inv.customer_email || (matchedTx?.customer?.email) || "",
               customer_company: inv.customer?.company || inv.customer_company || "",
               customer_gstin: inv.customer?.tax_number || inv.customer?.gst_number || inv.customer_gstin || "",
               customer_type: inv.customer?.customer_type || inv.customer?.type || inv.customer?.category || inv.customer_type || (inv as any).pricing_mode || undefined,
@@ -862,8 +879,9 @@ export function PosInvoicesHistory() {
       if (Array.isArray(posItems) && posItems.length > 0) {
         posItems.forEach((tx: any) => {
           const receiptNum = tx.receipt_number || (tx.id ? `REC-${String(tx.id).slice(0, 6).toUpperCase()}` : `REC-${Date.now()}`);
-          const txIdentifier = String(tx.id || tx.receipt_number);
-          if (matchedPosTxIds.has(txIdentifier) || (tx.receipt_number && matchedPosTxIds.has(String(tx.receipt_number)))) {
+          const txIdStr = String(tx.id || "").toLowerCase().trim();
+          const txRecStr = String(tx.receipt_number || "").toLowerCase().trim();
+          if (matchedPosTxIds.has(txIdStr) || (txRecStr && matchedPosTxIds.has(txRecStr))) {
             // Already incorporated into ERP invoice record
             return;
           }
@@ -899,8 +917,14 @@ export function PosInvoicesHistory() {
 
           remoteRecords.push({
             id: tx.id,
+            realId: tx.id,
             invoice_number: receiptNum,
             reference_number: receiptNum,
+            receipt_number: receiptNum,
+            display_number: receiptNum,
+            secondary_number: undefined,
+            is_thermal: true,
+            print_mode: "thermal",
             customer_name: tx.customer?.name || "Walk-in Guest",
             customer_phone: tx.customer?.phone || "",
             customer_gstin: tx.customer?.gst_number || "",
@@ -927,96 +951,139 @@ export function PosInvoicesHistory() {
         });
       }
 
-      // Merge local and remote invoice records
+      // Merge local and remote invoice records with robust alias index to eliminate duplicate listings
       const mergedMap = new Map<string, LocalInvoiceRecord>();
+      const aliasMap = new Map<string, LocalInvoiceRecord>();
+
+      const registerAlias = (key: any, rec: LocalInvoiceRecord) => {
+        if (!key) return;
+        aliasMap.set(String(key).toLowerCase().trim(), rec);
+      };
+
       remoteRecords.forEach((inv) => {
         if (inv && inv.invoice_number) {
           mergedMap.set(inv.invoice_number, inv);
+          registerAlias(inv.invoice_number, inv);
+          if (inv.id) registerAlias(inv.id, inv);
+          if ((inv as any).realId) registerAlias((inv as any).realId, inv);
+          if ((inv as any).reference_number) registerAlias((inv as any).reference_number, inv);
+          if ((inv as any).receipt_number) registerAlias((inv as any).receipt_number, inv);
+          if ((inv as any).display_number) registerAlias((inv as any).display_number, inv);
+          if ((inv as any).secondary_number) registerAlias((inv as any).secondary_number, inv);
         }
       });
 
       localRecords.forEach((inv) => {
-        if (inv && (inv.invoice_number || (inv as any).reference_number)) {
-          const remote = mergedMap.get(inv.invoice_number) ||
-            ((inv as any).reference_number ? mergedMap.get((inv as any).reference_number) : undefined);
-          if (remote) {
-            if ((inv as any).print_status) {
-              remote.print_status = (inv as any).print_status;
-            }
-            if ((inv as any).payment_mode) {
-              remote.payment_mode = (inv as any).payment_mode;
-            }
-            if (inv.items && inv.items.length > 0) {
-              remote.items = inv.items;
-              remote.subtotal = inv.subtotal;
-              remote.total_tax = inv.total_tax;
-              remote.grand_total = inv.grand_total;
-            }
-            if ((inv as any).invoice_type) remote.invoice_type = (inv as any).invoice_type;
-            if ((inv as any).is_credit_note !== undefined) remote.is_credit_note = (inv as any).is_credit_note;
-            if ((inv as any).payments) remote.payments = (inv as any).payments;
-            if ((inv as any).customer_type) (remote as any).customer_type = (inv as any).customer_type;
-            if ((inv as any).customer_company) (remote as any).customer_company = (inv as any).customer_company;
-            if ((inv as any).customer_email) (remote as any).customer_email = (inv as any).customer_email;
-            if ((inv as any).customer_billing_address) (remote as any).customer_billing_address = (inv as any).customer_billing_address;
-            if ((inv as any).customer_shipping_address) (remote as any).customer_shipping_address = (inv as any).customer_shipping_address;
-            if ((inv as any).cgst_amount !== undefined) (remote as any).cgst_amount = (inv as any).cgst_amount;
-            if ((inv as any).sgst_amount !== undefined) (remote as any).sgst_amount = (inv as any).sgst_amount;
-            if ((inv as any).igst_amount !== undefined) (remote as any).igst_amount = (inv as any).igst_amount;
-            if ((inv as any).gst_type) (remote as any).gst_type = (inv as any).gst_type;
-            if ((inv as any).is_interstate !== undefined) (remote as any).is_interstate = (inv as any).is_interstate;
-            if ((inv as any).terms) (remote as any).terms = (inv as any).terms;
-            if ((inv as any).notes) (remote as any).notes = (inv as any).notes;
-            if ((inv as any).print_template_id) (remote as any).print_template_id = (inv as any).print_template_id;
-            if ((inv as any).template_id) (remote as any).template_id = (inv as any).template_id;
-            if ((inv as any).custom_fields) (remote as any).custom_fields = (inv as any).custom_fields;
+        if (!inv) return;
+        const invNum = inv.invoice_number;
+        const refNum = (inv as any).reference_number;
+        const recNum = (inv as any).receipt_number;
+        const id = inv.id;
 
-            const isCancelled = String(remote.status || "").toLowerCase() === "cancelled" || String(inv.status || "").toLowerCase() === "cancelled" || remote.payment_status === "Cancelled" || inv.payment_status === "Cancelled";
-            const cleanInvNum = String(remote.invoice_number || "").toLowerCase().trim();
-            const retRecord = returnedMap.get(cleanInvNum) || returnedMap.get(String(inv.invoice_number || "").toLowerCase().trim());
-            const isReturned = !!retRecord || String(remote.status || "").toLowerCase() === "returned" || String(inv.status || "").toLowerCase() === "returned" || remote.payment_status === "Returned" || inv.payment_status === "Returned";
-            const isPartiallyReturned = String(remote.status || "").toLowerCase() === "partially_returned" || String(inv.status || "").toLowerCase() === "partially_returned" || remote.payment_status === "Partially Returned" || inv.payment_status === "Partially Returned";
-            const isExchanged = String(remote.status || "").toLowerCase() === "exchanged" || String(inv.status || "").toLowerCase() === "exchanged" || remote.payment_status === "Exchanged" || inv.payment_status === "Exchanged";
+        const remote =
+          (invNum && aliasMap.get(String(invNum).toLowerCase().trim())) ||
+          (refNum && aliasMap.get(String(refNum).toLowerCase().trim())) ||
+          (recNum && aliasMap.get(String(recNum).toLowerCase().trim())) ||
+          (id && aliasMap.get(String(id).toLowerCase().trim()));
 
-            if (isCancelled) {
-              remote.status = "cancelled";
-              remote.payment_status = "Cancelled";
-              if (inv.cancellation_reason) remote.cancellation_reason = inv.cancellation_reason;
-            } else if (isReturned) {
-              remote.status = "returned";
-              remote.payment_status = "Returned";
-              if (retRecord && !remote.return_info) remote.return_info = retRecord;
-            } else if (isPartiallyReturned) {
-              remote.status = "partially_returned";
-              remote.payment_status = "Partially Returned";
-              if (retRecord && !remote.return_info) remote.return_info = retRecord;
-            } else if (isExchanged) {
-              remote.status = "exchanged";
-              remote.payment_status = "Exchanged";
-            } else {
-              const maxPaid = Math.max(Number(inv.amount_received || 0), Number(remote.amount_received || 0));
-              if (maxPaid >= remote.grand_total - 0.05 && remote.grand_total > 0) {
-                remote.payment_status = "Paid";
-                remote.payment_mode = inv.payment_mode || remote.payment_mode || "Cash";
-                remote.amount_received = remote.grand_total;
-              } else if (maxPaid > 0) {
-                remote.payment_status = "Partial";
-                remote.payment_mode = inv.payment_mode || remote.payment_mode || "Cash";
-                remote.amount_received = maxPaid;
-              } else {
-                remote.payment_status = remote.payment_status || inv.payment_status || "Unpaid";
-              }
-            }
-          } else {
-            const cleanInvNum = String(inv.invoice_number || "").toLowerCase().trim();
-            const retRecord = returnedMap.get(cleanInvNum);
-            if (retRecord) {
-              inv.status = "returned";
-              inv.payment_status = "Returned";
-              inv.return_info = retRecord;
-            }
-            mergedMap.set(inv.invoice_number, inv);
+        if (remote) {
+          if ((inv as any).print_status) {
+            remote.print_status = (inv as any).print_status;
           }
+          if ((inv as any).payment_mode) {
+            remote.payment_mode = (inv as any).payment_mode;
+          }
+          if (inv.items && inv.items.length > 0 && (!remote.items || remote.items.length === 0)) {
+            remote.items = inv.items;
+            remote.subtotal = inv.subtotal;
+            remote.total_tax = inv.total_tax;
+            remote.grand_total = inv.grand_total;
+          }
+          if ((inv as any).is_thermal) {
+            remote.is_thermal = true;
+            remote.print_mode = "thermal";
+          }
+          if ((inv as any).display_number && !(remote as any).display_number) {
+            (remote as any).display_number = (inv as any).display_number;
+          }
+          if ((inv as any).invoice_type) remote.invoice_type = (inv as any).invoice_type;
+          if ((inv as any).is_credit_note !== undefined) remote.is_credit_note = (inv as any).is_credit_note;
+          if ((inv as any).payments) remote.payments = (inv as any).payments;
+          if ((inv as any).customer_type) (remote as any).customer_type = (inv as any).customer_type;
+          if ((inv as any).customer_company) (remote as any).customer_company = (inv as any).customer_company;
+          if ((inv as any).customer_email) (remote as any).customer_email = (inv as any).customer_email;
+          if ((inv as any).customer_billing_address) (remote as any).customer_billing_address = (inv as any).customer_billing_address;
+          if ((inv as any).customer_shipping_address) (remote as any).customer_shipping_address = (inv as any).customer_shipping_address;
+          if ((inv as any).cgst_amount !== undefined) (remote as any).cgst_amount = (inv as any).cgst_amount;
+          if ((inv as any).sgst_amount !== undefined) (remote as any).sgst_amount = (inv as any).sgst_amount;
+          if ((inv as any).igst_amount !== undefined) (remote as any).igst_amount = (inv as any).igst_amount;
+          if ((inv as any).gst_type) (remote as any).gst_type = (inv as any).gst_type;
+          if ((inv as any).is_interstate !== undefined) (remote as any).is_interstate = (inv as any).is_interstate;
+          if ((inv as any).terms) (remote as any).terms = (inv as any).terms;
+          if ((inv as any).notes) (remote as any).notes = (inv as any).notes;
+          if ((inv as any).print_template_id) (remote as any).print_template_id = (inv as any).print_template_id;
+          if ((inv as any).template_id) (remote as any).template_id = (inv as any).template_id;
+          if ((inv as any).custom_fields) (remote as any).custom_fields = (inv as any).custom_fields;
+
+          const isCancelled = String(remote.status || "").toLowerCase() === "cancelled" || String(inv.status || "").toLowerCase() === "cancelled" || remote.payment_status === "Cancelled" || inv.payment_status === "Cancelled";
+          const cleanInvNum = String(remote.invoice_number || "").toLowerCase().trim();
+          const retRecord = returnedMap.get(cleanInvNum) || returnedMap.get(String(inv.invoice_number || "").toLowerCase().trim());
+          const isReturned = !!retRecord || String(remote.status || "").toLowerCase() === "returned" || String(inv.status || "").toLowerCase() === "returned" || remote.payment_status === "Returned" || inv.payment_status === "Returned";
+          const isPartiallyReturned = String(remote.status || "").toLowerCase() === "partially_returned" || String(inv.status || "").toLowerCase() === "partially_returned" || remote.payment_status === "Partially Returned" || inv.payment_status === "Partially Returned";
+          const isExchanged = String(remote.status || "").toLowerCase() === "exchanged" || String(inv.status || "").toLowerCase() === "exchanged" || remote.payment_status === "Exchanged" || inv.payment_status === "Exchanged";
+
+          if (isCancelled) {
+            remote.status = "cancelled";
+            remote.payment_status = "Cancelled";
+            if (inv.cancellation_reason) remote.cancellation_reason = inv.cancellation_reason;
+          } else if (isReturned) {
+            remote.status = "returned";
+            remote.payment_status = "Returned";
+            if (retRecord && !remote.return_info) remote.return_info = retRecord;
+          } else if (isPartiallyReturned) {
+            remote.status = "partially_returned";
+            remote.payment_status = "Partially Returned";
+            if (retRecord && !remote.return_info) remote.return_info = retRecord;
+          } else if (isExchanged) {
+            remote.status = "exchanged";
+            remote.payment_status = "Exchanged";
+          } else {
+            const maxPaid = Math.max(Number(inv.amount_received || 0), Number(remote.amount_received || 0));
+            if (maxPaid >= remote.grand_total - 0.05 && remote.grand_total > 0) {
+              remote.payment_status = "Paid";
+              remote.payment_mode = inv.payment_mode || remote.payment_mode || "Cash";
+              remote.amount_received = remote.grand_total;
+            } else if (maxPaid > 0) {
+              remote.payment_status = "Partial";
+              remote.payment_mode = inv.payment_mode || remote.payment_mode || "Cash";
+              remote.amount_received = maxPaid;
+            } else {
+              remote.payment_status = remote.payment_status || inv.payment_status || "Unpaid";
+            }
+          }
+        } else if (inv.invoice_number) {
+          const cleanInvNum = String(inv.invoice_number || "").toLowerCase().trim();
+          const retRecord = returnedMap.get(cleanInvNum);
+          if (retRecord) {
+            inv.status = "returned";
+            inv.payment_status = "Returned";
+            inv.return_info = retRecord;
+          }
+          const isThermal = Boolean(
+            (inv as any).is_thermal ||
+            (inv as any).print_mode === "thermal" ||
+            inv.print_status === "Thermal Printed" ||
+            cleanInvNum.startsWith("rec-") ||
+            String((inv as any).reference_number || "").toLowerCase().startsWith("rec-")
+          );
+          (inv as any).is_thermal = isThermal;
+          (inv as any).print_mode = isThermal ? "thermal" : "a4";
+          (inv as any).display_number = inv.invoice_number;
+
+          mergedMap.set(inv.invoice_number, inv);
+          registerAlias(inv.invoice_number, inv);
+          if (inv.id) registerAlias(inv.id, inv);
+          if ((inv as any).reference_number) registerAlias((inv as any).reference_number, inv);
         }
       });
 
@@ -1040,7 +1107,7 @@ export function PosInvoicesHistory() {
         return 0;
       };
 
-      const seenNumbers = new Set<string>();
+      const seenAliases = new Set<string>();
       const dedupedList: LocalInvoiceRecord[] = [];
       const sorted = Array.from(mergedMap.values()).sort((a, b) => {
         const timeA = getInvoiceSortTime(a);
@@ -1050,6 +1117,20 @@ export function PosInvoicesHistory() {
       });
 
       for (const inv of sorted) {
+        const key = String(inv.invoice_number || inv.id).toLowerCase().trim();
+        const refKey = (inv as any).reference_number ? String((inv as any).reference_number).toLowerCase().trim() : "";
+        const recKey = (inv as any).receipt_number ? String((inv as any).receipt_number).toLowerCase().trim() : "";
+
+        if (seenAliases.has(key) || (refKey && seenAliases.has(refKey)) || (recKey && seenAliases.has(recKey))) {
+          continue;
+        }
+
+        seenAliases.add(key);
+        if (refKey) seenAliases.add(refKey);
+        if (recKey) seenAliases.add(recKey);
+        if (inv.id) seenAliases.add(String(inv.id).toLowerCase().trim());
+        if ((inv as any).realId) seenAliases.add(String((inv as any).realId).toLowerCase().trim());
+
         if (!inv.grand_total || inv.grand_total === 0) {
           if (inv.items && inv.items.length > 0) {
             let sub = 0;
@@ -1076,10 +1157,7 @@ export function PosInvoicesHistory() {
             if (inv.payment_status === "Paid") inv.amount_received = inv.grand_total;
           }
         }
-        if (!seenNumbers.has(inv.invoice_number)) {
-          seenNumbers.add(inv.invoice_number);
-          dedupedList.push(inv);
-        }
+        dedupedList.push(inv);
       }
 
       setInvoices(dedupedList);
@@ -1541,10 +1619,27 @@ export function PosInvoicesHistory() {
       const matchesSearch =
         !q ||
         inv.invoice_number.toLowerCase().includes(q) ||
+        Boolean((inv as any).display_number && String((inv as any).display_number).toLowerCase().includes(q)) ||
+        Boolean((inv as any).secondary_number && String((inv as any).secondary_number).toLowerCase().includes(q)) ||
+        Boolean((inv as any).reference_number && String((inv as any).reference_number).toLowerCase().includes(q)) ||
+        Boolean((inv as any).receipt_number && String((inv as any).receipt_number).toLowerCase().includes(q)) ||
         inv.customer_name.toLowerCase().includes(q) ||
         (inv.customer_phone && inv.customer_phone.includes(q)) ||
         (inv.sales_executive && inv.sales_executive.toLowerCase().includes(q)) ||
         locStr.includes(q);
+
+      const isTherm = Boolean(
+        (inv as any).is_thermal ||
+        (inv as any).print_mode === "thermal" ||
+        inv.print_status === "Thermal Printed" ||
+        String((inv as any).display_number || inv.invoice_number).toLowerCase().startsWith("rec-")
+      );
+      const matchesDocType = (() => {
+        if (docTypeFilter === "All" || !docTypeFilter) return true;
+        if (docTypeFilter === "thermal") return isTherm;
+        if (docTypeFilter === "a4") return !isTherm;
+        return true;
+      })();
 
       const matchesStatus =
         statusFilter === "All" ||
@@ -1601,7 +1696,7 @@ export function PosInvoicesHistory() {
         (inv.sales_executive || (inv as any).sales_rep_name || "Admin / Cashier").toLowerCase() === salesRepFilter.toLowerCase();
       const dateOk = matchesDate(inv);
 
-      return matchesSearch && matchesStatus && matchesPaymentMode && matchesPrint && matchesLocation && matchesSalesRep && dateOk;
+      return matchesSearch && matchesStatus && matchesPaymentMode && matchesPrint && matchesLocation && matchesSalesRep && dateOk && matchesDocType;
     });
 
     return filtered.sort((a, b) => {
@@ -1624,7 +1719,30 @@ export function PosInvoicesHistory() {
       }
       return 0;
     });
-  }, [invoices, searchQuery, statusFilter, paymentModeFilter, printFilter, locationFilter, salesRepFilter, dateFilter, customStartDate, customEndDate, sortOrder]);
+  }, [invoices, searchQuery, docTypeFilter, statusFilter, paymentModeFilter, printFilter, locationFilter, salesRepFilter, dateFilter, customStartDate, customEndDate, sortOrder]);
+
+  const thermalBillsCount = React.useMemo(() => {
+    return invoices.filter((inv) =>
+      Boolean(
+        (inv as any).is_thermal ||
+        (inv as any).print_mode === "thermal" ||
+        inv.print_status === "Thermal Printed" ||
+        String((inv as any).display_number || inv.invoice_number).toLowerCase().startsWith("rec-")
+      )
+    ).length;
+  }, [invoices]);
+
+  const a4BillsCount = React.useMemo(() => {
+    return invoices.filter(
+      (inv) =>
+        !Boolean(
+          (inv as any).is_thermal ||
+          (inv as any).print_mode === "thermal" ||
+          inv.print_status === "Thermal Printed" ||
+          String((inv as any).display_number || inv.invoice_number).toLowerCase().startsWith("rec-")
+        )
+    ).length;
+  }, [invoices]);
 
   // Unique locations for filter
   const uniqueLocations = React.useMemo(() => {
@@ -2282,13 +2400,62 @@ export function PosInvoicesHistory() {
         </div>
       )}
 
+      {/* Sequence Filter Tabs */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200 text-xs font-semibold">
+          <button
+            type="button"
+            onClick={() => setDocTypeFilter("All")}
+            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-bold ${
+              docTypeFilter === "All"
+                ? "bg-white text-indigo-700 shadow-2xs font-extrabold"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            All Bills ({invoices.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setDocTypeFilter("thermal")}
+            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 font-bold ${
+              docTypeFilter === "thermal"
+                ? "bg-white text-emerald-700 shadow-2xs font-extrabold"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <span>🧾 Thermal Counter Receipts (REC-...)</span>
+            <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded-full font-black">
+              {thermalBillsCount}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setDocTypeFilter("a4")}
+            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 font-bold ${
+              docTypeFilter === "a4"
+                ? "bg-white text-blue-700 shadow-2xs font-extrabold"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <span>📄 Standard A4 Invoices (INV-...)</span>
+            <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded-full font-black">
+              {a4BillsCount}
+            </span>
+          </button>
+        </div>
+
+        <div className="text-xs text-slate-500 font-medium">
+          Showing <span className="font-bold text-slate-900">{filteredInvoices.length}</span> matching bills
+        </div>
+      </div>
+
       {/* Main Invoices Table */}
       <div className="bg-card rounded-2xl border border-border/70 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
             <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
               <tr>
-                <th className="px-4 py-3 text-left">Invoice #</th>
+                <th className="px-4 py-3 text-left">Bill / Invoice #</th>
                 <th
                   className="px-4 py-3 text-left cursor-pointer select-none hover:text-blue-600 transition-colors"
                   onClick={() => setSortOrder((prev) => (prev === "newest" ? "oldest" : "newest"))}
@@ -2339,18 +2506,36 @@ export function PosInvoicesHistory() {
                 paginatedInvoices.map((inv) => (
                   <tr key={inv.invoice_number} className="hover:bg-slate-50/80 transition-colors">
                     {/* Invoice Number */}
-                    <td className="px-4 py-3 font-mono font-bold text-blue-600 flex items-center gap-1.5 flex-wrap">
-                      <Receipt className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                      <span>{inv.invoice_number}</span>
-                      {inv.order_source === "Storefront" && (
-                        <span className="text-[9px] font-extrabold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded border border-emerald-200 shadow-2xs">
-                          🌐 Store
+                    <td className="px-4 py-3 font-mono font-bold">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Receipt className={`w-3.5 h-3.5 shrink-0 ${inv.is_thermal ? "text-emerald-500" : "text-blue-500"}`} />
+                        <span className={`font-mono font-bold ${inv.is_thermal ? "text-emerald-700" : "text-blue-700"}`}>
+                          {(inv as any).display_number || inv.invoice_number}
                         </span>
-                      )}
-                      {(inv.converted_from_proforma_number || inv.original_proforma_ref) && (
-                        <span className="text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 shadow-2xs">
-                          PI: {inv.converted_from_proforma_number || inv.original_proforma_ref}
-                        </span>
+                        {inv.is_thermal ? (
+                          <span className="text-[9px] font-black bg-emerald-50 text-emerald-800 px-1.5 py-0.5 rounded border border-emerald-200 shadow-2xs">
+                            🧾 Thermal Roll
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-black bg-blue-50 text-blue-800 px-1.5 py-0.5 rounded border border-blue-200 shadow-2xs">
+                            📄 Standard A4
+                          </span>
+                        )}
+                        {inv.order_source === "Storefront" && (
+                          <span className="text-[9px] font-extrabold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded border border-emerald-200 shadow-2xs">
+                            🌐 Store
+                          </span>
+                        )}
+                        {(inv.converted_from_proforma_number || inv.original_proforma_ref) && (
+                          <span className="text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 shadow-2xs">
+                            PI: {inv.converted_from_proforma_number || inv.original_proforma_ref}
+                          </span>
+                        )}
+                      </div>
+                      {(inv as any).secondary_number && (
+                        <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                          {inv.is_thermal ? `Tax Inv: ${(inv as any).secondary_number}` : `Counter Ref: ${(inv as any).secondary_number}`}
+                        </div>
                       )}
                     </td>
 
@@ -2794,9 +2979,25 @@ export function PosInvoicesHistory() {
             <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <Receipt className="w-5 h-5 text-blue-400" />
-                  <h2 className="text-lg font-extrabold">{selectedInvoice.invoice_number}</h2>
+                  <Receipt className={`w-5 h-5 ${selectedInvoice.is_thermal ? "text-emerald-400" : "text-blue-400"}`} />
+                  <h2 className="text-lg font-extrabold">{selectedInvoice.display_number || selectedInvoice.invoice_number}</h2>
+                  {selectedInvoice.is_thermal ? (
+                    <span className="text-[10px] font-black bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/30">
+                      🧾 Thermal Roll Receipt
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-black bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded border border-blue-500/30">
+                      📄 Standard A4 Tax Invoice
+                    </span>
+                  )}
                 </div>
+                {selectedInvoice.secondary_number && (
+                  <div className="text-xs text-slate-300 font-mono mt-0.5">
+                    {selectedInvoice.is_thermal
+                      ? `Linked Tax Invoice: ${selectedInvoice.secondary_number}`
+                      : `Linked Counter Ref: ${selectedInvoice.secondary_number}`}
+                  </div>
+                )}
                 <p className="text-xs text-slate-400 mt-1">Generated on {formatDisplayDateTime(selectedInvoice.created_at || selectedInvoice.invoice_date)}</p>
               </div>
               <button
@@ -2912,6 +3113,26 @@ export function PosInvoicesHistory() {
 
             {/* Drawer Footer Actions */}
             <div className="p-4 bg-slate-100 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2.5">
+              {/* Return / Exchange Quick Action */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDetailDrawerOpen(false);
+                  const returnTargetNumber = selectedInvoice.display_number || selectedInvoice.receipt_number || selectedInvoice.invoice_number;
+                  navigate({
+                    to: "/pos",
+                    search: {
+                      tab: "sales_return",
+                      return_invoice: returnTargetNumber,
+                    } as any,
+                  });
+                }}
+                className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 cursor-pointer mb-1 transition-all active:scale-[0.99]"
+              >
+                <RotateCcw className="w-4 h-4 stroke-[2.5]" />
+                <span>Process Sales Return / Exchange Against This Bill</span>
+              </button>
+
               {selectedInvoice.payment_status !== "Paid" && (
                 <button
                   onClick={() => {

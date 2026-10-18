@@ -114,10 +114,20 @@ class SalesReturnResponse(BaseModel):
 async def _lookup_original_invoice(
     db: AsyncSession, tenant_id: uuid.UUID, invoice_id: str | None, invoice_number: str | None
 ) -> Invoice | None:
-    """Find the original invoice by ID or number."""
-    if invoice_id:
+    """Find the original invoice by ID, ERP invoice number, or POS receipt reference number."""
+    search_terms: list[str] = []
+    if invoice_number and invoice_number.strip():
+        search_terms.append(invoice_number.strip())
+    if invoice_id and str(invoice_id).strip() and str(invoice_id).strip() not in search_terms:
+        search_terms.append(str(invoice_id).strip())
+
+    if not search_terms:
+        return None
+
+    # 1. First search by UUID if any term is a valid UUID
+    for term in search_terms:
         try:
-            inv_uuid = uuid.UUID(str(invoice_id))
+            inv_uuid = uuid.UUID(term)
             inv = await db.scalar(
                 select(Invoice)
                 .options(selectinload(Invoice.lines))
@@ -128,30 +138,51 @@ async def _lookup_original_invoice(
         except (ValueError, AttributeError):
             pass
 
-    if invoice_number:
+    # 2. Search Invoice by invoice_number OR reference_number (which stores REC-... counter receipt)
+    for term in search_terms:
         inv = await db.scalar(
             select(Invoice)
             .options(selectinload(Invoice.lines))
             .where(
-                Invoice.invoice_number.ilike(invoice_number.strip()),
-                Invoice.tenant_id == tenant_id
+                or_(
+                    Invoice.invoice_number.ilike(term),
+                    Invoice.reference_number.ilike(term),
+                    Invoice.notes.ilike(f"%{term}%"),
+                ),
+                Invoice.tenant_id == tenant_id,
             )
         )
         if inv:
             return inv
 
-    # Try invoice_id as invoice_number string
-    if invoice_id and not invoice_number:
-        inv = await db.scalar(
-            select(Invoice)
-            .options(selectinload(Invoice.lines))
-            .where(
-                Invoice.invoice_number.ilike(str(invoice_id).strip()),
-                Invoice.tenant_id == tenant_id
+    # 3. If term is a POS Receipt number (e.g. REC-...), check POSTransaction and its linked ERP invoice
+    from src.models import POSTransaction
+    for term in search_terms:
+        try:
+            pos_stmt = select(POSTransaction).where(
+                or_(
+                    POSTransaction.receipt_number.ilike(term),
+                    POSTransaction.id == uuid.UUID(term) if len(term) == 36 else False,
+                ),
+                POSTransaction.tenant_id == tenant_id,
             )
-        )
-        if inv:
-            return inv
+            pos_tx = await db.scalar(pos_stmt)
+            if pos_tx and pos_tx.receipt_number:
+                linked_inv = await db.scalar(
+                    select(Invoice)
+                    .options(selectinload(Invoice.lines))
+                    .where(
+                        or_(
+                            Invoice.reference_number.ilike(pos_tx.receipt_number),
+                            Invoice.notes.ilike(f"%{pos_tx.receipt_number}%"),
+                        ),
+                        Invoice.tenant_id == tenant_id,
+                    )
+                )
+                if linked_inv:
+                    return linked_inv
+        except Exception:
+            pass
 
     return None
 
@@ -654,36 +685,117 @@ async def get_invoice_for_return(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Look up an invoice by ID or number for processing a return. Returns invoice details with line items."""
-    invoice = await _lookup_original_invoice(db, ctx.tenant_id, invoice_id_or_number, invoice_id_or_number)
-    if not invoice:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+    """Look up an invoice or POS receipt by ID or number for processing a return. Returns invoice details with real line items."""
+    clean_term = invoice_id_or_number.strip()
+    invoice = await _lookup_original_invoice(db, ctx.tenant_id, clean_term, clean_term)
+
+    if invoice:
+        is_thermal_bill = (
+            str(invoice.reference_number or "").startswith("REC-")
+            or invoice.print_template_id == "thermal"
+            or invoice.template_id == "thermal"
+            or "pos" in (invoice.notes or "").lower()
+        )
+        total_tax = float(invoice.cgst_amount or 0) + float(invoice.sgst_amount or 0) + float(invoice.igst_amount or 0)
+        return {
+            "id": str(invoice.id),
+            "invoice_number": invoice.invoice_number,
+            "receipt_number": invoice.reference_number,
+            "display_number": invoice.reference_number if is_thermal_bill and invoice.reference_number else invoice.invoice_number,
+            "print_mode": "thermal" if is_thermal_bill else "a4",
+            "invoice_date": invoice.invoice_date.isoformat() if invoice.invoice_date else None,
+            "customer_name": invoice.customer_name or "Walk-in Guest",
+            "customer_phone": invoice.customer_phone or "",
+            "customer_address": invoice.billing_address or "",
+            "customer_id": str(invoice.customer_id) if invoice.customer_id else None,
+            "customer_gstin": invoice.customer_gstin or "",
+            "status": invoice.status,
+            "subtotal": float(invoice.subtotal or 0),
+            "tax_amount": total_tax,
+            "total_amount": float(invoice.total_amount or 0),
+            "items": [
+                {
+                    "product_id": str(line.product_id) if line.product_id else None,
+                    "product_name": line.product_name or "Product",
+                    "product_sku": line.product_sku or "",
+                    "hsn_code": line.hsn_code or "",
+                    "batch_number": line.batch_number,
+                    "quantity": float(line.quantity),
+                    "unit_price": float(line.unit_price),
+                    "discount_amount": float(line.discount_amount or 0),
+                    "tax_rate": float(line.tax_rate or 0),
+                    "taxable_amount": float(line.taxable_amount or (line.unit_price * line.quantity)),
+                    "line_total": float(line.line_total or (line.unit_price * line.quantity)),
+                }
+                for line in (invoice.lines or [])
+            ],
+        }
+
+    # Standalone POS Transaction fallback if no ERP invoice exists
+    from src.models import POSTransaction
+    pos_stmt = select(POSTransaction).options(
+        selectinload(POSTransaction.items),
+        selectinload(POSTransaction.customer),
+    ).where(
+        or_(
+            POSTransaction.receipt_number.ilike(clean_term),
+            POSTransaction.id == uuid.UUID(clean_term) if len(clean_term) == 36 else False,
+        ),
+        POSTransaction.tenant_id == ctx.tenant_id,
+    )
+    pos_tx = await db.scalar(pos_stmt)
+    if not pos_tx:
+        raise HTTPException(status_code=404, detail="Invoice or Receipt not found")
+
+    # Resolve product names from Product catalog for all items
+    p_ids = [it.product_id for it in (pos_tx.items or []) if it.product_id]
+    prod_map: dict[uuid.UUID, dict] = {}
+    if p_ids:
+        p_rows = (await db.execute(
+            select(Product.id, Product.name, Product.sku, Product.hsn_code).where(
+                Product.id.in_(p_ids),
+                Product.tenant_id == ctx.tenant_id,
+            )
+        )).all()
+        for r in p_rows:
+            prod_map[r[0]] = {"name": r[1], "sku": r[2], "hsn_code": r[3]}
+
+    cust_name = pos_tx.customer.name if pos_tx.customer else "Walk-in Guest"
+    cust_phone = pos_tx.customer.phone if pos_tx.customer else ""
+    cust_addr = pos_tx.customer.address if pos_tx.customer else ""
+    cust_gst = pos_tx.customer.gst_number if pos_tx.customer else ""
 
     return {
-        "id": str(invoice.id),
-        "invoice_number": invoice.invoice_number,
-        "invoice_date": invoice.invoice_date.isoformat() if invoice.invoice_date else None,
-        "customer_name": invoice.customer_name,
-        "customer_phone": invoice.customer_phone,
-        "customer_id": str(invoice.customer_id) if invoice.customer_id else None,
-        "customer_gstin": invoice.customer_gstin,
-        "status": invoice.status,
-        "total_amount": float(invoice.total_amount or 0),
+        "id": str(pos_tx.id),
+        "invoice_number": pos_tx.receipt_number,
+        "receipt_number": pos_tx.receipt_number,
+        "display_number": pos_tx.receipt_number,
+        "print_mode": "thermal",
+        "invoice_date": pos_tx.created_at.date().isoformat() if pos_tx.created_at else None,
+        "customer_name": cust_name,
+        "customer_phone": cust_phone,
+        "customer_address": cust_addr,
+        "customer_id": str(pos_tx.customer_id) if pos_tx.customer_id else None,
+        "customer_gstin": cust_gst,
+        "status": pos_tx.status,
+        "subtotal": float(pos_tx.subtotal or 0),
+        "tax_amount": float(pos_tx.tax_amount or 0),
+        "total_amount": float(pos_tx.total_amount or 0),
         "items": [
             {
-                "product_id": str(line.product_id) if line.product_id else None,
-                "product_name": line.product_name,
-                "product_sku": line.product_sku,
-                "hsn_code": line.hsn_code,
-                "batch_number": line.batch_number,
-                "quantity": float(line.quantity),
-                "unit_price": float(line.unit_price),
-                "discount_amount": float(line.discount_amount or 0),
-                "tax_rate": float(line.tax_rate or 0),
-                "taxable_amount": float(line.taxable_amount or 0),
-                "line_total": float(line.line_total or 0),
+                "product_id": str(it.product_id) if it.product_id else None,
+                "product_name": prod_map.get(it.product_id, {}).get("name") or "Store Product",
+                "product_sku": prod_map.get(it.product_id, {}).get("sku") or "",
+                "hsn_code": prod_map.get(it.product_id, {}).get("hsn_code") or "",
+                "batch_number": None,
+                "quantity": float(it.quantity or 1),
+                "unit_price": float(it.unit_price or 0),
+                "discount_amount": float(it.discount or 0),
+                "tax_rate": 0,
+                "taxable_amount": float(it.subtotal or (it.unit_price * it.quantity)),
+                "line_total": float(it.subtotal or (it.unit_price * it.quantity)),
             }
-            for line in (invoice.lines or [])
+            for it in (pos_tx.items or [])
         ],
     }
 
