@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Any
+
+from fastapi import Request
 
 from src.services.shared.registry import ServiceDescriptor, get_descriptor
 from src.services.shared.service_app import create_service_app
@@ -53,3 +56,34 @@ def build_service(name: str, routers, on_startup=None, tags: list[dict] | None =
     logger.info("Service '%s' wired on port %s -> %s",
                 name, descriptor.port, descriptor.db_name)
     return app, db
+
+
+_session_factories: dict[str, Any] = {}
+
+
+def session_factory(name: str):
+    """Get an async sessionmaker for any registered service database."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    if name not in _session_factories:
+        descriptor = get_descriptor(name)
+        if descriptor is None:
+            raise RuntimeError(f"Service '{name}' is not in the registry")
+        dsn = resolve_dsn(descriptor)
+        engine = create_async_engine(dsn, pool_pre_ping=True)
+        _session_factories[name] = async_sessionmaker(engine, expire_on_commit=False)
+    return _session_factories[name]
+
+
+async def get_session(request: Request):
+    """FastAPI dependency: session from current service's app.state.db."""
+    session = request.app.state.db.session_factory()
+    try:
+        yield session
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    finally:
+        await session.close()
+
