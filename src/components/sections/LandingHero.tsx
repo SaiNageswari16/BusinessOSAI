@@ -82,9 +82,9 @@ export function LandingHero() {
           </nav>
 
           <div className="hero-nav-actions">
-            <a href="#contact" className="nav-demo">
+            <a href="https://lazymonkeyai.com/login" className="nav-demo">
               <Sparkles size={14} />
-              <span>Request Demo</span>
+              <span>Sign Up</span>
               <ArrowRight size={14} />
             </a>
 

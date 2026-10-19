@@ -57,11 +57,11 @@ export function Header() {
           {/* Right Action Buttons */}
           <div className="flex items-center gap-1.5">
             <a
-              href="/#contact"
+              href="https://lazymonkeyai.com/login"
               className="bg-slate-950 text-white text-[11.5px] sm:text-[12px] font-bold px-3.5 sm:px-4 py-1.5 rounded-full hover:bg-purple-700 transition-all cursor-pointer whitespace-nowrap shadow-sm flex items-center gap-1.5 hover:-translate-y-0.5"
             >
               <Sparkles className="size-3 text-purple-300" />
-              <span>Request Demo</span>
+              <span>Sign Up</span>
             </a>
 
             {/* Mobile Hamburger inside bar */}
@@ -112,11 +112,11 @@ export function Header() {
                 Explore Products
               </a>
               <a
-                href="/#contact"
+                href="https://lazymonkeyai.com/login"
                 onClick={() => setOpen(false)}
                 className="rounded-xl bg-slate-950 text-white hover:bg-purple-700 px-4 py-2.5 text-center text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 transition-colors"
               >
-                Request a Demo <ArrowRight className="size-3.5" />
+                Sign Up <ArrowRight className="size-3.5" />
               </a>
             </div>
           </div>
