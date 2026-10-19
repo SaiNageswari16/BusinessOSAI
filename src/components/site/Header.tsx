@@ -24,30 +24,30 @@ export function Header() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-[100] h-[76px] bg-[#f8f9fa]/85 backdrop-blur-md px-4 sm:px-8 md:px-[60px] flex items-center justify-center border-b border-slate-200/80 transition-all duration-300">
+    <header className="sticky top-0 z-[100] h-[60px] bg-[#f8f9fa]/85 backdrop-blur-md px-4 sm:px-8 md:px-[60px] flex items-center justify-center border-b border-slate-200/80 transition-all duration-300">
       <div className="max-w-[1050px] w-full mx-auto relative flex items-center justify-between md:justify-center">
         {/* Floating Capsule Bar */}
-        <div className="bg-white/95 border border-slate-200/90 backdrop-blur-2xl rounded-full pl-4 pr-1.5 py-1.5 flex items-center justify-between md:inline-flex md:gap-7 shadow-[0_4px_25px_rgba(0,0,0,0.06)] w-full md:w-auto">
+        <div className="bg-white/95 border border-slate-200/90 backdrop-blur-2xl rounded-full pl-3.5 pr-1.5 py-1 flex items-center justify-between md:inline-flex md:gap-5 shadow-[0_4px_25px_rgba(0,0,0,0.06)] w-full md:w-auto">
           {/* Brand Logo */}
           <a
             href="/#top"
-            className="flex items-center gap-2.5 group cursor-pointer"
+            className="flex items-center gap-2 group cursor-pointer"
             aria-label="IOTRONICS home"
           >
             <img
               src="/logo.png"
               alt="IOTRONICS"
-              className="h-7 sm:h-8 w-auto object-contain transition-transform duration-300 group-hover:scale-105"
+              className="h-5.5 sm:h-6 w-auto object-contain transition-transform duration-300 group-hover:scale-105"
             />
           </a>
 
           {/* Desktop Nav Links */}
-          <div className="hidden md:flex items-center gap-6">
+          <div className="hidden md:flex items-center gap-4.5">
             {nav.map((link) => (
               <a
                 key={link.label}
                 href={link.href}
-                className="text-[13.5px] text-slate-600 hover:text-purple-700 cursor-pointer transition-colors flex items-center gap-1 font-semibold"
+                className="text-[12.5px] text-slate-600 hover:text-purple-700 cursor-pointer transition-colors flex items-center gap-1 font-semibold"
               >
                 {link.label}
               </a>
@@ -55,12 +55,12 @@ export function Header() {
           </div>
 
           {/* Right Action Buttons */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <a
               href="/#contact"
-              className="bg-slate-950 text-white text-[12.5px] sm:text-[13px] font-bold px-4 sm:px-5 py-2 rounded-full hover:bg-purple-700 transition-all cursor-pointer whitespace-nowrap shadow-sm flex items-center gap-1.5 hover:-translate-y-0.5"
+              className="bg-slate-950 text-white text-[11.5px] sm:text-[12px] font-bold px-3.5 sm:px-4 py-1.5 rounded-full hover:bg-purple-700 transition-all cursor-pointer whitespace-nowrap shadow-sm flex items-center gap-1.5 hover:-translate-y-0.5"
             >
-              <Sparkles className="size-3.5 text-purple-300" />
+              <Sparkles className="size-3 text-purple-300" />
               <span>Request Demo</span>
             </a>
 
@@ -69,9 +69,9 @@ export function Header() {
               type="button"
               onClick={() => setOpen((v) => !v)}
               aria-label={open ? "Close menu" : "Open menu"}
-              className="grid size-8 place-items-center rounded-full bg-slate-100 border border-slate-200 text-slate-700 md:hidden hover:bg-slate-200"
+              className="grid size-7 place-items-center rounded-full bg-slate-100 border border-slate-200 text-slate-700 md:hidden hover:bg-slate-200"
             >
-              {open ? <X className="size-4" /> : <Menu className="size-4" />}
+              {open ? <X className="size-3.5" /> : <Menu className="size-3.5" />}
             </button>
           </div>
         </div>
@@ -79,8 +79,20 @@ export function Header() {
 
       {/* Mobile Menu Dropdown */}
       {open ? (
-        <div className="absolute top-[76px] inset-x-0 border-b border-slate-200 bg-white/98 backdrop-blur-2xl md:hidden animate-in fade-in slide-in-from-top-2 duration-200 shadow-xl">
+        <div className="absolute top-[60px] inset-x-0 border-b border-slate-200 bg-white/98 backdrop-blur-2xl md:hidden animate-in fade-in slide-in-from-top-2 duration-200 shadow-xl">
           <div className="mx-auto grid w-full max-w-md gap-1.5 px-6 py-5">
+            <div className="flex items-center justify-between pb-3 mb-1 border-b border-slate-100">
+              <a href="/#top" onClick={() => setOpen(false)} className="flex items-center" aria-label="IOTRONICS home">
+                <img
+                  src="/logo.png"
+                  alt="IOTRONICS"
+                  className="h-7 w-auto object-contain"
+                />
+              </a>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 font-mono">
+                Enterprise AI
+              </span>
+            </div>
             {nav.map((item) => (
               <a
                 key={item.label}

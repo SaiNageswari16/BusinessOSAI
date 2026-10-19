@@ -91,14 +91,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "Intelligent solutions for business management, sales, marketing, recruitment, finance, inventory, and more.",
       },
       { property: "og:type", content: "website" },
+      { property: "og:image", content: "/logo.png" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@IOTRONICS" },
+      { name: "twitter:image", content: "/logo.png" },
     ],
     links: [
       {
         rel: "stylesheet",
         href: appCss,
       },
+      { rel: "icon", href: "/favicon.ico", sizes: "any" },
       { rel: "icon", href: "/favicon.png", type: "image/png" },
       { rel: "apple-touch-icon", href: "/favicon.png" },
     ],

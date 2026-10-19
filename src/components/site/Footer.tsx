@@ -44,18 +44,15 @@ export function Footer({ className }: { className?: string }) {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-10 mb-8">
             {/* 1. Brand Section */}
             <div className="flex flex-col gap-6 col-span-1">
-              <Link to="/" className="flex items-center gap-3 group">
-                <div className="size-10 rounded-xl bg-purple-50 p-1.5 border border-purple-200/80 shadow-xs flex items-center justify-center group-hover:scale-105 transition-transform">
-                  <img src="/logo.png" alt="IOTRONICS Logo" className="size-full object-contain" />
-                </div>
-                <div>
-                  <span className="text-[22px] font-extrabold text-[#010101] tracking-tight group-hover:text-purple-700 transition-colors">
-                    IOTRONICS
-                  </span>
-                  <span className="block text-[10px] font-bold uppercase tracking-wider text-purple-600 font-mono">
-                    Enterprise AI Systems
-                  </span>
-                </div>
+              <Link to="/" className="inline-flex flex-col items-start gap-1.5 group cursor-pointer" aria-label="IOTRONICS home">
+                <img
+                  src="/logo.png"
+                  alt="IOTRONICS Logo"
+                  className="h-8 sm:h-9 w-auto object-contain transition-transform duration-300 group-hover:scale-105"
+                />
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-purple-600 font-mono">
+                  Enterprise AI Systems
+                </span>
               </Link>
 
               <p className="text-[15px] leading-[1.6] text-[#6A7281] max-w-[290px]">

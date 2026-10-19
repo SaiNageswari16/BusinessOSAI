@@ -57,8 +57,12 @@ export function LandingHero() {
         {/* Floating Capsule Glass Navbar */}
         <header className="glass-navbar">
           <a href="#home" className="hero-brand" aria-label="IOTRONICS Home">
-            <img src="/logo.png" alt="IOTRONICS" className="hero-brand-logo" />
-            <span className="hero-brand-name">IOTRONICS</span>
+            <img
+              src={dark ? "/logo-white.png" : "/logo.png"}
+              alt="IOTRONICS"
+              className="hero-brand-logo"
+            />
+            <span className="sr-only">IOTRONICS</span>
           </a>
 
           <nav className={`hero-nav ${menuOpen ? "nav-open" : ""}`}>
@@ -79,7 +83,7 @@ export function LandingHero() {
 
           <div className="hero-nav-actions">
             <a href="#contact" className="nav-demo">
-              <Sparkles size={15} />
+              <Sparkles size={14} />
               <span>Request Demo</span>
               <ArrowRight size={14} />
             </a>
@@ -90,7 +94,7 @@ export function LandingHero() {
               onClick={() => setDark(!dark)}
               title={dark ? "Switch to Light Mode" : "Switch to Dark Mode"}
             >
-              {dark ? <Moon size={18} /> : <Sun size={18} />}
+              {dark ? <Moon size={16} /> : <Sun size={16} />}
             </button>
 
             <button
@@ -99,7 +103,7 @@ export function LandingHero() {
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen(!menuOpen)}
             >
-              {menuOpen ? <X size={20} /> : <Menu size={20} />}
+              {menuOpen ? <X size={18} /> : <Menu size={18} />}
             </button>
           </div>
         </header>
@@ -127,33 +131,19 @@ export function LandingHero() {
               chains.
             </p>
 
-            <div className="hero-cta-group">
-              <a href="#applications" className="primary-hero-cta">
-                Explore Applications <ArrowRight size={18} />
-              </a>
-              <a href="#contact" className="secondary-hero-cta">
-                <span className="play-circle">
-                  <Play size={13} fill="currentColor" />
-                </span>
-                Watch Demo
-              </a>
-            </div>
-
-            <div className="hero-trust">
-              <div className="trust-item">
-                <CheckCircle2 size={15} className="text-emerald-500" />
-                <span>50+ Enterprise Deployments</span>
-              </div>
-              <div className="trust-divider" />
-              <div className="trust-item">
-                <CheckCircle2 size={15} className="text-purple-500" />
-                <span>Sub-second Sync</span>
-              </div>
-              <div className="trust-divider" />
-              <div className="trust-item">
-                <CheckCircle2 size={15} className="text-blue-500" />
-                <span>99.98% Cloud Uptime</span>
-              </div>
+            {/* 2*2 Stats Tab */}
+            <div className="hero-stats">
+              {stats.map(({ icon: Icon, value, label }) => (
+                <div className="hero-stat" key={label}>
+                  <div className="stat-icon">
+                    <Icon size={17} strokeWidth={2.2} />
+                  </div>
+                  <div className="stat-info">
+                    <strong>{value}</strong>
+                    <p>{label}</p>
+                  </div>
+                </div>
+              ))}
             </div>
 
             {/* Mobile visual preview card */}
@@ -168,21 +158,6 @@ export function LandingHero() {
 
           {/* Desktop Right Spacer to preserve background visual space */}
           <div className="hero-right-spacer" aria-hidden="true" />
-        </div>
-
-        {/* Floating Bottom Stats Strip */}
-        <div className="hero-stats">
-          {stats.map(({ icon: Icon, value, label }) => (
-            <div className="hero-stat" key={label}>
-              <div className="stat-icon">
-                <Icon size={24} strokeWidth={2.2} />
-              </div>
-              <div>
-                <strong>{value}</strong>
-                <p>{label}</p>
-              </div>
-            </div>
-          ))}
         </div>
       </div>
     </section>
