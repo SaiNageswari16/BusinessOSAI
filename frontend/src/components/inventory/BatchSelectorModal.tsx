@@ -31,6 +31,7 @@ export interface BatchSelectorModalProps {
   productId?: string;
   productName?: string;
   currentBatchNumber?: string;
+  onlyExistingBatches?: boolean;
   onSelectBatch: (batch: {
     id?: string;
     batch_number: string;
@@ -51,6 +52,7 @@ export function BatchSelectorModal({
   productId,
   productName,
   currentBatchNumber,
+  onlyExistingBatches = false,
   onSelectBatch,
 }: BatchSelectorModalProps) {
   const { t } = useI18n();
@@ -113,9 +115,21 @@ export function BatchSelectorModal({
         ? list.filter((b) => !b.product_id || b.product_id === productId || (b.product_name && productName && b.product_name.toLowerCase() === productName.toLowerCase()))
         : list;
       setBatches(filtered);
+      if (onlyExistingBatches) {
+        setActiveTab("select");
+      } else if (filtered.length > 0) {
+        setActiveTab("select");
+      } else {
+        setActiveTab("create");
+      }
     } catch (err) {
       console.warn("Failed to load batches:", err);
       setBatches([]);
+      if (onlyExistingBatches) {
+        setActiveTab("select");
+      } else {
+        setActiveTab("create");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -250,18 +264,20 @@ export function BatchSelectorModal({
             <Layers className="w-3.5 h-3.5" />
             Available Batches ({batches.length})
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("create")}
-            className={`pb-2.5 px-3 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 cursor-pointer ${
-              activeTab === "create"
-                ? "border-indigo-600 text-indigo-600"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            <Plus className="w-3.5 h-3.5" />
-            + Quick Add New Batch
-          </button>
+          {!onlyExistingBatches && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("create")}
+              className={`pb-2.5 px-3 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 cursor-pointer ${
+                activeTab === "create"
+                  ? "border-indigo-600 text-indigo-600"
+                  : "border-transparent text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              + Quick Add New Batch
+            </button>
+          )}
         </div>
 
         {/* Tab Body */}
@@ -307,20 +323,37 @@ export function BatchSelectorModal({
                   Loading batches...
                 </div>
               ) : sortedBatches.length === 0 ? (
-                <div className="py-10 text-center border-2 border-dashed border-slate-200 rounded-2xl p-6 bg-slate-50/50">
-                  <Boxes className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                  <p className="text-xs font-bold text-slate-700">No matching batches found</p>
-                  <p className="text-[11px] text-slate-400 mt-1 max-w-xs mx-auto">
-                    You can bill directly with a new batch by switching to the Quick Add tab above.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("create")}
-                    className="mt-3.5 px-3 py-1.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 font-black rounded-xl text-xs transition cursor-pointer"
-                  >
-                    + Create First Batch
-                  </button>
-                </div>
+                onlyExistingBatches ? (
+                  <div className="py-10 text-center border-2 border-dashed border-slate-200 rounded-2xl p-6 bg-slate-50/50">
+                    <Boxes className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                    <p className="text-xs font-bold text-slate-700">No batches currently tracked for this product</p>
+                    <p className="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto">
+                      You can create or assign batches later from the line item row, Inventory stock management, or Batch &amp; Traceability page.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="mt-3.5 px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+                    >
+                      Close
+                    </button>
+                  </div>
+                ) : (
+                  <div className="py-10 text-center border-2 border-dashed border-slate-200 rounded-2xl p-6 bg-slate-50/50">
+                    <Boxes className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                    <p className="text-xs font-bold text-slate-700">No matching batches found</p>
+                    <p className="text-[11px] text-slate-400 mt-1 max-w-xs mx-auto">
+                      You can bill directly with a new batch by switching to the Quick Add tab above.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("create")}
+                      className="mt-3.5 px-3 py-1.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 font-black rounded-xl text-xs transition cursor-pointer"
+                    >
+                      + Create First Batch
+                    </button>
+                  </div>
+                )
               ) : (
                 <div className="space-y-2">
                   {sortedBatches.map((b) => {
@@ -431,6 +464,11 @@ export function BatchSelectorModal({
                               MRP: {formatCurrency(Number(b.mrp))}
                             </span>
                           )}
+                          {Number(b.cost_price) > 0 && (
+                            <span className="text-[10px] text-emerald-700 font-semibold">
+                              Cost: {formatCurrency(Number(b.cost_price))}
+                            </span>
+                          )}
                           <button
                             type="button"
                             className="mt-1 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-bold shadow-2xs transition cursor-pointer"
@@ -508,6 +546,20 @@ export function BatchSelectorModal({
                     value={formMfgDate}
                     onChange={setFormMfgDate}
                     className="w-full"
+                  />
+                </div>
+
+                {/* Batch Cost / Purchase Price */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Cost / Purchase Price (₹)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={formCostPrice}
+                    onChange={(e) => setFormCostPrice(e.target.value === "" ? "" : Number(e.target.value))}
+                    placeholder="0.00"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 outline-none"
                   />
                 </div>
 

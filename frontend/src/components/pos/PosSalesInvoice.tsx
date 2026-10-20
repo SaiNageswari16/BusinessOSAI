@@ -2630,6 +2630,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [multiProductSearch, setMultiProductSearch] = useState("");
   const [multiProductCategory, setMultiProductCategory] = useState("all");
   const [selectedProductQuantities, setSelectedProductQuantities] = useState<Record<string, number>>({});
+  const [selectedProductBatches, setSelectedProductBatches] = useState<Record<string, any>>({});
+  const [catalogBatchModalProduct, setCatalogBatchModalProduct] = useState<any | null>(null);
   const [multiProductPage, setMultiProductPage] = useState<number>(1);
   const [multiProductPageSize, setMultiProductPageSize] = useState<number>(15);
 
@@ -2637,8 +2639,25 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     if (isMultiProductModalOpen) {
       loadProducts();
       setMultiProductPage(1);
+      inventoryApi
+        .getBatches()
+        .then((bList: any) => setBatches(bList?.items || (Array.isArray(bList) ? bList : [])))
+        .catch(() => setBatches([]));
     }
   }, [isMultiProductModalOpen]);
+
+  const getProductBatchesList = (product: any) => {
+    if (!product) return [];
+    const prodId = String(product.id);
+    const prodName = (product.name || "").toLowerCase().trim();
+    return batches.filter((b) => {
+      const bProdId = b.product_id ? String(b.product_id) : "";
+      const bProdName = (b.product_name || "").toLowerCase().trim();
+      const matchesId = bProdId && bProdId === prodId;
+      const matchesName = prodName && bProdName && bProdName === prodName;
+      return matchesId || matchesName;
+    });
+  };
 
   useEffect(() => {
     setMultiProductPage(1);
@@ -2742,6 +2761,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const next = { ...prev };
       if (next[productId]) {
         delete next[productId];
+        setSelectedProductBatches((bPrev) => {
+          const bNext = { ...bPrev };
+          delete bNext[productId];
+          return bNext;
+        });
       } else {
         next[productId] = 1;
       }
@@ -2772,7 +2796,20 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const batchInfo = getProductBatchInfo(prod, qty);
       const uomInfo = extractProductUomInfo(prod);
       const discInfo = extractProductDiscount(prod);
-      const rateInfo = computeItemUomRates(batchInfo.unit_price, batchInfo.mrp, uomInfo);
+
+      const chosenBatch = selectedProductBatches[pid];
+      const batchNumber = chosenBatch?.batch_number || batchInfo.batch_number;
+      const expiryDate = chosenBatch?.expiry_date || batchInfo.expiry_date;
+      const mfgDate = chosenBatch?.mfg_date;
+      const effectiveSellingPrice =
+        chosenBatch?.selling_price && Number(chosenBatch.selling_price) > 0
+          ? Number(chosenBatch.selling_price)
+          : batchInfo.unit_price;
+      const effectiveMrp =
+        chosenBatch?.mrp && Number(chosenBatch.mrp) > 0
+          ? Number(chosenBatch.mrp)
+          : batchInfo.mrp;
+      const rateInfo = computeItemUomRates(effectiveSellingPrice, effectiveMrp, uomInfo);
 
       newItems.push({
         id: Math.random().toString(36).substr(2, 9),
@@ -2791,8 +2828,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         base_mrp: rateInfo.base_mrp,
         unit_price: rateInfo.unit_price,
         mrp: rateInfo.mrp,
-        batch_number: batchInfo.batch_number,
-        expiry_date: batchInfo.expiry_date,
+        batch_id: chosenBatch?.id,
+        batch_number: batchNumber,
+        expiry_date: expiryDate,
+        mfg_date: mfgDate,
+        warehouse_name: chosenBatch?.warehouse_name,
+        warehouse_id: chosenBatch?.warehouse_id,
         discount_value: discInfo.discount_value,
         discount_type: discInfo.discount_type,
         tax_rate: getEffectiveTaxRate(prod),
@@ -2811,6 +2852,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     });
     toast.success(`Added ${newItems.length} products to sales invoice!`);
     setSelectedProductQuantities({});
+    setSelectedProductBatches({});
     setIsMultiProductModalOpen(false);
   };
 
@@ -9039,10 +9081,23 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   const brandName = p.brand?.name || (typeof p.brand === "string" ? p.brand : "");
                   const categoryName = p.category?.name || (typeof p.category === "string" ? p.category : "");
 
+                  const prodBatches = getProductBatchesList(p);
+                  const hasBatches = prodBatches.length > 0;
+
                   return (
                     <div
                       key={p.id}
-                      onClick={() => toggleMultiSelectProduct(p.id)}
+                      onClick={() => {
+                        if (!isSelected) {
+                          if (hasBatches) {
+                            setCatalogBatchModalProduct(p);
+                          } else {
+                            toggleMultiSelectProduct(p.id);
+                          }
+                        } else {
+                          toggleMultiSelectProduct(p.id);
+                        }
+                      }}
                       className={`p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 sm:gap-4 ${isSelected
                           ? "bg-blue-50/80 border-blue-500 shadow-sm ring-1 ring-blue-500"
                           : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs"
@@ -9112,6 +9167,45 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                             <span>•</span>
                             <span>GST: <strong className="text-slate-700">{getEffectiveTaxRate(p)}%</strong></span>
                           </div>
+
+                          {/* Selected Batch Badge on Product Card */}
+                          {selectedProductBatches[p.id] ? (
+                            <div className="flex items-center gap-2 mt-1.5" onClick={(e) => e.stopPropagation()}>
+                              <span className="text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
+                                <Boxes className="w-3 h-3 text-indigo-600" />
+                                Batch: #{selectedProductBatches[p.id].batch_number}
+                                {selectedProductBatches[p.id].expiry_date && (
+                                  <span className="text-slate-500 font-normal">
+                                    (Exp: {String(selectedProductBatches[p.id].expiry_date).slice(0, 10)})
+                                  </span>
+                                )}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCatalogBatchModalProduct(p);
+                                }}
+                                className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
+                              >
+                                Change Batch
+                              </button>
+                            </div>
+                          ) : isSelected && hasBatches ? (
+                            <div className="flex items-center gap-2 mt-1.5" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCatalogBatchModalProduct(p);
+                                }}
+                                className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold inline-flex items-center gap-1 underline cursor-pointer"
+                              >
+                                <Boxes className="w-3 h-3" />
+                                Choose Batch ({prodBatches.length} Available)
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
 
@@ -9158,10 +9252,26 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                               <X className="w-3.5 h-3.5" />
                             </button>
                           </div>
+                        ) : hasBatches ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCatalogBatchModalProduct(p);
+                            }}
+                            className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 hover:border-blue-300 font-bold text-xs rounded-xl border border-blue-200 transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                            title="Select product and pick batch"
+                          >
+                            <Boxes className="w-3.5 h-3.5 text-blue-600" />
+                            + Batch ({prodBatches.length})
+                          </button>
                         ) : (
                           <button
                             type="button"
-                            onClick={() => toggleMultiSelectProduct(p.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleMultiSelectProduct(p.id);
+                            }}
                             className="px-3 py-1.5 bg-slate-100 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 text-slate-600 font-bold text-xs rounded-xl border border-slate-200 transition-all cursor-pointer"
                           >
                             + Select
@@ -9543,6 +9653,32 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             toast.success(
               `Selected Batch #${batch.batch_number}${batch.remaining_quantity !== undefined ? ` (Stock: ${batch.remaining_quantity})` : ""}${batch.expiry_date ? ` (Exp: ${batch.expiry_date})` : ""}`
             );
+          }}
+        />
+      )}
+
+      {/* Multi-Product Catalog Batch Selector Modal (Only Existing Batches) */}
+      {catalogBatchModalProduct && (
+        <BatchSelectorModal
+          isOpen={!!catalogBatchModalProduct}
+          onClose={() => setCatalogBatchModalProduct(null)}
+          productId={catalogBatchModalProduct.id}
+          productName={catalogBatchModalProduct.name}
+          currentBatchNumber={selectedProductBatches[catalogBatchModalProduct.id]?.batch_number}
+          onlyExistingBatches={true}
+          onSelectBatch={(batch) => {
+            setSelectedProductBatches((prev) => ({
+              ...prev,
+              [catalogBatchModalProduct.id]: batch,
+            }));
+            setSelectedProductQuantities((prev) => ({
+              ...prev,
+              [catalogBatchModalProduct.id]: prev[catalogBatchModalProduct.id] || 1,
+            }));
+            toast.success(
+              `Selected Batch #${batch.batch_number} for ${catalogBatchModalProduct.name}`
+            );
+            setCatalogBatchModalProduct(null);
           }}
         />
       )}

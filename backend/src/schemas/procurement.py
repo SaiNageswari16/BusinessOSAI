@@ -319,6 +319,8 @@ class GoodsReceivedNoteItemBase(BaseModel):
     quantity_received: float
     quantity_accepted: float
     quantity_rejected: float
+    batch_number: Optional[str] = None
+    expiry_date: Optional[str] = None
 
 
 class GoodsReceivedNoteItemCreate(GoodsReceivedNoteItemBase):

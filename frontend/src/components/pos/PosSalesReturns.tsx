@@ -166,9 +166,15 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
   const loadReturns = async () => {
     try {
       setLoading(true);
-      // Try backend first
-      const serverRes = await salesReturnsApi.listReturns({ page: 1, page_size: 100 }).catch(() => null);
-      if (serverRes && serverRes.items && serverRes.items.length > 0) {
+      // Try backend first with active workspace company_id
+      const activeCid = currentCompanyId !== "default" ? currentCompanyId : undefined;
+      const serverRes = await salesReturnsApi.listReturns({
+        page: 1,
+        page_size: 100,
+        company_id: activeCid,
+      }).catch(() => null);
+
+      if (serverRes && Array.isArray(serverRes.items)) {
         const mapped: SalesReturnRecord[] = serverRes.items.map((r: any) => ({
           id: r.id,
           return_number: r.return_number,
@@ -212,7 +218,7 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
         return;
       }
 
-      // Fallback to localStorage only for real user-saved returns (purge any legacy seed data)
+      // Fallback to localStorage only for real user-saved returns of this specific workspace
       const raw = localStorage.getItem(storageKey);
       if (raw) {
         const parsed = JSON.parse(raw);

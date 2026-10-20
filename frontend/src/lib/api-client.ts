@@ -5293,7 +5293,7 @@ export const salesReturnsApi = {
     }>;
   }) => request<any>("POST", "/sales-returns", data),
 
-  listReturns: (params?: { page?: number; page_size?: number; search?: string; date_from?: string; date_to?: string }) =>
+  listReturns: (params?: { page?: number; page_size?: number; search?: string; date_from?: string; date_to?: string; company_id?: string }) =>
     request<PaginatedResponse<any>>("GET", "/sales-returns", undefined, params),
 
   getReturn: (id: string) => request<any>("GET", `/sales-returns/${id}`),

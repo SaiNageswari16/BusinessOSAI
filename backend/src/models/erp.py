@@ -385,6 +385,7 @@ class InvoicePayment(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixi
 class InvoiceReturn(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "ar_invoice_returns"
 
+    company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
     invoice_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("ar_invoices.id", ondelete="CASCADE"), nullable=False)
     return_number: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     return_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -393,6 +394,7 @@ class InvoiceReturn(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin
     status: Mapped[str] = mapped_column(String(30), default="processed")
 
     invoice: Mapped["Invoice"] = relationship(back_populates="returns")
+    company: Mapped["Company"] = relationship()
     lines: Mapped[list["InvoiceReturnLine"]] = relationship(back_populates="invoice_return", cascade="all, delete-orphan")
 
 

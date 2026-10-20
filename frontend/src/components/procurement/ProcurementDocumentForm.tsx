@@ -44,6 +44,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { cn } from "@/lib/utils";
 import { ProcurementShareModal } from "./ProcurementShareModal";
 import { AddVendorModal } from "./AddVendorModal";
+import { BatchSelectorModal } from "../inventory/BatchSelectorModal";
 
 export type ProcurementDocType = "PR" | "PO" | "PINV";
 
@@ -187,16 +188,37 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [multiProductSearch, setMultiProductSearch] = useState<string>("");
   const [multiProductCategory, setMultiProductCategory] = useState<string>("all");
   const [selectedProductQuantities, setSelectedProductQuantities] = useState<Record<string, number>>({});
+  const [selectedProductBatches, setSelectedProductBatches] = useState<Record<string, any>>({});
+  const [catalogBatchModalProduct, setCatalogBatchModalProduct] = useState<any | null>(null);
   const [multiProductPage, setMultiProductPage] = useState<number>(1);
   const [multiProductPageSize, setMultiProductPageSize] = useState<number>(15);
   const [shareModalDoc, setShareModalDoc] = useState<any | null>(null);
+
+  const [batches, setBatches] = useState<any[]>([]);
 
   useEffect(() => {
     if (isMultiProductModalOpen) {
       loadProducts();
       setMultiProductPage(1);
+      inventoryApi
+        .getBatches()
+        .then((bList: any) => setBatches(bList?.items || (Array.isArray(bList) ? bList : [])))
+        .catch(() => setBatches([]));
     }
   }, [isMultiProductModalOpen]);
+
+  const getProductBatchesList = (product: any) => {
+    if (!product) return [];
+    const prodId = String(product.id);
+    const prodName = (product.name || "").toLowerCase().trim();
+    return batches.filter((b) => {
+      const bProdId = b.product_id ? String(b.product_id) : "";
+      const bProdName = (b.product_name || "").toLowerCase().trim();
+      const matchesId = bProdId && bProdId === prodId;
+      const matchesName = prodName && bProdName && bProdName === prodName;
+      return matchesId || matchesName;
+    });
+  };
 
   useEffect(() => {
     setMultiProductPage(1);
@@ -297,6 +319,14 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [newVendorName, setNewVendorName] = useState<string>("");
   const [newVendorPhone, setNewVendorPhone] = useState<string>("");
   const [newVendorGST, setNewVendorGST] = useState<string>("");
+
+  // Product Batch Selection Modal
+  const [batchModalItem, setBatchModalItem] = useState<{
+    id: string;
+    productId?: string;
+    productName: string;
+    currentBatch?: string;
+  } | null>(null);
 
   // Linked Sourcing Sync
   const [approvedPRs, setApprovedPRs] = useState<any[]>([]);
@@ -698,6 +728,11 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       const copy = { ...prev };
       if (copy[productId]) {
         delete copy[productId];
+        setSelectedProductBatches((bPrev) => {
+          const bCopy = { ...bPrev };
+          delete bCopy[productId];
+          return bCopy;
+        });
       } else {
         copy[productId] = 1;
       }
@@ -733,18 +768,25 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         const costPrice = Number((prod as any).purchase_price || (prod as any).cost_price || prod.selling_price || prod.price || prod.mrp || 0);
         const mrpVal = Number(prod.mrp || prod.selling_price || costPrice || 0);
 
+        const chosenBatch = selectedProductBatches[pid];
+        const batchNumber = chosenBatch?.batch_number || (prod as any).stock_batch_number || (prod as any).batch_number || "";
+        const effectiveCostPrice = (chosenBatch?.cost_price && Number(chosenBatch.cost_price) > 0) ? Number(chosenBatch.cost_price) : costPrice;
+        const effectiveMrp = (chosenBatch?.mrp && Number(chosenBatch.mrp) > 0) ? Number(chosenBatch.mrp) : mrpVal;
+
         newItems.push({
           id: Math.random().toString(36).substring(2, 9),
           product_id: prod.id,
           product_name: prod.name,
           hsn_code: prod.hsn_code || "2202",
           uom: (prod as any).uom_name || "Nos",
-          batch_number: `B-${Date.now().toString().slice(-4)}`,
-          mrp: mrpVal,
+          batch_number: batchNumber,
+          expiry_date: chosenBatch?.expiry_date || undefined,
+          mfg_date: chosenBatch?.mfg_date || undefined,
+          mrp: effectiveMrp,
           quantity: qty,
-          unit_price: costPrice,
-          tax_inclusive_rate: mrpVal,
-          tax_exclusive_rate: costPrice,
+          unit_price: effectiveCostPrice,
+          tax_inclusive_rate: effectiveMrp,
+          tax_exclusive_rate: effectiveCostPrice,
           discount_value: 0,
           discount_type: "percent",
           tax_rate: getEffectiveTaxRate(prod),
@@ -759,6 +801,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
 
     toast.success(`Added ${newItems.length} product(s) to line items!`);
     setSelectedProductQuantities({});
+    setSelectedProductBatches({});
     setIsMultiProductModalOpen(false);
   };
 
@@ -808,7 +851,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           product_name: created.name,
           hsn_code: created.hsn_code || "2202",
           uom: "Nos",
-          batch_number: `B-${Date.now().toString().slice(-4)}`,
+          batch_number: created.batch_number || (created as any).stock_batch_number || "",
           mrp: mrpVal,
           quantity: 1,
           unit_price: costVal,
@@ -863,7 +906,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               product_id: product.id,
               product_name: product.name,
               hsn_code: product.hsn_code || "2202",
-              batch_number: `B-${Date.now().toString().slice(-4)}`,
+              batch_number: (product as any).stock_batch_number || (product as any).batch_number || "",
               mrp: mrpVal,
               quantity: 1,
               unit_price: costPrice,
@@ -2253,13 +2296,30 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
 
                       {/* Batch */}
                       <td className="px-3 py-2">
-                        <input
-                          type="text"
-                          placeholder="B-101"
-                          value={item.batch_number || ""}
-                          onChange={(e) => updateItem(item.id, "batch_number", e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-xs text-slate-700 outline-none"
-                        />
+                        <div className="flex items-center gap-1 min-w-[130px]">
+                          <input
+                            type="text"
+                            placeholder="Batch #"
+                            value={item.batch_number || ""}
+                            onChange={(e) => updateItem(item.id, "batch_number", e.target.value)}
+                            className="w-full bg-white border border-slate-200 focus:border-indigo-500 rounded px-1.5 py-1 text-xs font-mono font-bold text-slate-800 outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setBatchModalItem({
+                                id: item.id,
+                                productId: item.product_id,
+                                productName: item.product_name,
+                                currentBatch: item.batch_number,
+                              })
+                            }
+                            className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded-lg shrink-0 transition shadow-2xs cursor-pointer"
+                            title="Select Existing Batch or Create New Batch"
+                          >
+                            <Boxes className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
 
                       {/* Expiry */}
@@ -2996,10 +3056,23 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                   const brandName = p.brand?.name || (typeof p.brand === "string" ? p.brand : "");
                   const categoryName = p.category?.name || (typeof p.category === "string" ? p.category : "");
 
+                  const prodBatches = getProductBatchesList(p);
+                  const hasBatches = prodBatches.length > 0;
+
                   return (
                     <div
                       key={p.id}
-                      onClick={() => toggleMultiSelectProduct(p.id)}
+                      onClick={() => {
+                        if (!isSelected) {
+                          if (hasBatches) {
+                            setCatalogBatchModalProduct(p);
+                          } else {
+                            toggleMultiSelectProduct(p.id);
+                          }
+                        } else {
+                          toggleMultiSelectProduct(p.id);
+                        }
+                      }}
                       className={cn(
                         "p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 sm:gap-4",
                         isSelected
@@ -3054,6 +3127,45 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                             <span>•</span>
                             <span>GST: <strong className="text-slate-700">{p.tax_percent || 18}%</strong></span>
                           </div>
+
+                          {/* Selected Batch Badge on Product Card */}
+                          {selectedProductBatches[p.id] ? (
+                            <div className="flex items-center gap-2 mt-1.5" onClick={(e) => e.stopPropagation()}>
+                              <span className="text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
+                                <Boxes className="w-3 h-3 text-indigo-600" />
+                                Batch: #{selectedProductBatches[p.id].batch_number}
+                                {selectedProductBatches[p.id].expiry_date && (
+                                  <span className="text-slate-500 font-normal">
+                                    (Exp: {String(selectedProductBatches[p.id].expiry_date).slice(0, 10)})
+                                  </span>
+                                )}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCatalogBatchModalProduct(p);
+                                }}
+                                className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
+                              >
+                                Change Batch
+                              </button>
+                            </div>
+                          ) : isSelected && hasBatches ? (
+                            <div className="flex items-center gap-2 mt-1.5" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCatalogBatchModalProduct(p);
+                                }}
+                                className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold inline-flex items-center gap-1 underline cursor-pointer"
+                              >
+                                <Boxes className="w-3 h-3" />
+                                Choose Batch ({prodBatches.length} Available)
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
 
@@ -3098,10 +3210,26 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                               <X className="w-3.5 h-3.5" />
                             </button>
                           </div>
+                        ) : hasBatches ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCatalogBatchModalProduct(p);
+                            }}
+                            className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:border-indigo-300 font-bold text-xs rounded-xl border border-indigo-200 transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                            title="Select product and pick batch"
+                          >
+                            <Boxes className="w-3.5 h-3.5 text-indigo-600" />
+                            + Batch ({prodBatches.length})
+                          </button>
                         ) : (
                           <button
                             type="button"
-                            onClick={() => toggleMultiSelectProduct(p.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleMultiSelectProduct(p.id);
+                            }}
                             className="px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 text-slate-600 font-bold text-xs rounded-xl border border-slate-200 transition-all cursor-pointer"
                           >
                             + Select
@@ -3419,6 +3547,49 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           setSelectedSupplierId(vendor.id);
         }}
       />
+
+      {/* Product Batch & Traceability Selection Modal */}
+      {batchModalItem && (
+        <BatchSelectorModal
+          isOpen={!!batchModalItem}
+          onClose={() => setBatchModalItem(null)}
+          productId={batchModalItem.productId}
+          productName={batchModalItem.productName}
+          currentBatchNumber={batchModalItem.currentBatch}
+          onSelectBatch={(batch) => {
+            updateItem(batchModalItem.id, "batch_number", batch.batch_number);
+            if (batch.expiry_date) updateItem(batchModalItem.id, "expiry_date", batch.expiry_date);
+            if (batch.mfg_date) updateItem(batchModalItem.id, "mfg_date", batch.mfg_date);
+            if (batch.mrp && Number(batch.mrp) > 0) updateItem(batchModalItem.id, "mrp", Number(batch.mrp));
+            if (batch.cost_price && Number(batch.cost_price) > 0) updateItem(batchModalItem.id, "unit_price", Number(batch.cost_price));
+            toast.success(`Selected Batch #${batch.batch_number} for ${batchModalItem.productName || "item"}`);
+          }}
+        />
+      )}
+
+      {/* Multi-Product Catalog Batch Selector Modal (Only Existing Batches) */}
+      {catalogBatchModalProduct && (
+        <BatchSelectorModal
+          isOpen={!!catalogBatchModalProduct}
+          onClose={() => setCatalogBatchModalProduct(null)}
+          productId={catalogBatchModalProduct.id}
+          productName={catalogBatchModalProduct.name}
+          currentBatchNumber={selectedProductBatches[catalogBatchModalProduct.id]?.batch_number}
+          onlyExistingBatches={true}
+          onSelectBatch={(batch) => {
+            setSelectedProductBatches((prev) => ({
+              ...prev,
+              [catalogBatchModalProduct.id]: batch,
+            }));
+            setSelectedProductQuantities((prev) => ({
+              ...prev,
+              [catalogBatchModalProduct.id]: prev[catalogBatchModalProduct.id] || 1,
+            }));
+            toast.success(`Selected Batch #${batch.batch_number} for ${catalogBatchModalProduct.name}`);
+            setCatalogBatchModalProduct(null);
+          }}
+        />
+      )}
 
       {/* PDF & WhatsApp/Email Share Modal */}
       <ProcurementShareModal

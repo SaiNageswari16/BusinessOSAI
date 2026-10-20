@@ -28,6 +28,7 @@ import { inventoryApi, fetchSalesEmployees } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useStoreLocations } from "@/hooks/use-store-locations";
+import { BatchSelectorModal } from "../inventory/BatchSelectorModal";
 
 interface GRNItem {
   id: string;
@@ -83,6 +84,14 @@ export function GoodsReceivedNoteForm({ onClose, onSaved, initialData }: GoodsRe
   const [isExtracting, setIsExtracting] = useState(false);
   const [ocrFile, setOcrFile] = useState<File | null>(null);
   const [ocrResult, setOcrResult] = useState<any>(null);
+
+  // Batch Selection Modal
+  const [batchModalItem, setBatchModalItem] = useState<{
+    id: string;
+    productId?: string;
+    productName: string;
+    currentBatch?: string;
+  } | null>(null);
 
   // Line items
   const [items, setItems] = useState<GRNItem[]>([
@@ -221,6 +230,7 @@ export function GoodsReceivedNoteForm({ onClose, onSaved, initialData }: GoodsRe
             ...it,
             product_id: product.id,
             product_name: product.name,
+            batch_number: product.stock_batch_number || product.batch_number || it.batch_number || "",
             search_query: product.name,
             is_search_open: false,
           };
@@ -288,6 +298,8 @@ export function GoodsReceivedNoteForm({ onClose, onSaved, initialData }: GoodsRe
             quantity_received: Number(it.quantity_received),
             quantity_accepted: Number(it.quantity_accepted),
             quantity_rejected: Number(it.quantity_rejected),
+            batch_number: it.batch_number || undefined,
+            expiry_date: it.expiry_date || undefined,
           })),
         });
         toast.success(`GRN ${grnNumber} logged! ${totalAccepted} units added to stock.`);
@@ -610,14 +622,32 @@ export function GoodsReceivedNoteForm({ onClose, onSaved, initialData }: GoodsRe
                     </td>
 
                     <td className="px-3 py-2.5">
-                      <input
-                        type="text"
-                        value={item.batch_number}
-                        onChange={(e) =>
-                          setItems(items.map((it) => (it.id === item.id ? { ...it, batch_number: e.target.value } : it)))
-                        }
-                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs font-mono text-slate-800 outline-none"
-                      />
+                      <div className="flex items-center gap-1 min-w-[130px]">
+                        <input
+                          type="text"
+                          value={item.batch_number}
+                          onChange={(e) =>
+                            setItems(items.map((it) => (it.id === item.id ? { ...it, batch_number: e.target.value } : it)))
+                          }
+                          className="w-full bg-white border border-slate-200 focus:border-amber-500 rounded px-2 py-1 text-xs font-mono font-bold text-slate-800 outline-none"
+                          placeholder="Batch #"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setBatchModalItem({
+                              id: item.id,
+                              productId: item.product_id,
+                              productName: item.product_name,
+                              currentBatch: item.batch_number,
+                            })
+                          }
+                          className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg shrink-0 transition shadow-2xs cursor-pointer"
+                          title="Select Existing Batch or Create New Batch"
+                        >
+                          <Boxes className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
 
                     <td className="px-3 py-2.5">
@@ -718,6 +748,30 @@ export function GoodsReceivedNoteForm({ onClose, onSaved, initialData }: GoodsRe
           <span>Submitting this GRN will automatically update inventory stock balances in {receivingLocation}.</span>
         </div>
       </div>
+
+      {/* Product Batch & Traceability Selection Modal */}
+      {batchModalItem && (
+        <BatchSelectorModal
+          isOpen={!!batchModalItem}
+          onClose={() => setBatchModalItem(null)}
+          productId={batchModalItem.productId}
+          productName={batchModalItem.productName}
+          currentBatchNumber={batchModalItem.currentBatch}
+          onSelectBatch={(batch) => {
+            setItems((prev) =>
+              prev.map((it) => {
+                if (it.id !== batchModalItem.id) return it;
+                return {
+                  ...it,
+                  batch_number: batch.batch_number,
+                  expiry_date: batch.expiry_date || it.expiry_date,
+                };
+              })
+            );
+            toast.success(`Selected Batch #${batch.batch_number} for ${batchModalItem.productName || "item"}`);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -157,7 +157,7 @@ export const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
   showDiscount: true,
   showHsn: true,
 
-  showBatchNo: false,
+  showBatchNo: true,
   showExpDate: false,
   showMfgDate: false,
   showSerialNo: false,
@@ -179,7 +179,9 @@ export function loadStoredInvoiceSettings(tenantId?: string, companyId?: string)
     const raw = localStorage.getItem(key) || (key !== "pos_invoice_quick_settings" ? localStorage.getItem("pos_invoice_quick_settings") : null);
     if (raw) {
       const parsed = JSON.parse(raw);
-      return { ...DEFAULT_INVOICE_SETTINGS, ...parsed };
+      const hasExplicitBatchChoice = localStorage.getItem("pos_batch_explicitly_set") === "true";
+      const showBatchNo = hasExplicitBatchChoice ? (parsed.showBatchNo ?? true) : true;
+      return { ...DEFAULT_INVOICE_SETTINGS, ...parsed, showBatchNo };
     }
   } catch (err) {
     console.warn("Failed to load invoice quick settings:", err);
@@ -189,6 +191,7 @@ export function loadStoredInvoiceSettings(tenantId?: string, companyId?: string)
 
 export function saveStoredInvoiceSettings(settings: InvoiceSettings, tenantId?: string, companyId?: string) {
   try {
+    localStorage.setItem("pos_batch_explicitly_set", "true");
     const key = getInvoiceSettingsStorageKey(tenantId, companyId);
     localStorage.setItem(key, JSON.stringify(settings));
     // Also update global fallback key

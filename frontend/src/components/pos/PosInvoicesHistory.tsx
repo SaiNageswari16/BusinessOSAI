@@ -575,7 +575,8 @@ export function PosInvoicesHistory() {
       } catch (e) {}
 
       try {
-        const srvReturns: any = await salesReturnsApi.listReturns({ page: 1, page_size: 100 }).catch(() => null);
+        const activeCid = currentCompanyId !== "default" ? currentCompanyId : undefined;
+        const srvReturns: any = await salesReturnsApi.listReturns({ page: 1, page_size: 100, company_id: activeCid }).catch(() => null);
         const retItems = srvReturns?.items || srvReturns?.data?.items || (Array.isArray(srvReturns) ? srvReturns : []);
         if (Array.isArray(retItems)) {
           retItems.forEach((r: any) => {

@@ -4,9 +4,9 @@ import uuid
 from datetime import date, datetime
 from typing import Annotated, Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, BackgroundTasks
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, or_
+from sqlalchemy import func, select, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -17,6 +17,7 @@ from src.models import Customer, Product
 from src.models.inventory import InventoryBatch, InventoryTransaction, TraceabilityEvent
 from src.models.erp import Invoice, InvoiceLine, InvoiceReturn, InvoiceReturnLine, InvoicePayment
 from src.utils.pagination import PaginatedResponse, paginate
+from src.api.v1.erp.invoices import _bg_send_invoice_whatsapp, _bg_send_invoice_email
 
 logger = logging.getLogger(__name__)
 
@@ -112,9 +113,9 @@ class SalesReturnResponse(BaseModel):
 
 
 async def _lookup_original_invoice(
-    db: AsyncSession, tenant_id: uuid.UUID, invoice_id: str | None, invoice_number: str | None
+    db: AsyncSession, tenant_id: uuid.UUID, invoice_id: str | None, invoice_number: str | None, company_id: uuid.UUID | None = None
 ) -> Invoice | None:
-    """Find the original invoice by ID, ERP invoice number, or POS receipt reference number."""
+    """Find the original invoice by ID, ERP invoice number, or POS receipt reference number within workspace scope."""
     search_terms: list[str] = []
     if invoice_number and invoice_number.strip():
         search_terms.append(invoice_number.strip())
@@ -128,11 +129,14 @@ async def _lookup_original_invoice(
     for term in search_terms:
         try:
             inv_uuid = uuid.UUID(term)
-            inv = await db.scalar(
+            query = (
                 select(Invoice)
                 .options(selectinload(Invoice.lines))
                 .where(Invoice.id == inv_uuid, Invoice.tenant_id == tenant_id)
             )
+            if company_id:
+                query = query.where(or_(Invoice.company_id == company_id, Invoice.company_id.is_(None)))
+            inv = await db.scalar(query)
             if inv:
                 return inv
         except (ValueError, AttributeError):
@@ -140,7 +144,7 @@ async def _lookup_original_invoice(
 
     # 2. Search Invoice by invoice_number OR reference_number (which stores REC-... counter receipt)
     for term in search_terms:
-        inv = await db.scalar(
+        query = (
             select(Invoice)
             .options(selectinload(Invoice.lines))
             .where(
@@ -152,6 +156,9 @@ async def _lookup_original_invoice(
                 Invoice.tenant_id == tenant_id,
             )
         )
+        if company_id:
+            query = query.where(or_(Invoice.company_id == company_id, Invoice.company_id.is_(None)))
+        inv = await db.scalar(query)
         if inv:
             return inv
 
@@ -166,9 +173,11 @@ async def _lookup_original_invoice(
                 ),
                 POSTransaction.tenant_id == tenant_id,
             )
+            if company_id:
+                pos_stmt = pos_stmt.where(or_(POSTransaction.company_id == company_id, POSTransaction.company_id.is_(None)))
             pos_tx = await db.scalar(pos_stmt)
             if pos_tx and pos_tx.receipt_number:
-                linked_inv = await db.scalar(
+                linked_stmt = (
                     select(Invoice)
                     .options(selectinload(Invoice.lines))
                     .where(
@@ -179,6 +188,9 @@ async def _lookup_original_invoice(
                         Invoice.tenant_id == tenant_id,
                     )
                 )
+                if company_id:
+                    linked_stmt = linked_stmt.where(or_(Invoice.company_id == company_id, Invoice.company_id.is_(None)))
+                linked_inv = await db.scalar(linked_stmt)
                 if linked_inv:
                     return linked_inv
         except Exception:
@@ -201,27 +213,30 @@ async def _restock_product(
     if product_id:
         try:
             pid = uuid.UUID(str(product_id)) if isinstance(product_id, str) else product_id
-            prod = await db.scalar(
-                select(Product).where(Product.id == pid, Product.tenant_id == tenant_id).with_for_update()
-            )
+            query = select(Product).where(Product.id == pid, Product.tenant_id == tenant_id).with_for_update()
+            if company_id:
+                query = query.where(or_(Product.company_id == company_id, Product.company_id.is_(None)))
+            prod = await db.scalar(query)
         except Exception:
             pass
 
     if not prod and sku:
-        prod = await db.scalar(
-            select(Product).where(
-                (Product.sku == sku) | (Product.barcode == sku),
-                Product.tenant_id == tenant_id
-            ).with_for_update()
-        )
+        query = select(Product).where(
+            (Product.sku == sku) | (Product.barcode == sku),
+            Product.tenant_id == tenant_id
+        ).with_for_update()
+        if company_id:
+            query = query.where(or_(Product.company_id == company_id, Product.company_id.is_(None)))
+        prod = await db.scalar(query)
 
     if not prod and product_name:
-        prod = await db.scalar(
-            select(Product).where(
-                Product.name.ilike(product_name.strip()),
-                Product.tenant_id == tenant_id
-            ).with_for_update()
-        )
+        query = select(Product).where(
+            Product.name.ilike(product_name.strip()),
+            Product.tenant_id == tenant_id
+        ).with_for_update()
+        if company_id:
+            query = query.where(or_(Product.company_id == company_id, Product.company_id.is_(None)))
+        prod = await db.scalar(query)
 
     if not prod:
         return False
@@ -296,19 +311,24 @@ async def _restock_product(
 async def create_sales_return(
     payload: SalesReturnCreate,
     request: Request,
+    background_tasks: BackgroundTasks,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoices"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Create a new Sales Return — restocks inventory and generates a Credit Note."""
-    # Lookup the original invoice
+    # Resolve active company / workspace
+    from src.utils.number_series import generate_number, resolve_valid_company_id
+    active_cid = await resolve_valid_company_id(db, ctx.tenant_id, ctx.active_company_id)
+
+    # Lookup the original invoice (scoped to active company if set)
     original_invoice = await _lookup_original_invoice(
-        db, ctx.tenant_id, payload.original_invoice_id, payload.original_invoice_number
+        db, ctx.tenant_id, payload.original_invoice_id, payload.original_invoice_number, company_id=active_cid
     )
 
     if not payload.items:
         raise HTTPException(status_code=400, detail="At least one return item is required.")
 
-    # Determine customer info
+    # Determine customer info with complete contact details
     customer_name = payload.customer_name
     customer_phone = payload.customer_phone
     inv_number = payload.original_invoice_number or ""
@@ -317,16 +337,36 @@ async def create_sales_return(
         customer_phone = customer_phone or original_invoice.customer_phone
         inv_number = original_invoice.invoice_number
 
-    # Generate return number
-    from src.utils.number_series import generate_number, resolve_valid_company_id
-    active_cid = await resolve_valid_company_id(db, ctx.tenant_id, ctx.active_company_id)
+    cust_phone = (customer_phone or (original_invoice.customer_phone if original_invoice else None) or "").strip()
+    cust_email = (original_invoice.customer_email if original_invoice else None)
+    cust_gst = (original_invoice.customer_gstin if original_invoice else None)
+    cust_billing_addr = (original_invoice.billing_address if original_invoice else None)
+    cust_shipping_addr = (original_invoice.shipping_address if original_invoice else None)
 
+    if payload.customer_id:
+        try:
+            cid_uuid = uuid.UUID(str(payload.customer_id))
+            crm_cust = await db.scalar(select(Customer).where(Customer.id == cid_uuid))
+            if crm_cust:
+                if not cust_phone and crm_cust.phone:
+                    cust_phone = crm_cust.phone.strip()
+                if not cust_email and crm_cust.email:
+                    cust_email = crm_cust.email.strip()
+                if not cust_gst and getattr(crm_cust, "gst_number", None):
+                    cust_gst = crm_cust.gst_number
+                if not cust_billing_addr and getattr(crm_cust, "address", None):
+                    cust_billing_addr = crm_cust.address
+        except Exception:
+            pass
+
+    # Generate return number
     try:
         return_number = await generate_number(db, ctx.tenant_id, "sales_returns", active_cid, fallback_prefix="SR-")
     except Exception:
-        count = await db.scalar(
-            select(func.count(InvoiceReturn.id)).where(InvoiceReturn.tenant_id == ctx.tenant_id)
-        ) or 0
+        count_q = select(func.count(InvoiceReturn.id)).where(InvoiceReturn.tenant_id == ctx.tenant_id)
+        if active_cid:
+            count_q = count_q.where(InvoiceReturn.company_id == active_cid)
+        count = await db.scalar(count_q) or 0
         return_number = f"SR-{count + 1:05d}"
 
     # Parse return date
@@ -341,9 +381,11 @@ async def create_sales_return(
     total_return_amount = 0.0
     restocked_count = 0
 
-    # Create the InvoiceReturn record
+    # Create the InvoiceReturn record with company_id for workspace isolation
+    return_company_id = active_cid or (original_invoice.company_id if original_invoice else None)
     invoice_return = InvoiceReturn(
         tenant_id=ctx.tenant_id,
+        company_id=return_company_id,
         invoice_id=original_invoice.id if original_invoice else None,
         return_number=return_number,
         return_date=return_date_val,
@@ -445,7 +487,11 @@ async def create_sales_return(
             status="paid",
             customer_id=uuid.UUID(str(payload.customer_id)) if payload.customer_id else (original_invoice.customer_id if original_invoice else None),
             customer_name=customer_name or "Walk-in Customer",
-            customer_phone=customer_phone,
+            customer_phone=cust_phone or None,
+            customer_email=cust_email or None,
+            customer_gstin=cust_gst or None,
+            billing_address=cust_billing_addr or None,
+            shipping_address=cust_shipping_addr or None,
             invoice_date=return_date_val,
             due_date=return_date_val,
             currency_code="INR",
@@ -498,6 +544,13 @@ async def create_sales_return(
 
     await db.commit()
 
+    # Automatically dispatch Credit Note via WhatsApp and Email to the exact customer
+    if credit_note:
+        if cust_phone:
+            background_tasks.add_task(_bg_send_invoice_whatsapp, credit_note.id, ctx.tenant_id, cust_phone)
+        if cust_email:
+            background_tasks.add_task(_bg_send_invoice_email, credit_note.id, ctx.tenant_id, cust_email)
+
     return {
         "id": str(invoice_return.id),
         "return_number": return_number,
@@ -525,13 +578,27 @@ async def list_sales_returns(
     search: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    company_id: uuid.UUID | None = None,
 ):
-    """List all sales returns."""
+    """List all sales returns strictly filtered by active organization / workspace."""
+    target_company_id = company_id or ctx.active_company_id
+
     query = (
         select(InvoiceReturn)
         .where(InvoiceReturn.tenant_id == ctx.tenant_id)
         .options(selectinload(InvoiceReturn.lines))
     )
+
+    if target_company_id:
+        query = query.where(
+            or_(
+                InvoiceReturn.company_id == target_company_id,
+                and_(
+                    InvoiceReturn.company_id.is_(None),
+                    InvoiceReturn.invoice.has(Invoice.company_id == target_company_id),
+                ),
+            )
+        )
 
     if search:
         query = query.where(
@@ -557,24 +624,28 @@ async def list_sales_returns(
             inv = await db.scalar(select(Invoice.invoice_number).where(Invoice.id == r.invoice_id))
             inv_num = inv or ""
 
-        # Lookup linked Credit Note / Debit Note
-        cn_doc = await db.scalar(
-            select(Invoice.invoice_number).where(
-                Invoice.tenant_id == ctx.tenant_id,
-                Invoice.reference_number == r.return_number,
-                Invoice.invoice_type == "credit_note",
-            ).limit(1)
+        # Lookup linked Credit Note / Debit Note within tenant/company
+        cn_doc_q = select(Invoice.invoice_number).where(
+            Invoice.tenant_id == ctx.tenant_id,
+            Invoice.reference_number == r.return_number,
+            Invoice.invoice_type == "credit_note",
         )
-        dn_doc = await db.scalar(
-            select(Invoice.invoice_number).where(
-                Invoice.tenant_id == ctx.tenant_id,
-                Invoice.reference_number == r.return_number,
-                Invoice.invoice_type == "debit_note",
-            ).limit(1)
+        if target_company_id:
+            cn_doc_q = cn_doc_q.where(or_(Invoice.company_id == target_company_id, Invoice.company_id.is_(None)))
+        cn_doc = await db.scalar(cn_doc_q.limit(1))
+
+        dn_doc_q = select(Invoice.invoice_number).where(
+            Invoice.tenant_id == ctx.tenant_id,
+            Invoice.reference_number == r.return_number,
+            Invoice.invoice_type == "debit_note",
         )
+        if target_company_id:
+            dn_doc_q = dn_doc_q.where(or_(Invoice.company_id == target_company_id, Invoice.company_id.is_(None)))
+        dn_doc = await db.scalar(dn_doc_q.limit(1))
 
         items.append({
             "id": str(r.id),
+            "company_id": str(r.company_id) if r.company_id else None,
             "return_number": r.return_number,
             "return_date": r.return_date.isoformat() if r.return_date else "",
             "original_invoice_number": inv_num,
@@ -633,6 +704,9 @@ async def get_sales_return(
     if not ret:
         raise HTTPException(status_code=404, detail="Sales return not found")
 
+    if ctx.active_company_id and ret.company_id and ret.company_id != ctx.active_company_id:
+        raise HTTPException(status_code=404, detail="Sales return not found in active organization")
+
     inv_num = ""
     if ret.invoice_id:
         inv = await db.scalar(select(Invoice.invoice_number).where(Invoice.id == ret.invoice_id))
@@ -687,7 +761,7 @@ async def get_invoice_for_return(
 ):
     """Look up an invoice or POS receipt by ID or number for processing a return. Returns invoice details with real line items."""
     clean_term = invoice_id_or_number.strip()
-    invoice = await _lookup_original_invoice(db, ctx.tenant_id, clean_term, clean_term)
+    invoice = await _lookup_original_invoice(db, ctx.tenant_id, clean_term, clean_term, company_id=ctx.active_company_id)
 
     if invoice:
         is_thermal_bill = (
@@ -743,6 +817,8 @@ async def get_invoice_for_return(
         ),
         POSTransaction.tenant_id == ctx.tenant_id,
     )
+    if ctx.active_company_id:
+        pos_stmt = pos_stmt.where(or_(POSTransaction.company_id == ctx.active_company_id, POSTransaction.company_id.is_(None)))
     pos_tx = await db.scalar(pos_stmt)
     if not pos_tx:
         raise HTTPException(status_code=404, detail="Invoice or Receipt not found")
@@ -804,6 +880,7 @@ async def get_invoice_for_return(
 async def process_exchange(
     payload: ExchangeCreate,
     request: Request,
+    background_tasks: BackgroundTasks,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoices"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
@@ -813,12 +890,12 @@ async def process_exchange(
     if not payload.exchange_items:
         raise HTTPException(status_code=400, detail="At least one exchange item is required.")
 
-    original_invoice = await _lookup_original_invoice(
-        db, ctx.tenant_id, payload.original_invoice_id, payload.original_invoice_number
-    )
-
     from src.utils.number_series import generate_number, resolve_valid_company_id
     active_cid = await resolve_valid_company_id(db, ctx.tenant_id, ctx.active_company_id)
+
+    original_invoice = await _lookup_original_invoice(
+        db, ctx.tenant_id, payload.original_invoice_id, payload.original_invoice_number, company_id=active_cid
+    )
 
     customer_name = payload.customer_name
     customer_phone = payload.customer_phone
@@ -828,20 +905,45 @@ async def process_exchange(
         customer_phone = customer_phone or original_invoice.customer_phone
         inv_number = original_invoice.invoice_number
 
+    cust_phone = (customer_phone or (original_invoice.customer_phone if original_invoice else None) or "").strip()
+    cust_email = (original_invoice.customer_email if original_invoice else None)
+    cust_gst = (original_invoice.customer_gstin if original_invoice else None)
+    cust_billing_addr = (original_invoice.billing_address if original_invoice else None)
+    cust_shipping_addr = (original_invoice.shipping_address if original_invoice else None)
+
+    if payload.customer_id:
+        try:
+            cid_uuid = uuid.UUID(str(payload.customer_id))
+            crm_cust = await db.scalar(select(Customer).where(Customer.id == cid_uuid))
+            if crm_cust:
+                if not cust_phone and crm_cust.phone:
+                    cust_phone = crm_cust.phone.strip()
+                if not cust_email and crm_cust.email:
+                    cust_email = crm_cust.email.strip()
+                if not cust_gst and getattr(crm_cust, "gst_number", None):
+                    cust_gst = crm_cust.gst_number
+                if not cust_billing_addr and getattr(crm_cust, "address", None):
+                    cust_billing_addr = crm_cust.address
+        except Exception:
+            pass
+
     # 1. Process Returns
     try:
         return_number = await generate_number(db, ctx.tenant_id, "sales_returns", active_cid, fallback_prefix="SR-")
     except Exception:
-        count = await db.scalar(
-            select(func.count(InvoiceReturn.id)).where(InvoiceReturn.tenant_id == ctx.tenant_id)
-        ) or 0
+        count_q = select(func.count(InvoiceReturn.id)).where(InvoiceReturn.tenant_id == ctx.tenant_id)
+        if active_cid:
+            count_q = count_q.where(InvoiceReturn.company_id == active_cid)
+        count = await db.scalar(count_q) or 0
         return_number = f"SR-{count + 1:05d}"
 
     return_total = 0.0
     restocked_count = 0
 
+    return_company_id = active_cid or (original_invoice.company_id if original_invoice else None)
     invoice_return = InvoiceReturn(
         tenant_id=ctx.tenant_id,
+        company_id=return_company_id,
         invoice_id=original_invoice.id if original_invoice else None,
         return_number=return_number,
         return_date=date.today(),
@@ -931,7 +1033,11 @@ async def process_exchange(
         status="paid" if difference <= 0.01 else "draft",
         customer_id=uuid.UUID(str(payload.customer_id)) if payload.customer_id else (original_invoice.customer_id if original_invoice else None),
         customer_name=customer_name or "Walk-in Customer",
-        customer_phone=customer_phone,
+        customer_phone=cust_phone or None,
+        customer_email=cust_email or None,
+        customer_gstin=cust_gst or None,
+        billing_address=cust_billing_addr or None,
+        shipping_address=cust_shipping_addr or None,
         invoice_date=date.today(),
         due_date=date.today(),
         currency_code="INR",
@@ -1025,7 +1131,11 @@ async def process_exchange(
             status="paid",
             customer_id=uuid.UUID(str(payload.customer_id)) if payload.customer_id else (original_invoice.customer_id if original_invoice else None),
             customer_name=customer_name or "Walk-in Customer",
-            customer_phone=customer_phone,
+            customer_phone=cust_phone or None,
+            customer_email=cust_email or None,
+            customer_gstin=cust_gst or None,
+            billing_address=cust_billing_addr or None,
+            shipping_address=cust_shipping_addr or None,
             invoice_date=date.today(),
             due_date=date.today(),
             currency_code="INR",
@@ -1059,7 +1169,11 @@ async def process_exchange(
             status="paid",
             customer_id=uuid.UUID(str(payload.customer_id)) if payload.customer_id else (original_invoice.customer_id if original_invoice else None),
             customer_name=customer_name or "Walk-in Customer",
-            customer_phone=customer_phone,
+            customer_phone=cust_phone or None,
+            customer_email=cust_email or None,
+            customer_gstin=cust_gst or None,
+            billing_address=cust_billing_addr or None,
+            shipping_address=cust_shipping_addr or None,
             invoice_date=date.today(),
             due_date=date.today(),
             currency_code="INR",
@@ -1094,6 +1208,18 @@ async def process_exchange(
     )
 
     await db.commit()
+
+    # Automatically dispatch Exchange documents (Credit Note or Exchange Invoice) via WhatsApp & Email
+    if linked_cn:
+        if cust_phone:
+            background_tasks.add_task(_bg_send_invoice_whatsapp, linked_cn.id, ctx.tenant_id, cust_phone)
+        if cust_email:
+            background_tasks.add_task(_bg_send_invoice_email, linked_cn.id, ctx.tenant_id, cust_email)
+    elif exchange_invoice:
+        if cust_phone:
+            background_tasks.add_task(_bg_send_invoice_whatsapp, exchange_invoice.id, ctx.tenant_id, cust_phone)
+        if cust_email:
+            background_tasks.add_task(_bg_send_invoice_email, exchange_invoice.id, ctx.tenant_id, cust_email)
 
     return {
         "return_number": return_number,

@@ -127,6 +127,8 @@ async def _send_via_gateway(
     customer_name: str,
     total_amount: float = 0.0,
     balance_due: float = 0.0,
+    doc_type: str = "tax_invoice",
+    reference_number: str | None = None,
 ) -> dict:
     """Proxy the PDF to the WhatsApp gateway with fallback to rich text invoice summary."""
     # Normalize phone: remove non-digits and ensure country code
@@ -134,19 +136,42 @@ async def _send_via_gateway(
     if len(clean_phone) == 10:
         clean_phone = f"91{clean_phone}"
 
-    caption = (
-        f"Dear {customer_name}, thank you for your purchase!\n"
-        f"Your invoice *{invoice_number}* is attached.\n"
-        f"Grand Total: *Rs. {total_amount:,.2f}*\n"
-        f"Balance Due: *Rs. {balance_due:,.2f}*\n\n"
-        f"For any queries, please reply to this message."
-    )
+    raw_type = str(doc_type or "").lower()
+    inv_num_upper = str(invoice_number or "").upper()
+    is_cn = raw_type == "credit_note" or inv_num_upper.startswith("CN-")
+    is_dn = raw_type == "debit_note" or inv_num_upper.startswith("DN-")
+
+    if is_cn:
+        file_prefix = "CreditNote"
+        ref_line = f"\n*Reference:* Return #{reference_number}" if reference_number else ""
+        caption = (
+            f"Dear *{customer_name}*,\n\n"
+            f"Your Credit Note *{invoice_number}* for *Rs. {total_amount:,.2f}* has been processed.{ref_line}\n\n"
+            f"The official Credit Note PDF document is attached for your accounting records."
+        )
+    elif is_dn:
+        file_prefix = "DebitNote"
+        ref_line = f"\n*Reference:* #{reference_number}" if reference_number else ""
+        caption = (
+            f"Dear *{customer_name}*,\n\n"
+            f"Your Debit Note *{invoice_number}* for *Rs. {total_amount:,.2f}* has been issued.{ref_line}\n\n"
+            f"The official Debit Note PDF document is attached for your records."
+        )
+    else:
+        file_prefix = "Invoice"
+        caption = (
+            f"Dear {customer_name}, thank you for your purchase!\n"
+            f"Your invoice *{invoice_number}* is attached.\n"
+            f"Grand Total: *Rs. {total_amount:,.2f}*\n"
+            f"Balance Due: *Rs. {balance_due:,.2f}*\n\n"
+            f"For any queries, please reply to this message."
+        )
 
     payload = {
         "mimeType": "application/pdf",
         "data": pdf_b64,
-        "fileName": f"Invoice_{invoice_number}.pdf",
-        "caption": caption,
+        "fileName": f"{file_prefix}_{invoice_number}.pdf",
+        "caption": caption.strip(),
     }
     media_timeout = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
     text_timeout = httpx.Timeout(connect=10.0, read=60.0, write=60.0, pool=10.0)
@@ -268,6 +293,8 @@ async def send_invoice_whatsapp(
             customer_name=invoice.customer_name or "Customer",
             total_amount=float(getattr(invoice, "total_amount", 0.0) or 0.0),
             balance_due=float(getattr(invoice, "balance_due", 0.0) or 0.0),
+            doc_type=getattr(invoice, "invoice_type", "tax_invoice"),
+            reference_number=getattr(invoice, "reference_number", None),
         )
         message_id = gateway_res.get("message_id")
         logger.info(
@@ -686,7 +713,38 @@ async def send_invoice_email(
         </tr>
         """
 
-    doc_type_label = "Proforma Invoice" if getattr(invoice, "invoice_type", "").lower() == "proforma" or str(inv_num).startswith("PI-") else "Tax Invoice"
+    raw_type = str(getattr(invoice, "invoice_type", "")).lower()
+    inv_num_upper = str(inv_num).upper()
+    if raw_type == "credit_note" or inv_num_upper.startswith("CN-"):
+        doc_type_label = "Credit Note"
+    elif raw_type == "debit_note" or inv_num_upper.startswith("DN-"):
+        doc_type_label = "Debit Note"
+    elif raw_type == "proforma" or inv_num_upper.startswith("PI-"):
+        doc_type_label = "Proforma Invoice"
+    elif raw_type in ("quotation", "quote") or inv_num_upper.startswith("QT-"):
+        doc_type_label = "Quotation"
+    else:
+        doc_type_label = "Tax Invoice"
+
+    is_cn = doc_type_label == "Credit Note"
+    is_dn = doc_type_label == "Debit Note"
+    ref_num = getattr(invoice, "reference_number", None)
+
+    badge_style = "background: #f3e8ff; color: #7e22ce;" if is_cn else ("background: #fff7ed; color: #c2410c;" if is_dn else ("background: #ecfdf5; color: #059669;" if is_paid else "background: #eff6ff; color: #2563eb;"))
+    intro_p = (
+        f"Please find attached your official Credit Note <strong>#{inv_num}</strong>"
+        + (f" against Sales Return <strong>#{ref_num}</strong>" if ref_num else "")
+        + f" for <strong>Rs. {_fmt_amount(total_amt)}</strong>."
+        if is_cn
+        else (
+            f"Please find attached your official Debit Note <strong>#{inv_num}</strong> for <strong>Rs. {_fmt_amount(total_amt)}</strong>."
+            if is_dn
+            else f"Thank you for your business. Please find attached your official {doc_type_label} <strong>#{inv_num}</strong>."
+        )
+    )
+    total_label = "Credit Refund Amount:" if is_cn else ("Debit Amount:" if is_dn else "Grand Total:")
+    status_text = "CREDITED / REFUNDED" if is_cn else ("DEBITED" if is_dn else ("PAID IN FULL" if is_paid else f"BALANCE DUE (Rs. {_fmt_amount(bal_due)})"))
+    status_color = "#7e22ce" if is_cn else ("#c2410c" if is_dn else ("#059669" if is_paid else "#dc2626"))
 
     html_body = f"""
     <!DOCTYPE html>
@@ -697,8 +755,7 @@ async def send_invoice_email(
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f8fafc; color: #1e293b; padding: 20px; }}
         .card {{ max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; padding: 32px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }}
         .header {{ border-bottom: 2px solid #2563eb; padding-bottom: 18px; margin-bottom: 20px; }}
-        .badge {{ display: inline-block; background: #eff6ff; color: #2563eb; font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; }}
-        .badge-paid {{ background: #ecfdf5; color: #059669; }}
+        .badge {{ display: inline-block; font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; }}
         .total-box {{ background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin: 24px 0; }}
         .footer {{ text-align: center; font-size: 11px; color: #94a3b8; margin-top: 28px; }}
       </style>
@@ -706,12 +763,12 @@ async def send_invoice_email(
     <body>
       <div class="card">
         <div class="header">
-          <span class="badge {('badge-paid' if is_paid else '')}">{doc_type_label}</span>
+          <span class="badge" style="{badge_style}">{doc_type_label}</span>
           <h2 style="margin: 8px 0 0 0; color: #0f172a;">{org_name}</h2>
-          <p style="margin: 4px 0 0 0; font-size: 13px; color: #64748b;">Invoice Ref: <strong>#{inv_num}</strong> &bull; Date: {inv_date}</p>
+          <p style="margin: 4px 0 0 0; font-size: 13px; color: #64748b;">Doc Ref: <strong>#{inv_num}</strong> &bull; Date: {inv_date}</p>
         </div>
         <p>Dear <strong>{cust_name}</strong>,</p>
-        <p>Thank you for your business. Please find attached your official {doc_type_label} <strong>#{inv_num}</strong>.</p>
+        <p>{intro_p}</p>
 
         <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin: 20px 0;">
           <thead>
@@ -730,20 +787,20 @@ async def send_invoice_email(
         <div class="total-box">
           <table style="width: 100%; font-size: 14px;">
             <tr>
-              <td style="color: #64748b;">Grand Total:</td>
+              <td style="color: #64748b;">{total_label}</td>
               <td style="text-align: right; font-weight: 800; color: #0f172a; font-size: 16px;">Rs. {_fmt_amount(total_amt)}</td>
             </tr>
             <tr>
-              <td style="color: #64748b; padding-top: 4px;">Payment Status:</td>
-              <td style="text-align: right; font-weight: 700; color: {('#059669' if is_paid else '#dc2626')}; padding-top: 4px;">
-                {('PAID IN FULL' if is_paid else f'BALANCE DUE (Rs. {_fmt_amount(bal_due)})')}
+              <td style="color: #64748b; padding-top: 4px;">Status:</td>
+              <td style="text-align: right; font-weight: 700; color: {status_color}; padding-top: 4px;">
+                {status_text}
               </td>
             </tr>
           </table>
         </div>
 
         <p style="font-size: 13px; color: #475569;">
-          The complete official PDF document has been attached to this email for your tax accounting and bookkeeping records.
+          The official {doc_type_label} PDF document has been attached to this email for your tax accounting and bookkeeping records.
         </p>
 
         <p style="margin-top: 24px; font-size: 13px; font-weight: 600;">
@@ -762,8 +819,8 @@ async def send_invoice_email(
     subject = f"{doc_type_label} #{inv_num} from {org_name}"
     text_body = (
         f"Dear {cust_name},\n\n"
-        f"Thank you for your business. Please find attached your official {doc_type_label} #{inv_num} for Rs. {total_amt:,.2f}.\n"
-        f"Status: {'PAID' if is_paid else f'Balance Due Rs. {bal_due:,.2f}'}\n\n"
+        f"Please find attached your official {doc_type_label} #{inv_num} for Rs. {total_amt:,.2f}.\n"
+        f"Status: {status_text}\n\n"
         f"Best regards,\n{org_name}"
     )
 

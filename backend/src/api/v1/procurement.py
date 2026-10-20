@@ -1245,6 +1245,39 @@ async def create_goods_received_note(
             curr_on_hand = prod.on_hand_stock if prod.on_hand_stock is not None else curr_stock
             prod.on_hand_stock = int(curr_on_hand + add_qty)
 
+            # Sync InventoryBatch if batch_number is specified
+            batch_num = getattr(it, "batch_number", None)
+            if batch_num and str(batch_num).strip():
+                clean_bnum = str(batch_num).strip()
+                from src.models.inventory import InventoryBatch
+                b_stmt = select(InventoryBatch).where(
+                    InventoryBatch.tenant_id == ctx.tenant_id,
+                    InventoryBatch.product_id == prod.id,
+                    InventoryBatch.batch_number == clean_bnum,
+                )
+                b_res = await db.execute(b_stmt)
+                existing_batch = b_res.scalars().first()
+                if existing_batch:
+                    existing_batch.quantity = int((existing_batch.quantity or 0) + add_qty)
+                    existing_batch.remaining_quantity = int((existing_batch.remaining_quantity or 0) + add_qty)
+                else:
+                    new_b = InventoryBatch(
+                        tenant_id=ctx.tenant_id,
+                        company_id=ctx.active_company_id,
+                        batch_number=clean_bnum,
+                        product_id=prod.id,
+                        product_name=prod.name,
+                        sku=prod.sku or "",
+                        quantity=int(add_qty),
+                        remaining_quantity=int(add_qty),
+                        uom=prod.uom or "Pcs",
+                        cost_price=prod.purchase_price or prod.cost_price or 0.0,
+                        mrp=prod.mrp or prod.selling_price or 0.0,
+                        selling_price=prod.selling_price or 0.0,
+                        status="Active",
+                    )
+                    db.add(new_b)
+
         from src.schemas.procurement import GoodsReceivedNoteItemResponse
         created_items.append(
             GoodsReceivedNoteItemResponse(
