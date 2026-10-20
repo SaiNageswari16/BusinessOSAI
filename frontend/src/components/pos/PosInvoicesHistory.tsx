@@ -58,6 +58,7 @@ import { printThermalReceiptInvoice, generateThermalReceiptHtml, thermalReceiptH
 import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
 import { FullInvoicePrinter } from "./FullInvoicePrinter";
 import { ThermalReceiptPreviewModal } from "./ThermalReceiptPreviewModal";
+import { useWhatsAppStatus } from "@/hooks/use-whatsapp-status";
 import { EWayBillModal } from "./EWayBillModal";
 import { StandardVoucherModal, StandardVoucherData } from "./StandardVoucherModal";
 import { PaginationControl } from "@/components/ui/PaginationControl";
@@ -434,6 +435,7 @@ export function PosInvoicesHistory() {
   const [whatsappInvoice, setWhatsappInvoice] = useState<LocalInvoiceRecord | null>(null);
   const [whatsappPhoneInput, setWhatsappPhoneInput] = useState<string>("");
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState<boolean>(false);
+  const { isOnline: isWhatsAppOnline, sessionId: activeWhatsAppNumber } = useWhatsAppStatus();
 
   // Email Dialog State
   const [emailInvoice, setEmailInvoice] = useState<LocalInvoiceRecord | null>(null);
@@ -3521,7 +3523,14 @@ export function PosInvoicesHistory() {
                   <MessageCircle className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="font-black text-base tracking-tight leading-tight">{t("Send Invoice on WhatsApp", "Send Invoice on WhatsApp")}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-black text-base tracking-tight leading-tight">{t("Send Invoice on WhatsApp", "Send Invoice on WhatsApp")}</h3>
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                      isWhatsAppOnline ? "bg-emerald-400/30 text-emerald-100 border border-emerald-300/40" : "bg-rose-400/30 text-rose-100 border border-rose-300/40"
+                    }`}>
+                      {isWhatsAppOnline ? "● Online" : "● Offline"}
+                    </span>
+                  </div>
                   <p className="text-emerald-100 text-xs font-medium mt-0.5">Instant PDF bill dispatch via connected gateway</p>
                 </div>
               </div>
@@ -3580,9 +3589,18 @@ export function PosInvoicesHistory() {
                     className="w-full pl-12 pr-4 py-3 bg-white border-2 border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-500 transition-colors shadow-2xs placeholder:text-slate-400 placeholder:font-normal"
                   />
                 </div>
-                <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-1">
-                  <Sparkles className="w-3 h-3 text-emerald-500" />
-                  Your connected WhatsApp account (+7995041979) will automatically deliver the PDF invoice.
+                <p className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-1 font-medium">
+                  {isWhatsAppOnline ? (
+                    <>
+                      <span className="size-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                      <span>WhatsApp Online: Connected account (+{activeWhatsAppNumber || "Gateway"}) will deliver this invoice.</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="size-2 rounded-full bg-rose-500 shrink-0" />
+                      <span className="text-rose-600">WhatsApp Offline: Gateway is not connected. Reconnect before sending.</span>
+                    </>
+                  )}
                 </p>
               </div>
             </div>

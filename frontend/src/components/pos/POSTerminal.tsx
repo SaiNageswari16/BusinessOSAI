@@ -20,6 +20,7 @@ import {
   FavoritesView, RecentBillsView, AISuggestionsView, WalletView
 } from "./POSTerminalViews";
 import { ThermalReceiptPrinter } from "./ThermalReceiptPrinter";
+import { WhatsAppStatusIndicator } from "../layout/WhatsAppStatusIndicator";
 import { generateThermalReceiptHtml, thermalReceiptHtmlToPdfBase64, printHtmlInPage, triggerThermalPrint } from "../../lib/print-helper";
 import { useCurrency } from "@/hooks/use-currency";
 import { formatCurrency, getTodayDateString, getCurrentTimeString, isValidUUID, isWalkInParty, formatPartyAddress } from "../../lib/utils";
@@ -163,7 +164,7 @@ function PosTerminalInner() {
   const [newCustType, setNewCustType] = useState("Retail");
   const [newCustGST, setNewCustGST] = useState("");
   const [newCustOutstanding, setNewCustOutstanding] = useState("");
-  
+
   // Structured Address States
   const [newCustStreet, setNewCustStreet] = useState("");
   const [newCustCity, setNewCustCity] = useState("");
@@ -305,7 +306,7 @@ function PosTerminalInner() {
           setCustomerList([posCustomers[0], ...formatted]);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Backend data
@@ -615,7 +616,7 @@ function PosTerminalInner() {
       // 1. Build unified categories list
       const rawPosCats = Array.isArray(cats) ? cats : ((cats as any)?.items || []);
       const rawInvCats = Array.isArray(invCatsRes) ? invCatsRes : ((invCatsRes as any)?.items || []);
-      
+
       const catMap = new Map<string, any>();
       [...rawPosCats, ...rawInvCats].forEach((c: any, i: number) => {
         if (c && (c.id || c.name)) {
@@ -700,7 +701,7 @@ function PosTerminalInner() {
         const taxPct = getEffectiveTaxRate(p);
         const discInfo = extractProductDiscount(p);
         const isTaxInclusive = p.is_tax_inclusive === true || p.tax_included === true || p.is_inclusive === true || (p.is_tax_inclusive !== false && p.tax_included !== false);
-        
+
         const catNameVal = p.category?.name || p.category_name || (typeof p.category === "string" ? p.category : "") || "";
         const subCatNameVal = p.sub_category || p.subcategory || p.sub_category_name || "";
 
@@ -778,9 +779,9 @@ function PosTerminalInner() {
     // Attempt to enter fullscreen
     try {
       if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(() => {});
+        document.documentElement.requestFullscreen().catch(() => { });
       }
-    } catch {}
+    } catch { }
   }, []);
 
   // Sync active session when switching back from other views
@@ -887,14 +888,14 @@ function PosTerminalInner() {
       (product.category?.toLowerCase().includes("dairy")
         ? "0405"
         : product.category?.toLowerCase().includes("biscuit")
-        ? "1905"
-        : product.category?.toLowerCase().includes("shampoo")
-        ? "3305"
-        : "1905");
+          ? "1905"
+          : product.category?.toLowerCase().includes("shampoo")
+            ? "3305"
+            : "1905");
     const effectiveTax = getEffectiveTaxRate(product);
     const discInfo = extractProductDiscount(product);
     const isTaxInclusive = product.is_tax_inclusive === true || product.tax_included === true || product.is_inclusive === true || (product.is_tax_inclusive !== false && product.tax_included !== false);
-    const specs = typeof product.specifications === "string" ? (function() { try { return JSON.parse(product.specifications); } catch { return {}; } })() : (product.specifications || {});
+    const specs = typeof product.specifications === "string" ? (function () { try { return JSON.parse(product.specifications); } catch { return {}; } })() : (product.specifications || {});
     const primaryUom = product.uom || product.uom_name || specs.uom || specs.primary_uom || "Pcs";
     const secondaryUom = product.secondary_uom || specs.secondary_uom || "";
     const conversionFactor = Math.max(1, Number(product.conversion_factor || specs.conversion_factor || 1));
@@ -1070,8 +1071,8 @@ function PosTerminalInner() {
     const discInfo = (item.discount_value !== undefined && item.discount_value !== null && Number(item.discount_value) > 0)
       ? { discount_value: Number(item.discount_value), discount_type: (item.discount_type as "percent" | "amount") || "amount" }
       : (item.discount !== undefined && item.discount !== null && Number(item.discount) > 0)
-      ? { discount_value: Number(item.discount), discount_type: (item.discount_type as "percent" | "amount") || "amount" }
-      : extractProductDiscount(masterProduct || item);
+        ? { discount_value: Number(item.discount), discount_type: (item.discount_type as "percent" | "amount") || "amount" }
+        : extractProductDiscount(masterProduct || item);
 
     setEditDiscountType(discInfo.discount_type === "percent" ? "percent" : "amount");
     setEditDiscountValue(discInfo.discount_value > 0 ? discInfo.discount_value.toString() : "");
@@ -1189,13 +1190,13 @@ function PosTerminalInner() {
 
   const getItemEffectivePrice = (item: any, qty: number = item.qty || 1, overrideMode?: "Retail" | "Wholesale" | "B2B") => {
     const mode = overrideMode || pricingMode;
-    const specs = typeof item.specifications === "string" ? (function() { try { return JSON.parse(item.specifications); } catch { return {}; } })() : (item.specifications || {});
+    const specs = typeof item.specifications === "string" ? (function () { try { return JSON.parse(item.specifications); } catch { return {}; } })() : (item.specifications || {});
     const basePrice = Number(item.base_selling_price ?? item.sellingPrice ?? item.selling_price ?? item.price ?? item.mrp ?? 0);
     const rawWholesale = Number(item.wholesalePrice || item.wholesale_price || specs.wholesale_price || 0);
     const rawB2B = Number(item.b2bPrice || item.b2b_price || specs.b2b_price || 0);
     const wholesalePrice = rawWholesale > 0 ? rawWholesale : basePrice;
     const b2bPrice = rawB2B > 0 ? rawB2B : basePrice;
-    
+
     let primaryUnitPrice = basePrice;
     let isTierApplied = false;
     let tierName = "Retail";
@@ -1554,7 +1555,7 @@ function PosTerminalInner() {
             }
           });
         }
-      } catch {}
+      } catch { }
 
       const recSeq = Math.max(rawConfiguredSeq, highestLocalSeq > 0 ? highestLocalSeq + 1 : rawConfiguredSeq);
       const targetReceiptNo = `${recPrefix}${String(recSeq).padStart(recPadding, "0")}`;
@@ -1737,7 +1738,7 @@ function PosTerminalInner() {
             setCustomerWalletBalance(Number(res.balance));
             setSelectedCustomer((prev: any) => prev ? { ...prev, wallet: Number(res.balance) } : prev);
           }
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       let terminalInvoiceRecord: any = null;
@@ -1915,10 +1916,10 @@ function PosTerminalInner() {
       return;
     }
     const changeDue = tendered - total;
-    
+
     try {
       await executeCheckout([{ payment_method: "cash", amount: total }]);
-      
+
       // Credit to wallet if checked and applicable
       if (creditChangeToWallet && changeDue > 0 && selectedCustomer && !isWalkInParty(selectedCustomer)) {
         await crmWalletApi.credit(
@@ -2104,11 +2105,10 @@ function PosTerminalInner() {
               <button
                 key={tab.id}
                 onClick={() => navigate({ to: "/pos", search: { tab: "terminal", view: tab.id } })}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 whitespace-nowrap transition-all ${
-                  isActive
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 whitespace-nowrap transition-all ${isActive
                     ? "bg-[#5B4DF5] text-white shadow-md shadow-[#5B4DF5]/20"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                }`}
+                  }`}
               >
                 <Icon className="w-3.5 h-3.5" />
                 <span>{tab.label}</span>
@@ -2147,35 +2147,35 @@ function PosTerminalInner() {
           <div className="flex items-center bg-white border border-slate-200/90 p-0.5 rounded-xl shadow-2xs">
             <button
               onClick={() => handlePricingModeChange("Retail")}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                pricingMode === "Retail"
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${pricingMode === "Retail"
                   ? "bg-[#5B4DF5] text-white shadow-xs"
                   : "text-slate-600 hover:text-slate-900"
-              }`}
+                }`}
             >
               <span>🛒</span> Retail
             </button>
             <button
               onClick={() => handlePricingModeChange("Wholesale")}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                pricingMode === "Wholesale"
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${pricingMode === "Wholesale"
                   ? "bg-[#F59E0B] text-white shadow-xs"
                   : "text-amber-700 hover:bg-amber-50"
-              }`}
+                }`}
             >
               <span>📦</span> Wholesale
             </button>
             <button
               onClick={() => handlePricingModeChange("B2B")}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                pricingMode === "B2B"
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${pricingMode === "B2B"
                   ? "bg-[#0D9488] text-white shadow-xs"
                   : "text-teal-700 hover:bg-teal-50"
-              }`}
+                }`}
             >
               <span>🏢</span> B2B
             </button>
           </div>
+
+          {/* WhatsApp Connection Status Indicator */}
+          <WhatsAppStatusIndicator variant="pos" />
 
           {/* Notification Bell */}
           <button className="relative p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors">
@@ -2214,11 +2214,10 @@ function PosTerminalInner() {
 
               <button
                 onClick={() => { setActiveCategory("all"); setActiveSubCategory("all"); setActiveBrand("all"); }}
-                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between gap-2 mb-1.5 ${
-                  activeCategory === "all"
+                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between gap-2 mb-1.5 ${activeCategory === "all"
                     ? "bg-[#5B4DF5] text-white shadow-md shadow-[#5B4DF5]/20"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-2 truncate">
                   <Store className="size-3.5 shrink-0" />
@@ -2243,11 +2242,10 @@ function PosTerminalInner() {
                         setActiveSubCategory("all");
                         setActiveBrand("all");
                       }}
-                      className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-between gap-1.5 cursor-pointer ${
-                        isActive
+                      className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-between gap-1.5 cursor-pointer ${isActive
                           ? "bg-[#5B4DF5] text-white shadow-sm font-bold"
                           : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-2 truncate">
                         <CatIcon className={`size-3.5 shrink-0 ${isActive ? "text-white" : iconColor}`} />
@@ -2349,11 +2347,10 @@ function PosTerminalInner() {
                 {/* Two standalone square buttons matching ss1 */}
                 <button
                   onClick={() => setViewMode('grid')}
-                  className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all shrink-0 cursor-pointer ${
-                    viewMode === 'grid'
+                  className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all shrink-0 cursor-pointer ${viewMode === 'grid'
                       ? 'bg-[#5B4DF5] text-white shadow-md shadow-[#5B4DF5]/25'
                       : 'bg-white border border-slate-200/90 text-slate-400 hover:text-slate-700 shadow-2xs'
-                  }`}
+                    }`}
                   title="Grid view"
                 >
                   <div className="grid grid-cols-2 gap-0.5">
@@ -2365,11 +2362,10 @@ function PosTerminalInner() {
                 </button>
                 <button
                   onClick={() => setViewMode('list')}
-                  className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all shrink-0 cursor-pointer ${
-                    viewMode === 'list'
+                  className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all shrink-0 cursor-pointer ${viewMode === 'list'
                       ? 'bg-[#5B4DF5] text-white shadow-md shadow-[#5B4DF5]/25'
                       : 'bg-white border border-slate-200/90 text-slate-400 hover:text-slate-700 shadow-2xs'
-                  }`}
+                    }`}
                   title="List view"
                 >
                   <ListIcon className="size-4" />
@@ -2380,11 +2376,10 @@ function PosTerminalInner() {
               <div className="flex items-center gap-2 overflow-x-auto no-scrollbar mb-3 py-0.5 shrink-0">
                 <button
                   onClick={() => setActiveBrand("all")}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 shadow-sm ${
-                    activeBrand === "all"
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 shadow-sm ${activeBrand === "all"
                       ? "bg-[#5B4DF5] text-white"
                       : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50"
-                  }`}
+                    }`}
                 >
                   <span>All Brands ({availableBrands.length || 6})</span>
                   <ChevronDown className="size-3" />
@@ -2405,11 +2400,10 @@ function PosTerminalInner() {
                     <button
                       key={bName}
                       onClick={() => setActiveBrand(bName)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0 shadow-2xs cursor-pointer ${
-                        isBrandActive
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0 shadow-2xs cursor-pointer ${isBrandActive
                           ? "bg-[#5B4DF5] text-white font-bold"
                           : "bg-white text-slate-700 hover:bg-slate-50 border border-slate-200/90"
-                      }`}
+                        }`}
                     >
                       <span>{bName}</span>
                       <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${isBrandActive ? "bg-white/20 text-white" : "bg-[#F5F3FF] text-[#5B4DF5]"}`}>
@@ -3085,36 +3079,34 @@ function PosTerminalInner() {
               </div>
             </div>
 
-              {/* Tax Mode Bulk Quick Toggle */}
-              {cart.length > 0 && (
-                <div className="flex items-center justify-between pt-1.5 mt-1.5 border-t border-slate-200/60 text-[10px]">
-                  <span className="font-bold text-slate-500 uppercase tracking-wider text-[9px]">GST Pricing:</span>
-                  <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
-                    <button
-                      type="button"
-                      onClick={() => setCart(prev => prev.map(it => ({ ...it, is_tax_inclusive: true })))}
-                      className={`px-1.5 py-0.2 rounded font-extrabold transition-all cursor-pointer text-[9px] ${
-                        cart.every(it => it.is_tax_inclusive !== false)
-                          ? "bg-emerald-600 text-white shadow-2xs"
-                          : "text-slate-600 hover:text-slate-900"
+            {/* Tax Mode Bulk Quick Toggle */}
+            {cart.length > 0 && (
+              <div className="flex items-center justify-between pt-1.5 mt-1.5 border-t border-slate-200/60 text-[10px]">
+                <span className="font-bold text-slate-500 uppercase tracking-wider text-[9px]">GST Pricing:</span>
+                <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setCart(prev => prev.map(it => ({ ...it, is_tax_inclusive: true })))}
+                    className={`px-1.5 py-0.2 rounded font-extrabold transition-all cursor-pointer text-[9px] ${cart.every(it => it.is_tax_inclusive !== false)
+                        ? "bg-emerald-600 text-white shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
                       }`}
-                    >
-                      All Incl. GST
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCart(prev => prev.map(it => ({ ...it, is_tax_inclusive: false })))}
-                      className={`px-1.5 py-0.2 rounded font-extrabold transition-all cursor-pointer text-[9px] ${
-                        cart.every(it => it.is_tax_inclusive === false)
-                          ? "bg-blue-600 text-white shadow-2xs"
-                          : "text-slate-600 hover:text-slate-900"
+                  >
+                    All Incl. GST
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCart(prev => prev.map(it => ({ ...it, is_tax_inclusive: false })))}
+                    className={`px-1.5 py-0.2 rounded font-extrabold transition-all cursor-pointer text-[9px] ${cart.every(it => it.is_tax_inclusive === false)
+                        ? "bg-blue-600 text-white shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
                       }`}
-                    >
-                      All Excl. GST
-                    </button>
-                  </div>
+                  >
+                    All Excl. GST
+                  </button>
                 </div>
-              )}
+              </div>
+            )}
 
             {/* Cart Header */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100">
@@ -3246,11 +3238,10 @@ function PosTerminalInner() {
                                     setCart(prev => prev.map(it => it.id === item.id ? { ...it, is_tax_inclusive: !isIncl } : it));
                                   }}
                                   title={isIncl ? "Tax Inclusive: Click to switch to Tax Exclusive" : "Tax Exclusive: Click to switch to Tax Inclusive"}
-                                  className={`px-1 py-0.2 rounded font-extrabold uppercase transition-all hover:scale-105 cursor-pointer border ${
-                                    isIncl
+                                  className={`px-1 py-0.2 rounded font-extrabold uppercase transition-all hover:scale-105 cursor-pointer border ${isIncl
                                       ? "bg-emerald-50 text-emerald-700 border-emerald-300"
                                       : "bg-blue-50 text-blue-700 border-blue-300"
-                                  }`}
+                                    }`}
                                 >
                                   {isIncl ? "Incl." : "Excl."} {itemTaxPercent}%
                                 </button>
@@ -3283,11 +3274,10 @@ function PosTerminalInner() {
                                     <button
                                       type="button"
                                       onClick={(e) => { e.stopPropagation(); switchCartItemUom(item.id, item.uom); }}
-                                      className={`px-1.5 py-0.5 rounded text-[9px] font-black transition-all cursor-pointer ${
-                                        (item.selected_uom || item.uom) === item.uom
+                                      className={`px-1.5 py-0.5 rounded text-[9px] font-black transition-all cursor-pointer ${(item.selected_uom || item.uom) === item.uom
                                           ? "bg-indigo-600 text-white shadow-2xs"
                                           : "text-indigo-700 hover:bg-indigo-100"
-                                      }`}
+                                        }`}
                                       title={`Primary Unit: ${item.uom} (${formatCurrency(item.base_selling_price || item.sellingPrice)})`}
                                     >
                                       Primary: {item.uom} ({formatCurrency(item.base_selling_price || item.sellingPrice)})
@@ -3295,11 +3285,10 @@ function PosTerminalInner() {
                                     <button
                                       type="button"
                                       onClick={(e) => { e.stopPropagation(); switchCartItemUom(item.id, item.secondary_uom); }}
-                                      className={`px-1.5 py-0.5 rounded text-[9px] font-black transition-all cursor-pointer ${
-                                        item.selected_uom === item.secondary_uom
+                                      className={`px-1.5 py-0.5 rounded text-[9px] font-black transition-all cursor-pointer ${item.selected_uom === item.secondary_uom
                                           ? "bg-emerald-600 text-white shadow-2xs"
                                           : "text-emerald-700 hover:bg-emerald-100"
-                                      }`}
+                                        }`}
                                       title={`Secondary Unit: ${item.secondary_uom} (${formatCurrency((item.base_selling_price || item.sellingPrice) / item.conversion_factor)})`}
                                     >
                                       Secondary: {item.secondary_uom} ({formatCurrency((item.base_selling_price || item.sellingPrice) / item.conversion_factor)})
@@ -3323,11 +3312,10 @@ function PosTerminalInner() {
                                       currentBatch: item.batch_number,
                                     });
                                   }}
-                                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 border ${
-                                    item.batch_number
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 border ${item.batch_number
                                       ? "bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 shadow-2xs"
                                       : "bg-slate-100 text-slate-500 border-dashed border-slate-300 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-300"
-                                  }`}
+                                    }`}
                                   title="Select or Create Product Batch (FEFO / Traceability)"
                                 >
                                   <Boxes className="w-2.5 h-2.5" />
@@ -3460,11 +3448,10 @@ function PosTerminalInner() {
                       <button
                         key={val}
                         onClick={() => { setCartDiscountType("percent"); setCartDiscountValue(val); }}
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all shrink-0 ${
-                          cartDiscountType === "percent" && cartDiscountValue === val
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all shrink-0 ${cartDiscountType === "percent" && cartDiscountValue === val
                             ? "bg-[#5B4DF5] text-white shadow-2xs"
                             : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50"
-                        }`}
+                          }`}
                       >
                         {val === 0 ? "Off" : `${val}%`}
                       </button>
@@ -3632,7 +3619,7 @@ function PosTerminalInner() {
                     <span className="font-semibold">-{formatCurrency(afterTaxDiscount)}</span>
                   </div>
                 )}
-                
+
                 {!isWalkInCustomer && includePreviousDueInBill && customerSummary?.total_pending_due > 0 && (
                   <div className="flex justify-between text-amber-700 font-bold pt-0.5 border-t border-amber-200/60">
                     <span>⚠️ Previous Due</span>
@@ -3684,11 +3671,10 @@ function PosTerminalInner() {
               {/* Cash */}
               <button
                 onClick={() => setPaymentMethod('Cash')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all whitespace-nowrap group hover:-translate-y-0.5 cursor-pointer ${
-                  paymentMethod === 'Cash'
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all whitespace-nowrap group hover:-translate-y-0.5 cursor-pointer ${paymentMethod === 'Cash'
                     ? 'border-emerald-600 bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
                     : 'border-emerald-200 bg-[#ECFDF5] hover:bg-emerald-100/80 text-emerald-800 shadow-2xs'
-                }`}
+                  }`}
               >
                 <div className={`p-1 rounded-lg transition-colors ${paymentMethod === 'Cash' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
                   <Banknote className="size-4" />
@@ -3702,11 +3688,10 @@ function PosTerminalInner() {
                   setPaymentMethod('Card');
                   setIsPineLabsModalOpen(true);
                 }}
-                className={`flex items-center gap-2.5 px-4 py-1.5 rounded-xl border transition-all whitespace-nowrap group hover:-translate-y-0.5 cursor-pointer ${
-                  paymentMethod === 'Card'
+                className={`flex items-center gap-2.5 px-4 py-1.5 rounded-xl border transition-all whitespace-nowrap group hover:-translate-y-0.5 cursor-pointer ${paymentMethod === 'Card'
                     ? 'border-blue-600 bg-blue-600 text-white shadow-md shadow-blue-600/30'
                     : 'border-blue-200 bg-[#EFF6FF] hover:bg-blue-100/80 text-blue-800 shadow-2xs'
-                }`}
+                  }`}
               >
                 <div className={`p-1 rounded-lg transition-colors ${paymentMethod === 'Card' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-700'}`}>
                   <CreditCard className="size-4" />
@@ -3723,11 +3708,10 @@ function PosTerminalInner() {
                   setPaymentMethod('UPI');
                   setIsRazorpayModalOpen(true);
                 }}
-                className={`flex items-center gap-2.5 px-4 py-1.5 rounded-xl border transition-all whitespace-nowrap group hover:-translate-y-0.5 cursor-pointer ${
-                  paymentMethod === 'UPI'
+                className={`flex items-center gap-2.5 px-4 py-1.5 rounded-xl border transition-all whitespace-nowrap group hover:-translate-y-0.5 cursor-pointer ${paymentMethod === 'UPI'
                     ? 'border-purple-600 bg-purple-600 text-white shadow-md shadow-purple-600/30'
                     : 'border-purple-200 bg-[#FAF5FF] hover:bg-purple-100/80 text-purple-800 shadow-2xs'
-                }`}
+                  }`}
               >
                 <div className={`p-1 rounded-lg transition-colors ${paymentMethod === 'UPI' ? 'bg-white/20 text-white' : 'bg-purple-100 text-purple-700'}`}>
                   <QrCode className="size-4" />
@@ -3741,11 +3725,10 @@ function PosTerminalInner() {
               {/* Split Payment */}
               <button
                 onClick={() => setPaymentMethod('Split')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all whitespace-nowrap group hover:-translate-y-0.5 cursor-pointer ${
-                  paymentMethod === 'Split'
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all whitespace-nowrap group hover:-translate-y-0.5 cursor-pointer ${paymentMethod === 'Split'
                     ? 'border-amber-600 bg-amber-600 text-white shadow-md shadow-amber-600/30'
                     : 'border-amber-200 bg-[#FFFBEB] hover:bg-amber-100/80 text-amber-800 shadow-2xs'
-                }`}
+                  }`}
               >
                 <div className={`p-1 rounded-lg transition-colors ${paymentMethod === 'Split' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700'}`}>
                   <Combine className="size-4" />
@@ -3920,18 +3903,16 @@ function PosTerminalInner() {
                       <button
                         type="button"
                         onClick={() => setEditTaxInclusive(true)}
-                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded-md transition-all cursor-pointer ${
-                          editTaxInclusive ? "bg-emerald-600 text-white shadow-2xs" : "text-slate-600 hover:text-slate-900"
-                        }`}
+                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded-md transition-all cursor-pointer ${editTaxInclusive ? "bg-emerald-600 text-white shadow-2xs" : "text-slate-600 hover:text-slate-900"
+                          }`}
                       >
                         Tax Inclusive (GST Included)
                       </button>
                       <button
                         type="button"
                         onClick={() => setEditTaxInclusive(false)}
-                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded-md transition-all cursor-pointer ${
-                          !editTaxInclusive ? "bg-blue-600 text-white shadow-2xs" : "text-slate-600 hover:text-slate-900"
-                        }`}
+                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded-md transition-all cursor-pointer ${!editTaxInclusive ? "bg-blue-600 text-white shadow-2xs" : "text-slate-600 hover:text-slate-900"
+                          }`}
                       >
                         Tax Exclusive (GST Added)
                       </button>
@@ -3948,18 +3929,16 @@ function PosTerminalInner() {
                         <button
                           type="button"
                           onClick={() => setEditDiscountType("amount")}
-                          className={`px-2.5 py-0.5 rounded transition-all cursor-pointer ${
-                            editDiscountType === "amount" ? "bg-indigo-600 text-white" : "text-slate-600"
-                          }`}
+                          className={`px-2.5 py-0.5 rounded transition-all cursor-pointer ${editDiscountType === "amount" ? "bg-indigo-600 text-white" : "text-slate-600"
+                            }`}
                         >
                           Flat ({currency.symbol})
                         </button>
                         <button
                           type="button"
                           onClick={() => setEditDiscountType("percent")}
-                          className={`px-2.5 py-0.5 rounded transition-all cursor-pointer ${
-                            editDiscountType === "percent" ? "bg-indigo-600 text-white" : "text-slate-600"
-                          }`}
+                          className={`px-2.5 py-0.5 rounded transition-all cursor-pointer ${editDiscountType === "percent" ? "bg-indigo-600 text-white" : "text-slate-600"
+                            }`}
                         >
                           Percent (%)
                         </button>
@@ -3989,11 +3968,10 @@ function PosTerminalInner() {
                               key={pct}
                               type="button"
                               onClick={() => setEditDiscountValue(pct.toString())}
-                              className={`px-2 py-1.5 text-xs font-extrabold rounded-xl border transition-all cursor-pointer ${
-                                editDiscountValue === pct.toString()
+                              className={`px-2 py-1.5 text-xs font-extrabold rounded-xl border transition-all cursor-pointer ${editDiscountValue === pct.toString()
                                   ? "bg-indigo-50 text-indigo-700 border-indigo-300"
                                   : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                              }`}
+                                }`}
                             >
                               {pct}%
                             </button>
@@ -4225,11 +4203,10 @@ function PosTerminalInner() {
                           key={amt}
                           type="button"
                           onClick={() => setCashTendered(amt.toString())}
-                          className={`py-2 px-1 rounded-xl font-bold transition-all flex flex-col items-center justify-center cursor-pointer ${
-                            isSelected || (isExact && (!cashTendered || Number(cashTendered) === total))
+                          className={`py-2 px-1 rounded-xl font-bold transition-all flex flex-col items-center justify-center cursor-pointer ${isSelected || (isExact && (!cashTendered || Number(cashTendered) === total))
                               ? "bg-[#eefcf4] border-2 border-emerald-500 text-emerald-950 shadow-xs"
                               : "bg-white hover:bg-slate-50 border border-slate-200/90 text-slate-800"
-                          }`}
+                            }`}
                         >
                           {isExact ? (
                             <>
@@ -4257,20 +4234,19 @@ function PosTerminalInner() {
                       <span className="text-[10px] font-medium text-slate-500 block leading-tight">Amount to return to customer</span>
                     </div>
                   </div>
-                  <span className={`text-2xl font-black tracking-tight ${
-                    Number(cashTendered) >= total ? "text-[#002f9c]" : "text-slate-400"
-                  }`}>
+                  <span className={`text-2xl font-black tracking-tight ${Number(cashTendered) >= total ? "text-[#002f9c]" : "text-slate-400"
+                    }`}>
                     {Number(cashTendered) >= total ? formatCurrency(Number(cashTendered) - total) : formatCurrency(0)}
                   </span>
                 </div>
 
                 {Number(cashTendered) > total && selectedCustomer && !isWalkInCustomer && (
                   <label className="flex items-center gap-2 mt-2 pt-2 border-t border-blue-200/60 cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      checked={creditChangeToWallet} 
-                      onChange={(e) => setCreditChangeToWallet(e.target.checked)} 
-                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 bg-white border-blue-300" 
+                    <input
+                      type="checkbox"
+                      checked={creditChangeToWallet}
+                      onChange={(e) => setCreditChangeToWallet(e.target.checked)}
+                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 bg-white border-blue-300"
                     />
                     <span className="text-[11px] font-semibold text-slate-700">
                       Add change ({formatCurrency(Number(cashTendered) - total)}) to Customer Wallet
@@ -4507,11 +4483,10 @@ function PosTerminalInner() {
                       key={m}
                       type="button"
                       onClick={() => setPartialPaymentMode(m)}
-                      className={`py-2 px-3 rounded-xl border font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
-                        partialPaymentMode === m
+                      className={`py-2 px-3 rounded-xl border font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${partialPaymentMode === m
                           ? "bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-600/30"
                           : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
-                      }`}
+                        }`}
                     >
                       {m === "Cash" && <Banknote className="w-3.5 h-3.5" />}
                       {m === "UPI" && <QrCode className="w-3.5 h-3.5" />}
@@ -4555,11 +4530,10 @@ function PosTerminalInner() {
                       key={chip.label}
                       type="button"
                       onClick={() => setPartialPaidAmount(chip.val.toString())}
-                      className={`py-1.5 text-xs font-bold rounded-xl border transition-all ${
-                        Number(partialPaidAmount) === chip.val
+                      className={`py-1.5 text-xs font-bold rounded-xl border transition-all ${Number(partialPaidAmount) === chip.val
                           ? "bg-rose-600 text-white border-rose-600 shadow-sm"
                           : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200"
-                      }`}
+                        }`}
                     >
                       {chip.label}
                     </button>
@@ -4754,21 +4728,19 @@ function PosTerminalInner() {
               <div className="p-3 border-b border-slate-100 bg-white flex gap-2">
                 <button
                   onClick={() => setCustomerTab('search')}
-                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
-                    customerTab === 'search'
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${customerTab === 'search'
                       ? 'bg-indigo-600 text-white shadow-md'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
+                    }`}
                 >
                   Search Existing Customer
                 </button>
                 <button
                   onClick={() => setCustomerTab('new')}
-                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
-                    customerTab === 'new'
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${customerTab === 'new'
                       ? 'bg-indigo-600 text-white shadow-md'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
+                    }`}
                 >
                   + Add New Customer
                 </button>
@@ -4803,9 +4775,8 @@ function PosTerminalInner() {
                               setSelectedCustomer(cust);
                               setIsCustomerModalOpen(false);
                             }}
-                            className={`p-3.5 bg-white border rounded-xl cursor-pointer transition-all flex items-center justify-between hover:border-indigo-400 hover:shadow-md ${
-                              selectedCustomer.id === cust.id ? 'border-indigo-600 ring-2 ring-indigo-500/20 bg-indigo-50/20' : 'border-slate-200'
-                            }`}
+                            className={`p-3.5 bg-white border rounded-xl cursor-pointer transition-all flex items-center justify-between hover:border-indigo-400 hover:shadow-md ${selectedCustomer.id === cust.id ? 'border-indigo-600 ring-2 ring-indigo-500/20 bg-indigo-50/20' : 'border-slate-200'
+                              }`}
                           >
                             <div className="flex items-center gap-3">
                               <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 font-bold text-xs flex items-center justify-center border border-slate-200">

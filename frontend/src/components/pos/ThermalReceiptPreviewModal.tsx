@@ -9,6 +9,7 @@ import { useTenant } from '@/contexts/tenant-context';
 import { useCurrency } from '@/hooks/use-currency';
 import { getActiveBillingGst } from '@/lib/receipt-template-store';
 import { companiesApi, posApi, invoicesApi } from '@/lib/api-client';
+import { useWhatsAppStatus } from '@/hooks/use-whatsapp-status';
 
 export interface ThermalReceiptPreviewModalProps {
   invoice: any | null;
@@ -31,6 +32,7 @@ export function ThermalReceiptPreviewModal({
   const [paperSize, setPaperSize] = useState<'80mm' | '58mm'>('80mm');
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [resolvedInvoice, setResolvedInvoice] = useState<any>(invoice);
+  const { isOnline: isWhatsAppOnline, status: waStatus } = useWhatsAppStatus();
 
   // Fetch complete backend invoice data (items, HSN, batches, taxes, customer details)
   useEffect(() => {
@@ -297,10 +299,17 @@ export function ThermalReceiptPreviewModal({
               type="button"
               onClick={handleSendWhatsApp}
               disabled={isSendingWhatsApp}
+              title={isWhatsAppOnline ? "WhatsApp is Online & Ready to Send" : "Warning: WhatsApp appears to be Offline"}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition-all cursor-pointer disabled:opacity-50"
             >
               <MessageCircle className="size-3.5" />
               <span>{isSendingWhatsApp ? t('Sending...', 'Sending...') : t('Send WhatsApp', 'Send WhatsApp')}</span>
+              <span
+                className={`size-2 rounded-full ring-1 ring-white ${
+                  isWhatsAppOnline ? "bg-emerald-300 animate-pulse" : "bg-amber-300"
+                }`}
+                title={isWhatsAppOnline ? "Online" : "Offline"}
+              />
             </button>
             <button
               type="button"
@@ -360,10 +369,17 @@ export function ThermalReceiptPreviewModal({
               type="button"
               onClick={handleSendWhatsApp}
               disabled={isSendingWhatsApp}
+              title={isWhatsAppOnline ? "WhatsApp is Online & Ready to Send" : "Warning: WhatsApp appears to be Offline"}
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm disabled:opacity-50"
             >
               <MessageCircle className="size-3.5" />
               <span>{isSendingWhatsApp ? t('Sending...', 'Sending...') : t('Send WhatsApp', 'Send WhatsApp')}</span>
+              <span
+                className={`size-2 rounded-full ring-1 ring-white ${
+                  isWhatsAppOnline ? "bg-emerald-300 animate-pulse" : "bg-amber-300"
+                }`}
+                title={isWhatsAppOnline ? "Online" : "Offline"}
+              />
             </button>
             <button
               type="button"

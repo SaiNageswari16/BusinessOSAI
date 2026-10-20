@@ -29,6 +29,7 @@ import { cn, AVAILABLE_CURRENCIES, getActiveCurrency, setActiveCurrency } from "
 import { liveNotificationsApi, LiveNotification } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { WhatsAppStatusIndicator } from "./WhatsAppStatusIndicator";
 
 const moduleDisplayList = [
   {
@@ -899,6 +900,9 @@ export function AppTopbar({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {/* Global Live WhatsApp Connection Status Indicator */}
+        <WhatsAppStatusIndicator variant="pill" />
 
         {/* Interactive Workspace Messages Popover */}
         <Popover>

@@ -120,7 +120,7 @@ export const getEffectiveTaxRate = (prod: any): number => {
   if (prod.specifications) {
     let specs = prod.specifications;
     if (typeof specs === "string") {
-      try { specs = JSON.parse(specs); } catch {}
+      try { specs = JSON.parse(specs); } catch { }
     }
     if (specs && typeof specs === "object") {
       const sVal = specs.tax_percent ?? specs.tax_rate ?? specs.gst_rate ?? specs.gst ?? specs.sales_tax_percent;
@@ -400,7 +400,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           }
         }
       }
-    } catch (e) {}
+    } catch (e) { }
     return null;
   });
   const [isRecreatingInvoice, setIsRecreatingInvoice] = useState<boolean>(() => {
@@ -413,7 +413,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get("recreate_number")) return true;
       }
-    } catch (e) {}
+    } catch (e) { }
     return false;
   });
   const [items, setItems] = useState<InvoiceItem[]>([]);
@@ -498,7 +498,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   const invUpper = invNum.toUpperCase();
                   if (invUpper.startsWith("PI-") || invUpper.startsWith("QT-") || invUpper.startsWith("CN-") || invUpper.startsWith("DN-") || invUpper.startsWith("EST-")) continue;
                   if (inv.invoice_type === "PROFORMA" || inv.invoice_type === "QUOTATION" || inv.doc_type === "PROFORMA" || inv.doc_type === "QUOTATION") continue;
-                  
+
                   const prefixMatch = invNum.match(/^(.*?)(\d+)$/);
                   if (prefixMatch && prefixMatch[1]) {
                     detectedExistingTaxPrefix = prefixMatch[1];
@@ -506,7 +506,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   }
                 }
               }
-            } catch {}
+            } catch { }
           }
           if (detectedExistingTaxPrefix) break;
         }
@@ -567,7 +567,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 }
               });
             }
-          } catch {}
+          } catch { }
         }
       });
 
@@ -581,9 +581,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const configuredMinSeq = isTaxInv
         ? (s.sequenceNumber || 1)
         : isProforma
-        ? (s.proformaSequenceNumber || 1)
-        : (s.quotationSequenceNumber || 1);
-        
+          ? (s.proformaSequenceNumber || 1)
+          : (s.quotationSequenceNumber || 1);
+
       let targetSeq = configuredMinSeq;
       if (highestActive > 0) {
         targetSeq = Math.max(configuredMinSeq, highestActive + 1);
@@ -641,7 +641,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           }
         }
       }
-    } catch (e) {}
+    } catch (e) { }
     return getNextSequentialInvoiceNumber(initialDocType);
   });
   const [invoiceDate, setInvoiceDate] = useState(getTodayDateString());
@@ -696,7 +696,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         }
         return peek.formatted_number;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     return localSeqNum;
   }, [currentCompanyId, getNextSequentialInvoiceNumber, invoiceSettings, tenant?.id]);
@@ -711,7 +711,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const handleInvoiceTypeChange = useCallback((newType: DocumentType) => {
     const prevType = invoiceType;
     setInvoiceType(newType);
-    
+
     if ((prevType === "QUOTATION" || invoiceNumber.toUpperCase().startsWith("QT")) && newType === "TAX_INVOICE") {
       const oldQuoteNum = invoiceNumber;
       const nextNum = getNextSequentialInvoiceNumber("TAX_INVOICE");
@@ -799,8 +799,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       if (!isMounted || !res?.items?.length) return;
       const tid = tenant?.id || getTenantIdFromStorage();
       const matchedCompany = res.items.find(c => c.id === tid || c.id === tenant?.id || (tenant?.name && c.name?.toLowerCase() === tenant.name.toLowerCase())) ||
-                             res.items.find(c => ((c as any).raw)?.tenant_id === tid) ||
-                             res.items[0];
+        res.items.find(c => ((c as any).raw)?.tenant_id === tid) ||
+        res.items[0];
       if (matchedCompany) {
         localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(matchedCompany));
         if (matchedCompany.terms_and_conditions && !editingInvoice && !activeEditingInvoice) {
@@ -1732,8 +1732,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const curPrefix = isTax
           ? ((invoiceSettings?.prefix && !invoiceSettings.prefix.toUpperCase().startsWith("PI-") && !invoiceSettings.prefix.toUpperCase().startsWith("QT-")) ? invoiceSettings.prefix : "INV-")
           : isProforma
-          ? (invoiceSettings?.proformaPrefix || "PI-")
-          : (invoiceSettings?.quotationPrefix || "QT-");
+            ? (invoiceSettings?.proformaPrefix || "PI-")
+            : (invoiceSettings?.quotationPrefix || "QT-");
         const curSuffix = isTax ? (invoiceSettings?.suffix || "") : "";
         let maxRemoteSeq = 0;
 
@@ -1794,8 +1794,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           const currentConfigured = isTax
             ? (invoiceSettings?.sequenceNumber || 1)
             : isProforma
-            ? (invoiceSettings?.proformaSequenceNumber || 1)
-            : (invoiceSettings?.quotationSequenceNumber || 1);
+              ? (invoiceSettings?.proformaSequenceNumber || 1)
+              : (invoiceSettings?.quotationSequenceNumber || 1);
 
           const baseSettings = invoiceSettings || loadStoredInvoiceSettings();
           const targetQuoteSeq = maxRemoteQuoteSeq > 0 ? Math.max(baseSettings.quotationSequenceNumber || 1, maxRemoteQuoteSeq + 1) : (baseSettings.quotationSequenceNumber || 1);
@@ -2105,15 +2105,15 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           p.wholesale_price && Number(p.wholesale_price) > 0
             ? p.wholesale_price
             : (specs.wholesale_price && Number(specs.wholesale_price) > 0
-                ? specs.wholesale_price
-                : 0)
+              ? specs.wholesale_price
+              : 0)
         );
         const rawB2B = Number(
           p.b2b_price && Number(p.b2b_price) > 0
             ? p.b2b_price
             : (specs.b2b_price && Number(specs.b2b_price) > 0
-                ? specs.b2b_price
-                : 0)
+              ? specs.b2b_price
+              : 0)
         );
 
         const primaryUom = p.uom || p.uom_name || specs.primary_uom || specs.uom || p.unit || "Pcs";
@@ -2249,7 +2249,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           sessionStorage.removeItem("pos_collect_invoice");
           try {
             parsed = JSON.parse(storedCollect);
-          } catch (e) {}
+          } catch (e) { }
         }
 
         if (!parsed) {
@@ -2282,7 +2282,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           sessionStorage.removeItem("pos_edit_invoice");
           try {
             editTarget = JSON.parse(storedEdit);
-          } catch (e) {}
+          } catch (e) { }
         }
         if (!editTarget) {
           const storedRecreate = sessionStorage.getItem("pos_recreate_invoice");
@@ -2291,7 +2291,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             try {
               editTarget = JSON.parse(storedRecreate);
               setIsRecreatingInvoice(true);
-            } catch (e) {}
+            } catch (e) { }
           }
         }
         if (!editTarget) {
@@ -2306,7 +2306,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 const found = list.find((x: any) => x.id === editId || x.invoice_number === editId);
                 if (found) editTarget = found;
               }
-            } catch (e) {}
+            } catch (e) { }
           } else if (recreateNum) {
             setIsRecreatingInvoice(true);
             setInvoiceNumber(recreateNum);
@@ -2420,15 +2420,15 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       prod.wholesale_price && Number(prod.wholesale_price) > 0
         ? prod.wholesale_price
         : (specs.wholesale_price && Number(specs.wholesale_price) > 0
-            ? specs.wholesale_price
-            : (basePrice > 0 ? Number((basePrice * 0.85).toFixed(2)) : 0))
+          ? specs.wholesale_price
+          : (basePrice > 0 ? Number((basePrice * 0.85).toFixed(2)) : 0))
     );
     const b2bPrice = Number(
       prod.b2b_price && Number(prod.b2b_price) > 0
         ? prod.b2b_price
         : (specs.b2b_price && Number(specs.b2b_price) > 0
-            ? specs.b2b_price
-            : (basePrice > 0 ? Number((basePrice * 0.70).toFixed(2)) : 0))
+          ? specs.b2b_price
+          : (basePrice > 0 ? Number((basePrice * 0.70).toFixed(2)) : 0))
     );
 
     // If explicit tier mode is chosen, return set tier price (or tier-calculated price)
@@ -2507,7 +2507,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           if (stored) {
             localInvoices = JSON.parse(stored);
           }
-        } catch (e) {}
+        } catch (e) { }
 
         const backendUnpaid = (summary?.unpaid_invoices || []).filter((inv: any) => {
           const rawStatus = String(inv.status || inv.payment_status || "").toLowerCase();
@@ -3117,13 +3117,13 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               const currentVal = Number(item.discount_value) || 0;
               const price = Number(item.unit_price) || 0;
               const prod = item.product_id ? products.find((p) => p.id === item.product_id) : null;
-              
+
               let prodFixed = 0;
               let prodPercent = 0;
               if (prod) {
                 let specs: any = {};
                 if (typeof prod.specifications === "string") {
-                  try { specs = JSON.parse(prod.specifications || "{}"); } catch {}
+                  try { specs = JSON.parse(prod.specifications || "{}"); } catch { }
                 } else if (prod.specifications && typeof prod.specifications === "object") {
                   specs = prod.specifications;
                 }
@@ -3643,13 +3643,13 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const fullShippingStr = editPartyForm.same_as_billing
       ? fullBillingStr
       : [
-          editPartyForm.shipping_street,
-          editPartyForm.shipping_city,
-          editPartyForm.shipping_state,
-          editPartyForm.shipping_pincode,
-        ]
-          .filter(Boolean)
-          .join(", ");
+        editPartyForm.shipping_street,
+        editPartyForm.shipping_city,
+        editPartyForm.shipping_state,
+        editPartyForm.shipping_pincode,
+      ]
+        .filter(Boolean)
+        .join(", ");
 
     const cleanGst = editPartyForm.gst_number.trim().toUpperCase();
 
@@ -3671,19 +3671,19 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const updatedDeliveryAddr = editPartyForm.same_as_billing
       ? updatedBillingAddr
       : {
-          id: selectedDeliveryAddress?.id || "addr-ship-custom",
-          tag: "Delivery Address",
-          street: editPartyForm.shipping_street,
-          city: editPartyForm.shipping_city,
-          state: editPartyForm.shipping_state,
-          pincode: editPartyForm.shipping_pincode,
-          gst_number: cleanGst,
-          is_default_billing: false,
-          is_default_shipping: true,
-          is_billing: false,
-          is_shipping: true,
-          type: "shipping",
-        };
+        id: selectedDeliveryAddress?.id || "addr-ship-custom",
+        tag: "Delivery Address",
+        street: editPartyForm.shipping_street,
+        city: editPartyForm.shipping_city,
+        state: editPartyForm.shipping_state,
+        pincode: editPartyForm.shipping_pincode,
+        gst_number: cleanGst,
+        is_default_billing: false,
+        is_default_shipping: true,
+        is_billing: false,
+        is_shipping: true,
+        type: "shipping",
+      };
 
     const updatedAddresses = editPartyForm.same_as_billing
       ? [updatedBillingAddr]
@@ -3744,10 +3744,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           })
           .then((updatedCust) => {
             if (updatedCust) {
-              setCustomers((prev) => prev.map((c) => (c.id === selectedCustomer ? { 
-                ...c, 
-                ...updatedCust, 
-                addresses: (updatedCust.addresses && updatedCust.addresses.length > 0) ? updatedCust.addresses : updatedAddresses 
+              setCustomers((prev) => prev.map((c) => (c.id === selectedCustomer ? {
+                ...c,
+                ...updatedCust,
+                addresses: (updatedCust.addresses && updatedCust.addresses.length > 0) ? updatedCust.addresses : updatedAddresses
               } : c)));
               toast.success("Customer profile updated in database");
             }
@@ -4104,7 +4104,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           window.history.replaceState({}, "", url.pathname + url.search);
         }
       }
-    } catch (e) {}
+    } catch (e) { }
     setItems([{
       id: `item-${Date.now()}-1`,
       product_id: "",
@@ -4225,8 +4225,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const calculatedPaymentStatus = isWalkIn
         ? "PAID"
         : isCredit
-        ? "UNPAID"
-        : (amountReceived === "" || Number(amountReceived) >= grandTotal ? "PAID" : "PARTIAL");
+          ? "UNPAID"
+          : (amountReceived === "" || Number(amountReceived) >= grandTotal ? "PAID" : "PARTIAL");
 
       const numericAmountReceived = isWalkIn ? grandTotal : (amountReceived === "" ? grandTotal : (Number(amountReceived) || 0));
       const actualAmountPaid = isWalkIn ? grandTotal : (isCredit ? 0 : (numericAmountReceived > 0 ? numericAmountReceived : 0));
@@ -4257,10 +4257,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       const apiInvoiceType =
         invoiceType === "TAX_INVOICE" ? "tax_invoice" :
-        invoiceType === "ESTIMATE_NON_GST" ? "estimate" :
-        invoiceType === "PROFORMA" ? "proforma" :
-        invoiceType === "CREDIT_NOTE" ? "credit_note" :
-        invoiceType === "DEBIT_NOTE" ? "debit_note" : "tax_invoice";
+          invoiceType === "ESTIMATE_NON_GST" ? "estimate" :
+            invoiceType === "PROFORMA" ? "proforma" :
+              invoiceType === "CREDIT_NOTE" ? "credit_note" :
+                invoiceType === "DEBIT_NOTE" ? "debit_note" : "tax_invoice";
 
       const finalNotes = [
         notes,
@@ -4616,7 +4616,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             }
             localStorage.setItem(convKey, JSON.stringify(existing));
             localStorage.setItem("pos_quote_conversions", JSON.stringify(existing));
-          } catch (e) {}
+          } catch (e) { }
         } catch (e) {
           console.warn("Could not mark quotation as converted:", e);
         }
@@ -4669,7 +4669,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               }
               localStorage.setItem(ck, JSON.stringify(existing));
             });
-          } catch (e) {}
+          } catch (e) { }
         } catch (e) {
           console.warn("Could not mark proforma as converted:", e);
         }
@@ -4754,10 +4754,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           isTaxInv
             ? (s.sequenceNumber || 1)
             : isQuoteDoc
-            ? (s.quotationSequenceNumber || 1)
-            : isProformaDoc
-            ? (s.proformaSequenceNumber || 1)
-            : 1
+              ? (s.quotationSequenceNumber || 1)
+              : isProformaDoc
+                ? (s.proformaSequenceNumber || 1)
+                : 1
         ) + 1;
 
         if (savedNum && savedNum.startsWith(pfx)) {
@@ -4974,7 +4974,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           }
         }
       }
-      
+
       if (isEditQuote) {
         const currentSettings = invoiceSettings || loadStoredInvoiceSettings();
         resetInvoiceForm(currentSettings);
@@ -5050,11 +5050,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       {/* Editing or Recreating Status Notification Banner */}
       {(activeEditingInvoice || isRecreatingInvoice) && (
-        <div className={`flex items-center justify-between px-3 py-2 rounded-xl border shadow-xs ${
-          isRecreatingInvoice 
-            ? "bg-amber-50 border-amber-200 text-amber-900" 
+        <div className={`flex items-center justify-between px-3 py-2 rounded-xl border shadow-xs ${isRecreatingInvoice
+            ? "bg-amber-50 border-amber-200 text-amber-900"
             : "bg-indigo-50 border-indigo-200 text-indigo-900"
-        }`}>
+          }`}>
           <div className="flex items-center gap-2 text-xs font-bold">
             <span className={`w-2 h-2 rounded-full animate-pulse ${isRecreatingInvoice ? "bg-amber-600" : "bg-indigo-600"}`} />
             {isRecreatingInvoice ? (
@@ -5288,11 +5287,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 <button
                   type="button"
                   onClick={() => handleSelectWalkIn("Walk-in Customer")}
-                  className={`text-xs font-bold flex items-center gap-1 px-2.5 py-1 rounded-full border transition-all cursor-pointer shadow-2xs ${
-                    selectedCustomer === "walk-in" || (selectedCustomer && activeCustomerObj?.customer_type === "Walk-in")
+                  className={`text-xs font-bold flex items-center gap-1 px-2.5 py-1 rounded-full border transition-all cursor-pointer shadow-2xs ${selectedCustomer === "walk-in" || (selectedCustomer && activeCustomerObj?.customer_type === "Walk-in")
                       ? "bg-amber-600 text-white border-amber-600"
                       : "text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100/80 border-amber-200"
-                  }`}
+                    }`}
                   title="Quick Walk-in Customer (Name only)"
                 >
                   <User className="size-3.5" /> + Walk-in
@@ -5318,8 +5316,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       isCustomerDropdownOpen
                         ? customerSearchQuery
                         : activeCustomerObj
-                        ? `${activeCustomerObj.name}${activeCustomerObj.phone ? ` (${activeCustomerObj.phone})` : ""}`
-                        : customerSearchQuery
+                          ? `${activeCustomerObj.name}${activeCustomerObj.phone ? ` (${activeCustomerObj.phone})` : ""}`
+                          : customerSearchQuery
                     }
                     onFocus={() => {
                       setIsCustomerDropdownOpen(true);
@@ -5341,7 +5339,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                     }}
                     className="w-full h-10 bg-white border border-slate-200 rounded-2xl pl-4 pr-14 text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-text shadow-2xs"
                   />
-                  
+
                   <div className="absolute right-3 flex items-center gap-1.5">
                     {(selectedCustomer || customerSearchQuery) && (
                       <button
@@ -5368,9 +5366,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       className="text-slate-400 hover:text-slate-600 cursor-pointer flex items-center justify-center"
                     >
                       <ChevronDown
-                        className={`size-4 transition-transform duration-150 ${
-                          isCustomerDropdownOpen ? "rotate-180 text-indigo-600" : ""
-                        }`}
+                        className={`size-4 transition-transform duration-150 ${isCustomerDropdownOpen ? "rotate-180 text-indigo-600" : ""
+                          }`}
                       />
                     </button>
                   </div>
@@ -5386,9 +5383,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                         setCustomerSearchQuery("");
                         setIsCustomerDropdownOpen(false);
                       }}
-                      className={`w-full px-3 py-1.5 text-left text-xs font-normal transition-colors cursor-pointer leading-snug ${
-                        !selectedCustomer ? "bg-slate-100 text-slate-600 font-medium" : "text-slate-500 hover:bg-slate-50"
-                      }`}
+                      className={`w-full px-3 py-1.5 text-left text-xs font-normal transition-colors cursor-pointer leading-snug ${!selectedCustomer ? "bg-slate-100 text-slate-600 font-medium" : "text-slate-500 hover:bg-slate-50"
+                        }`}
                     >
                       -- None / Select Customer --
                     </button>
@@ -5397,20 +5393,18 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                     <button
                       type="button"
                       onClick={() => handleSelectWalkIn("Walk-in Customer")}
-                      className={`w-full px-3 py-1.5 text-left text-xs transition-colors cursor-pointer flex items-center justify-between border-b border-slate-100 leading-snug ${
-                        selectedCustomer === "walk-in" || (selectedCustomer && activeCustomerObj?.name === "Walk-in Customer" && !activeCustomerObj?.phone)
+                      className={`w-full px-3 py-1.5 text-left text-xs transition-colors cursor-pointer flex items-center justify-between border-b border-slate-100 leading-snug ${selectedCustomer === "walk-in" || (selectedCustomer && activeCustomerObj?.name === "Walk-in Customer" && !activeCustomerObj?.phone)
                           ? "bg-amber-500 text-white font-bold"
                           : "text-amber-900 bg-amber-50/50 hover:bg-amber-100/70"
-                      }`}
+                        }`}
                     >
                       <span className="flex items-center gap-1.5 font-bold">
                         <span>🚶</span> Walk-in Customer (Guest)
                       </span>
-                      <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
-                        selectedCustomer === "walk-in" || (selectedCustomer && activeCustomerObj?.name === "Walk-in Customer" && !activeCustomerObj?.phone)
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${selectedCustomer === "walk-in" || (selectedCustomer && activeCustomerObj?.name === "Walk-in Customer" && !activeCustomerObj?.phone)
                           ? "bg-white/20 text-white"
                           : "bg-amber-100 text-amber-800"
-                      }`}>
+                        }`}>
                         POS Default
                       </span>
                     </button>
@@ -5442,11 +5436,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                 setCustomerSearchQuery(label);
                                 setIsCustomerDropdownOpen(false);
                               }}
-                              className={`w-full px-3 py-1.5 text-left text-xs transition-colors cursor-pointer truncate leading-snug ${
-                                isSelected
+                              className={`w-full px-3 py-1.5 text-left text-xs transition-colors cursor-pointer truncate leading-snug ${isSelected
                                   ? "bg-indigo-600 text-white font-medium"
                                   : "text-slate-700 hover:bg-indigo-50 hover:text-indigo-700"
-                              }`}
+                                }`}
                             >
                               {label}
                             </button>
@@ -5514,174 +5507,172 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 ) : (
                   /* Registered CRM Customer Profile */
                   <div className="space-y-3 transition-all">
-                  {/* Party Header */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="size-9 rounded-xl bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-2xs shrink-0">
-                        {activeCustomerObj.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-slate-900 text-xs sm:text-sm">
-                            {activeCustomerObj.name}
-                          </span>
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
-                            Active Party
-                          </span>
+                    {/* Party Header */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="size-9 rounded-xl bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-2xs shrink-0">
+                          {activeCustomerObj.name.charAt(0).toUpperCase()}
                         </div>
-                        <div className="text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] mt-0.5">
-                          {activeCustomerObj.phone && (
-                            <span className="inline-flex items-center gap-1 font-medium">
-                              <Phone className="size-3 text-slate-400" /> {activeCustomerObj.phone}
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-slate-900 text-xs sm:text-sm">
+                              {activeCustomerObj.name}
                             </span>
-                          )}
-                          {activeCustomerObj.email && (
-                            <span className="inline-flex items-center gap-1 font-medium">
-                              <Mail className="size-3 text-slate-400" /> {activeCustomerObj.email}
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                              Active Party
                             </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <button
-                        type="button"
-                        onClick={handleOpenEditPartyDetails}
-                        className="px-2.5 py-1 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-colors cursor-pointer flex items-center gap-1 shrink-0 shadow-2xs"
-                        title="Edit Customer Details (Phone, Address, GSTIN, Name) for this bill"
-                      >
-                        <Pencil className="size-3 text-amber-600" /> Edit Details
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleOpenEditCustomerAddresses}
-                        className="px-2.5 py-1 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors cursor-pointer flex items-center gap-1 shrink-0"
-                        title="Manage and edit addresses for this customer"
-                      >
-                        <MapPin className="size-3" /> Addresses
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedCustomer("")}
-                        className="px-2 py-1 text-xs font-bold text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-slate-200/80 transition-colors cursor-pointer shrink-0"
-                      >
-                        Change
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Billing Location Selector */}
-                  <div className="pt-2 border-t border-slate-100 space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-bold text-slate-700 flex items-center gap-1">
-                        Billing Location:
-                      </span>
-                      {selectedBillingAddress?.tag && (
-                        <span className="text-[10px] text-indigo-600 font-semibold">
-                          {selectedBillingAddress.tag}
-                        </span>
-                      )}
-                    </div>
-
-                    {activeCustomerObj.addresses && activeCustomerObj.addresses.length > 1 ? (
-                      <div className="flex flex-wrap gap-1.5">
-                        {activeCustomerObj.addresses.filter((a: any) => a.type === "billing" || a.type === "both" || !a.type).map((addr: any, idx: number) => {
-                          const isSel = selectedBillingAddress?.id === addr.id || (!selectedBillingAddress && (addr.is_default_billing || idx === 0));
-                          return (
-                            <button
-                              key={addr.id || idx}
-                              type="button"
-                              onClick={() => setSelectedBillingAddress(addr)}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                                isSel
-                                  ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
-                                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                              }`}
-                            >
-                              {addr.tag || `Branch ${idx + 1}`}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-
-                    {((selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (activeCustomerObj.billing_address || activeCustomerObj.address || "")).trim()) ? (
-                      <p className="text-[11px] text-slate-600 leading-snug">
-                        {selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (activeCustomerObj.billing_address || activeCustomerObj.address || "")}
-                      </p>
-                    ) : (
-                      <p className="text-[11px] text-slate-400 italic">
-                        No billing address provided.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Unified Purchase History & Financial Summary */}
-                  {!isWalkInCustomer && customerSummary && (
-                    <div className="flex flex-wrap items-center justify-between pt-2 border-t border-slate-100 gap-2">
-                      <div className="flex items-center gap-3 text-[11px]">
-                        <div className="flex items-center gap-1 font-bold text-indigo-700">
-                          <History className="size-3 text-indigo-600" />
-                          <span>History</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-slate-500">
-                            Orders: <strong className="text-slate-900 font-bold">{customerSummary.total_invoices}</strong>
-                          </span>
-                          <span className="text-slate-300">•</span>
-                          <span className="text-slate-500">
-                            Spent: <strong className="text-emerald-600 font-bold">{currency.symbol}{Number(customerSummary.total_spent || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                          </span>
-                          <span className="text-slate-300">•</span>
-                          <span className="text-slate-500 flex items-center gap-1">
-                            Due: <strong className={`font-bold ${Number(customerSummary.total_pending_due || 0) > 0 ? "text-amber-600" : "text-emerald-600"}`}>{currency.symbol}{Number(customerSummary.total_pending_due || 0).toFixed(2)}</strong>
-                            {activeCustomerObj && activeCustomerObj.id !== "walk-in" && (
-                              <button
-                                type="button"
-                                onClick={handleOpenPosAdjustBalance}
-                                title="Edit / Adjust Customer Outstanding Due"
-                                className="size-4 inline-flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded transition cursor-pointer"
-                              >
-                                <Pencil className="size-2.5" />
-                              </button>
+                          </div>
+                          <div className="text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] mt-0.5">
+                            {activeCustomerObj.phone && (
+                              <span className="inline-flex items-center gap-1 font-medium">
+                                <Phone className="size-3 text-slate-400" /> {activeCustomerObj.phone}
+                              </span>
                             )}
-                          </span>
+                            {activeCustomerObj.email && (
+                              <span className="inline-flex items-center gap-1 font-medium">
+                                <Mail className="size-3 text-slate-400" /> {activeCustomerObj.email}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                      
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {customerSummary.total_pending_due > 0 ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => setShowCustomerLedger(true)}
-                              className="px-2 py-0.5 rounded-md text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors cursor-pointer"
-                            >
-                              Ledger
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setIncludePreviousDueInBill(!includePreviousDueInBill)}
-                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                                includePreviousDueInBill
-                                  ? "bg-amber-500 text-white shadow-xs"
-                                  : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
-                              }`}
-                            >
-                              {includePreviousDueInBill ? "✓ Added" : `+ Add Due`}
-                            </button>
-                          </>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                            ✓ Clear Account
+
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={handleOpenEditPartyDetails}
+                          className="px-2.5 py-1 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-colors cursor-pointer flex items-center gap-1 shrink-0 shadow-2xs"
+                          title="Edit Customer Details (Phone, Address, GSTIN, Name) for this bill"
+                        >
+                          <Pencil className="size-3 text-amber-600" /> Edit Details
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleOpenEditCustomerAddresses}
+                          className="px-2.5 py-1 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors cursor-pointer flex items-center gap-1 shrink-0"
+                          title="Manage and edit addresses for this customer"
+                        >
+                          <MapPin className="size-3" /> Addresses
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCustomer("")}
+                          className="px-2 py-1 text-xs font-bold text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-slate-200/80 transition-colors cursor-pointer shrink-0"
+                        >
+                          Change
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Billing Location Selector */}
+                    <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-slate-700 flex items-center gap-1">
+                          Billing Location:
+                        </span>
+                        {selectedBillingAddress?.tag && (
+                          <span className="text-[10px] text-indigo-600 font-semibold">
+                            {selectedBillingAddress.tag}
                           </span>
                         )}
                       </div>
+
+                      {activeCustomerObj.addresses && activeCustomerObj.addresses.length > 1 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {activeCustomerObj.addresses.filter((a: any) => a.type === "billing" || a.type === "both" || !a.type).map((addr: any, idx: number) => {
+                            const isSel = selectedBillingAddress?.id === addr.id || (!selectedBillingAddress && (addr.is_default_billing || idx === 0));
+                            return (
+                              <button
+                                key={addr.id || idx}
+                                type="button"
+                                onClick={() => setSelectedBillingAddress(addr)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${isSel
+                                    ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                                  }`}
+                              >
+                                {addr.tag || `Branch ${idx + 1}`}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+
+                      {((selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (activeCustomerObj.billing_address || activeCustomerObj.address || "")).trim()) ? (
+                        <p className="text-[11px] text-slate-600 leading-snug">
+                          {selectedBillingAddress ? [selectedBillingAddress.street, selectedBillingAddress.city, selectedBillingAddress.state, selectedBillingAddress.pincode].filter(Boolean).join(", ") : (activeCustomerObj.billing_address || activeCustomerObj.address || "")}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-slate-400 italic">
+                          No billing address provided.
+                        </p>
+                      )}
                     </div>
-                  )}
-                </div>
-              )) : (
+
+                    {/* Unified Purchase History & Financial Summary */}
+                    {!isWalkInCustomer && customerSummary && (
+                      <div className="flex flex-wrap items-center justify-between pt-2 border-t border-slate-100 gap-2">
+                        <div className="flex items-center gap-3 text-[11px]">
+                          <div className="flex items-center gap-1 font-bold text-indigo-700">
+                            <History className="size-3 text-indigo-600" />
+                            <span>History</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-500">
+                              Orders: <strong className="text-slate-900 font-bold">{customerSummary.total_invoices}</strong>
+                            </span>
+                            <span className="text-slate-300">•</span>
+                            <span className="text-slate-500">
+                              Spent: <strong className="text-emerald-600 font-bold">{currency.symbol}{Number(customerSummary.total_spent || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                            </span>
+                            <span className="text-slate-300">•</span>
+                            <span className="text-slate-500 flex items-center gap-1">
+                              Due: <strong className={`font-bold ${Number(customerSummary.total_pending_due || 0) > 0 ? "text-amber-600" : "text-emerald-600"}`}>{currency.symbol}{Number(customerSummary.total_pending_due || 0).toFixed(2)}</strong>
+                              {activeCustomerObj && activeCustomerObj.id !== "walk-in" && (
+                                <button
+                                  type="button"
+                                  onClick={handleOpenPosAdjustBalance}
+                                  title="Edit / Adjust Customer Outstanding Due"
+                                  className="size-4 inline-flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded transition cursor-pointer"
+                                >
+                                  <Pencil className="size-2.5" />
+                                </button>
+                              )}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {customerSummary.total_pending_due > 0 ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setShowCustomerLedger(true)}
+                                className="px-2 py-0.5 rounded-md text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors cursor-pointer"
+                              >
+                                Ledger
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setIncludePreviousDueInBill(!includePreviousDueInBill)}
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer ${includePreviousDueInBill
+                                    ? "bg-amber-500 text-white shadow-xs"
+                                    : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
+                                  }`}
+                              >
+                                {includePreviousDueInBill ? "✓ Added" : `+ Add Due`}
+                              </button>
+                            </>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                              ✓ Clear Account
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )) : (
                 <div className="py-6 px-4 rounded-2xl bg-slate-50/40 border border-slate-100 flex items-center justify-center gap-3.5">
                   <div className="size-9 rounded-full bg-indigo-50/80 border border-indigo-100 flex items-center justify-center text-indigo-500 shrink-0">
                     <User className="size-4" />
@@ -5732,7 +5723,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       {activeCustomerObj.addresses?.length ? `${activeCustomerObj.addresses.length} Location(s) Available` : (activeCustomerObj.shipping_address || activeCustomerObj.address ? "Default Address" : "")}
                     </span>
                   </div>
-                  
+
                   {activeCustomerObj.addresses && activeCustomerObj.addresses.length > 0 ? (
                     <div className="flex flex-wrap gap-2">
                       {activeCustomerObj.addresses.map((addr: any, idx: number) => {
@@ -5752,11 +5743,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                 toast.info(`Switched destination to ${addr.tag || `Location ${idx + 1}`} (${addr.state || "Same State"}). Tax: CGST+SGST.`);
                               }
                             }}
-                            className={`px-3 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all cursor-pointer ${
-                              isSel
+                            className={`px-3 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all cursor-pointer ${isSel
                                 ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
                                 : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300"
-                            }`}
+                              }`}
                           >
                             <span className="text-sm">{addr.tag?.toLowerCase().includes("home") ? "🏠" : addr.tag?.toLowerCase().includes("warehouse") ? "🏭" : addr.tag?.toLowerCase().includes("branch") ? "🏬" : "🏢"}</span>
                             <span className="truncate max-w-[140px] text-left">
@@ -5824,14 +5814,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   {invoiceType === "QUOTATION"
                     ? "QUOTATION METADATA"
                     : invoiceType === "ESTIMATE_NON_GST"
-                    ? "ESTIMATE METADATA"
-                    : invoiceType === "PROFORMA"
-                    ? "PROFORMA METADATA"
-                    : invoiceType === "CREDIT_NOTE"
-                    ? "CREDIT NOTE METADATA"
-                    : invoiceType === "DEBIT_NOTE"
-                    ? "DEBIT NOTE METADATA"
-                    : "INVOICE METADATA"}
+                      ? "ESTIMATE METADATA"
+                      : invoiceType === "PROFORMA"
+                        ? "PROFORMA METADATA"
+                        : invoiceType === "CREDIT_NOTE"
+                          ? "CREDIT NOTE METADATA"
+                          : invoiceType === "DEBIT_NOTE"
+                            ? "DEBIT NOTE METADATA"
+                            : "INVOICE METADATA"}
                 </span>
               </button>
 
@@ -5863,14 +5853,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                         {invoiceType === "QUOTATION"
                           ? "Quote No"
                           : invoiceType === "ESTIMATE_NON_GST"
-                          ? "Estimate No"
-                          : invoiceType === "PROFORMA"
-                          ? "Proforma No"
-                          : invoiceType === "CREDIT_NOTE"
-                          ? "Credit Note No"
-                          : invoiceType === "DEBIT_NOTE"
-                          ? "Debit Note No"
-                          : "Invoice No"}
+                            ? "Estimate No"
+                            : invoiceType === "PROFORMA"
+                              ? "Proforma No"
+                              : invoiceType === "CREDIT_NOTE"
+                                ? "Credit Note No"
+                                : invoiceType === "DEBIT_NOTE"
+                                  ? "Debit Note No"
+                                  : "Invoice No"}
                       </label>
                       <button
                         type="button"
@@ -5908,14 +5898,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       {invoiceType === "QUOTATION"
                         ? "Quote Date"
                         : invoiceType === "ESTIMATE_NON_GST"
-                        ? "Estimate Date"
-                        : invoiceType === "CREDIT_NOTE"
-                        ? "Credit Note Date"
-                        : invoiceType === "DEBIT_NOTE"
-                        ? "Debit Note Date"
-                        : invoiceType === "PROFORMA"
-                        ? "Proforma Date"
-                        : "Invoice Date"}
+                          ? "Estimate Date"
+                          : invoiceType === "CREDIT_NOTE"
+                            ? "Credit Note Date"
+                            : invoiceType === "DEBIT_NOTE"
+                              ? "Debit Note Date"
+                              : invoiceType === "PROFORMA"
+                                ? "Proforma Date"
+                                : "Invoice Date"}
                     </label>
                     <DatePickerInput
                       value={invoiceDate}
@@ -7499,9 +7489,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <span className="text-slate-700 font-bold">Total Tax / GST</span>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider ${
-                    gstType === "cgst_sgst" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-indigo-50 text-indigo-700 border border-indigo-200"
-                  }`}>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider ${gstType === "cgst_sgst" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                    }`}>
                     {gstType === "cgst_sgst" ? "Intra-State" : "Inter-State"}
                   </span>
                 </div>
@@ -7513,11 +7502,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       setGstType("cgst_sgst");
                       toast.success("Switched Tax to CGST + SGST (Intra-State)");
                     }}
-                    className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold transition-all cursor-pointer ${
-                      gstType === "cgst_sgst"
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold transition-all cursor-pointer ${gstType === "cgst_sgst"
                         ? "bg-white text-indigo-700 shadow-xs border border-slate-200/60"
                         : "text-slate-500 hover:text-slate-800"
-                    }`}
+                      }`}
                   >
                     CGST+SGST
                   </button>
@@ -7527,11 +7515,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       setGstType("igst");
                       toast.success("Switched Tax to IGST (Inter-State)");
                     }}
-                    className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold transition-all cursor-pointer ${
-                      gstType === "igst"
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold transition-all cursor-pointer ${gstType === "igst"
                         ? "bg-white text-indigo-700 shadow-xs border border-slate-200/60"
                         : "text-slate-500 hover:text-slate-800"
-                    }`}
+                      }`}
                   >
                     IGST
                   </button>
@@ -7708,7 +7695,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                         setSplitCash(val);
                         const parsed = parseFloat(val) || 0;
                         if (parsed <= grandTotal) {
-                           setSplitOnline((grandTotal - parsed).toFixed(2));
+                          setSplitOnline((grandTotal - parsed).toFixed(2));
                         }
                       }}
                       className="w-full h-9 bg-slate-50 border border-slate-200 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
@@ -7726,7 +7713,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                         setSplitOnline(val);
                         const parsed = parseFloat(val) || 0;
                         if (parsed <= grandTotal) {
-                           setSplitCash((grandTotal - parsed).toFixed(2));
+                          setSplitCash((grandTotal - parsed).toFixed(2));
                         }
                       }}
                       className="w-full h-9 bg-slate-50 border border-slate-200 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
@@ -7737,13 +7724,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[11px] font-semibold text-slate-500 block">Amount Received</label>
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                      isWalkInCustomer || amountReceived === "" || Number(amountReceived) >= grandTotal
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isWalkInCustomer || amountReceived === "" || Number(amountReceived) >= grandTotal
                         ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                         : Number(amountReceived) > 0
-                        ? "bg-amber-50 text-amber-700 border border-amber-200"
-                        : "bg-purple-50 text-purple-700 border border-purple-200"
-                    }`}>
+                          ? "bg-amber-50 text-amber-700 border border-amber-200"
+                          : "bg-purple-50 text-purple-700 border border-purple-200"
+                      }`}>
                       {isWalkInCustomer || amountReceived === "" || Number(amountReceived) >= grandTotal ? "Full Paid" : Number(amountReceived) > 0 ? "Partial" : "Pay Later"}
                     </span>
                   </div>
@@ -7859,11 +7845,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       setPaymentMode("Cash");
                     }
                   }}
-                  className={`py-1 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
-                    Number(amountReceived) === btn.val
+                  className={`py-1 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${Number(amountReceived) === btn.val
                       ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
                       : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200"
-                  }`}
+                    }`}
                 >
                   {btn.label}
                 </button>
@@ -8148,7 +8133,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
             <form onSubmit={handleCreateNewParty} className="space-y-4 overflow-y-auto pr-1 flex-1">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-                
+
                 {/* ── Left Column (5 Cols): Primary Customer Profile & Tax ── */}
                 <div className="lg:col-span-5 space-y-3.5">
                   <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3.5 space-y-3">
@@ -8299,11 +8284,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                         <div
                           key={addr.id || idx}
                           onClick={() => setActiveAddrIndex(idx)}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border ${
-                            activeAddrIndex === idx
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border ${activeAddrIndex === idx
                               ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
                               : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
-                          }`}
+                            }`}
                         >
                           <span>
                             {addr.tag === "Home" ? "🏠" : addr.tag === "Office" ? "🏢" : addr.tag === "Warehouse" ? "🏭" : addr.tag === "Branch" ? "🏬" : "📍"} {addr.tag} #{idx + 1}
@@ -8340,11 +8324,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                     updated[activeAddrIndex].tag = t;
                                     setNewPartyAddresses(updated);
                                   }}
-                                  className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors cursor-pointer ${
-                                    newPartyAddresses[activeAddrIndex].tag === t
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors cursor-pointer ${newPartyAddresses[activeAddrIndex].tag === t
                                       ? "bg-indigo-100 text-indigo-700 border-indigo-300"
                                       : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                                  }`}
+                                    }`}
                                 >
                                   {t === "Home" ? "🏠 Home" : t === "Office" ? "🏢 Office" : t === "Warehouse" ? "🏭 Warehouse" : t === "Branch" ? "🏬 Branch" : "📍 Other"}
                                 </button>
@@ -8649,11 +8632,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                 {currency.symbol}{pendAmt.toFixed(2)}
                               </td>
                               <td className="px-4 py-3 text-center">
-                                <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  inv.status === "Partial" || inv.payment_status === "Partial"
+                                <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${inv.status === "Partial" || inv.payment_status === "Partial"
                                     ? "bg-amber-100 text-amber-800 border border-amber-200"
                                     : "bg-rose-100 text-rose-800 border border-rose-200"
-                                }`}>
+                                  }`}>
                                   {inv.status || inv.payment_status || "Unpaid"}
                                 </span>
                               </td>
@@ -9061,17 +9043,15 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                     <div
                       key={p.id}
                       onClick={() => toggleMultiSelectProduct(p.id)}
-                      className={`p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 sm:gap-4 ${
-                        isSelected
+                      className={`p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 sm:gap-4 ${isSelected
                           ? "bg-blue-50/80 border-blue-500 shadow-sm ring-1 ring-blue-500"
                           : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-3 sm:gap-3.5 flex-1 min-w-0">
                         <div
-                          className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
-                            isSelected ? "bg-blue-600 text-white" : "border-2 border-slate-300 text-transparent"
-                          }`}
+                          className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors shrink-0 ${isSelected ? "bg-blue-600 text-white" : "border-2 border-slate-300 text-transparent"
+                            }`}
                         >
                           <Check className="w-3.5 h-3.5 stroke-[3]" />
                         </div>
@@ -9258,11 +9238,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                             key={page}
                             type="button"
                             onClick={() => setMultiProductPage(Number(page))}
-                            className={`min-w-[28px] h-7 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                              isCurrent
+                            className={`min-w-[28px] h-7 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${isCurrent
                                 ? "bg-blue-600 text-white shadow-xs shadow-blue-200"
                                 : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
-                            }`}
+                              }`}
                           >
                             {page}
                           </button>
@@ -9643,11 +9622,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   <div
                     key={addr.id || idx}
                     onClick={() => setActiveEditingAddrIndex(idx)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border ${
-                      activeEditingAddrIndex === idx
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border ${activeEditingAddrIndex === idx
                         ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
                         : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
-                    }`}
+                      }`}
                   >
                     <span>{addr.tag || `Location ${idx + 1}`}</span>
                     {addr.is_default_billing && <span className="text-[9px] bg-white/20 px-1 rounded">Bill</span>}

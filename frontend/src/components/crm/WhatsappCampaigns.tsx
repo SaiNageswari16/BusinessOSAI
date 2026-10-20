@@ -388,6 +388,22 @@ export function WhatsappCampaigns() {
     }
   };
 
+  // Handle reconnecting / restarting an existing session
+  const handleReconnect = async (id: string) => {
+    try {
+      toast.info(`Reconnecting WhatsApp session +${id}...`);
+      const res = await whatsappAutomationApi.startSession(id);
+      if (res.success) {
+        toast.info("Reconnection initiated. Please wait or scan QR if prompted.");
+        await fetchSessions();
+      } else {
+        toast.error("Reconnect notice: " + (res.error || "Please wait for gateway."));
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to reconnect session");
+    }
+  };
+
   // Handle sending message
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -709,6 +725,97 @@ export function WhatsappCampaigns() {
 
   return (
     <div className="space-y-4">
+      {/* ─── LIVE WHATSAPP CONNECTION STATUS HERO BAR ─── */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-md p-4 transition-all">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div
+              className={`p-2.5 rounded-xl transition-all ${
+                isConnected
+                  ? "bg-emerald-500 text-white shadow-md shadow-emerald-500/30"
+                  : activeSession?.status === "QR_READY"
+                  ? "bg-amber-500 text-white shadow-md shadow-amber-500/30 animate-pulse"
+                  : activeSession?.status === "INITIALIZING"
+                  ? "bg-blue-500 text-white shadow-md shadow-blue-500/30"
+                  : "bg-rose-500 text-white shadow-md shadow-rose-500/30"
+              }`}
+            >
+              <Smartphone className="size-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  Live WhatsApp Device Status
+                </span>
+                {isConnected ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300">
+                    <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                    ONLINE & CONNECTED
+                  </span>
+                ) : activeSession?.status === "QR_READY" ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-black text-amber-700 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-300 animate-pulse">
+                    <span className="size-2 rounded-full bg-amber-500" />
+                    SCAN QR CODE
+                  </span>
+                ) : activeSession?.status === "INITIALIZING" ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-black text-blue-700 bg-blue-100 px-2.5 py-0.5 rounded-full border border-blue-300">
+                    <RefreshCw className="size-3 animate-spin text-blue-600" />
+                    CONNECTING...
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-black text-rose-700 bg-rose-100 px-2.5 py-0.5 rounded-full border border-rose-300">
+                    <span className="size-2 rounded-full bg-rose-500" />
+                    OFFLINE / DISCONNECTED
+                  </span>
+                )}
+              </div>
+              <div className="text-xs font-bold text-slate-800 mt-0.5 flex items-center gap-2 flex-wrap">
+                <span>{activeSessionId ? `+${activeSessionId}` : "No WhatsApp Device Linked"}</span>
+                {activeSession?.info?.pushname && (
+                  <span className="text-slate-500 font-normal">({activeSession.info.pushname})</span>
+                )}
+                {activeSession?.owner_name && (
+                  <span className="text-[10.5px] text-slate-400 font-medium">Assigned to: {activeSession.owner_name}</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => void fetchSessions()}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <RefreshCw className="size-3.5 text-slate-500" /> Refresh Status
+            </button>
+            {activeSessionId && !isConnected && (
+              <button
+                onClick={() => void handleReconnect(activeSessionId)}
+                className="px-3 py-1.5 rounded-xl bg-[#00a884] hover:bg-[#008f72] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+              >
+                <RefreshCw className="size-3.5" /> Reconnect Now
+              </button>
+            )}
+            {activeSession?.qr && !isConnected && (
+              <button
+                onClick={() => setShowQrModal(true)}
+                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+              >
+                <QrCode className="size-3.5" /> View QR Code
+              </button>
+            )}
+            {!activeSessionId && (
+              <button
+                onClick={() => setShowLinkModal(true)}
+                className="px-3 py-1.5 rounded-xl bg-[#00a884] hover:bg-[#008f72] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+              >
+                <Plus className="size-3.5" /> Link Phone
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* ─── MASTER WHATSAPP AUTOMATION & DISPATCH CONTROL BANNER ─── */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-md p-5 transition-all">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -892,13 +999,28 @@ export function WhatsappCampaigns() {
               {activeSession && (
                 <div className="space-y-1.5 p-2.5 rounded-lg bg-slate-100/50 border border-slate-200">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className={`size-2.5 rounded-full ${activeSession.status === 'CONNECTED' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-                      <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                        {activeSession.status}
+                    <div className="flex items-center gap-1.5">
+                      <span className={`size-2.5 rounded-full ${activeSession.status === 'CONNECTED' ? 'bg-emerald-500 animate-pulse' : activeSession.status === 'QR_READY' ? 'bg-amber-500 animate-pulse' : 'bg-rose-500'}`} />
+                      <span className={`text-[10px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded ${
+                        activeSession.status === 'CONNECTED'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : activeSession.status === 'QR_READY'
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-rose-100 text-rose-800'
+                      }`}>
+                        {activeSession.status === 'CONNECTED' ? 'ONLINE' : activeSession.status === 'QR_READY' ? 'SCAN QR' : 'OFFLINE'}
                       </span>
                     </div>
                     <div className="flex items-center gap-1">
+                      {activeSession.status !== "CONNECTED" && activeSessionId && (
+                        <button
+                          onClick={() => void handleReconnect(activeSessionId)}
+                          title="Reconnect WhatsApp session"
+                          className="p-1 hover:bg-slate-200 text-emerald-600 hover:text-emerald-800 rounded transition-colors cursor-pointer"
+                        >
+                          <RefreshCw className="size-3.5" />
+                        </button>
+                      )}
                       {activeSession.status === "CONNECTED" && (
                         <button
                           onClick={handleOpenSyncModal}

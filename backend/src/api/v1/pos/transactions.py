@@ -5,6 +5,7 @@ import string
 import random
 import re
 import urllib.parse
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from pydantic import BaseModel, Field
@@ -341,17 +342,26 @@ async def checkout(
                     active_batch.remaining_quantity = int(curr_b_stk - item.quantity)
 
                     # Log sales dispatch traceability event
+                    cust_party_name = "Walk-in Customer"
+                    if payload.customer_id:
+                        try:
+                            c_rec = await db.get(Customer, payload.customer_id)
+                            if c_rec and c_rec.name:
+                                cust_party_name = c_rec.name
+                        except Exception:
+                            pass
+
                     ev = TraceabilityEvent(
                         event_type="dispatched",
                         batch_id=active_batch.id,
                         destination_location="POS Terminal Counter Sale",
                         party_type="customer",
-                        party_name=customer.name if customer else "Walk-in Customer",
+                        party_name=cust_party_name,
                         reference_document=f"POS-{transaction.receipt_number}",
                         quantity=item.quantity,
                         unit=active_batch.uom or "Pcs",
                         notes=f"POS Sale #{transaction.receipt_number} (Batch #{active_batch.batch_number})",
-                        event_at=datetime.utcnow(),
+                        event_at=datetime.now(timezone.utc),
                         actor_user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
                         tenant_id=ctx.tenant_id,
                         company_id=ctx.active_company_id,
