@@ -563,10 +563,6 @@ export function PosInvoicesHistory() {
           }
         }
 
-        const activeCid = (localStorage.getItem("bos_active_company_id") || (currentCompanyId !== "default" ? currentCompanyId : undefined));
-        const primaryCompanyId = companiesList?.[0]?.id || tenant?.id;
-        const isPrimaryCompany = !activeCid || activeCid === primaryCompanyId || (companiesList.length > 0 && activeCid === companiesList[0]?.id);
-
         keysToScan.forEach((key) => {
           try {
             const raw = localStorage.getItem(key);
@@ -575,14 +571,6 @@ export function PosInvoicesHistory() {
               if (Array.isArray(list)) {
                 list.forEach((inv) => {
                   if (inv && (inv.id || inv.invoice_number)) {
-                    // Strict workspace isolation: skip invoices explicitly belonging to other companies
-                    const invCid = inv.company_id || (inv as any).raw?.company_id;
-                    if (activeCid && invCid && String(invCid) !== String(activeCid)) {
-                      return;
-                    }
-                    if (activeCid && !invCid && !isPrimaryCompany) {
-                      return;
-                    }
                     const idKey = String(inv.invoice_number || inv.id).toLowerCase().trim();
                     if (!scannedLocalMap.has(idKey)) {
                       scannedLocalMap.set(idKey, inv);
@@ -657,8 +645,8 @@ export function PosInvoicesHistory() {
       let posItems: any[] = [];
       try {
         const [apiRes, posHist]: [any, any] = await Promise.all([
-          invoicesApi.listInvoices({ page_size: 1000, company_id: activeCid }).catch(() => null),
-          posApi.getHistory({ limit: 500, company_id: activeCid }).catch(() => null),
+          invoicesApi.listInvoices({ page_size: 1000 }).catch(() => null),
+          posApi.getHistory({ limit: 500 }).catch(() => null),
         ]);
         invoiceItems = apiRes?.items || apiRes?.data?.items || apiRes?.data || (Array.isArray(apiRes) ? apiRes : []);
         posItems = posHist?.items || posHist?.data?.items || posHist?.data || (Array.isArray(posHist) ? posHist : []);
@@ -671,16 +659,12 @@ export function PosInvoicesHistory() {
       const matchedPosTxIds = new Set<string>();
       if (Array.isArray(posItems)) {
         posItems.forEach((tx: any) => {
-          if (activeCid && tx.company_id && String(tx.company_id) !== String(activeCid)) return;
-          if (activeCid && !tx.company_id && !isPrimaryCompany) return;
           if (tx.receipt_number) posReceiptMap.set(String(tx.receipt_number).toLowerCase().trim(), tx);
           if (tx.id) posReceiptMap.set(String(tx.id).toLowerCase().trim(), tx);
         });
       }
         if (Array.isArray(invoiceItems) && invoiceItems.length > 0) {
           invoiceItems.forEach((inv: any) => {
-            if (activeCid && inv.company_id && String(inv.company_id) !== String(activeCid)) return;
-            if (activeCid && !inv.company_id && !isPrimaryCompany) return;
             const invNum = String(inv.invoice_number || "").toUpperCase();
             const invType = String(inv.invoice_type || inv.doc_type || "").toUpperCase();
             const isQuote = invType === "QUOTATION" || invNum.startsWith("QT-");
@@ -1104,10 +1088,6 @@ export function PosInvoicesHistory() {
             }
           }
         } else if (inv.invoice_number) {
-          const invCid = inv.company_id || (inv as any).raw?.company_id;
-          if (activeCid && invCid && String(invCid) !== String(activeCid)) {
-            return;
-          }
           const cleanInvNum = String(inv.invoice_number || "").toLowerCase().trim();
           const retRecord = returnedMap.get(cleanInvNum);
           if (retRecord) {
@@ -1197,12 +1177,6 @@ export function PosInvoicesHistory() {
             inv.grand_total = Number((sub + tax).toFixed(2));
             if (inv.payment_status === "Paid") inv.amount_received = inv.grand_total;
           }
-        }
-        if (activeCid && inv.company_id && String(inv.company_id) !== String(activeCid)) {
-          continue;
-        }
-        if (activeCid && !inv.company_id && !isPrimaryCompany) {
-          continue;
         }
         dedupedList.push(inv);
       }
