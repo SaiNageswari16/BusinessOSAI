@@ -426,19 +426,8 @@ function LoginPage() {
         <div className="absolute top-[40%] right-[10%] w-[40%] h-[40%] rounded-full bg-amber-400/20 blur-[100px] pointer-events-none" />
 
         <div className="relative z-10 flex flex-col flex-1 justify-center">
-          <div className="flex items-center gap-5 mb-12 cursor-pointer" onClick={() => navigate({ to: "/" })}>
-            <div className="size-20 shrink-0 flex items-center justify-center transition-transform hover:scale-105">
-              <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain drop-shadow-sm" />
-            </div>
-            <div>
-              <div className="font-extrabold text-3xl tracking-tight text-slate-900"><span className="text-purple-700">Lazy</span>Monkey<span className="text-emerald-600">AI</span></div>
-              <div className="text-xs font-semibold mt-1 flex items-center gap-1">
-                <span className="text-slate-600 font-medium">Smart</span>
-                <span className="text-emerald-600 font-extrabold">AI</span>
-                <span className="text-slate-600 font-medium">for</span>
-                <span className="text-amber-600 font-bold">Lazy Geniuses</span>
-              </div>
-            </div>
+          <div className="flex items-center gap-4 mb-10 cursor-pointer" onClick={() => navigate({ to: "/" })}>
+            <img src="/Logo.png" alt="IoTRONCS Logo" className="h-12 w-auto object-contain drop-shadow-sm transition-transform hover:scale-105" />
           </div>
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
@@ -475,11 +464,9 @@ function LoginPage() {
       <div className="flex items-center justify-center p-6 sm:p-12 relative bg-white">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-[400px]">
           {/* Mobile Logo */}
-          <div className="flex lg:hidden flex-col items-center justify-center text-center space-y-3 mb-8 cursor-pointer" onClick={() => navigate({ to: "/" })}>
-            <div className="size-24 shrink-0 flex items-center justify-center">
-              <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain drop-shadow-sm" />
-            </div>
-            <span className="font-bold text-3xl tracking-tight text-slate-900">LazyMonkey<span className="text-emerald-600">AI</span></span>
+          <div className="flex lg:hidden flex-col items-center justify-center text-center space-y-2 mb-8 cursor-pointer" onClick={() => navigate({ to: "/" })}>
+            <img src="/Logo.png" alt="IoTRONCS Logo" className="h-10 w-auto object-contain drop-shadow-sm" />
+            <span className="text-xs font-bold text-slate-500">Enterprise Cloud OS</span>
           </div>
 
           {verificationRequired ? (

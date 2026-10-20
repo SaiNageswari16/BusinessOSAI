@@ -226,14 +226,9 @@ function LazyMonkeyAiPage() {
         {/* Topbar */}
         <div className="px-6 py-4 border-b border-border/50 bg-background/80 backdrop-blur-md flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="size-9 rounded-xl flex items-center justify-center overflow-hidden shrink-0 border border-purple-200/50 bg-purple-50">
-              <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain" />
-            </div>
-            <div>
-              <div className="text-sm font-extrabold tracking-tight"><span className="text-purple-700">Lazy</span>Monkey<span className="text-emerald-600">AI</span></div>
-              <div className="text-[10px] font-medium text-muted-foreground flex items-center gap-1.5">
-                <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" /> Enterprise AI Copilot & Assistant
-              </div>
+            <img src="/Logo.png" alt="IoTRONCS" className="h-7 w-auto object-contain" />
+            <div className="text-[10px] font-medium text-muted-foreground flex items-center gap-1.5 pl-3 border-l border-border/50">
+              <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" /> Enterprise AI Copilot & Assistant
             </div>
           </div>
           <Button
@@ -251,18 +246,16 @@ function LazyMonkeyAiPage() {
           <div className="max-w-4xl mx-auto h-full flex flex-col">
             {messages.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500 pb-16">
-                <div className="size-20 rounded-3xl p-2 bg-purple-50/80 border border-purple-200 shadow-xl mb-6 relative flex items-center justify-center">
-                  <div className="absolute inset-0 bg-purple-500/10 blur-xl rounded-full" />
-                  <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain relative z-10" />
+                <div className="h-16 w-auto p-2 mb-4 relative flex items-center justify-center">
+                  <img src="/Logo.png" alt="IoTRONCS Logo" className="h-full w-auto object-contain relative z-10" />
                 </div>
                 <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-2 text-center text-foreground">
-                  Hello, I'm <span className="text-purple-700">Lazy</span>Monkey<span className="text-emerald-600">AI</span>.
+                  Hello, I'm your Enterprise AI Assistant.
                 </h1>
                 <div className="text-xs font-semibold mb-3 flex items-center gap-1">
-                  <span className="text-slate-600 font-medium">Smart</span>
-                  <span className="text-emerald-600 font-extrabold">AI</span>
-                  <span className="text-slate-600 font-medium">for</span>
-                  <span className="text-amber-600 font-bold">Lazy Geniuses</span>
+                  <span className="text-slate-600 font-medium">Enterprise</span>
+                  <span className="text-blue-600 font-extrabold">Cloud</span>
+                  <span className="text-slate-600 font-medium">Business Operating System</span>
                 </div>
                 <p className="text-muted-foreground text-center max-w-lg mb-8 text-xs sm:text-sm leading-relaxed">
                   Your intelligent enterprise co-pilot. Ask me anything about your platform features, live inventory, sales, or workflow guides.

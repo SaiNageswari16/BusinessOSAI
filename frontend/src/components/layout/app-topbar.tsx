@@ -617,21 +617,13 @@ export function AppTopbar({
             const firstAllowed = visibleModules[0]?.defaultTo || "/dashboard";
             handleNavigateModule(firstAllowed);
           }}
-          className="flex items-center gap-2 cursor-pointer group shrink-0"
+          className="flex items-center cursor-pointer group shrink-0"
         >
-          <div className="h-8 w-auto max-w-[120px] flex items-center justify-center transition-transform group-hover:scale-105 overflow-hidden shrink-0">
-            <img src="/iotroncs-logo.png" alt="IoTRONCS Logo" className="h-full w-auto object-contain" />
-          </div>
-          <div className="hidden sm:flex flex-col justify-center">
-            <div className="font-black text-[16px] text-blue-600 tracking-tight leading-none flex items-center">
-              IoTRONCS
-            </div>
-            <div className="text-[10px] font-semibold tracking-normal leading-none mt-1 flex items-center gap-1">
-              <span className="text-slate-600 font-medium">Enterprise</span>
-              <span className="text-blue-600 font-extrabold">Cloud</span>
-              <span className="text-slate-600 font-medium">OS</span>
-            </div>
-          </div>
+          <img
+            src="/Logo.png"
+            alt="IoTRONCS"
+            className="h-8 w-auto object-contain transition-transform group-hover:scale-105"
+          />
         </div>
       </div>
 
@@ -1542,16 +1534,8 @@ export function AppTopbar({
             >
               {/* Drawer Header */}
               <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="size-8 rounded-lg overflow-hidden bg-white/10 p-1 flex items-center justify-center">
-                    <img src="/Logo.png" alt="Logo" className="size-full object-contain" />
-                  </div>
-                  <div>
-                    <div className="font-extrabold text-sm text-white">
-                      Lazy<span className="text-purple-400">Monkey</span><span className="text-emerald-400">AI</span>
-                    </div>
-                    <div className="text-[10px] text-slate-400">Business Operating System</div>
-                  </div>
+                <div className="flex items-center p-1.5 rounded-lg bg-white">
+                  <img src="/Logo.png" alt="IoTRONCS" className="h-6 w-auto object-contain" />
                 </div>
                 <button
                   type="button"

@@ -286,8 +286,8 @@ export function AdGenerator() {
       const reader = new FileReader();
       reader.onloadend = () => {
         setRefImageBase64(reader.result as string);
-        setRefImageName("LazyMonkey Brand Mascot (Logo.png)");
-        toast.success("LazyMonkey Brand Mascot attached as reference!");
+        setRefImageName("IoTRONCS Brand Logo (Logo.png)");
+        toast.success("IoTRONCS Brand Logo attached as reference!");
       };
       reader.readAsDataURL(blob);
     } catch (e) {

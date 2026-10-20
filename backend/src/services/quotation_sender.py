@@ -102,20 +102,30 @@ def _hex_to_rgb(hex_color: str | None) -> tuple[int, int, int]:
         return (0, 168, 132)
 
 
-async def _get_gateway_session_id() -> str | None:
-    """Return the session id / phone of the first CONNECTED WhatsApp session."""
+async def _get_gateway_session_id(allowed_sessions: list[str] | None = None) -> str | None:
+    """Return the session id / phone of the first CONNECTED WhatsApp session strictly belonging to the tenant."""
+    if not allowed_sessions:
+        return None
     try:
         async with httpx.AsyncClient(timeout=4.0) as http:
             resp = await http.get(f"{GATEWAY_URL}/sessions")
             if resp.status_code != 200:
                 return None
             sessions = resp.json()
-            for sid, info in sessions.items():
-                if isinstance(info, dict) and info.get("status") == "CONNECTED":
-                    return sid
-            # If any session exists
-            if sessions:
-                return next(iter(sessions.keys()))
+            for sid in allowed_sessions:
+                sid_str = str(sid).strip()
+                clean_sid = "".join(c for c in sid_str if c.isdigit())
+                variants = [sid_str]
+                if clean_sid and clean_sid != sid_str:
+                    variants.append(clean_sid)
+                if clean_sid.startswith("91"):
+                    variants.append(clean_sid[2:])
+                else:
+                    variants.append(f"91{clean_sid}")
+                for variant in variants:
+                    info = sessions.get(variant)
+                    if isinstance(info, dict) and info.get("status") == "CONNECTED":
+                        return variant
     except Exception as exc:
         logger.warning("Could not reach WhatsApp gateway for session lookup: %s", exc)
     return None
@@ -450,9 +460,11 @@ async def send_quotation_whatsapp(
     if len(clean_phone) == 10 and not clean_phone.startswith("91"):
         clean_phone = f"91{clean_phone}"
 
-    session_id = await _get_gateway_session_id()
+    tenant = await db.get(Tenant, quote.tenant_id)
+    tenant_allowed_sessions = list((tenant.settings or {}).get("whatsapp_web_sessions") or []) if tenant else []
+    session_id = await _get_gateway_session_id(tenant_allowed_sessions)
     if not session_id:
-        raise QuotationSendError("No active WhatsApp session connected. Please connect WhatsApp from CRM -> WhatsApp Automation.")
+        raise QuotationSendError("No active WhatsApp session connected for this organization. Please connect WhatsApp from CRM -> WhatsApp Automation.")
 
     # Reuse the exact saved PDF from disk
     pdf_bytes, file_path = await get_or_create_quotation_pdf(quote, db, force_regenerate=False)

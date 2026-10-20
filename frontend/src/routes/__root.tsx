@@ -11,61 +11,24 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
-
-// Global Fetch Interceptor for SaaS Platform Impersonation Headers
-if (typeof window !== "undefined" && !(window as any).__fetch_intercepted) {
-  (window as any).__fetch_intercepted = true;
-  const originalFetch = window.fetch;
-  window.fetch = async function (input, init) {
-    let url = "";
-    if (typeof input === "string") {
-      url = input;
-    } else if (input instanceof URL) {
-      url = input.href;
-    } else if (input && typeof input === "object" && "url" in (input as any)) {
-      url = (input as any).url;
-    }
-
-    const isApiUrl = url.includes("/api/v1") || url.includes(":8000");
-
-    if (isApiUrl) {
-      const newInit = { ...(init || {}) };
-      const headers = new Headers(newInit.headers || {});
-
-      try {
-        const storedTenant = localStorage.getItem("bos-tenant");
-        if (storedTenant) {
-          const parsed = JSON.parse(storedTenant);
-          const targetTenantId = parsed.raw?.tenant_id || parsed.tenant_id || parsed.id;
-          if (targetTenantId) {
-            headers.set("X-Impersonate-Tenant", targetTenantId);
-          }
-        }
-      } catch (e) {
-        // ignore
-      }
-
-      newInit.headers = headers;
-      return originalFetch(input, newInit);
-    }
-
-    return originalFetch(input, init);
-  };
-}
+import { AuthProvider } from "@/contexts/auth-context";
+import { RbacProvider } from "@/contexts/rbac-context";
+import { I18nProvider } from "@/contexts/i18n-context";
+import { Toaster } from "sonner";
 
 function NotFoundComponent() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <div className="flex min-h-screen items-center justify-center bg-[#f8f9fa] text-slate-900 px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-7xl font-bold text-foreground">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <h1 className="text-7xl font-bold text-slate-950">404</h1>
+        <h2 className="mt-4 text-xl font-semibold text-slate-900">Page not found</h2>
+        <p className="mt-2 text-sm text-slate-600">
           The page you're looking for doesn't exist or has been moved.
         </p>
         <div className="mt-6">
           <Link
             to="/"
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="inline-flex items-center justify-center rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700"
           >
             Go home
           </Link>
@@ -83,28 +46,27 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   }, [error]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md mx-auto text-center py-20 px-4">
-        <h1 className="text-2xl font-bold mb-4">This page didn't load</h1>
-        <p className="text-muted-foreground">
+    <div className="flex min-h-screen items-center justify-center bg-[#f8f9fa] text-slate-900 px-4">
+      <div className="max-w-md text-center">
+        <h1 className="text-xl font-semibold tracking-tight text-slate-950">
+          This page didn't load
+        </h1>
+        <p className="mt-2 text-sm text-slate-600">
           Something went wrong on our end. You can try refreshing or head back home.
         </p>
-        <div className="my-4 p-4 bg-red-50 text-red-700 rounded-md text-sm text-left overflow-auto">
-          {error instanceof Error ? error.message : JSON.stringify(error)}
-        </div>
-        <div className="mt-6 flex gap-4 justify-center">
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
               router.invalidate();
               reset();
             }}
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="inline-flex items-center justify-center rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700"
           >
             Try again
           </button>
           <a
             href="/"
-            className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50"
           >
             Go home
           </a>
@@ -119,14 +81,33 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "LazyMonkeyAI — Smart AI for Lazy Geniuses" },
-      { name: "description", content: "AI-powered Business Operating System unifying ERP, POS, Inventory, Accounting, CRM, HRMS, IoT and Analytics." },
+      { title: "IOTRONICS — One Platform. Smarter Business. Endless Possibilities." },
+      {
+        name: "description",
+        content:
+          "Manage your business, automate daily tasks, and make smarter decisions with AI-powered applications designed to simplify your work.",
+      },
+      { name: "author", content: "IOTRONICS" },
+      { property: "og:title", content: "IOTRONICS — One Platform. Smarter Business." },
+      {
+        property: "og:description",
+        content:
+          "Intelligent solutions for business management, sales, marketing, recruitment, finance, inventory, and more.",
+      },
+      { property: "og:type", content: "website" },
+      { property: "og:image", content: "/Logo.png" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:site", content: "@IOTRONICS" },
+      { name: "twitter:image", content: "/Logo.png" },
     ],
     links: [
-      { rel: "stylesheet", href: appCss },
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,300..900;1,300..900&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Noto+Sans+Telugu:wght@300..900&family=Noto+Sans+Devanagari:wght@300..900&family=Noto+Sans+Kannada:wght@300..900&family=Noto+Sans+Tamil:wght@300..900&family=Noto+Sans+Malayalam:wght@300..900&family=Noto+Sans+Arabic:wght@300..900&display=swap" },
+      {
+        rel: "stylesheet",
+        href: appCss,
+      },
+      { rel: "icon", href: "/favicon.ico", sizes: "any" },
+      { rel: "icon", href: "/favicon.png", type: "image/png" },
+      { rel: "apple-touch-icon", href: "/favicon.png" },
     ],
   }),
   shellComponent: RootShell,
@@ -137,11 +118,30 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html
+      lang="en"
+      className="bg-[#f8f9fa] text-slate-900"
+      style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+    >
       <head>
         <HeadContent />
+        <style>{`
+          /* Globally hide scrollbar */
+          ::-webkit-scrollbar {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+          }
+          html, body, * {
+            scrollbar-width: none !important;
+            -ms-overflow-style: none !important;
+          }
+        `}</style>
       </head>
-      <body>
+      <body
+        className="bg-[#f8f9fa] text-slate-900 antialiased selection:bg-purple-500/20 selection:text-purple-900 font-sans"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
         {children}
         <Scripts />
       </body>
@@ -149,30 +149,20 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
-import { ThemeProvider } from "../contexts/theme-context";
-import { AuthProvider } from "../contexts/auth-context";
-import { RbacProvider } from "../contexts/rbac-context";
-import { I18nProvider } from "../contexts/i18n-context";
-import { StoreThemeProvider } from "@/contexts/StoreThemeContext";
-import { Toaster } from "@/components/ui/sonner";
-
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <StoreThemeProvider>
+      <AuthProvider>
+        <RbacProvider>
           <I18nProvider>
-            <AuthProvider>
-              <RbacProvider>
-                <Outlet />
-                <Toaster position="top-right" />
-              </RbacProvider>
-            </AuthProvider>
+            {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+            <Outlet />
+            <Toaster richColors position="top-right" />
           </I18nProvider>
-        </StoreThemeProvider>
-      </ThemeProvider>
+        </RbacProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

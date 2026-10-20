@@ -1919,6 +1919,32 @@ export function PosInvoicesHistory() {
     };
   }, [invoices]);
 
+  const hasActiveFilters = Boolean(
+    searchQuery.trim() ||
+    dateFilter !== "All" ||
+    sortOrder !== "newest" ||
+    statusFilter !== "All" ||
+    paymentModeFilter !== "All" ||
+    printFilter !== "All" ||
+    locationFilter !== "All" ||
+    salesRepFilter !== "All" ||
+    customStartDate ||
+    customEndDate
+  );
+
+  const handleResetFilters = () => {
+    setSearchQuery("");
+    setDateFilter("All");
+    setSortOrder("newest");
+    setStatusFilter("All");
+    setPaymentModeFilter("All");
+    setPrintFilter("All");
+    setLocationFilter("All");
+    setSalesRepFilter("All");
+    setCustomStartDate("");
+    setCustomEndDate("");
+  };
+
   return (
     <div className="space-y-6 mx-auto min-h-screen pb-24">
       {/* Header */}
@@ -1958,23 +1984,29 @@ export function PosInvoicesHistory() {
       </div>
 
       {/* Summary KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3.5">
+      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 2xl:grid-cols-8 gap-2.5 sm:gap-3">
         {/* 1. Total Sales Invoices */}
         <div
           onClick={() => navigate({ to: "/reports", search: { tab: "payment_mode_sales" } as any })}
-          className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-blue-300 hover:shadow-md transition-all cursor-pointer"
+          className="bg-white px-3 py-3 rounded-2xl border border-slate-200/80 shadow-xs hover:border-blue-300 hover:shadow-md transition-all cursor-pointer min-w-0 flex flex-col justify-between h-full"
           title="Click to view detailed report"
         >
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Total Sales Invoices</span>
-            <Receipt className="w-4 h-4 text-blue-600" />
+          <div>
+            <div className="flex items-center justify-between text-slate-500 mb-1.5 gap-1">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
+                Total Invoices
+              </span>
+              <Receipt className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            </div>
+            <div className="text-base sm:text-lg font-semibold text-slate-900 tracking-tight whitespace-nowrap">
+              {activeSalesInvoicesCount}
+            </div>
           </div>
-          <div className="text-2xl font-black text-slate-900">{activeSalesInvoicesCount}</div>
-          <div className="text-[11px] text-slate-500 font-medium mt-1">
+          <div className="text-[10.5px] text-slate-500 font-medium mt-1 whitespace-nowrap">
             {cancelledInvoicesCount > 0 ? (
-              <span className="text-rose-600 font-bold">{totalSalesInvoicesCount} Total • {cancelledInvoicesCount} Cancelled</span>
+              <span className="text-rose-600 font-medium">{totalSalesInvoicesCount} Total • {cancelledInvoicesCount} Cancelled</span>
             ) : (
-              <span className="text-emerald-600 font-bold">100% Synced & Logged</span>
+              <span className="text-emerald-600 font-medium">100% Synced</span>
             )}
           </div>
         </div>
@@ -1982,139 +2014,191 @@ export function PosInvoicesHistory() {
         {/* 2. Total Billed Revenue */}
         <div
           onClick={() => navigate({ to: "/reports", search: { tab: "payment_mode_sales" } as any })}
-          className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer"
+          className="bg-white px-3 py-3 rounded-2xl border border-slate-200/80 shadow-xs hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer min-w-0 flex flex-col justify-between h-full"
           title="Click to view detailed report"
         >
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Total Billed Revenue</span>
-            <CreditCard className="w-4 h-4 text-emerald-600" />
+          <div>
+            <div className="flex items-center justify-between text-slate-500 mb-1.5 gap-1">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
+                Billed Revenue
+              </span>
+              <CreditCard className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            </div>
+            <div className="text-base sm:text-lg font-semibold text-emerald-700 tracking-tight whitespace-nowrap">
+              {formatCurrency(totalRevenue)}
+            </div>
           </div>
-          <div className="text-2xl font-black text-emerald-600">{formatCurrency(totalRevenue)}</div>
-          <div className="text-[11px] text-slate-500 font-medium mt-1">
-            Avg Bill: {formatCurrency(activeSalesInvoicesCount ? totalRevenue / activeSalesInvoicesCount : 0)}
+          <div className="text-[10.5px] text-slate-500 font-medium mt-1 whitespace-nowrap">
+            Avg: {formatCurrency(activeSalesInvoicesCount ? totalRevenue / activeSalesInvoicesCount : 0)}
           </div>
         </div>
 
         {/* 3. Total Cash */}
         <div
           onClick={() => navigate({ to: "/reports", search: { tab: "payment_mode_sales" } as any })}
-          className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer"
+          className="bg-white px-3 py-3 rounded-2xl border border-slate-200/80 shadow-xs hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer min-w-0 flex flex-col justify-between h-full"
           title="Click to view cash sales report"
         >
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Total Cash</span>
-            <Banknote className="w-4 h-4 text-emerald-600" />
+          <div>
+            <div className="flex items-center justify-between text-slate-500 mb-1.5 gap-1">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
+                Total Cash
+              </span>
+              <Banknote className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            </div>
+            <div className="text-base sm:text-lg font-semibold text-emerald-700 tracking-tight whitespace-nowrap">
+              {formatCurrency(paymentMetrics.cashTotal)}
+            </div>
           </div>
-          <div className="text-2xl font-black text-emerald-600">{formatCurrency(paymentMetrics.cashTotal)}</div>
-          <div className="text-[11px] text-slate-500 font-medium mt-1">
-            {paymentMetrics.cashCount} {paymentMetrics.cashCount === 1 ? "Invoice" : "Invoices"}
-            {activeSalesInvoicesCount > 0 && ` (${Math.round((paymentMetrics.cashCount / activeSalesInvoicesCount) * 100)}%)`}
+          <div className="text-[10.5px] text-slate-500 font-medium mt-1 whitespace-nowrap">
+            {paymentMetrics.cashCount} Invoices {activeSalesInvoicesCount > 0 ? `(${Math.round((paymentMetrics.cashCount / activeSalesInvoicesCount) * 100)}%)` : ""}
           </div>
         </div>
 
         {/* 4. Total UPI */}
         <div
           onClick={() => navigate({ to: "/reports", search: { tab: "payment_mode_sales" } as any })}
-          className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer"
+          className="bg-white px-3 py-3 rounded-2xl border border-slate-200/80 shadow-xs hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer min-w-0 flex flex-col justify-between h-full"
           title="Click to view UPI sales report"
         >
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Total UPI</span>
-            <Smartphone className="w-4 h-4 text-indigo-600" />
+          <div>
+            <div className="flex items-center justify-between text-slate-500 mb-1.5 gap-1">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
+                Total UPI
+              </span>
+              <Smartphone className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+            </div>
+            <div className="text-base sm:text-lg font-semibold text-indigo-700 tracking-tight whitespace-nowrap">
+              {formatCurrency(paymentMetrics.upiTotal)}
+            </div>
           </div>
-          <div className="text-2xl font-black text-indigo-600">{formatCurrency(paymentMetrics.upiTotal)}</div>
-          <div className="text-[11px] text-slate-500 font-medium mt-1">
-            {paymentMetrics.upiCount} {paymentMetrics.upiCount === 1 ? "Invoice" : "Invoices"}
-            {activeSalesInvoicesCount > 0 && ` (${Math.round((paymentMetrics.upiCount / activeSalesInvoicesCount) * 100)}%)`}
+          <div className="text-[10.5px] text-slate-500 font-medium mt-1 whitespace-nowrap">
+            {paymentMetrics.upiCount} Invoices {activeSalesInvoicesCount > 0 ? `(${Math.round((paymentMetrics.upiCount / activeSalesInvoicesCount) * 100)}%)` : ""}
           </div>
         </div>
 
         {/* 5. Bank / Card */}
         <div
           onClick={() => navigate({ to: "/reports", search: { tab: "payment_mode_sales" } as any })}
-          className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-blue-300 hover:shadow-md transition-all cursor-pointer"
+          className="bg-white px-3 py-3 rounded-2xl border border-slate-200/80 shadow-xs hover:border-blue-300 hover:shadow-md transition-all cursor-pointer min-w-0 flex flex-col justify-between h-full"
           title="Click to view Bank/Card sales report"
         >
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Bank / Card</span>
-            <Building className="w-4 h-4 text-blue-600" />
+          <div>
+            <div className="flex items-center justify-between text-slate-500 mb-1.5 gap-1">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
+                Bank / Card
+              </span>
+              <Building className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            </div>
+            <div className="text-base sm:text-lg font-semibold text-blue-700 tracking-tight whitespace-nowrap">
+              {formatCurrency(paymentMetrics.bankTotal)}
+            </div>
           </div>
-          <div className="text-2xl font-black text-blue-600">{formatCurrency(paymentMetrics.bankTotal)}</div>
-          <div className="text-[11px] text-slate-500 font-medium mt-1">
-            {paymentMetrics.bankCount} {paymentMetrics.bankCount === 1 ? "Invoice" : "Invoices"}
-            {activeSalesInvoicesCount > 0 && ` (${Math.round((paymentMetrics.bankCount / activeSalesInvoicesCount) * 100)}%)`}
+          <div className="text-[10.5px] text-slate-500 font-medium mt-1 whitespace-nowrap">
+            {paymentMetrics.bankCount} Invoices {activeSalesInvoicesCount > 0 ? `(${Math.round((paymentMetrics.bankCount / activeSalesInvoicesCount) * 100)}%)` : ""}
           </div>
         </div>
 
         {/* 6. Credit / Due (Pay Later) */}
         <div
           onClick={() => navigate({ to: "/reports", search: { tab: "payment_mode_sales" } as any })}
-          className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-purple-300 hover:shadow-md transition-all cursor-pointer"
+          className="bg-white px-3 py-3 rounded-2xl border border-slate-200/80 shadow-xs hover:border-purple-300 hover:shadow-md transition-all cursor-pointer min-w-0 flex flex-col justify-between h-full"
           title="Click to view Credit / Due sales report"
         >
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Credit / Due</span>
-            <Clock className="w-4 h-4 text-purple-600" />
+          <div>
+            <div className="flex items-center justify-between text-slate-500 mb-1.5 gap-1">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
+                Credit / Due
+              </span>
+              <Clock className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+            </div>
+            <div className="text-base sm:text-lg font-semibold text-purple-700 tracking-tight whitespace-nowrap">
+              {formatCurrency(paymentMetrics.creditTotal)}
+            </div>
           </div>
-          <div className="text-2xl font-black text-purple-600">{formatCurrency(paymentMetrics.creditTotal)}</div>
-          <div className="text-[11px] text-slate-500 font-medium mt-1">
-            {paymentMetrics.creditCount} {paymentMetrics.creditCount === 1 ? "Invoice" : "Invoices"}
-            {activeSalesInvoicesCount > 0 && ` (${Math.round((paymentMetrics.creditCount / activeSalesInvoicesCount) * 100)}%)`}
+          <div className="text-[10.5px] text-slate-500 font-medium mt-1 whitespace-nowrap">
+            {paymentMetrics.creditCount} Invoices {activeSalesInvoicesCount > 0 ? `(${Math.round((paymentMetrics.creditCount / activeSalesInvoicesCount) * 100)}%)` : ""}
           </div>
         </div>
 
         {/* 7. Cancelled / Refunded (Amount Returned to Customer) */}
-        <div className="bg-white p-4.5 rounded-2xl border border-rose-200 shadow-sm hover:border-rose-300 transition-colors bg-gradient-to-b from-rose-50/20 to-white">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-rose-700">Cancelled / Repaid</span>
-            <RotateCcw className="w-4 h-4 text-rose-600" />
+        <div className="bg-white px-3 py-3 rounded-2xl border border-rose-200 shadow-xs hover:border-rose-300 transition-colors bg-gradient-to-b from-rose-50/20 to-white min-w-0 flex flex-col justify-between h-full">
+          <div>
+            <div className="flex items-center justify-between text-slate-500 mb-1.5 gap-1">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-rose-700 whitespace-nowrap">
+                Cancelled / Repaid
+              </span>
+              <RotateCcw className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+            </div>
+            <div className="text-base sm:text-lg font-semibold text-rose-600 tracking-tight whitespace-nowrap">
+              {formatCurrency(cancelledTotal)}
+            </div>
           </div>
-          <div className="text-2xl font-black text-rose-600">{formatCurrency(cancelledTotal)}</div>
-          <div className="text-[11px] text-rose-600 font-semibold mt-1">
-            {cancelledInvoicesCount} {cancelledInvoicesCount === 1 ? "Invoice" : "Invoices"} Repaid to Customer
+          <div className="text-[10.5px] text-rose-600 font-medium mt-1 whitespace-nowrap">
+            {cancelledInvoicesCount} {cancelledInvoicesCount === 1 ? "Invoice" : "Invoices"} Repaid
           </div>
         </div>
 
         {/* 8. Credit Notes */}
         <div
           onClick={() => navigate({ to: "/reports", search: { tab: "payment_mode_sales" } as any })}
-          className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-amber-300 hover:shadow-md transition-all cursor-pointer"
+          className="bg-white px-3 py-3 rounded-2xl border border-slate-200/80 shadow-xs hover:border-amber-300 hover:shadow-md transition-all cursor-pointer min-w-0 flex flex-col justify-between h-full"
           title="Click to view Credit Notes report"
         >
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Credit Notes</span>
-            <RotateCcw className="w-4 h-4 text-amber-600" />
+          <div>
+            <div className="flex items-center justify-between text-slate-500 mb-1.5 gap-1">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
+                Credit Notes
+              </span>
+              <RotateCcw className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            </div>
+            <div className="text-base sm:text-lg font-semibold text-amber-700 tracking-tight whitespace-nowrap">
+              {formatCurrency(paymentMetrics.creditNotesTotal)}
+            </div>
           </div>
-          <div className="text-2xl font-black text-amber-600">{formatCurrency(paymentMetrics.creditNotesTotal)}</div>
-          <div className="text-[11px] text-slate-500 font-medium mt-1">
+          <div className="text-[10.5px] text-slate-500 font-medium mt-1 whitespace-nowrap">
             {paymentMetrics.creditNotesCount} {paymentMetrics.creditNotesCount === 1 ? "Credit Note" : "Credit Notes"}
           </div>
         </div>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col xl:flex-row items-center justify-between gap-3">
-        <div className="relative w-full xl:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+      <div className="bg-white px-2.5 py-2 rounded-xl border border-slate-200/80 shadow-2xs flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2">
+        {/* Search input - expanded to fill unwanted tab gap */}
+        <div className="relative flex-1 min-w-[240px] max-w-sm lg:max-w-md shrink-0 sm:shrink">
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             placeholder="Search Invoice #, Customer Name, Phone, Sales Rep..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-10 pr-4 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-slate-50 hover:bg-slate-100/60 focus:bg-white border border-slate-200 focus:border-blue-500 rounded-md pl-8 pr-6 py-1 h-7 text-[11px] font-medium text-slate-800 placeholder-slate-400 outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded transition-colors"
+              title="Clear search"
+            >
+              <X className="w-2.5 h-2.5" />
+            </button>
+          )}
         </div>
 
-        <div className="flex items-center gap-2.5 w-full xl:w-auto overflow-x-auto pb-1 xl:pb-0 flex-wrap">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
-            <Filter className="w-3.5 h-3.5" /> Filters:
-          </div>
+        {/* Filters Row: Compact, adjusted to fit perfectly without any scrolling */}
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none no-scrollbar min-w-0 max-w-full py-0.5">
+          <Filter className="w-3 h-3 text-slate-400 shrink-0 mr-0.5" />
 
           {/* Date Filter */}
           <select
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+            className={`h-7 px-2 text-[11px] font-medium rounded-md border outline-none cursor-pointer transition-colors shrink-0 focus:ring-1 focus:ring-blue-500/20 ${
+              dateFilter !== "All"
+                ? "bg-blue-50/90 border-blue-300 text-blue-700 font-semibold"
+                : "bg-slate-50/80 hover:bg-slate-100/80 border-slate-200 text-slate-700"
+            }`}
           >
             <option value="All">📅 All Time</option>
             <option value="today">Today's Invoices</option>
@@ -2126,19 +2210,19 @@ export function PosInvoicesHistory() {
 
           {/* Custom Date Pickers */}
           {dateFilter === "custom" && (
-            <div className="flex items-center gap-1 bg-slate-50 border border-slate-300 rounded-xl px-2 py-1">
+            <div className="flex items-center gap-1 bg-slate-50/80 border border-slate-200 rounded-md px-1.5 h-7 shrink-0">
               <input
                 type="date"
                 value={customStartDate}
                 onChange={(e) => setCustomStartDate(e.target.value)}
-                className="bg-transparent text-xs font-medium outline-none text-slate-700"
+                className="bg-transparent text-[11px] font-medium outline-none text-slate-700"
               />
               <span className="text-slate-400 text-xs">-</span>
               <input
                 type="date"
                 value={customEndDate}
                 onChange={(e) => setCustomEndDate(e.target.value)}
-                className="bg-transparent text-xs font-medium outline-none text-slate-700"
+                className="bg-transparent text-[11px] font-medium outline-none text-slate-700"
               />
             </div>
           )}
@@ -2147,21 +2231,29 @@ export function PosInvoicesHistory() {
           <select
             value={sortOrder}
             onChange={(e) => setSortOrder(e.target.value as any)}
-            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+            className={`h-7 px-2 text-[11px] font-medium rounded-md border outline-none cursor-pointer transition-colors shrink-0 focus:ring-1 focus:ring-blue-500/20 ${
+              sortOrder !== "newest"
+                ? "bg-blue-50/90 border-blue-300 text-blue-700 font-semibold"
+                : "bg-slate-50/80 hover:bg-slate-100/80 border-slate-200 text-slate-700"
+            }`}
           >
-            <option value="newest">⏱️ Time: Newest First</option>
-            <option value="oldest">⏱️ Time: Oldest First</option>
-            <option value="amount_desc">💰 Amount: High to Low</option>
-            <option value="amount_asc">💰 Amount: Low to High</option>
+            <option value="newest">⏱️ Newest</option>
+            <option value="oldest">⏱️ Oldest</option>
+            <option value="amount_desc">💰 High to Low</option>
+            <option value="amount_asc">💰 Low to High</option>
           </select>
 
           {/* Payment Status Filter */}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+            className={`h-7 px-2 text-[11px] font-medium rounded-md border outline-none cursor-pointer transition-colors shrink-0 focus:ring-1 focus:ring-blue-500/20 ${
+              statusFilter !== "All"
+                ? "bg-blue-50/90 border-blue-300 text-blue-700 font-semibold"
+                : "bg-slate-50/80 hover:bg-slate-100/80 border-slate-200 text-slate-700"
+            }`}
           >
-            <option value="All">All Payment Statuses</option>
+            <option value="All">All Statuses</option>
             <option value="Paid">Paid</option>
             <option value="Partial">Partial</option>
             <option value="Unpaid">Unpaid / Credit</option>
@@ -2175,9 +2267,13 @@ export function PosInvoicesHistory() {
           <select
             value={paymentModeFilter}
             onChange={(e) => setPaymentModeFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+            className={`h-7 px-2 text-[11px] font-medium rounded-md border outline-none cursor-pointer transition-colors shrink-0 focus:ring-1 focus:ring-blue-500/20 ${
+              paymentModeFilter !== "All"
+                ? "bg-blue-50/90 border-blue-300 text-blue-700 font-semibold"
+                : "bg-slate-50/80 hover:bg-slate-100/80 border-slate-200 text-slate-700"
+            }`}
           >
-            <option value="All">💳 All Payment Modes</option>
+            <option value="All">💳 All Modes</option>
             <option value="Cash">💵 Cash</option>
             <option value="UPI">📱 UPI / QR</option>
             <option value="Card">💳 Card / EDC</option>
@@ -2192,9 +2288,13 @@ export function PosInvoicesHistory() {
           <select
             value={printFilter}
             onChange={(e) => setPrintFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+            className={`h-7 px-2 text-[11px] font-medium rounded-md border outline-none cursor-pointer transition-colors shrink-0 focus:ring-1 focus:ring-blue-500/20 ${
+              printFilter !== "All"
+                ? "bg-blue-50/90 border-blue-300 text-blue-700 font-semibold"
+                : "bg-slate-50/80 hover:bg-slate-100/80 border-slate-200 text-slate-700"
+            }`}
           >
-            <option value="All">All Sales/Thermal Bills</option>
+            <option value="All">All Bills</option>
             <option value="Thermal Printed">Thermal Printed</option>
             <option value="A4 PDF Generated">A4 PDF Generated</option>
             <option value="Pending Print">Pending Print</option>
@@ -2204,9 +2304,13 @@ export function PosInvoicesHistory() {
           <select
             value={locationFilter}
             onChange={(e) => setLocationFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+            className={`h-7 px-2 text-[11px] font-medium rounded-md border outline-none cursor-pointer transition-colors shrink-0 focus:ring-1 focus:ring-blue-500/20 ${
+              locationFilter !== "All"
+                ? "bg-blue-50/90 border-blue-300 text-blue-700 font-semibold"
+                : "bg-slate-50/80 hover:bg-slate-100/80 border-slate-200 text-slate-700"
+            }`}
           >
-            <option value="All">📍 All Stores / Locations</option>
+            <option value="All">📍 All Stores</option>
             {uniqueLocations.map((loc) => (
               <option key={loc} value={loc}>
                 📍 {loc}
@@ -2218,15 +2322,32 @@ export function PosInvoicesHistory() {
           <select
             value={salesRepFilter}
             onChange={(e) => setSalesRepFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+            className={`h-7 px-2 text-[11px] font-medium rounded-md border outline-none cursor-pointer transition-colors shrink-0 focus:ring-1 focus:ring-blue-500/20 ${
+              salesRepFilter !== "All"
+                ? "bg-blue-50/90 border-blue-300 text-blue-700 font-semibold"
+                : "bg-slate-50/80 hover:bg-slate-100/80 border-slate-200 text-slate-700"
+            }`}
           >
-            <option value="All">👤 All Sales Reps</option>
+            <option value="All">👤 All Reps</option>
             {uniqueSalesReps.map((rep) => (
               <option key={rep} value={rep}>
                 👤 {rep}
               </option>
             ))}
           </select>
+
+          {/* Reset All Filters Button */}
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="h-7 px-2 text-[10.5px] font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md transition-colors flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs"
+              title="Reset all filters to default"
+            >
+              <RotateCcw className="w-2.5 h-2.5" />
+              <span>Reset</span>
+            </button>
+          )}
         </div>
       </div>
 

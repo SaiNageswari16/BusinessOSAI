@@ -35,6 +35,7 @@ import { Route as StoreBlogRouteImport } from './routes/store.blog'
 import { Route as StoreAddressesRouteImport } from './routes/store.addresses'
 import { Route as StoreAccountRouteImport } from './routes/store.account'
 import { Route as StoreAboutRouteImport } from './routes/store.about'
+import { Route as ProductsProductIdRouteImport } from './routes/products.$productId'
 import { Route as AppWarehouseRouteImport } from './routes/_app.warehouse'
 import { Route as AppSocialRouteImport } from './routes/_app.social'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
@@ -183,6 +184,11 @@ const StoreAboutRoute = StoreAboutRouteImport.update({
   path: '/about',
   getParentRoute: () => StoreRoute,
 } as any)
+const ProductsProductIdRoute = ProductsProductIdRouteImport.update({
+  id: '/products/$productId',
+  path: '/products/$productId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppWarehouseRoute = AppWarehouseRouteImport.update({
   id: '/warehouse',
   path: '/warehouse',
@@ -296,6 +302,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRoute
   '/social': typeof AppSocialRoute
   '/warehouse': typeof AppWarehouseRoute
+  '/products/$productId': typeof ProductsProductIdRoute
   '/store/about': typeof StoreAboutRoute
   '/store/account': typeof StoreAccountRoute
   '/store/addresses': typeof StoreAddressesRoute
@@ -340,6 +347,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AppSettingsRoute
   '/social': typeof AppSocialRoute
   '/warehouse': typeof AppWarehouseRoute
+  '/products/$productId': typeof ProductsProductIdRoute
   '/store/about': typeof StoreAboutRoute
   '/store/account': typeof StoreAccountRoute
   '/store/addresses': typeof StoreAddressesRoute
@@ -387,6 +395,7 @@ export interface FileRoutesById {
   '/_app/settings': typeof AppSettingsRoute
   '/_app/social': typeof AppSocialRoute
   '/_app/warehouse': typeof AppWarehouseRoute
+  '/products/$productId': typeof ProductsProductIdRoute
   '/store/about': typeof StoreAboutRoute
   '/store/account': typeof StoreAccountRoute
   '/store/addresses': typeof StoreAddressesRoute
@@ -434,6 +443,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/social'
     | '/warehouse'
+    | '/products/$productId'
     | '/store/about'
     | '/store/account'
     | '/store/addresses'
@@ -478,6 +488,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/social'
     | '/warehouse'
+    | '/products/$productId'
     | '/store/about'
     | '/store/account'
     | '/store/addresses'
@@ -524,6 +535,7 @@ export interface FileRouteTypes {
     | '/_app/settings'
     | '/_app/social'
     | '/_app/warehouse'
+    | '/products/$productId'
     | '/store/about'
     | '/store/account'
     | '/store/addresses'
@@ -556,6 +568,7 @@ export interface RootRouteChildren {
   PlatformAdminRoute: typeof PlatformAdminRoute
   RoleSelectRoute: typeof RoleSelectRoute
   StoreRoute: typeof StoreRouteWithChildren
+  ProductsProductIdRoute: typeof ProductsProductIdRoute
   VaultOffersFilenameRoute: typeof VaultOffersFilenameRoute
   VaultPayslipsFilenameRoute: typeof VaultPayslipsFilenameRoute
 }
@@ -743,6 +756,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/store/about'
       preLoaderRoute: typeof StoreAboutRouteImport
       parentRoute: typeof StoreRoute
+    }
+    '/products/$productId': {
+      id: '/products/$productId'
+      path: '/products/$productId'
+      fullPath: '/products/$productId'
+      preLoaderRoute: typeof ProductsProductIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_app/warehouse': {
       id: '/_app/warehouse'
@@ -967,6 +987,7 @@ const rootRouteChildren: RootRouteChildren = {
   PlatformAdminRoute: PlatformAdminRoute,
   RoleSelectRoute: RoleSelectRoute,
   StoreRoute: StoreRouteWithChildren,
+  ProductsProductIdRoute: ProductsProductIdRoute,
   VaultOffersFilenameRoute: VaultOffersFilenameRoute,
   VaultPayslipsFilenameRoute: VaultPayslipsFilenameRoute,
 }

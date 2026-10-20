@@ -3451,15 +3451,7 @@ export function PlatformAdminDashboard() {
                 <div className="flex flex-col sm:flex-row justify-between items-start gap-6 border-b border-slate-200 pb-6">
                   <div>
                     <div className="flex items-center gap-3">
-                      <div className="h-12 w-auto max-w-[150px] flex items-center justify-start overflow-hidden">
-                        <img src="/iotroncs-logo.png" alt="IoTRONCS" className="h-full w-auto object-contain" />
-                      </div>
-                      <div>
-                        <h1 className="text-xl font-extrabold tracking-tight text-blue-600">
-                          IoTRONCS
-                        </h1>
-                        <p className="text-[11px] font-semibold text-slate-500">Enterprise Cloud Business Operating System</p>
-                      </div>
+                      <img src="/Logo.png" alt="IoTRONCS" className="h-9 w-auto object-contain" />
                     </div>
 
                     <div className="mt-4 text-xs text-slate-600 space-y-0.5">

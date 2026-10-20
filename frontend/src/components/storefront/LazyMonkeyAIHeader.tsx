@@ -47,20 +47,7 @@ export function LazyMonkeyAIHeader() {
       <div className="container mx-auto px-4 py-3 flex items-center justify-between">
         {/* Logo */}
         <Link to="/store" className="flex items-center gap-2.5 group flex-shrink-0">
-          <div className="size-9 flex items-center justify-center transition-transform group-hover:scale-105">
-            <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="size-full object-contain drop-shadow-xs" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-xl font-extrabold tracking-tight text-slate-900 leading-none flex items-center">
-              <span className="text-purple-700">Lazy</span>Monkey<span className="text-emerald-600">AI</span>
-            </span>
-            <span className="text-[10px] font-semibold mt-0.5 flex items-center gap-1">
-              <span className="text-slate-600 font-medium">Smart</span>
-              <span className="text-emerald-600 font-extrabold">AI</span>
-              <span className="text-slate-600 font-medium">for</span>
-              <span className="text-amber-600 font-bold">Lazy Geniuses</span>
-            </span>
-          </div>
+          <img src="/Logo.png" alt="IoTRONCS" className="h-8 w-auto object-contain transition-transform group-hover:scale-105" />
         </Link>
 
         {/* Navigation Links */}

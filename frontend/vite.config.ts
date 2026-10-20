@@ -4,6 +4,8 @@ import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+import path from "path";
+
 export default defineConfig({
   plugins: [
     tailwindcss(),
@@ -29,9 +31,24 @@ export default defineConfig({
         ]
       }
     }),
+    {
+      name: "logo-case-middleware",
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          if (req.url && req.url.toLowerCase() === "/logo.png") {
+            req.url = "/Logo.png";
+          }
+          next();
+        });
+      },
+    },
   ],
   resolve: {
-    tsconfigPaths: true,
+    alias: {
+      "@/components/site": path.resolve(__dirname, "./src/components/Website/site"),
+      "@/components/sections": path.resolve(__dirname, "./src/components/Website/sections"),
+      "@": path.resolve(__dirname, "./src"),
+    },
   },
   optimizeDeps: {
     include: [

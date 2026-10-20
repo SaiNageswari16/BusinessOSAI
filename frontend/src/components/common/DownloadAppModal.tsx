@@ -56,8 +56,8 @@ export function DownloadAppModal({ isOpen, onClose }: DownloadAppModalProps) {
               <div className="relative">
                 <div className="absolute -inset-1 bg-gradient-to-r from-cyan-500 via-purple-500 to-emerald-500 rounded-2xl blur-sm opacity-50" />
                 <img
-                  src="/Logo.png"
-                  alt="BusinessOS AI"
+                  src="/iotroncs-mark.png"
+                  alt="IoTRONCS"
                   className="relative size-11 rounded-xl object-contain bg-white p-1 border border-slate-200 shadow-sm"
                 />
               </div>

@@ -52,8 +52,8 @@ def _fmt_amount(value: float | None) -> str:
 
 
 async def _get_gateway_session_id(allowed_sessions: list[str] | None = None) -> str | None:
-    """Return the phone number (session id) of the first CONNECTED or AUTHENTICATED WhatsApp session belonging to the tenant."""
-    if allowed_sessions is not None and len(allowed_sessions) == 0:
+    """Return the phone number (session id) of the first CONNECTED or AUTHENTICATED WhatsApp session strictly belonging to the tenant."""
+    if not allowed_sessions:
         return None
     try:
         async with httpx.AsyncClient(timeout=4.0) as http:
@@ -64,17 +64,20 @@ async def _get_gateway_session_id(allowed_sessions: list[str] | None = None) -> 
             if not isinstance(sessions, dict):
                 return None
 
-            # Filter sessions to only allowed tenant sessions if specified
-            candidate_ids = allowed_sessions if allowed_sessions is not None else list(sessions.keys())
+            # Strictly filter sessions to allowed tenant sessions
+            candidate_ids = allowed_sessions
 
             # 1. First priority: fully CONNECTED session
             for sid in candidate_ids:
                 sid_str = str(sid).strip()
+                clean_sid = re.sub(r"[^0-9]", "", sid_str)
                 variants = [sid_str]
-                if sid_str.startswith("91"):
-                    variants.append(sid_str[2:])
+                if clean_sid and clean_sid != sid_str:
+                    variants.append(clean_sid)
+                if clean_sid.startswith("91"):
+                    variants.append(clean_sid[2:])
                 else:
-                    variants.append(f"91{sid_str}")
+                    variants.append(f"91{clean_sid}")
                 for variant in variants:
                     info = sessions.get(variant)
                     if isinstance(info, dict) and info.get("status") == "CONNECTED":
@@ -83,11 +86,14 @@ async def _get_gateway_session_id(allowed_sessions: list[str] | None = None) -> 
             # 2. Second priority: AUTHENTICATED session
             for sid in candidate_ids:
                 sid_str = str(sid).strip()
+                clean_sid = re.sub(r"[^0-9]", "", sid_str)
                 variants = [sid_str]
-                if sid_str.startswith("91"):
-                    variants.append(sid_str[2:])
+                if clean_sid and clean_sid != sid_str:
+                    variants.append(clean_sid)
+                if clean_sid.startswith("91"):
+                    variants.append(clean_sid[2:])
                 else:
-                    variants.append(f"91{sid_str}")
+                    variants.append(f"91{clean_sid}")
                 for variant in variants:
                     info = sessions.get(variant)
                     if isinstance(info, dict) and info.get("status") == "AUTHENTICATED":
@@ -328,8 +334,8 @@ async def get_active_org_whatsapp_session(
 ) -> str | None:
     """
     Find and return the active WhatsApp session belonging to the organization.
-    Prioritizes the organization-level connected session (Tenant settings & Company settings),
-    falling back to cashier user session or any active gateway session.
+    Strictly scoped to the official organization sessions (Tenant settings & Company settings).
+    Zero fallbacks: Never falls back to cashier personal sessions or external sessions.
     """
     tenant = await db.get(Tenant, tenant_id)
     if not tenant:
@@ -364,19 +370,8 @@ async def get_active_org_whatsapp_session(
                 if cs and str(cs) not in org_sessions:
                     org_sessions.append(str(cs))
 
-    # Priority 1: Official Organization Session (per organization / tenant)
+    # Official Organization Session only: Strictly per organization / tenant with zero fallbacks
     session_id = await _get_gateway_session_id(org_sessions) if org_sessions else None
-
-    # Priority 2: Fallback to cashier personal session if org session not directly active
-    if not session_id and cashier_user_id:
-        cashier_sessions = _get_user_owned_session_ids(tenant_settings, cashier_user_id)
-        if cashier_sessions:
-            session_id = await _get_gateway_session_id(cashier_sessions)
-
-    # Priority 3: Fallback to any active gateway session
-    if not session_id:
-        session_id = await _get_gateway_session_id(None)
-
     return session_id
 
 

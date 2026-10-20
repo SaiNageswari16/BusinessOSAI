@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,300..900;1,300..900&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,300..900;1,300..900&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -53,6 +53,20 @@
   --color-brand-green: var(--brand-green);
   --font-sans: "Noto Sans Telugu", "Noto Sans Devanagari", "Noto Sans Kannada", "Noto Sans Arabic", "Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-heading: "Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Sora", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --radius-4xl: calc(var(--radius) + 24px);
+
+  --color-primary-glow: var(--primary-glow);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-foreground: var(--ink-foreground);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-border: var(--ink-border);
+
+  --shadow-soft: 0 1px 2px oklch(0.2 0.05 275 / 0.04), 0 8px 24px -12px oklch(0.2 0.05 275 / 0.12);
+  --shadow-lift: 0 2px 4px oklch(0.2 0.05 275 / 0.05), 0 24px 48px -24px oklch(0.2 0.05 275 / 0.25);
+  --shadow-glow: 0 24px 80px -32px oklch(0.55 0.22 295 / 0.55);
 }
 
 html {
@@ -106,6 +120,23 @@ html {
   --brand-cyan: #0891b2;
   --brand-green: #059669;
   --glass-border: oklch(0.92 0.008 260);
+
+  --primary-glow: oklch(0.68 0.17 300);
+
+  /* Grayish white section surfaces */
+  --ink: oklch(0.975 0.005 260);
+  --ink-soft: oklch(1 0 0);
+  --ink-foreground: oklch(0.18 0.03 260);
+  --ink-muted: oklch(0.48 0.02 260);
+  --ink-border: oklch(0.89 0.008 260);
+
+  --gradient-brand: linear-gradient(135deg, var(--primary), var(--primary-glow) 55%, var(--accent));
+  --gradient-ink: linear-gradient(160deg, #f8f9fa, #eef0f5);
+  --gradient-halo: radial-gradient(
+    60% 60% at 50% 0%,
+    oklch(0.53 0.22 293 / 0.08),
+    transparent 70%
+  );
 }
 
 .dark {
@@ -178,11 +209,13 @@ html {
   }
 
   /* Utility class to hide scrollbar when explicitly needed */
-  .scrollbar-none {
+  .scrollbar-none,
+  .no-scrollbar {
     scrollbar-width: none !important;
     -ms-overflow-style: none !important;
   }
-  .scrollbar-none::-webkit-scrollbar {
+  .scrollbar-none::-webkit-scrollbar,
+  .no-scrollbar::-webkit-scrollbar {
     display: none !important;
   }
 
@@ -522,4 +555,112 @@ html {
     pointer-events: none !important;
   }
 }
+
+/* =========================================================================
+   IOTRONICS Website Design System Utilities & Animations
+   ========================================================================= */
+
+@utility text-gradient-brand {
+  background-image: var(--gradient-brand);
+  background-clip: text;
+  color: transparent;
+}
+
+@utility bg-gradient-brand {
+  background-image: var(--gradient-brand);
+}
+
+@utility bg-gradient-ink {
+  background-image: var(--gradient-ink);
+}
+
+@utility bg-halo {
+  background-image: var(--gradient-halo);
+}
+
+@utility surface-card {
+  background-color: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-soft);
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
+
+  &:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lift);
+    border-color: color-mix(in oklab, var(--color-primary) 35%, transparent);
+  }
+}
+
+@utility surface-glass {
+  background-color: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--color-ink-border);
+  border-radius: var(--radius-2xl);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 12px 36px -12px rgba(0, 0, 0, 0.07);
+}
+
+@utility grid-lines {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--color-primary) 8%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--color-primary) 8%, transparent) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+@keyframes pulse-ring {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.04);
+  }
+}
+
+@keyframes dash-flow {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+@keyframes float-soft {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@utility animate-pulse-ring {
+  animation: pulse-ring 4s ease-in-out infinite;
+}
+
+@utility animate-dash-flow {
+  animation: dash-flow 1.6s linear infinite;
+}
+
+@utility animate-float-soft {
+  animation: float-soft 7s ease-in-out infinite;
+}
+
+@utility reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+
+  &[data-visible="true"] {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 

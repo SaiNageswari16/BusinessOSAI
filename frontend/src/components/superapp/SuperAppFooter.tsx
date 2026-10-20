@@ -8,10 +8,7 @@ export function SuperAppFooter() {
         {/* Brand */}
         <div>
           <div className="flex items-center gap-2 mb-6 group cursor-pointer">
-            <div className="w-10 h-10 flex items-center justify-center transition-transform group-hover:scale-105">
-              <img src="/Logo.png" alt="LazyMonkeyAI Logo" className="w-full h-full object-contain" />
-            </div>
-            <span className="text-2xl font-black tracking-tight text-[#1A1A1A] leading-none">LazyMonkey<span className="text-amber-500">AI</span></span>
+            <img src="/Logo.png" alt="IoTRONCS" className="h-8 w-auto object-contain transition-transform group-hover:scale-105" />
           </div>
           <p className="text-sm text-gray-500 mb-6 leading-relaxed">
             Your one-stop destination for everything you need. From groceries and fashion to travel and entertainment, experience seamless shopping.
