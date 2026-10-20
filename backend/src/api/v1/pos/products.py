@@ -130,6 +130,7 @@ async def list_products(
     for p in products:
         specs = p.specifications if isinstance(p.specifications, dict) else {}
         b2b_p = float(specs.get("b2b_price") or 0.0)
+        eff_stock = int(p.on_hand_stock if p.on_hand_stock is not None else (p.initial_stock or 0))
         d = POSProductResponse.model_construct(
             id=p.id, tenant_id=p.tenant_id, name=p.name, brand=p.brand.name if p.brand else None,
             sku=p.sku, barcode=p.barcode, hsn_code=p.hsn_code, description=p.short_description, image_url=p.image_url,
@@ -141,7 +142,10 @@ async def list_products(
             min_wholesale_qty=int(p.min_wholesale_qty or 1),
             tax_percent=float(p.tax_percent or 0.0),
             is_tax_inclusive=bool(p.is_tax_inclusive if p.is_tax_inclusive is not None else True),
-            discount=float(p.discount_limit or 0.0), stock=int(p.initial_stock or 0),
+            discount=float(p.discount_limit or 0.0),
+            stock=eff_stock,
+            on_hand_stock=eff_stock,
+            initial_stock=int(p.initial_stock or 0),
             reorder_level=int(p.reorder_level or 0), is_active=(p.status == EntityStatus.ACTIVE or p.status == None),
             specifications=specs,
             created_at=p.created_at, updated_at=p.updated_at

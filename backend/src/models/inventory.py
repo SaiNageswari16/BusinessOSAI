@@ -137,6 +137,12 @@ class Product(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     def uom_name(self) -> str | None:
         return self.uom.name if self.uom else None
 
+    @property
+    def stock(self) -> int:
+        if self.on_hand_stock is not None:
+            return int(self.on_hand_stock)
+        return int(self.initial_stock or 0)
+
 
 class ProductAttribute(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_product_attributes"
