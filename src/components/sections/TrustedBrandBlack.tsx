@@ -89,10 +89,10 @@ export function TrustedBrandBlack({ className }: { className?: string }) {
           (className || "")
         }
       >
-        <div className="max-w-[1240px] mx-auto relative z-10 px-4 mb-1.5 text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-white/70 border border-slate-200/90 shadow-2xs">
-            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.14em] text-slate-600">
+        <div className="max-w-[1240px] mx-auto relative z-10 px-3 sm:px-4 mb-1.5 text-center">
+          <div className="inline-flex max-w-full items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-0.5 rounded-full bg-white/70 border border-slate-200/90 shadow-2xs">
+            <span className="size-1.5 shrink-0 rounded-full bg-emerald-500 animate-pulse" />
+            <p className="text-[9px] sm:text-[11px] font-bold uppercase tracking-wider sm:tracking-[0.14em] text-slate-600 leading-tight">
               Trusted by Municipal Corporations, Government Bodies &amp; Enterprise Leaders
             </p>
           </div>
