@@ -211,15 +211,20 @@ async def list_invoices(
     date_from: str | None = None,
     date_to: str | None = None,
     search: str | None = None,
+    company_id: str | None = Query(default=None),
 ):
     query = select(Invoice).where(Invoice.tenant_id == ctx.tenant_id)
-    if ctx.active_company_id:
-        query = query.where(
-            or_(
-                Invoice.company_id == ctx.active_company_id,
-                Invoice.company_id.is_(None)
-            )
-        )
+    target_cid = None
+    if company_id:
+        try:
+            target_cid = uuid.UUID(str(company_id))
+        except ValueError:
+            pass
+    if not target_cid and ctx.active_company_id:
+        target_cid = ctx.active_company_id
+
+    if target_cid:
+        query = query.where(Invoice.company_id == target_cid)
     if status_filter:
         query = query.where(Invoice.status == status_filter)
     if invoice_type:

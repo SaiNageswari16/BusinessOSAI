@@ -824,6 +824,7 @@ async def get_transaction_history(
     limit: int = 50,
     status_filter: str | None = None,
     search: str | None = None,
+    company_id: str | None = None,
     ctx: CurrentUserContext = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db)
 ):
@@ -831,8 +832,17 @@ async def get_transaction_history(
     from sqlalchemy import or_
 
     query_filters = [POSTransaction.tenant_id == ctx.tenant_id]
-    if ctx.active_company_id:
-        query_filters.append(POSTransaction.company_id == ctx.active_company_id)
+    target_cid = None
+    if company_id:
+        try:
+            target_cid = uuid.UUID(str(company_id))
+        except ValueError:
+            pass
+    if not target_cid and ctx.active_company_id:
+        target_cid = ctx.active_company_id
+
+    if target_cid:
+        query_filters.append(POSTransaction.company_id == target_cid)
     if status_filter:
         query_filters.append(POSTransaction.status == status_filter)
 

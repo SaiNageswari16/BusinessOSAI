@@ -4199,7 +4199,7 @@ export const posApi = {
     }),
   getWhatsAppStatus: () =>
     request<{ available: boolean; session_id: string | null }>("GET", "/pos/transactions/whatsapp-status"),
-  getHistory: (params?: { limit?: number; status_filter?: string; search?: string }) =>
+  getHistory: (params?: { limit?: number; status_filter?: string; search?: string; company_id?: string }) =>
     request<POSTransactionHistory[]>("GET", "/pos/transactions/history", undefined, params as Record<string, string | number | boolean | null | undefined>),
   getTransactionHistory: (limit: number = 50) =>
     request<POSTransactionHistory[]>("GET", "/pos/transactions/history", undefined, { limit } as Record<string, string | number | boolean | null | undefined>),
@@ -5196,7 +5196,7 @@ export const bankApi = {
 };
 
 export const invoicesApi = {
-  listInvoices: (params?: { page?: number; page_size?: number; status?: string; invoice_type?: string; search?: string }) =>
+  listInvoices: (params?: { page?: number; page_size?: number; status?: string; invoice_type?: string; search?: string; company_id?: string }) =>
     request<PaginatedResponse<Invoice>>("GET", "/invoices", undefined, params),
   getInvoice: (id: string) => request<Invoice>("GET", `/invoices/${id}`),
   getCustomerSummary: (customerId: string) => request<any>("GET", `/invoices/customer-summary/${customerId}`),

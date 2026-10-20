@@ -556,21 +556,14 @@ export function PosInvoicesHistory() {
         const keysToScan = new Set<string>();
         if (storageKey) keysToScan.add(storageKey);
         if (currentTenantId) {
-          keysToScan.add(`pos_saved_invoices_${currentTenantId}`);
-          keysToScan.add(`pos_saved_invoices_${currentTenantId}_default`);
-          if (currentCompanyId) {
+          if (currentCompanyId && currentCompanyId !== "default") {
             keysToScan.add(`pos_saved_invoices_${currentTenantId}_${currentCompanyId}`);
+          } else {
+            keysToScan.add(`pos_saved_invoices_${currentTenantId}`);
           }
         }
-        keysToScan.add("pos_saved_invoices_default_default");
-        keysToScan.add("pos_saved_invoices");
-        try {
-          Object.keys(localStorage).forEach((k) => {
-            if (k.startsWith("pos_saved_invoices_") || k === "pos_saved_invoices") {
-              keysToScan.add(k);
-            }
-          });
-        } catch (e) {}
+
+        const activeCid = currentCompanyId !== "default" ? currentCompanyId : undefined;
 
         keysToScan.forEach((key) => {
           try {
@@ -580,6 +573,11 @@ export function PosInvoicesHistory() {
               if (Array.isArray(list)) {
                 list.forEach((inv) => {
                   if (inv && (inv.id || inv.invoice_number)) {
+                    // Strict workspace isolation: skip invoices explicitly belonging to other companies
+                    const invCid = inv.company_id || (inv as any).raw?.company_id;
+                    if (activeCid && invCid && String(invCid) !== String(activeCid)) {
+                      return;
+                    }
                     const idKey = String(inv.invoice_number || inv.id).toLowerCase().trim();
                     if (!scannedLocalMap.has(idKey)) {
                       scannedLocalMap.set(idKey, inv);
@@ -654,8 +652,8 @@ export function PosInvoicesHistory() {
       let posItems: any[] = [];
       try {
         const [apiRes, posHist]: [any, any] = await Promise.all([
-          invoicesApi.listInvoices({ page_size: 1000 }).catch(() => null),
-          posApi.getHistory({ limit: 500 }).catch(() => null),
+          invoicesApi.listInvoices({ page_size: 1000, company_id: activeCid }).catch(() => null),
+          posApi.getHistory({ limit: 500, company_id: activeCid }).catch(() => null),
         ]);
         invoiceItems = apiRes?.items || apiRes?.data?.items || apiRes?.data || (Array.isArray(apiRes) ? apiRes : []);
         posItems = posHist?.items || posHist?.data?.items || posHist?.data || (Array.isArray(posHist) ? posHist : []);
@@ -668,12 +666,14 @@ export function PosInvoicesHistory() {
       const matchedPosTxIds = new Set<string>();
       if (Array.isArray(posItems)) {
         posItems.forEach((tx: any) => {
+          if (activeCid && tx.company_id && String(tx.company_id) !== String(activeCid)) return;
           if (tx.receipt_number) posReceiptMap.set(String(tx.receipt_number).toLowerCase().trim(), tx);
           if (tx.id) posReceiptMap.set(String(tx.id).toLowerCase().trim(), tx);
         });
       }
         if (Array.isArray(invoiceItems) && invoiceItems.length > 0) {
           invoiceItems.forEach((inv: any) => {
+            if (activeCid && inv.company_id && String(inv.company_id) !== String(activeCid)) return;
             const invNum = String(inv.invoice_number || "").toUpperCase();
             const invType = String(inv.invoice_type || inv.doc_type || "").toUpperCase();
             const isQuote = invType === "QUOTATION" || invNum.startsWith("QT-");
@@ -846,11 +846,11 @@ export function PosInvoicesHistory() {
               secondary_number: secondaryNumber,
               is_thermal: isThermal,
               print_mode: isThermal ? "thermal" : "a4",
-              customer_name: inv.customer_name || inv.customer?.name || (matchedTx?.customer?.name) || "Walk-in Customer",
-              customer_phone: inv.customer?.phone || inv.customer_phone || (matchedTx?.customer?.phone) || "",
-              customer_email: inv.customer?.email || inv.customer_email || (matchedTx?.customer?.email) || "",
-              customer_company: inv.customer?.company || inv.customer_company || "",
-              customer_gstin: inv.customer?.tax_number || inv.customer?.gst_number || inv.customer_gstin || "",
+              customer_name: inv.customer_name || inv.customer?.name || (matchedTx?.customer?.name) || (localMatch?.customer_name && localMatch.customer_name !== "Walk-in Customer" ? localMatch.customer_name : "") || "Walk-in Customer",
+              customer_phone: inv.customer?.phone || inv.customer_phone || (matchedTx?.customer?.phone) || (localMatch?.customer_phone || ""),
+              customer_email: inv.customer?.email || inv.customer_email || (matchedTx?.customer?.email) || (localMatch?.customer_email || ""),
+              customer_company: inv.customer?.company || inv.customer_company || (localMatch?.customer_company || ""),
+              customer_gstin: inv.customer?.tax_number || inv.customer?.gst_number || inv.customer_gstin || (localMatch?.customer_gstin || ""),
               customer_type: inv.customer?.customer_type || inv.customer?.type || inv.customer?.category || inv.customer_type || (inv as any).pricing_mode || undefined,
               customer_billing_address: inv.billing_address || inv.customer?.billing_address || inv.customer_billing_address || "",
               customer_shipping_address: inv.shipping_address || inv.customer?.shipping_address || inv.customer_shipping_address || "",
@@ -1035,6 +1035,15 @@ export function PosInvoicesHistory() {
           if ((inv as any).invoice_type) remote.invoice_type = (inv as any).invoice_type;
           if ((inv as any).is_credit_note !== undefined) remote.is_credit_note = (inv as any).is_credit_note;
           if ((inv as any).payments) remote.payments = (inv as any).payments;
+          if (inv.customer_name && inv.customer_name !== "Walk-in Customer" && (!remote.customer_name || remote.customer_name === "Walk-in Customer")) {
+            remote.customer_name = inv.customer_name;
+          }
+          if (inv.customer_phone && !remote.customer_phone) {
+            remote.customer_phone = inv.customer_phone;
+          }
+          if ((inv as any).customer_gstin && !(remote as any).customer_gstin) {
+            (remote as any).customer_gstin = (inv as any).customer_gstin;
+          }
           if ((inv as any).customer_type) (remote as any).customer_type = (inv as any).customer_type;
           if ((inv as any).customer_company) (remote as any).customer_company = (inv as any).customer_company;
           if ((inv as any).customer_email) (remote as any).customer_email = (inv as any).customer_email;
@@ -1088,6 +1097,10 @@ export function PosInvoicesHistory() {
             }
           }
         } else if (inv.invoice_number) {
+          const invCid = inv.company_id || (inv as any).raw?.company_id;
+          if (activeCid && invCid && String(invCid) !== String(activeCid)) {
+            return;
+          }
           const cleanInvNum = String(inv.invoice_number || "").toLowerCase().trim();
           const retRecord = returnedMap.get(cleanInvNum);
           if (retRecord) {
@@ -1177,6 +1190,9 @@ export function PosInvoicesHistory() {
             inv.grand_total = Number((sub + tax).toFixed(2));
             if (inv.payment_status === "Paid") inv.amount_received = inv.grand_total;
           }
+        }
+        if (activeCid && inv.company_id && String(inv.company_id) !== String(activeCid)) {
+          continue;
         }
         dedupedList.push(inv);
       }
