@@ -137,6 +137,7 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
   const [searchInvoiceQuery, setSearchInvoiceQuery] = useState("");
   const [isSearchingInvoice, setIsSearchingInvoice] = useState(false);
   const [recentBills, setRecentBills] = useState<any[]>([]);
+  const [billTypeFilter, setBillTypeFilter] = useState<"all" | "thermal" | "a4">("all");
   const [selectedBill, setSelectedBill] = useState<any | null>(null);
   const [returnItemsState, setReturnItemsState] = useState<
     Record<
@@ -276,35 +277,107 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
     }
   }, [activeTab]);
 
+  // Preselect bill if return_invoice query param is present
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const retInv = sp.get("return_invoice");
+      if (retInv) {
+        setSearchInvoiceQuery(retInv);
+        setActiveTab("return");
+        void handleLookupInvoice(retInv);
+      }
+    } catch (e) {}
+  }, []);
+
   const fetchRecentBills = async () => {
     try {
-      const candidates: any[] = [];
-      const erpRes: any = await invoicesApi.listInvoices({ page_size: 25 }).catch(() => null);
-      if (erpRes?.items) {
-        candidates.push(...erpRes.items);
-      } else if (Array.isArray(erpRes)) {
-        candidates.push(...erpRes);
-      }
+      const erpRes: any = await invoicesApi.listInvoices({ page_size: 50 }).catch(() => null);
+      const erpList = erpRes?.items || erpRes?.data?.items || (Array.isArray(erpRes) ? erpRes : []);
 
-      const posHist: any = await posApi.getHistory({ limit: 25 }).catch(() => null);
-      if (Array.isArray(posHist)) {
-        candidates.push(...posHist);
-      } else if (posHist?.items) {
-        candidates.push(...posHist.items);
-      }
+      const posHist: any = await posApi.getHistory({ limit: 50 }).catch(() => null);
+      const posList = Array.isArray(posHist) ? posHist : (posHist?.items || []);
 
-      // Deduplicate
-      const seen = new Set<string>();
-      const uniqueBills: any[] = [];
-      candidates.forEach((b) => {
-        const num = b.invoice_number || b.receipt_number || b.id;
-        if (num && !seen.has(num)) {
-          seen.add(num);
-          uniqueBills.push(b);
+      const mergedBills: any[] = [];
+      const matchedPosTxIds = new Set<string>();
+
+      // 1. Process ERP Invoices and link with matching POS transactions
+      erpList.forEach((inv: any) => {
+        const invNum = String(inv.invoice_number || "").trim();
+        const refNum = String(inv.reference_number || "").trim();
+        const invNotes = String(inv.notes || "").toLowerCase();
+
+        const matchingPos = posList.find((p: any) => {
+          const recNum = String(p.receipt_number || "").trim();
+          if (recNum && (recNum.toLowerCase() === refNum.toLowerCase() || recNum.toLowerCase() === invNum.toLowerCase() || invNotes.includes(recNum.toLowerCase()))) {
+            return true;
+          }
+          if (p.id && (p.id === inv.id || p.id === inv.reference_number)) return true;
+          return false;
+        });
+
+        if (matchingPos) {
+          if (matchingPos.id) matchedPosTxIds.add(String(matchingPos.id));
+          if (matchingPos.receipt_number) matchedPosTxIds.add(String(matchingPos.receipt_number));
         }
+
+        const isThermal = Boolean(
+          inv.print_template_id === "thermal" ||
+          inv.template_id === "thermal" ||
+          inv.print_status === "Thermal Printed" ||
+          refNum.toLowerCase().startsWith("rec-") ||
+          invNum.toLowerCase().startsWith("rec-") ||
+          matchingPos ||
+          invNotes.includes("pos terminal")
+        );
+
+        const receiptNo = refNum || (matchingPos ? matchingPos.receipt_number : "") || (isThermal ? invNum : "");
+        const erpNo = invNum;
+
+        mergedBills.push({
+          ...inv,
+          pos_tx: matchingPos,
+          is_thermal: isThermal,
+          receipt_number: receiptNo,
+          erp_invoice_number: erpNo,
+          display_number: isThermal && receiptNo ? receiptNo : erpNo,
+          secondary_number: isThermal && receiptNo && erpNo && erpNo !== receiptNo ? erpNo : (refNum && refNum !== erpNo ? refNum : undefined),
+          sequence_type: isThermal ? "thermal" : "a4",
+          customer_name: inv.customer_name || inv.customer?.name || (matchingPos?.customer?.name) || "Walk-in Guest",
+          customer_phone: inv.customer_phone || inv.customer?.phone || (matchingPos?.customer?.phone) || "",
+          customer_address: inv.billing_address || inv.customer?.address || "",
+          total_amount: Number(inv.total_amount || (matchingPos ? matchingPos.total_amount : 0) || 0),
+          items: (inv.lines && inv.lines.length > 0) ? inv.lines : (inv.items || matchingPos?.items || []),
+        });
       });
 
-      setRecentBills(uniqueBills.slice(0, 10));
+      // 2. Add standalone POS transactions that do not have an ERP invoice
+      posList.forEach((pos: any) => {
+        const pIdStr = String(pos.id || "");
+        const pRecStr = String(pos.receipt_number || "");
+        if (matchedPosTxIds.has(pIdStr) || (pRecStr && matchedPosTxIds.has(pRecStr))) {
+          return;
+        }
+        const recNum = pRecStr || `REC-${pIdStr.slice(0, 6).toUpperCase()}`;
+        mergedBills.push({
+          id: pos.id,
+          pos_tx: pos,
+          is_thermal: true,
+          receipt_number: recNum,
+          display_number: recNum,
+          erp_invoice_number: undefined,
+          sequence_type: "thermal",
+          customer_name: pos.customer?.name || "Walk-in Guest",
+          customer_phone: pos.customer?.phone || "",
+          customer_address: pos.customer?.address || "",
+          total_amount: Number(pos.total_amount || 0),
+          created_at: pos.created_at,
+          invoice_date: pos.created_at ? pos.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+          items: pos.items || [],
+        });
+      });
+
+      setRecentBills(mergedBills);
     } catch (e) {
       console.warn("Could not load recent bills:", e);
     }
@@ -398,7 +471,7 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
     setReturnItemsState(itemMap);
   };
 
-  // Normalized items of selected bill
+  // Normalized items of selected bill with authoritative pricing and real names
   const selectedBillNormalizedItems = useMemo(() => {
     if (!selectedBill) return [];
     const raw = selectedBill.items || selectedBill.lines || selectedBill.invoice_items || [];
@@ -410,40 +483,52 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
           product_name: selectedBill.invoice_number
             ? `Sale Item (${selectedBill.invoice_number})`
             : "Store Merchandise",
-          sku: "GEN-SKU",
-          hsn_code: "9983",
+          sku: "",
+          hsn_code: "",
           purchased_qty: 1,
-          unit_price: tot > 0 ? tot / 1.18 : 0,
-          tax_rate: 18,
+          unit_price: tot,
+          unit_refund_rate: tot,
+          tax_rate: 0,
           discount_amount: 0,
-          subtotal: tot > 0 ? tot / 1.18 : 0,
+          subtotal: tot,
+          line_total: tot,
         },
       ];
     }
     return raw.map((it: any, idx: number) => {
       const pQty = Number(it.quantity || it.qty || 1);
       const pRate = Number(it.unit_price || it.price || it.rate || 0);
-      const pTaxRate = Number(it.tax_rate || it.gst_rate || 18);
-      const pDiscount = Number(it.discount_amount || it.discount || 0);
-      const pSubtotal = Number(it.taxable_amount || it.line_total || pQty * pRate - pDiscount);
+      const pTaxRate = (it.tax_rate !== undefined && it.tax_rate !== null)
+        ? Number(it.tax_rate)
+        : ((it.gst_rate !== undefined && it.gst_rate !== null) ? Number(it.gst_rate) : 0);
+      const pDiscount = Number(it.discount_amount || it.discount_value || it.discount || 0);
+      
+      const rawLineTotal = Number(it.line_total || it.total_amount);
+      const pLineTotal = (!isNaN(rawLineTotal) && rawLineTotal > 0)
+        ? rawLineTotal
+        : Math.max(0, pQty * pRate - pDiscount);
+
+      const unitRefundRate = pQty > 0 ? (pLineTotal / pQty) : pRate;
 
       return {
         id: it.id || it.product_id || `item-${idx}`,
         product_id: it.product_id,
         product_name: it.product_name || it.item_name || it.name || `Item ${idx + 1}`,
-        sku: it.sku || it.product_sku || it.barcode || "SKU-N/A",
-        hsn_code: it.hsn_code || "9983",
+        sku: it.sku || it.product_sku || it.barcode || "",
+        hsn_code: it.hsn_code || it.hsn || "",
         batch_number: it.batch_number,
         purchased_qty: pQty,
         unit_price: pRate,
+        unit_refund_rate: unitRefundRate,
         tax_rate: pTaxRate,
         discount_amount: pDiscount,
-        subtotal: pSubtotal,
+        line_total: pLineTotal,
+        subtotal: Number(it.taxable_amount || (pTaxRate > 0 ? (pLineTotal / (1 + pTaxRate / 100)) : pLineTotal)),
       };
     });
   }, [selectedBill]);
 
-  // Compute live return totals
+  // Compute live return totals — refund strictly matches original billed invoice price
   const returnTotals = useMemo(() => {
     let subtotal = 0;
     let tax_amount = 0;
@@ -453,8 +538,15 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
     selectedBillNormalizedItems.forEach((it) => {
       const state = returnItemsState[it.id];
       if (state && state.selected && state.returned_qty > 0) {
-        const itemSubtotal = it.unit_price * state.returned_qty;
-        const itemTax = itemSubtotal * (it.tax_rate / 100);
+        const itemRefundTotal = Number((it.unit_refund_rate * state.returned_qty).toFixed(2));
+        
+        let itemTax = 0;
+        let itemSubtotal = itemRefundTotal;
+        if (it.tax_rate > 0) {
+          itemSubtotal = Number((itemRefundTotal / (1 + it.tax_rate / 100)).toFixed(2));
+          itemTax = Number((itemRefundTotal - itemSubtotal).toFixed(2));
+        }
+
         subtotal += itemSubtotal;
         tax_amount += itemTax;
         total_items += state.returned_qty;
@@ -603,9 +695,13 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
       selectedBillNormalizedItems.forEach((it) => {
         const state = returnItemsState[it.id];
         if (state && state.selected && state.returned_qty > 0) {
-          const itemSubtotal = Number((it.unit_price * state.returned_qty).toFixed(2));
-          const itemTax = Number((itemSubtotal * (it.tax_rate / 100)).toFixed(2));
-          const lineTot = Number((itemSubtotal + itemTax).toFixed(2));
+          const lineTot = Number((it.unit_refund_rate * state.returned_qty).toFixed(2));
+          let itemTax = 0;
+          let itemSubtotal = lineTot;
+          if (it.tax_rate > 0) {
+            itemSubtotal = Number((lineTot / (1 + it.tax_rate / 100)).toFixed(2));
+            itemTax = Number((lineTot - itemSubtotal).toFixed(2));
+          }
 
           returnedItemsList.push({
             id: `ret-item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -615,7 +711,7 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
             hsn_code: it.hsn_code,
             purchased_qty: it.purchased_qty,
             returned_qty: state.returned_qty,
-            unit_price: it.unit_price,
+            unit_price: it.unit_refund_rate,
             tax_rate: it.tax_rate,
             discount_amount: 0,
             subtotal: itemSubtotal,
@@ -632,7 +728,7 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
             hsn_code: it.hsn_code,
             batch_number: it.batch_number,
             quantity: state.returned_qty,
-            unit_price: it.unit_price,
+            unit_price: it.unit_refund_rate,
             tax_rate: it.tax_rate,
             tax_amount: itemTax,
             line_total: lineTot,
@@ -730,9 +826,14 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
       selectedBillNormalizedItems.forEach((it) => {
         const state = returnItemsState[it.id];
         if (state && state.selected && state.returned_qty > 0) {
-          const itemSubtotal = Number((it.unit_price * state.returned_qty).toFixed(2));
-          const itemTax = Number((itemSubtotal * (it.tax_rate / 100)).toFixed(2));
-          const lineTot = Number((itemSubtotal + itemTax).toFixed(2));
+          const refundRate = it.unit_refund_rate || it.unit_price;
+          const lineTot = Number((refundRate * state.returned_qty).toFixed(2));
+          let itemTax = 0;
+          let itemSubtotal = lineTot;
+          if (it.tax_rate > 0) {
+            itemSubtotal = Number((lineTot / (1 + it.tax_rate / 100)).toFixed(2));
+            itemTax = Number((lineTot - itemSubtotal).toFixed(2));
+          }
 
           returnedItemsList.push({
             id: `ret-item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -1339,33 +1440,93 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                 </button>
               </div>
 
-              {/* Recent Bills Pills */}
+              {/* Recent Bills Pills with Sequence Segregation */}
               {recentBills.length > 0 && !selectedBill && (
-                <div className="space-y-2 pt-2">
-                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    Or select from recent sales:
+                <div className="space-y-2.5 pt-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                      Or select from recent sales:
+                    </div>
+
+                    {/* Sequence Filter Tabs */}
+                    <div className="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200 text-xs font-semibold">
+                      <button
+                        type="button"
+                        onClick={() => setBillTypeFilter("all")}
+                        className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                          billTypeFilter === "all" ? "bg-white text-indigo-700 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        All Recent ({recentBills.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBillTypeFilter("thermal")}
+                        className={`px-2.5 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                          billTypeFilter === "thermal" ? "bg-white text-emerald-700 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        <span>🧾 Thermal Counter Receipts</span>
+                        <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded-full font-bold">
+                          {recentBills.filter((b) => b.is_thermal).length}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBillTypeFilter("a4")}
+                        className={`px-2.5 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                          billTypeFilter === "a4" ? "bg-white text-blue-700 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        <span>📄 Standard A4 Invoices</span>
+                        <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded-full font-bold">
+                          {recentBills.filter((b) => !b.is_thermal).length}
+                        </span>
+                      </button>
+                    </div>
                   </div>
+
                   <div className="flex flex-wrap gap-2">
-                    {recentBills.map((b) => {
-                      const num = b.invoice_number || b.receipt_number || b.id;
-                      const cName = b.customer_name || b.customer?.name || "Walk-in";
-                      const amt = b.total_amount || b.grand_total || b.total || 0;
-                      return (
-                        <button
-                          key={num}
-                          type="button"
-                          onClick={() => selectBillForReturn(b)}
-                          className="px-3 py-1.5 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-xl text-xs font-medium text-slate-700 transition flex items-center gap-2 text-left"
-                        >
-                          <FileText className="w-3.5 h-3.5 text-indigo-500" />
-                          <span className="font-mono font-bold text-slate-900">{num}</span>
-                          <span className="text-slate-400">• {cName}</span>
-                          <span className="font-mono font-semibold text-emerald-600">
-                            {formatCurrency(Number(amt))}
-                          </span>
-                        </button>
-                      );
-                    })}
+                    {recentBills
+                      .filter((b) => {
+                        if (billTypeFilter === "thermal") return b.is_thermal;
+                        if (billTypeFilter === "a4") return !b.is_thermal;
+                        return true;
+                      })
+                      .slice(0, 15)
+                      .map((b) => {
+                        const isThermal = Boolean(b.is_thermal);
+                        const mainNum = b.display_number || b.receipt_number || b.invoice_number;
+                        const secNum = b.secondary_number;
+                        const cName = b.customer_name || "Walk-in Guest";
+                        const amt = b.total_amount || 0;
+                        return (
+                          <button
+                            key={b.id || mainNum}
+                            type="button"
+                            onClick={() => selectBillForReturn(b)}
+                            className="px-3 py-1.5 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-xl text-xs font-medium text-slate-700 transition flex items-center gap-2 text-left cursor-pointer shadow-2xs"
+                          >
+                            {isThermal ? (
+                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                🧾 REC
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">
+                                📄 INV
+                              </span>
+                            )}
+                            <span className="font-mono font-bold text-slate-900">{mainNum}</span>
+                            {secNum && (
+                              <span className="text-[10px] text-slate-400 font-mono">({secNum})</span>
+                            )}
+                            <span className="text-slate-500">• {cName}</span>
+                            <span className="font-mono font-bold text-emerald-600">
+                              {formatCurrency(Number(amt))}
+                            </span>
+                          </button>
+                        );
+                      })}
                   </div>
                 </div>
               )}
@@ -1440,9 +1601,8 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                           restock_disposition: "restock",
                         };
 
-                        const lineSubtotal = it.unit_price * st.returned_qty;
-                        const lineTax = lineSubtotal * (it.tax_rate / 100);
-                        const lineTot = lineSubtotal + lineTax;
+                        const refundRate = it.unit_refund_rate || it.unit_price;
+                        const lineTot = Number((refundRate * st.returned_qty).toFixed(2));
 
                         return (
                           <tr
@@ -1491,7 +1651,7 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                               />
                             </td>
                             <td className="py-3 px-3 text-right font-mono font-semibold">
-                              {formatCurrency(it.unit_price)}
+                              {formatCurrency(refundRate)}
                             </td>
                             <td className="py-3 px-3 text-right font-mono font-bold text-rose-600">
                               {formatCurrency(lineTot)}

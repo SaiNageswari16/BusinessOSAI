@@ -182,14 +182,14 @@ export function PosCreditNotes() {
 
             <div class="info-grid">
               <div>
-                <h4>{t("Issued To (Customer)", "Issued To (Customer)")}</h4>
+                <h4>${t("Issued To (Customer)", "Issued To (Customer)")}</h4>
                 <p><strong>${note.customer_name || "Valued Customer"}</strong></p>
                 <p>${note.customer_phone ? `Phone: ${note.customer_phone}` : ""}</p>
                 <p>${note.customer_gstin ? `GSTIN: ${note.customer_gstin}` : ""}</p>
                 <p>${note.billing_address || ""}</p>
               </div>
               <div>
-                <h4>{t("Credit Note Details", "Credit Note Details")}</h4>
+                <h4>${t("Credit Note Details", "Credit Note Details")}</h4>
                 <p>Note Number: <strong>${note.invoice_number || note.id}</strong></p>
                 <p>Date of Issue: <strong>${note.invoice_date || new Date().toISOString().slice(0, 10)}</strong></p>
                 <p>Original Invoice Ref: <strong>${note.reference_number || (note as any).original_invoice_ref || "Direct Credit"}</strong></p>

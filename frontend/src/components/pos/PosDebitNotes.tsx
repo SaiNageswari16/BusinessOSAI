@@ -179,14 +179,14 @@ export function PosDebitNotes() {
 
             <div class="info-grid">
               <div>
-                <h4>{t("Billed To (Customer)", "Billed To (Customer)")}</h4>
+                <h4>${t("Billed To (Customer)", "Billed To (Customer)")}</h4>
                 <p><strong>${note.customer_name || "Valued Customer"}</strong></p>
                 <p>${note.customer_phone ? `Phone: ${note.customer_phone}` : ""}</p>
                 <p>${note.customer_gstin ? `GSTIN: ${note.customer_gstin}` : ""}</p>
                 <p>${note.billing_address || ""}</p>
               </div>
               <div>
-                <h4>{t("Debit Note Details", "Debit Note Details")}</h4>
+                <h4>${t("Debit Note Details", "Debit Note Details")}</h4>
                 <p>Note Number: <strong>${note.invoice_number || note.id}</strong></p>
                 <p>Date of Issue: <strong>${note.invoice_date || new Date().toISOString().slice(0, 10)}</strong></p>
                 <p>Original Invoice Ref: <strong>${note.reference_number || (note as any).original_invoice_ref || "Supplementary Billing"}</strong></p>
