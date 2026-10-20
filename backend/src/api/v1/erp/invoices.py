@@ -224,7 +224,14 @@ async def list_invoices(
         target_cid = ctx.active_company_id
 
     if target_cid:
-        query = query.where(Invoice.company_id == target_cid)
+        from src.models import Company
+        primary_cid = await db.scalar(
+            select(Company.id).where(Company.tenant_id == ctx.tenant_id).order_by(Company.created_at.asc()).limit(1)
+        )
+        if not primary_cid or target_cid == primary_cid:
+            query = query.where(or_(Invoice.company_id == target_cid, Invoice.company_id.is_(None)))
+        else:
+            query = query.where(Invoice.company_id == target_cid)
     if status_filter:
         query = query.where(Invoice.status == status_filter)
     if invoice_type:

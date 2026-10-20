@@ -6,7 +6,7 @@ from typing import Annotated, Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, BackgroundTasks
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, or_, and_
+from sqlalchemy import func, select, or_, and_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -610,11 +610,26 @@ async def list_sales_returns(
     if date_to:
         query = query.where(InvoiceReturn.return_date <= date_to)
 
-    total = await db.scalar(select(func.count()).select_from(query.subquery()))
-
-    query = query.order_by(InvoiceReturn.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
-    result = await db.execute(query)
-    returns = result.scalars().all()
+    try:
+        total = await db.scalar(select(func.count()).select_from(query.subquery()))
+        query = query.order_by(InvoiceReturn.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+        result = await db.execute(query)
+        returns = result.scalars().all()
+    except Exception as exc:
+        err_str = str(exc).lower()
+        if "company_id" in err_str and ("ar_invoice_returns" in err_str or "undefinedcolumn" in err_str):
+            logger.warning("ar_invoice_returns.company_id column missing. Auto-adding column...")
+            await db.rollback()
+            try:
+                await db.execute(text("ALTER TABLE ar_invoice_returns ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;"))
+                await db.commit()
+                total = await db.scalar(select(func.count()).select_from(query.subquery()))
+                result = await db.execute(query)
+                returns = result.scalars().all()
+            except Exception:
+                return paginate([], 0, page, page_size)
+        else:
+            raise
 
     items = []
     for r in returns:

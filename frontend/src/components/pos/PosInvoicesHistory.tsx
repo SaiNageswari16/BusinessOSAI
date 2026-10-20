@@ -146,7 +146,7 @@ export const isThermalDocument = (inv: any): boolean => {
 export function PosInvoicesHistory() {
   const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
-  const { tenant } = useTenant();
+  const { tenant, companiesList = [] } = useTenant();
   const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
   const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
   const storageKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
@@ -563,7 +563,9 @@ export function PosInvoicesHistory() {
           }
         }
 
-        const activeCid = currentCompanyId !== "default" ? currentCompanyId : undefined;
+        const activeCid = (localStorage.getItem("bos_active_company_id") || (currentCompanyId !== "default" ? currentCompanyId : undefined));
+        const primaryCompanyId = companiesList?.[0]?.id || tenant?.id;
+        const isPrimaryCompany = !activeCid || activeCid === primaryCompanyId || (companiesList.length > 0 && activeCid === companiesList[0]?.id);
 
         keysToScan.forEach((key) => {
           try {
@@ -576,6 +578,9 @@ export function PosInvoicesHistory() {
                     // Strict workspace isolation: skip invoices explicitly belonging to other companies
                     const invCid = inv.company_id || (inv as any).raw?.company_id;
                     if (activeCid && invCid && String(invCid) !== String(activeCid)) {
+                      return;
+                    }
+                    if (activeCid && !invCid && !isPrimaryCompany) {
                       return;
                     }
                     const idKey = String(inv.invoice_number || inv.id).toLowerCase().trim();
@@ -667,6 +672,7 @@ export function PosInvoicesHistory() {
       if (Array.isArray(posItems)) {
         posItems.forEach((tx: any) => {
           if (activeCid && tx.company_id && String(tx.company_id) !== String(activeCid)) return;
+          if (activeCid && !tx.company_id && !isPrimaryCompany) return;
           if (tx.receipt_number) posReceiptMap.set(String(tx.receipt_number).toLowerCase().trim(), tx);
           if (tx.id) posReceiptMap.set(String(tx.id).toLowerCase().trim(), tx);
         });
@@ -674,6 +680,7 @@ export function PosInvoicesHistory() {
         if (Array.isArray(invoiceItems) && invoiceItems.length > 0) {
           invoiceItems.forEach((inv: any) => {
             if (activeCid && inv.company_id && String(inv.company_id) !== String(activeCid)) return;
+            if (activeCid && !inv.company_id && !isPrimaryCompany) return;
             const invNum = String(inv.invoice_number || "").toUpperCase();
             const invType = String(inv.invoice_type || inv.doc_type || "").toUpperCase();
             const isQuote = invType === "QUOTATION" || invNum.startsWith("QT-");
@@ -1194,6 +1201,9 @@ export function PosInvoicesHistory() {
         if (activeCid && inv.company_id && String(inv.company_id) !== String(activeCid)) {
           continue;
         }
+        if (activeCid && !inv.company_id && !isPrimaryCompany) {
+          continue;
+        }
         dedupedList.push(inv);
       }
 
@@ -1215,10 +1225,12 @@ export function PosInvoicesHistory() {
     window.addEventListener("pos_invoices_updated", handleSync);
     window.addEventListener("storage", handleSync);
     window.addEventListener("bos-tenant-changed", handleSync);
+    window.addEventListener("bos-company-changed", handleSync);
     return () => {
       window.removeEventListener("pos_invoices_updated", handleSync);
       window.removeEventListener("storage", handleSync);
       window.removeEventListener("bos-tenant-changed", handleSync);
+      window.removeEventListener("bos-company-changed", handleSync);
     };
   }, [currentTenantId, currentCompanyId, storageKey]);
 

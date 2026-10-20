@@ -164,6 +164,8 @@ async def init_database() -> None:
         "ALTER TABLE erp_vendor_credit_notes ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
         "ALTER TABLE erp_vendor_debit_notes ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
         "ALTER TABLE erp_procurement_ai_suggestions ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE ar_invoice_returns ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
+        "ALTER TABLE delivery_challans ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE SET NULL;",
         "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS is_tax_inclusive BOOLEAN DEFAULT FALSE;",
         "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS po_number VARCHAR(100);",
         "ALTER TABLE ar_invoices ADD COLUMN IF NOT EXISTS po_date DATE;",
