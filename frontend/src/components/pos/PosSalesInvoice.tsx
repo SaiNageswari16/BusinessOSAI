@@ -57,9 +57,10 @@ import {
   Upload,
   Info,
   Send,
-  MessageCircle,
   Printer,
   Pencil,
+  ShieldAlert,
+  MessageCircle,
 } from "lucide-react";
 import { posApi, crmApi, crmCustomersApi, type CustomerAddressItem, invoicesApi, employeesApi, fetchSalesEmployees, inventoryApi, procurementApi, crmWalletApi, bankApi, BankAccountRecord, crmQuotationsApi, companiesApi, numberSeriesApi } from "../../lib/api-client";
 import { toast } from "sonner";
@@ -75,6 +76,7 @@ import { triggerThermalPrint, printThermalReceiptInvoice } from "../../lib/print
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { useAuth } from "@/contexts/auth-context";
+import { useRbac } from "@/contexts/rbac-context";
 import { useNavigate } from "@tanstack/react-router";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
@@ -88,6 +90,7 @@ import { lookupGstinDetails } from "@/lib/gst-helper";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
 import { useI18n } from "@/contexts/i18n-context";
 import { CustomerLedgerModal } from "../crm/CustomerLedgerModal";
+import { StockAlertModal } from "./StockAlertModal";
 
 export type DocumentType = "TAX_INVOICE" | "ESTIMATE_NON_GST" | "PROFORMA" | "CREDIT_NOTE" | "DEBIT_NOTE" | "QUOTATION";
 
@@ -904,6 +907,192 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   // Pricing Mode, Location & Sales Executive State
   const { stores, selectedStore, setSelectedStore } = useStoreLocations();
   const { user } = useAuth();
+  const { hasPermission, activeRole } = useRbac();
+
+  // Zero-stock authorization check based on existing business rules & roles
+  const isZeroStockAuthorized = useMemo(() => {
+    if (!user) return false;
+    if ((user as any).is_tenant_owner || (user as any).is_platform_admin) return true;
+    if (hasPermission("manage:pos") || hasPermission("manage:inventory") || hasPermission("allow:zero_stock")) return true;
+    const roleName = String(activeRole?.name || (user as any)?.role || "").toLowerCase();
+    if (["admin", "owner", "manager", "supervisor", "super_admin"].some(r => roleName.includes(r))) return true;
+    return false;
+  }, [user, activeRole, hasPermission]);
+
+  // Track acknowledged/approved stock items per line item ID
+  const [acknowledgedStockMap, setAcknowledgedStockMap] = useState<Record<string, number>>({});
+
+  // Helper to safely extract available stock and reorder level from product
+  const getProductStockInfo = (prod: any) => {
+    if (!prod) return { availableStock: 0, reorderLevel: 5 };
+    let availableStock: number | null = null;
+    const candidates = [prod.on_hand_stock, prod.stock, prod.current_stock, prod.initial_stock, prod.qty, prod.quantity];
+    for (const c of candidates) {
+      if (c !== undefined && c !== null && c !== "") {
+        const num = Number(c);
+        if (!isNaN(num)) {
+          availableStock = num;
+          break;
+        }
+      }
+    }
+    if (availableStock === null) availableStock = 0;
+
+    let reorderLevel = 5;
+    const reorderCandidates = [prod.reorderLevel, prod.reorder_level, prod.min_stock_level, prod.safety_stock];
+    for (const r of reorderCandidates) {
+      if (r !== undefined && r !== null && r !== "") {
+        const num = Number(r);
+        if (!isNaN(num) && num > 0) {
+          reorderLevel = num;
+          break;
+        }
+      }
+    }
+    return { availableStock, reorderLevel };
+  };
+
+  // Stock Alert Modal State
+  const [stockAlertModal, setStockAlertModal] = useState<{
+    isOpen: boolean;
+    mode: "zero_stock" | "low_stock" | "excess_quantity";
+    productName: string;
+    sku?: string;
+    availableStock: number;
+    requestedQuantity: number;
+    reorderLevel: number;
+    itemId: string;
+    onAllow: () => void;
+    onRemove: () => void;
+    onAdjust?: (qty: number) => void;
+  }>({
+    isOpen: false,
+    mode: "zero_stock",
+    productName: "",
+    sku: "",
+    availableStock: 0,
+    requestedQuantity: 1,
+    reorderLevel: 5,
+    itemId: "",
+    onAllow: () => {},
+    onRemove: () => {},
+  });
+
+  // Central stock validation logic per requirements
+  const checkStockAndExecute = (
+    product: any,
+    requestedQty: number,
+    itemId: string,
+    executeAction: () => void,
+    removeAction: () => void,
+    adjustAction?: (qty: number) => void
+  ) => {
+    const { availableStock, reorderLevel } = getProductStockInfo(product);
+    const prevAck = acknowledgedStockMap[itemId] || 0;
+
+    // Rule 1: Stock is zero (availableStock <= 0)
+    if (availableStock <= 0) {
+      if (prevAck >= requestedQty) {
+        executeAction();
+        return;
+      }
+      setStockAlertModal({
+        isOpen: true,
+        mode: "zero_stock",
+        productName: product.name || "Product",
+        sku: product.sku || "",
+        availableStock: 0,
+        requestedQuantity: requestedQty,
+        reorderLevel,
+        itemId,
+        onAllow: () => {
+          if (!isZeroStockAuthorized) {
+            toast.error("Supervisor authorization required to permit zero-stock sales.");
+            return;
+          }
+          setAcknowledgedStockMap((prev) => ({ ...prev, [itemId]: requestedQty }));
+          setStockAlertModal((m) => ({ ...m, isOpen: false }));
+          executeAction();
+          toast.warning(`Zero-stock sale permitted for ${product.name}`);
+        },
+        onRemove: () => {
+          setStockAlertModal((m) => ({ ...m, isOpen: false }));
+          removeAction();
+        },
+      });
+      return;
+    }
+
+    // Rule 4: Requested quantity exceeds available stock (stock > 0 and requestedQty > availableStock)
+    if (requestedQty > availableStock) {
+      if (prevAck >= requestedQty) {
+        executeAction();
+        return;
+      }
+      setStockAlertModal({
+        isOpen: true,
+        mode: "excess_quantity",
+        productName: product.name || "Product",
+        sku: product.sku || "",
+        availableStock,
+        requestedQuantity: requestedQty,
+        reorderLevel,
+        itemId,
+        onAllow: () => {
+          if (!isZeroStockAuthorized) {
+            toast.error("Supervisor authorization required to permit quantity exceeding inventory stock.");
+            return;
+          }
+          setAcknowledgedStockMap((prev) => ({ ...prev, [itemId]: requestedQty }));
+          setStockAlertModal((m) => ({ ...m, isOpen: false }));
+          executeAction();
+        },
+        onRemove: () => {
+          setStockAlertModal((m) => ({ ...m, isOpen: false }));
+          removeAction();
+        },
+        onAdjust: (qty) => {
+          setStockAlertModal((m) => ({ ...m, isOpen: false }));
+          if (adjustAction) {
+            adjustAction(qty);
+          }
+        },
+      });
+      return;
+    }
+
+    // Rule 2: Stock is below 5 or <= reorder_level
+    if (availableStock < 5 || (reorderLevel > 0 && availableStock <= reorderLevel)) {
+      if (prevAck >= requestedQty) {
+        executeAction();
+        return;
+      }
+      setStockAlertModal({
+        isOpen: true,
+        mode: "low_stock",
+        productName: product.name || "Product",
+        sku: product.sku || "",
+        availableStock,
+        requestedQuantity: requestedQty,
+        reorderLevel,
+        itemId,
+        onAllow: () => {
+          setAcknowledgedStockMap((prev) => ({ ...prev, [itemId]: requestedQty }));
+          setStockAlertModal((m) => ({ ...m, isOpen: false }));
+          executeAction();
+        },
+        onRemove: () => {
+          setStockAlertModal((m) => ({ ...m, isOpen: false }));
+          removeAction();
+        },
+      });
+      return;
+    }
+
+    // Rule 3: Stock >= 5 and requestedQty <= availableStock -> proceed normally without popup!
+    executeAction();
+  };
+
   const defaultSalesExecName = user?.name || (user as any)?.fullName || (user?.email ? user.email.split('@')[0] : "Sales Executive");
   const [selectedLocation, setSelectedLocation] = useState<string>(() => selectedStore || stores[0]?.name || (tenant?.name ? `${tenant.name} (Main Store)` : "Main Store"));
   const [salesExecutive, setSalesExecutive] = useState<string>(() => defaultSalesExecName);
@@ -2131,7 +2320,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           secondary_uom: String(secondaryUom),
           conversion_factor: conversionFactor,
           specifications: specs,
-          stock: p.stock ?? p.initial_stock ?? 0,
+          stock: p.on_hand_stock !== undefined && p.on_hand_stock !== null ? Number(p.on_hand_stock) : (p.stock !== undefined && p.stock !== null ? Number(p.stock) : (p.initial_stock !== undefined && p.initial_stock !== null ? Number(p.initial_stock) : 0)),
+          on_hand_stock: p.on_hand_stock !== undefined && p.on_hand_stock !== null ? Number(p.on_hand_stock) : (p.stock !== undefined && p.stock !== null ? Number(p.stock) : (p.initial_stock !== undefined && p.initial_stock !== null ? Number(p.initial_stock) : 0)),
           price: basePrice,
         });
       };
@@ -2845,137 +3035,131 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       return;
     }
 
-    // 3. Auto-add to product line or increment quantity if same exact product (matching ID, SKU, barcode, and batch) is scanned repeatedly
-    setItems((prevItems) => {
-      const incomingId = product.id ? String(product.id) : "";
-      const incomingSku = product.sku ? String(product.sku).trim() : "";
-      const incomingBarcode = product.barcode ? String(product.barcode).trim() : "";
-      const batchInfo = getProductBatchInfo(product, 1);
-      const incomingBatch = batchInfo?.batch_number ? String(batchInfo.batch_number).trim() : "";
+    // 3. Auto-add to product line or increment quantity if same exact product is scanned
+    const incomingId = product.id ? String(product.id) : "";
+    const incomingSku = product.sku ? String(product.sku).trim() : "";
+    const incomingBarcode = product.barcode ? String(product.barcode).trim() : "";
 
-      const existingIndex = prevItems.findIndex((it) => {
-        const itId = it.product_id ? String(it.product_id) : "";
-        const itSku = it.sku ? String(it.sku).trim() : "";
-        const itBarcode = it.barcode ? String(it.barcode).trim() : "";
-        const itBatch = it.batch_number ? String(it.batch_number).trim() : "";
-
-        // 1. If product IDs are present on both and differ -> DIFFERENT products, do NOT increment
-        if (itId && incomingId && itId !== incomingId) {
-          return false;
-        }
-
-        // 2. If SKUs are present on both and differ -> DIFFERENT variants/SKUs, do NOT increment
-        if (itSku && incomingSku && itSku.toLowerCase() !== incomingSku.toLowerCase()) {
-          return false;
-        }
-
-        // 3. If barcodes are present on both and differ -> DIFFERENT barcodes, do NOT increment
-        if (itBarcode && incomingBarcode && itBarcode !== incomingBarcode) {
-          return false;
-        }
-
-        // 4. If batch numbers are present on both and differ -> DIFFERENT batches, do NOT increment
-        if (itBatch && incomingBatch && itBatch !== incomingBatch) {
-          return false;
-        }
-
-        // Positive Match:
-        // A) Exact matching product_id
-        if (incomingId && itId && itId === incomingId) {
-          return true;
-        }
-
-        // B) Exact matching barcode
-        if (incomingBarcode && itBarcode && itBarcode === incomingBarcode) {
-          return true;
-        }
-
-        // C) Exact matching SKU
-        if (incomingSku && itSku && itSku.toLowerCase() === incomingSku.toLowerCase()) {
-          return true;
-        }
-
-        // D) Only match by product_name if NEITHER the row NOR incoming product has an ID, SKU, or Barcode
-        const hasSpecificCodes = Boolean(itId || incomingId || itSku || incomingSku || itBarcode || incomingBarcode);
-        if (!hasSpecificCodes && it.product_name && product.name && it.product_name.toLowerCase().trim() === product.name.toLowerCase().trim()) {
-          return true;
-        }
-
-        return false;
-      });
-
-      if (existingIndex >= 0) {
-        // Exact same product already exists in the invoice: increment quantity!
-        const existingItem = prevItems[existingIndex];
-        const newQty = Number((existingItem.quantity + 1).toFixed(4));
-        const factor = Number(existingItem.conversion_factor) > 0 ? Number(existingItem.conversion_factor) : 1;
-        let newPrimaryQty = existingItem.primary_qty !== undefined ? existingItem.primary_qty + 1 : newQty;
-        let newSecondaryQty = existingItem.secondary_qty !== undefined ? existingItem.secondary_qty : 0;
-
-        if (existingItem.secondary_uom && factor > 1) {
-          newPrimaryQty = Math.floor(newQty);
-          newSecondaryQty = Math.round((newQty - Math.floor(newQty)) * factor);
-        }
-
-        const updatedItem: InvoiceItem = {
-          ...existingItem,
-          sku: existingItem.sku || product.sku || "",
-          barcode: existingItem.barcode || product.barcode || "",
-          quantity: newQty,
-          primary_qty: newPrimaryQty,
-          secondary_qty: newSecondaryQty,
-          unit_price: batchInfo.unit_price || existingItem.unit_price,
-          mrp: batchInfo.mrp || existingItem.mrp,
-        };
-
-        const next = [...prevItems];
-        next[existingIndex] = updatedItem;
-        toast.success(`Scanned: ${product.name}${product.sku ? ` (${product.sku})` : ""} — Quantity incremented to ${newQty}`);
-        return next;
-      }
-
-      // Product does NOT exist in current invoice line items (or has different SKU/barcode): add new row!
-      const uomInfo = extractProductUomInfo(product);
-      const discInfo = extractProductDiscount(product);
-      const rateInfo = computeItemUomRates(batchInfo.unit_price, batchInfo.mrp, uomInfo);
-
-      const newItem: InvoiceItem = {
-        id: Math.random().toString(36).substr(2, 9),
-        product_id: product.id || "",
-        product_name: product.name,
-        sku: product.sku || "",
-        barcode: product.barcode || "",
-        quantity: 1,
-        primary_qty: 1,
-        secondary_qty: 0,
-        uom: rateInfo.uom,
-        secondary_uom: rateInfo.secondary_uom,
-        conversion_factor: rateInfo.conversion_factor,
-        selected_uom: rateInfo.selected_uom,
-        base_unit_price: rateInfo.base_unit_price,
-        base_mrp: rateInfo.base_mrp,
-        unit_price: rateInfo.unit_price,
-        mrp: rateInfo.mrp,
-        batch_number: batchInfo.batch_number,
-        expiry_date: batchInfo.expiry_date,
-        discount_value: discInfo.discount_value,
-        discount_type: discInfo.discount_type,
-        tax_rate: getEffectiveTaxRate(product),
-        is_tax_inclusive: product.is_tax_inclusive === true,
-      };
-
-      toast.success(`Scanned: Added ${product.name}${product.sku ? ` (${product.sku})` : ""} (Qty: 1)`);
-
-      // If there is only one blank initial row, replace it
-      if (prevItems.length === 1 && !prevItems[0].product_name && !prevItems[0].product_id) {
-        return [newItem];
-      }
-
-      return [...prevItems, newItem];
+    const existingIndex = items.findIndex((it) => {
+      const itId = it.product_id ? String(it.product_id) : "";
+      const itSku = it.sku ? String(it.sku).trim() : "";
+      const itBarcode = it.barcode ? String(it.barcode).trim() : "";
+      if (incomingId && itId && itId === incomingId) return true;
+      if (incomingBarcode && itBarcode && itBarcode === incomingBarcode) return true;
+      if (incomingSku && itSku && itSku.toLowerCase() === incomingSku.toLowerCase()) return true;
+      if (!incomingId && !itId && !incomingSku && !itSku && it.product_name && product.name && it.product_name.toLowerCase().trim() === product.name.toLowerCase().trim()) return true;
+      return false;
     });
 
+    const targetQty = existingIndex >= 0 ? Number(items[existingIndex].quantity || 0) + 1 : 1;
+    const targetItemId = existingIndex >= 0 ? items[existingIndex].id : Math.random().toString(36).substr(2, 9);
+
+    const applyAddOrIncrement = () => {
+      setItems((prevItems) => {
+        const batchInfo = getProductBatchInfo(product, 1);
+        const incomingBatch = batchInfo?.batch_number ? String(batchInfo.batch_number).trim() : "";
+
+        const foundIdx = prevItems.findIndex((it) => {
+          const itId = it.product_id ? String(it.product_id) : "";
+          const itSku = it.sku ? String(it.sku).trim() : "";
+          const itBarcode = it.barcode ? String(it.barcode).trim() : "";
+          if (incomingId && itId && itId === incomingId) return true;
+          if (incomingBarcode && itBarcode && itBarcode === incomingBarcode) return true;
+          if (incomingSku && itSku && itSku.toLowerCase() === incomingSku.toLowerCase()) return true;
+          return false;
+        });
+
+        if (foundIdx >= 0) {
+          const existingItem = prevItems[foundIdx];
+          const newQty = Number((existingItem.quantity + 1).toFixed(4));
+          const factor = Number(existingItem.conversion_factor) > 0 ? Number(existingItem.conversion_factor) : 1;
+          let newPrimaryQty = existingItem.primary_qty !== undefined ? existingItem.primary_qty + 1 : newQty;
+          let newSecondaryQty = existingItem.secondary_qty !== undefined ? existingItem.secondary_qty : 0;
+
+          if (existingItem.secondary_uom && factor > 1) {
+            newPrimaryQty = Math.floor(newQty);
+            newSecondaryQty = Math.round((newQty - Math.floor(newQty)) * factor);
+          }
+
+          const updatedItem: InvoiceItem = {
+            ...existingItem,
+            sku: existingItem.sku || product.sku || "",
+            barcode: existingItem.barcode || product.barcode || "",
+            quantity: newQty,
+            primary_qty: newPrimaryQty,
+            secondary_qty: newSecondaryQty,
+            unit_price: batchInfo.unit_price || existingItem.unit_price,
+            mrp: batchInfo.mrp || existingItem.mrp,
+          };
+
+          const next = [...prevItems];
+          next[foundIdx] = updatedItem;
+          toast.success(`Scanned: ${product.name}${product.sku ? ` (${product.sku})` : ""} — Quantity incremented to ${newQty}`);
+          return next;
+        }
+
+        const uomInfo = extractProductUomInfo(product);
+        const discInfo = extractProductDiscount(product);
+        const rateInfo = computeItemUomRates(batchInfo.unit_price, batchInfo.mrp, uomInfo);
+
+        const newItem: InvoiceItem = {
+          id: targetItemId,
+          product_id: product.id || "",
+          product_name: product.name,
+          sku: product.sku || "",
+          barcode: product.barcode || "",
+          quantity: 1,
+          primary_qty: 1,
+          secondary_qty: 0,
+          uom: rateInfo.uom,
+          secondary_uom: rateInfo.secondary_uom,
+          conversion_factor: rateInfo.conversion_factor,
+          selected_uom: rateInfo.selected_uom,
+          base_unit_price: rateInfo.base_unit_price,
+          base_mrp: rateInfo.base_mrp,
+          unit_price: rateInfo.unit_price,
+          mrp: rateInfo.mrp,
+          batch_number: batchInfo.batch_number,
+          expiry_date: batchInfo.expiry_date,
+          discount_value: discInfo.discount_value,
+          discount_type: discInfo.discount_type,
+          tax_rate: getEffectiveTaxRate(product),
+          is_tax_inclusive: product.is_tax_inclusive === true,
+        };
+
+        toast.success(`Scanned: Added ${product.name}${product.sku ? ` (${product.sku})` : ""} (Qty: 1)`);
+
+        if (prevItems.length === 1 && !prevItems[0].product_name && !prevItems[0].product_id) {
+          return [newItem];
+        }
+
+        return [...prevItems, newItem];
+      });
+    };
+
+    checkStockAndExecute(
+      product,
+      targetQty,
+      targetItemId,
+      applyAddOrIncrement,
+      () => {
+        if (existingIndex >= 0 && items[existingIndex]) {
+          const toRemoveId = items[existingIndex].id;
+          setItems((prev) => prev.filter((it) => it.id !== toRemoveId));
+        }
+      },
+      (adjQty) => {
+        if (existingIndex >= 0 && items[existingIndex]) {
+          const toUpdateId = items[existingIndex].id;
+          setItems((prev) =>
+            prev.map((it) => (it.id === toUpdateId ? { ...it, quantity: adjQty } : it))
+          );
+        }
+      }
+    );
+
     setBarcodeInput("");
-  }, [products, pricingMode, getProductBatchInfo]);
+  }, [products, pricingMode, getProductBatchInfo, items, checkStockAndExecute]);
 
   // Universal hardware barcode scanner gun listener
   useHardwareBarcodeScanner({
@@ -3188,6 +3372,28 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   };
 
   const removeItem = (id: string) => setItems(items.filter((item) => item.id !== id));
+
+  // Validate stock when quantity is manually changed in the invoice table
+  const handleQuantityChange = (item: InvoiceItem, rawQty: number | string) => {
+    const newQty = rawQty === "" ? 0 : Math.max(0, Number(rawQty) || 0);
+    const matchedProd = products.find(
+      (p) => (item.product_id && p.id === item.product_id) || (p.name && p.name === item.product_name)
+    );
+
+    if (matchedProd && newQty > (Number(item.quantity) || 0)) {
+      checkStockAndExecute(
+        matchedProd,
+        newQty,
+        item.id,
+        () => updateItem(item.id, "quantity", newQty),
+        () => removeItem(item.id),
+        (adjQty) => updateItem(item.id, "quantity", adjQty)
+      );
+      return;
+    }
+
+    updateItem(item.id, "quantity", newQty);
+  };
 
   // Dynamic Invoice Discount State
   const [invoiceDiscountMode, setInvoiceDiscountMode] = useState<"before_tax" | "after_tax">("before_tax");
@@ -3804,7 +4010,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       wholesale_price: wholesaleVal,
       b2b_price: b2bVal,
       mrp: mrpVal,
-      tax_percent: newProdTax !== undefined && newProdTax !== "" ? Number(newProdTax) : 0,
+      tax_percent: Number(newProdTax) || 0,
       stock_quantity: Number(newProdStock) || 100,
       stock: Number(newProdStock) || 100,
       image_url: newProdImage || undefined,
@@ -4177,7 +4383,102 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
     if (!selectedCustomer && !customer) return toast.error("Please select a customer or party first.");
     if (items.length === 0) return toast.error("Please add at least one item.");
-    if (isWalkInParty(customer || selectedCustomer) && invoiceType !== "PROFORMA" && invoiceType !== "QUOTATION") {
+
+    // Validate out-of-stock items before saving
+    if (invoiceType !== "PROFORMA" && (invoiceType as string) !== "QUOTATION") {
+      for (const line of items) {
+        if (!line.product_name && !line.product_id) continue;
+        const matched = products.find((p) => {
+          if (line.product_id && p.id && String(p.id) === String(line.product_id)) return true;
+          if (line.sku && p.sku && String(p.sku).trim().toLowerCase() === String(line.sku).trim().toLowerCase()) return true;
+          if (line.barcode && p.barcode && String(p.barcode).trim().toLowerCase() === String(line.barcode).trim().toLowerCase()) return true;
+          if (line.product_name && p.name && String(p.name).trim().toLowerCase() === String(line.product_name).trim().toLowerCase()) return true;
+          return false;
+        });
+        if (matched) {
+          const { availableStock, reorderLevel } = getProductStockInfo(matched);
+          const reqQty = Number(line.quantity) || 1;
+          const isAck = (acknowledgedStockMap[line.id] || 0) >= reqQty;
+          if (!isAck) {
+            if (availableStock <= 0) {
+              setStockAlertModal({
+                isOpen: true,
+                mode: "zero_stock",
+                productName: line.product_name || matched.name,
+                sku: line.sku || matched.sku || "",
+                availableStock: 0,
+                requestedQuantity: reqQty,
+                reorderLevel,
+                itemId: line.id,
+                onAllow: () => {
+                  if (!isZeroStockAuthorized) {
+                    toast.error("Supervisor authorization required to permit zero-stock sales.");
+                    return;
+                  }
+                  setAcknowledgedStockMap((prev) => ({ ...prev, [line.id]: reqQty }));
+                  setStockAlertModal((m) => ({ ...m, isOpen: false }));
+                  toast.warning(`Zero-stock sale permitted for ${line.product_name || matched.name}`);
+                },
+                onRemove: () => {
+                  setStockAlertModal((m) => ({ ...m, isOpen: false }));
+                  removeItem(line.id);
+                },
+              });
+              return;
+            } else if (reqQty > availableStock) {
+              setStockAlertModal({
+                isOpen: true,
+                mode: "excess_quantity",
+                productName: line.product_name || matched.name,
+                sku: line.sku || matched.sku || "",
+                availableStock,
+                requestedQuantity: reqQty,
+                reorderLevel,
+                itemId: line.id,
+                onAllow: () => {
+                  if (!isZeroStockAuthorized) {
+                    toast.error("Supervisor authorization required to permit quantity exceeding inventory stock.");
+                    return;
+                  }
+                  setAcknowledgedStockMap((prev) => ({ ...prev, [line.id]: reqQty }));
+                  setStockAlertModal((m) => ({ ...m, isOpen: false }));
+                },
+                onRemove: () => {
+                  setStockAlertModal((m) => ({ ...m, isOpen: false }));
+                  removeItem(line.id);
+                },
+                onAdjust: (adjQty) => {
+                  setStockAlertModal((m) => ({ ...m, isOpen: false }));
+                  updateItem(line.id, "quantity", adjQty);
+                },
+              });
+              return;
+            } else if (availableStock < 5 || (reorderLevel > 0 && availableStock <= reorderLevel)) {
+              setStockAlertModal({
+                isOpen: true,
+                mode: "low_stock",
+                productName: line.product_name || matched.name,
+                sku: line.sku || matched.sku || "",
+                availableStock,
+                requestedQuantity: reqQty,
+                reorderLevel,
+                itemId: line.id,
+                onAllow: () => {
+                  setAcknowledgedStockMap((prev) => ({ ...prev, [line.id]: reqQty }));
+                  setStockAlertModal((m) => ({ ...m, isOpen: false }));
+                },
+                onRemove: () => {
+                  setStockAlertModal((m) => ({ ...m, isOpen: false }));
+                  removeItem(line.id);
+                },
+              });
+              return;
+            }
+          }
+        }
+      }
+    }
+    if (isWalkInParty(customer || selectedCustomer) && invoiceType !== "PROFORMA" && (invoiceType as string) !== "QUOTATION") {
       if (paymentMode === "Credit" || paymentMode === "Wallet") {
         toast.error("Walk-in customers require full payment. Pay Later / ledger is not available.");
         setPaymentMode("Cash");
@@ -4310,7 +4611,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         invoice_date: invoiceDate,
         due_date: dueDate,
         payment_terms: isWalkIn ? paymentMode : (isCredit ? "Credit / Due" : paymentMode),
-        payment_status: (invoiceType === "PROFORMA" || invoiceType === "QUOTATION") ? "Pending" : calculatedPaymentStatus,
+        payment_status: (invoiceType === "PROFORMA" || (invoiceType as string) === "QUOTATION") ? "Pending" : calculatedPaymentStatus,
         payment_method: isWalkIn ? (paymentMode === "Credit" ? "Cash" : paymentMode) : (isCredit ? "Credit" : (paymentMode === "Split" ? "split" : paymentMode)),
         amount_paid: isWalkIn ? grandTotal : (paymentMode === "Split" ? (Number(splitCash) || 0) + (Number(splitOnline) || 0) : actualAmountPaid),
         amount_received: isWalkIn ? grandTotal : (paymentMode === "Split" ? (Number(splitCash) || 0) + (Number(splitOnline) || 0) : actualAmountPaid),
@@ -4450,8 +4751,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         updated_at: new Date().toISOString(),
         due_date: dueDate,
         payment_mode: isWalkIn ? (paymentMode === "Credit" ? "Cash" : paymentMode) : (isCredit ? "Credit / Due" : paymentMode),
-        payment_status: (invoiceType === "PROFORMA" || invoiceType === "QUOTATION") ? "Pending" : isWalkIn ? "Paid" : isCredit ? "Unpaid" : (amountReceived === "" || Number(amountReceived) >= grandTotal ? "Paid" : "Partial"),
-        status: (invoiceType === "PROFORMA" || invoiceType === "QUOTATION") ? "Open (Pending)" : undefined,
+        payment_status: (invoiceType === "PROFORMA" || (invoiceType as string) === "QUOTATION") ? "Pending" : isWalkIn ? "Paid" : isCredit ? "Unpaid" : (amountReceived === "" || Number(amountReceived) >= grandTotal ? "Paid" : "Partial"),
+        status: (invoiceType === "PROFORMA" || (invoiceType as string) === "QUOTATION") ? "Open (Pending)" : undefined,
         subtotal: subtotal,
         taxable_value: taxableValue,
         total_tax: totalTax,
@@ -4736,7 +5037,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const s = loadStoredInvoiceSettings();
         const isTaxInv = invoiceType === "TAX_INVOICE";
         const isProformaDoc = invoiceType === "PROFORMA";
-        const isQuoteDoc = invoiceType === "QUOTATION";
+        const isQuoteDoc = (invoiceType as string) === "QUOTATION";
 
         let pfx = "INV-";
         if (isTaxInv) {
@@ -6283,41 +6584,60 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       key={prod.id}
                       onMouseDown={(e) => {
                         e.preventDefault();
-                        const batchInfo = getProductBatchInfo(prod);
-                        setItems((prev) =>
-                          prev.map((it) => {
-                            if (it.id !== dropdownAnchor.itemId) return it;
-                            const curQty = Number(it.quantity) || 1;
-                            return {
-                              ...it,
-                              product_id: prod.id,
-                              product_name: prod.name,
-                              sku: prod.sku || "",
-                              barcode: prod.barcode || "",
-                              search_query: prod.name,
-                              uom: uomInfo.uom,
-                              secondary_uom: uomInfo.secondary_uom,
-                              conversion_factor: uomInfo.conversion_factor,
-                              selected_uom: uomInfo.uom,
-                              base_unit_price: batchInfo.unit_price,
-                              base_mrp: batchInfo.mrp,
-                              primary_qty: curQty,
-                              secondary_qty: 0,
-                              quantity: curQty,
-                              unit_price: batchInfo.unit_price,
-                              mrp: batchInfo.mrp,
-                              batch_number: batchInfo.batch_number,
-                              expiry_date: batchInfo.expiry_date,
-                              hsn_code: prod.hsn_code || "1905",
-                              tax_rate: getEffectiveTaxRate(prod),
-                              is_tax_inclusive: prod.is_tax_inclusive !== false,
-                              discount_value: discInfo.discount_value,
-                              discount_type: discInfo.discount_type,
-                              is_search_open: false,
-                            };
-                          })
+                        const curQty = Number(openItem.quantity) || 1;
+                        const applyProduct = () => {
+                          const batchInfo = getProductBatchInfo(prod);
+                          setItems((prev) =>
+                            prev.map((it) => {
+                              if (it.id !== dropdownAnchor.itemId) return it;
+                              return {
+                                ...it,
+                                product_id: prod.id,
+                                product_name: prod.name,
+                                sku: prod.sku || "",
+                                barcode: prod.barcode || "",
+                                search_query: prod.name,
+                                uom: uomInfo.uom,
+                                secondary_uom: uomInfo.secondary_uom,
+                                conversion_factor: uomInfo.conversion_factor,
+                                selected_uom: uomInfo.uom,
+                                base_unit_price: batchInfo.unit_price,
+                                base_mrp: batchInfo.mrp,
+                                primary_qty: curQty,
+                                secondary_qty: 0,
+                                quantity: curQty,
+                                unit_price: batchInfo.unit_price,
+                                mrp: batchInfo.mrp,
+                                batch_number: batchInfo.batch_number,
+                                expiry_date: batchInfo.expiry_date,
+                                hsn_code: prod.hsn_code || "1905",
+                                tax_rate: getEffectiveTaxRate(prod),
+                                is_tax_inclusive: prod.is_tax_inclusive !== false,
+                                discount_value: discInfo.discount_value,
+                                discount_type: discInfo.discount_type,
+                                is_search_open: false,
+                              };
+                            })
+                          );
+                          setDropdownAnchor(null);
+                        };
+
+                        const removeProduct = () => {
+                          removeItem(dropdownAnchor.itemId);
+                          setDropdownAnchor(null);
+                        };
+
+                        checkStockAndExecute(
+                          prod,
+                          curQty,
+                          dropdownAnchor.itemId,
+                          applyProduct,
+                          removeProduct,
+                          (adjQty) => {
+                            updateItem(dropdownAnchor.itemId, "quantity", adjQty);
+                            applyProduct();
+                          }
                         );
-                        setDropdownAnchor(null);
                       }}
                       className="p-2.5 hover:bg-blue-50 cursor-pointer text-xs flex items-center justify-between"
                     >
@@ -6442,15 +6762,42 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                     const mrpVal = Number(item.mrp) || 0;
                     const isMrpExceeded = mrpVal > 0 && sellingPriceIncl > mrpVal;
 
-                    const matchedProduct = products.find((p) => p.id === item.product_id);
+                    const matchedProduct = products.find((p) => {
+                      if (item.product_id && p.id && String(p.id) === String(item.product_id)) return true;
+                      if (item.sku && p.sku && String(p.sku).trim().toLowerCase() === String(item.sku).trim().toLowerCase()) return true;
+                      if (item.barcode && p.barcode && String(p.barcode).trim().toLowerCase() === String(item.barcode).trim().toLowerCase()) return true;
+                      if (item.product_name && p.name && String(p.name).trim().toLowerCase() === String(item.product_name).trim().toLowerCase()) return true;
+                      return false;
+                    });
                     const itemImageUrl = matchedProduct?.image_url || matchedProduct?.image || "";
                     const invDisc = matchedProduct ? extractProductDiscount(matchedProduct) : { discount_value: 0, discount_type: "percent" };
                     const hasInventoryDiscount = invDisc.discount_value > 0;
                     const isDiscountActive = Number(item.discount_value) > 0;
 
+                    // Stock condition resolution
+                    const isProductMatched = Boolean(matchedProduct && (item.product_name || item.product_id));
+                    const { availableStock, reorderLevel } = getProductStockInfo(matchedProduct);
+                    const requestedQty = qty;
+                    const isZeroStock = isProductMatched && availableStock <= 0;
+                    const isStockExceeded = isProductMatched && availableStock > 0 && requestedQty > availableStock;
+                    const isLowStock = isProductMatched && availableStock > 0 && (availableStock < 5 || availableStock <= reorderLevel) && requestedQty <= availableStock;
+                    const isStockAcknowledged = (acknowledgedStockMap[item.id] || 0) >= requestedQty;
+
                     return (
                       <React.Fragment key={item.id}>
-                        <tr className={`transition-colors ${item.is_free ? "bg-emerald-50/60 border-l-2 border-l-emerald-400" : isMrpExceeded ? "bg-red-50/40" : "hover:bg-slate-50/80"}`}>
+                        <tr className={`transition-colors ${
+                          item.is_free
+                            ? "bg-emerald-50/60 border-l-2 border-l-emerald-400"
+                            : isMrpExceeded
+                            ? "bg-red-50/40"
+                            : isZeroStock && !isStockAcknowledged
+                            ? "bg-red-50/50"
+                            : isStockExceeded && !isStockAcknowledged
+                            ? "bg-rose-50/50"
+                            : isLowStock && !isStockAcknowledged
+                            ? "bg-amber-50/50"
+                            : "hover:bg-slate-50/80"
+                        }`}>
                           <td className="px-3 py-2.5 text-slate-400 font-mono font-medium text-left align-middle">{idx + 1}</td>
 
                           {/* Product Search & Dropdown */}
@@ -6487,8 +6834,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                     const rect = e.currentTarget.getBoundingClientRect();
                                     setDropdownAnchor({
                                       itemId: item.id,
-                                      top: rect.bottom + window.scrollY,
-                                      left: rect.left + window.scrollX,
+                                      top: rect.bottom,
+                                      left: rect.left,
                                       width: rect.width,
                                     });
                                     setItems(items.map((it) => (it.id === item.id ? { ...it, is_search_open: true } : it)));
@@ -6735,7 +7082,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                       step="any"
                                       value={item.quantity || ""}
                                       onFocus={(e) => e.target.select()}
-                                      onChange={(e) => updateItem(item.id, "quantity", e.target.value === "" ? "" : Number(e.target.value))}
+                                      onChange={(e) => handleQuantityChange(item, e.target.value)}
                                       className="w-full bg-transparent px-2 py-1.5 text-center font-bold text-slate-800 outline-none text-xs"
                                       placeholder="1"
                                       title={`Quantity in ${item.selected_uom || item.uom}`}
@@ -6784,7 +7131,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                     step="any"
                                     value={item.quantity || ""}
                                     onFocus={(e) => e.target.select()}
-                                    onChange={(e) => updateItem(item.id, "quantity", e.target.value === "" ? "" : Number(e.target.value))}
+                                    onChange={(e) => handleQuantityChange(item, e.target.value)}
                                     className="w-full bg-transparent text-center font-bold text-slate-800 outline-none text-xs"
                                     placeholder="1"
                                   />
@@ -6997,6 +7344,157 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                   ⚠️ MRP Exceeded! Selling price {currency.symbol}{Number(sellingPriceIncl || 0).toFixed(2)} (incl. tax) &gt; MRP {currency.symbol}{Number(mrpVal || 0).toFixed(2)}.
                                   Please reduce the price or obtain approval before saving.
                                 </span>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+
+                        {/* Stock Alert Warning Row */}
+                        {isProductMatched && !isStockAcknowledged && (isZeroStock || isStockExceeded || isLowStock) && (
+                          <tr
+                            key={`${item.id}-stock-warn`}
+                            className={cn(
+                              "border-l-4 transition-all",
+                              isZeroStock
+                                ? "bg-red-50 border-red-500"
+                                : isStockExceeded
+                                ? "bg-rose-50 border-rose-500"
+                                : "bg-amber-50 border-amber-500"
+                            )}
+                          >
+                            <td colSpan={12} className="px-4 py-1.5">
+                              <div className="flex flex-wrap items-center justify-between gap-3 text-[11px]">
+                                <div className="flex items-center gap-2 font-bold">
+                                  {isZeroStock ? (
+                                    <>
+                                      <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0 animate-bounce" />
+                                      <span className="text-red-900">
+                                        🚨 <strong>Out of Stock!</strong> Product <span className="font-extrabold underline decoration-red-400">"{item.product_name || matchedProduct?.name}"</span> has <strong className="bg-red-200/90 text-red-950 px-1.5 py-0.5 rounded">0 available stock</strong> (Requested: {requestedQty}).
+                                      </span>
+                                    </>
+                                  ) : isStockExceeded ? (
+                                    <>
+                                      <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                      <span className="text-rose-900">
+                                        ⚠️ <strong>Stock Deficit!</strong> Requested <strong>{requestedQty} units</strong>, but only <strong className="bg-rose-200/90 text-rose-950 px-1.5 py-0.5 rounded">{availableStock} units</strong> are currently available in inventory.
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                      <span className="text-amber-900">
+                                        ⚠️ <strong>Low Stock Warning!</strong> Product <span className="font-bold">"{item.product_name || matchedProduct?.name}"</span> has only <strong className="bg-amber-200/90 text-amber-950 px-1.5 py-0.5 rounded">{availableStock} units</strong> remaining (Reorder Threshold: {reorderLevel}).
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+
+                                {/* Quick Actions */}
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {isZeroStock && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeItem(item.id)}
+                                        className="px-2.5 py-1 text-[10px] font-extrabold text-red-700 bg-white hover:bg-red-100 rounded-lg border border-red-300 shadow-2xs transition cursor-pointer flex items-center gap-1"
+                                      >
+                                        <Trash2 className="w-3 h-3 text-red-600" /> Remove Item
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (!isZeroStockAuthorized) {
+                                            toast.error("Supervisor authorization required to permit zero-stock sales.");
+                                            return;
+                                          }
+                                          setAcknowledgedStockMap((prev) => ({ ...prev, [item.id]: requestedQty }));
+                                          toast.warning(`Zero-stock sale permitted for ${item.product_name || matchedProduct?.name}`);
+                                        }}
+                                        className={cn(
+                                          "px-2.5 py-1 text-[10px] font-extrabold rounded-lg border shadow-2xs transition cursor-pointer flex items-center gap-1",
+                                          isZeroStockAuthorized
+                                            ? "bg-red-600 text-white hover:bg-red-700 border-red-700"
+                                            : "bg-red-100 text-red-500 border-red-200 cursor-not-allowed opacity-75"
+                                        )}
+                                        title={isZeroStockAuthorized ? "Authorize Zero-Stock Billing" : "Requires Supervisor / Admin permission"}
+                                      >
+                                        <ShieldAlert className="w-3 h-3" />
+                                        {isZeroStockAuthorized ? "Allow Billing (Supervisor)" : "Authorization Required"}
+                                      </button>
+                                    </>
+                                  )}
+
+                                  {isStockExceeded && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => updateItem(item.id, "quantity", availableStock)}
+                                        className="px-2.5 py-1 text-[10px] font-extrabold text-rose-800 bg-white hover:bg-rose-100 rounded-lg border border-rose-300 shadow-2xs transition cursor-pointer flex items-center gap-1"
+                                      >
+                                        ⚡ Adjust to Max ({availableStock})
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeItem(item.id)}
+                                        className="px-2.5 py-1 text-[10px] font-extrabold text-slate-600 bg-white hover:bg-slate-100 rounded-lg border border-slate-300 shadow-2xs transition cursor-pointer"
+                                      >
+                                        Remove Item
+                                      </button>
+                                      {isZeroStockAuthorized && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setAcknowledgedStockMap((prev) => ({ ...prev, [item.id]: requestedQty }));
+                                            toast.warning(`Allowed quantity exceeding stock for ${item.product_name || matchedProduct?.name}`);
+                                          }}
+                                          className="px-2.5 py-1 text-[10px] font-extrabold bg-rose-600 hover:bg-rose-700 text-white rounded-lg border border-rose-700 shadow-2xs transition cursor-pointer"
+                                        >
+                                          Allow Full Qty ({requestedQty})
+                                        </button>
+                                      )}
+                                    </>
+                                  )}
+
+                                  {isLowStock && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setAcknowledgedStockMap((prev) => ({ ...prev, [item.id]: requestedQty }));
+                                          toast.info(`Continued billing with low stock for ${item.product_name || matchedProduct?.name}`);
+                                        }}
+                                        className="px-2.5 py-1 text-[10px] font-extrabold text-amber-900 bg-white hover:bg-amber-100 rounded-lg border border-amber-300 shadow-2xs transition cursor-pointer flex items-center gap-1"
+                                      >
+                                        ✓ Continue Billing
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeItem(item.id)}
+                                        className="px-2.5 py-1 text-[10px] font-extrabold text-slate-600 bg-white hover:bg-slate-100 rounded-lg border border-slate-300 shadow-2xs transition cursor-pointer flex items-center gap-1"
+                                      >
+                                        <Trash2 className="w-3 h-3 text-slate-500" /> Remove Item
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+
+                        {/* Approved Zero-Stock Indicator */}
+                        {isProductMatched && isStockAcknowledged && isZeroStock && (
+                          <tr key={`${item.id}-stock-approved`} className="bg-amber-50/50 border-l-4 border-amber-400">
+                            <td colSpan={12} className="px-4 py-1">
+                              <div className="flex items-center justify-between text-[10.5px] font-semibold text-amber-900">
+                                <span>🛡️ Zero-stock billing authorized by supervisor for <strong>{item.product_name || matchedProduct?.name}</strong>.</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setAcknowledgedStockMap((prev) => { const n = { ...prev }; delete n[item.id]; return n; })}
+                                  className="text-[10px] text-amber-700 underline hover:text-amber-900 cursor-pointer font-bold"
+                                >
+                                  Revoke
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -10191,6 +10689,22 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       <WordInvoiceStudioModal
         isOpen={isWordStudioOpen}
         onClose={() => setIsWordStudioOpen(false)}
+      />
+
+      {/* Central Stock Alert Modal (Zero Stock / Low Stock / Excess Qty) */}
+      <StockAlertModal
+        isOpen={stockAlertModal.isOpen}
+        mode={stockAlertModal.mode}
+        productName={stockAlertModal.productName}
+        sku={stockAlertModal.sku}
+        availableStock={stockAlertModal.availableStock}
+        requestedQuantity={stockAlertModal.requestedQuantity}
+        reorderLevel={stockAlertModal.reorderLevel}
+        isAuthorized={isZeroStockAuthorized}
+        onAllow={stockAlertModal.onAllow}
+        onRemove={stockAlertModal.onRemove}
+        onAdjust={stockAlertModal.onAdjust}
+        onClose={() => setStockAlertModal((prev) => ({ ...prev, isOpen: false }))}
       />
     </div>
   );

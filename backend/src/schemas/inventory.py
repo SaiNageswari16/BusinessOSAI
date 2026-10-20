@@ -253,6 +253,7 @@ class ProductUpdate(BaseModel):
     discount_limit: Optional[float] = None
     
     initial_stock: Optional[int] = None
+    on_hand_stock: Optional[int] = None
     stock: Optional[int] = None
     reorder_level: Optional[int] = None
     safety_stock: Optional[int] = None
@@ -288,7 +289,7 @@ class ProductUpdate(BaseModel):
         except (ValueError, TypeError):
             return None
 
-    @field_validator("initial_stock", "stock", "reorder_level", "safety_stock", "min_wholesale_qty", "min_b2b_qty", mode="before")
+    @field_validator("initial_stock", "on_hand_stock", "stock", "reorder_level", "safety_stock", "min_wholesale_qty", "min_b2b_qty", mode="before")
     @classmethod
     def parse_optional_int(cls, v):
         if v is None or v == "":

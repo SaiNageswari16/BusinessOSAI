@@ -2234,6 +2234,8 @@ class POSProductResponse(BaseModel):
     is_tax_inclusive: bool = True
     discount: float
     stock: int
+    on_hand_stock: int | None = None
+    initial_stock: int | None = None
     reorder_level: int
     is_active: bool
     specifications: dict | list | None = None

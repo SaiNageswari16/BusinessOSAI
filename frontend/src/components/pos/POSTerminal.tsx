@@ -28,6 +28,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { FreeQtyPanel, FreeQtyItem } from "./FreeQtyPanel";
+import { StockAlertModal } from "./StockAlertModal";
 import { useTenant } from "../../contexts/tenant-context";
 import { PineLabsEDCModal } from "./PineLabsEDCModal";
 import { RazorpayPOSModal } from "./RazorpayPOSModal";
@@ -735,12 +736,12 @@ function PosTerminalInner() {
           is_tax_inclusive: isTaxInclusive,
           discount: discInfo.discount_value,
           discount_value: discInfo.discount_value,
-          discount_type: discInfo.discount_type,
-          stock: Number(p.stock || p.initial_stock || 0),
+          stock: p.on_hand_stock !== undefined && p.on_hand_stock !== null ? Number(p.on_hand_stock) : (p.stock !== undefined && p.stock !== null ? Number(p.stock) : (p.initial_stock !== undefined && p.initial_stock !== null ? Number(p.initial_stock) : 0)),
+          on_hand_stock: p.on_hand_stock !== undefined && p.on_hand_stock !== null ? Number(p.on_hand_stock) : (p.stock !== undefined && p.stock !== null ? Number(p.stock) : (p.initial_stock !== undefined && p.initial_stock !== null ? Number(p.initial_stock) : 0)),
           reorderLevel: Number(p.reorder_level || 10),
           image: p.image_url ? resolveImageUrl(p.image_url) : null,
           aiScore: Math.floor(Math.random() * 30) + 70,
-          isFastMoving: (p.stock || p.initial_stock || 0) > 50,
+          isFastMoving: (p.on_hand_stock ?? p.stock ?? p.initial_stock ?? 0) > 50,
           uom: String(primaryUom),
           secondary_uom: String(secondaryUom),
           conversion_factor: conversionFactor,
@@ -866,6 +867,192 @@ function PosTerminalInner() {
     return filteredProducts.slice((posPage - 1) * posPageSize, posPage * posPageSize);
   }, [filteredProducts, posPage, posPageSize]);
 
+  // User authorization check for zero-stock sales
+  const isZeroStockAuthorized = Boolean(
+    user?.isTenantOwner ||
+    user?.isPlatformAdmin ||
+    (user as any)?.is_tenant_owner ||
+    user?.assignedRoles?.some((r: string) => ["owner", "admin", "manager", "supervisor"].includes(r.toLowerCase())) ||
+    user?.roles?.some((r: any) => ["owner", "admin", "manager", "supervisor"].includes(r.name?.toLowerCase())) ||
+    ["owner", "admin", "manager", "supervisor"].includes(user?.defaultRole?.toLowerCase() || "") ||
+    user?.permissions?.includes("manage:pos") ||
+    user?.permissions?.includes("manage:inventory")
+  );
+
+  // Track acknowledged stock per item
+  const [acknowledgedStockMap, setAcknowledgedStockMap] = useState<Record<string, number>>({});
+
+  // Stock Alert Modal State
+  const [stockAlertModal, setStockAlertModal] = useState<{
+    isOpen: boolean;
+    mode: "zero_stock" | "low_stock" | "excess_quantity";
+    productName: string;
+    sku: string;
+    availableStock: number;
+    requestedQuantity: number;
+    reorderLevel: number;
+    itemId: string;
+    onAllow: () => void;
+    onRemove: () => void;
+    onAdjust?: (qty: number) => void;
+  }>({
+    isOpen: false,
+    mode: "zero_stock",
+    productName: "",
+    sku: "",
+    availableStock: 0,
+    requestedQuantity: 1,
+    reorderLevel: 5,
+    itemId: "",
+    onAllow: () => {},
+    onRemove: () => {},
+  });
+
+  // Extract stock info reusing existing product fields
+  const getProductStockInfo = (prod: any) => {
+    if (!prod) return { availableStock: 0, reorderLevel: 5 };
+    let availableStock: number | null = null;
+    const candidates = [prod.on_hand_stock, prod.stock, prod.current_stock, prod.initial_stock, prod.qty, prod.quantity];
+    for (const c of candidates) {
+      if (c !== undefined && c !== null && c !== "") {
+        const num = Number(c);
+        if (!isNaN(num)) {
+          availableStock = num;
+          break;
+        }
+      }
+    }
+    if (availableStock === null) availableStock = 0;
+
+    let reorderLevel = 5;
+    const reorderCandidates = [prod.reorderLevel, prod.reorder_level, prod.min_stock_level, prod.safety_stock];
+    for (const r of reorderCandidates) {
+      if (r !== undefined && r !== null && r !== "") {
+        const num = Number(r);
+        if (!isNaN(num) && num > 0) {
+          reorderLevel = num;
+          break;
+        }
+      }
+    }
+    return { availableStock, reorderLevel };
+  };
+
+  // Central stock validation logic per requirements
+  const checkStockAndExecute = (
+    product: any,
+    requestedQty: number,
+    itemId: string,
+    executeAction: () => void,
+    removeAction: () => void,
+    adjustAction?: (qty: number) => void
+  ) => {
+    const { availableStock, reorderLevel } = getProductStockInfo(product);
+    const prevAck = acknowledgedStockMap[itemId] || 0;
+
+    // Rule 1: Stock is zero (availableStock <= 0)
+    if (availableStock <= 0) {
+      if (prevAck >= requestedQty) {
+        executeAction();
+        return;
+      }
+      setStockAlertModal({
+        isOpen: true,
+        mode: "zero_stock",
+        productName: product.name || "Product",
+        sku: product.sku || "",
+        availableStock: 0,
+        requestedQuantity: requestedQty,
+        reorderLevel,
+        itemId,
+        onAllow: () => {
+          if (!isZeroStockAuthorized) {
+            toast.error("Supervisor authorization required to permit zero-stock sales.");
+            return;
+          }
+          setAcknowledgedStockMap((prev) => ({ ...prev, [itemId]: requestedQty }));
+          setStockAlertModal((m) => ({ ...m, isOpen: false }));
+          executeAction();
+          toast.warning(`Zero-stock sale permitted for ${product.name}`);
+        },
+        onRemove: () => {
+          setStockAlertModal((m) => ({ ...m, isOpen: false }));
+          removeAction();
+        },
+      });
+      return;
+    }
+
+    // Rule 4: Requested quantity exceeds available stock (stock > 0 and requestedQty > availableStock)
+    if (requestedQty > availableStock) {
+      if (prevAck >= requestedQty) {
+        executeAction();
+        return;
+      }
+      setStockAlertModal({
+        isOpen: true,
+        mode: "excess_quantity",
+        productName: product.name || "Product",
+        sku: product.sku || "",
+        availableStock,
+        requestedQuantity: requestedQty,
+        reorderLevel,
+        itemId,
+        onAllow: () => {
+          if (!isZeroStockAuthorized) {
+            toast.error("Supervisor authorization required to permit quantity exceeding inventory stock.");
+            return;
+          }
+          setAcknowledgedStockMap((prev) => ({ ...prev, [itemId]: requestedQty }));
+          setStockAlertModal((m) => ({ ...m, isOpen: false }));
+          executeAction();
+        },
+        onRemove: () => {
+          setStockAlertModal((m) => ({ ...m, isOpen: false }));
+          removeAction();
+        },
+        onAdjust: (qty) => {
+          setStockAlertModal((m) => ({ ...m, isOpen: false }));
+          if (adjustAction) {
+            adjustAction(qty);
+          }
+        },
+      });
+      return;
+    }
+
+    // Rule 2: Stock is below 5 or <= reorder_level
+    if (availableStock < 5 || (reorderLevel > 0 && availableStock <= reorderLevel)) {
+      if (prevAck >= requestedQty) {
+        executeAction();
+        return;
+      }
+      setStockAlertModal({
+        isOpen: true,
+        mode: "low_stock",
+        productName: product.name || "Product",
+        sku: product.sku || "",
+        availableStock,
+        requestedQuantity: requestedQty,
+        reorderLevel,
+        itemId,
+        onAllow: () => {
+          setAcknowledgedStockMap((prev) => ({ ...prev, [itemId]: requestedQty }));
+          setStockAlertModal((m) => ({ ...m, isOpen: false }));
+          executeAction();
+        },
+        onRemove: () => {
+          setStockAlertModal((m) => ({ ...m, isOpen: false }));
+          removeAction();
+        },
+      });
+      return;
+    }
+
+    // Rule 3: stock >= 5 and requestedQty <= availableStock -> proceed normally
+    executeAction();
+  };
+
   // Cart actions
   const addToCart = (product: any, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -950,15 +1137,40 @@ function PosTerminalInner() {
       discount_type: discInfo.discount_type,
     };
 
-    setCart((prev) => {
-      const existing = prev.find((item) => item.id === product.id);
-      if (existing) {
-        return prev.map((item) =>
-          item.id === product.id ? { ...item, qty: item.qty + 1 } : item
+    const existing = cart.find((item) => item.id === product.id);
+    const targetQty = (existing ? existing.qty : 0) + 1;
+    const itemId = String(product.id);
+
+    const executeAdd = () => {
+      setCart((prev) => {
+        const ex = prev.find((item) => item.id === product.id);
+        if (ex) {
+          return prev.map((item) =>
+            item.id === product.id ? { ...item, qty: item.qty + 1 } : item
+          );
+        }
+        return [...prev, { ...enrichedProduct, qty: 1 }];
+      });
+    };
+
+    checkStockAndExecute(
+      product,
+      targetQty,
+      itemId,
+      executeAdd,
+      () => {
+        if (existing) {
+          removeItem(product.id);
+        }
+      },
+      (adjQty) => {
+        setCart((prev) =>
+          prev.map((item) =>
+            item.id === product.id ? { ...item, qty: adjQty } : item
+          )
         );
       }
-      return [...prev, { ...enrichedProduct, qty: 1 }];
-    });
+    );
   };
 
   const switchCartItemUom = (itemId: string, newUom: string) => {
@@ -1046,13 +1258,41 @@ function PosTerminalInner() {
   };
 
   const updateQty = (id: string, delta: number) => {
-    setCart(prev => prev.map(item => {
-      if (item.id === id) {
-        const newQty = Math.max(1, item.qty + delta);
-        return { ...item, qty: newQty };
+    const item = cart.find((it) => it.id === id);
+    if (!item) return;
+
+    if (delta <= 0) {
+      if (item.qty <= 1) {
+        removeItem(id);
+      } else {
+        setCart((prev) =>
+          prev.map((it) => (it.id === id ? { ...it, qty: it.qty + delta } : it))
+        );
       }
-      return item;
-    }));
+      return;
+    }
+
+    const targetQty = item.qty + delta;
+    const matchedProduct = products.find((p) => p.id === item.id) || item;
+
+    checkStockAndExecute(
+      matchedProduct,
+      targetQty,
+      id,
+      () => {
+        setCart((prev) =>
+          prev.map((it) => (it.id === id ? { ...it, qty: targetQty } : it))
+        );
+      },
+      () => {
+        removeItem(id);
+      },
+      (adjQty) => {
+        setCart((prev) =>
+          prev.map((it) => (it.id === id ? { ...it, qty: adjQty } : it))
+        );
+      }
+    );
   };
 
   const removeItem = (id: string) => setCart(prev => prev.filter(item => item.id !== id));
@@ -1377,6 +1617,90 @@ function PosTerminalInner() {
     if (cart.length === 0) {
       toast.error("Cart is empty.");
       return;
+    }
+
+    // Validate stock for all items before proceeding to payment
+    for (const item of cart) {
+      const matched = products.find((p) => p.id === item.id) || item;
+      const { availableStock, reorderLevel } = getProductStockInfo(matched);
+      const reqQty = item.qty || 1;
+      const isAck = (acknowledgedStockMap[item.id] || 0) >= reqQty;
+      if (!isAck) {
+        if (availableStock <= 0) {
+          setStockAlertModal({
+            isOpen: true,
+            mode: "zero_stock",
+            productName: item.name || matched.name,
+            sku: item.sku || matched.sku || "",
+            availableStock: 0,
+            requestedQuantity: reqQty,
+            reorderLevel,
+            itemId: item.id,
+            onAllow: () => {
+              if (!isZeroStockAuthorized) {
+                toast.error("Supervisor authorization required to permit zero-stock sales.");
+                return;
+              }
+              setAcknowledgedStockMap((prev) => ({ ...prev, [item.id]: reqQty }));
+              setStockAlertModal((m) => ({ ...m, isOpen: false }));
+              toast.warning(`Zero-stock sale permitted for ${item.name}`);
+            },
+            onRemove: () => {
+              setStockAlertModal((m) => ({ ...m, isOpen: false }));
+              removeItem(item.id);
+            },
+          });
+          return;
+        } else if (reqQty > availableStock) {
+          setStockAlertModal({
+            isOpen: true,
+            mode: "excess_quantity",
+            productName: item.name || matched.name,
+            sku: item.sku || matched.sku || "",
+            availableStock,
+            requestedQuantity: reqQty,
+            reorderLevel,
+            itemId: item.id,
+            onAllow: () => {
+              if (!isZeroStockAuthorized) {
+                toast.error("Supervisor authorization required to permit quantity exceeding inventory stock.");
+                return;
+              }
+              setAcknowledgedStockMap((prev) => ({ ...prev, [item.id]: reqQty }));
+              setStockAlertModal((m) => ({ ...m, isOpen: false }));
+            },
+            onRemove: () => {
+              setStockAlertModal((m) => ({ ...m, isOpen: false }));
+              removeItem(item.id);
+            },
+            onAdjust: (adjQty) => {
+              setStockAlertModal((m) => ({ ...m, isOpen: false }));
+              setCart((prev) => prev.map((it) => (it.id === item.id ? { ...it, qty: adjQty } : it)));
+            },
+          });
+          return;
+        } else if (availableStock < 5 || (reorderLevel > 0 && availableStock <= reorderLevel)) {
+          setStockAlertModal({
+            isOpen: true,
+            mode: "low_stock",
+            productName: item.name || matched.name,
+            sku: item.sku || matched.sku || "",
+            availableStock,
+            requestedQuantity: reqQty,
+            reorderLevel,
+            itemId: item.id,
+            onAllow: () => {
+              setAcknowledgedStockMap((prev) => ({ ...prev, [item.id]: reqQty }));
+              setStockAlertModal((m) => ({ ...m, isOpen: false }));
+            },
+            onRemove: () => {
+              setStockAlertModal((m) => ({ ...m, isOpen: false }));
+              removeItem(item.id);
+            },
+          });
+          return;
+        }
+      }
     }
     if (paymentMethod === 'Split') {
       setSplitPaymentModalOpen(true);
@@ -5125,6 +5449,22 @@ function PosTerminalInner() {
           onSelectBatch={handleBatchSelectForCartItem}
         />
       )}
+
+      {/* Central Stock Alert Confirmation Modal */}
+      <StockAlertModal
+        isOpen={stockAlertModal.isOpen}
+        onClose={() => setStockAlertModal((prev) => ({ ...prev, isOpen: false }))}
+        mode={stockAlertModal.mode}
+        productName={stockAlertModal.productName}
+        sku={stockAlertModal.sku}
+        availableStock={stockAlertModal.availableStock}
+        requestedQuantity={stockAlertModal.requestedQuantity}
+        reorderLevel={stockAlertModal.reorderLevel}
+        isAuthorized={isZeroStockAuthorized}
+        onRemoveItem={stockAlertModal.onRemove}
+        onAllowBilling={stockAlertModal.onAllow}
+        onAdjustQuantity={stockAlertModal.onAdjust}
+      />
     </div>
   );
 }
