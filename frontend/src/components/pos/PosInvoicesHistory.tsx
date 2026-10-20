@@ -107,6 +107,42 @@ interface LocalInvoiceRecord {
   [key: string]: any;
 }
 
+export const isThermalDocument = (inv: any): boolean => {
+  if (!inv) return false;
+  const num = String(inv.invoice_number || inv.receipt_number || inv.display_number || "").toUpperCase().trim();
+  const ref = String(inv.reference_number || "").toUpperCase().trim();
+
+  // Standard A4 Invoice prefixes: INV, TAX, SI, BILL, OPN, CN, DN, QT, PI, EST -> always Standard A4 Invoices
+  if (
+    num.startsWith("INV-") ||
+    num.startsWith("INV") ||
+    num.startsWith("TAX-") ||
+    num.startsWith("SI-") ||
+    num.startsWith("BILL-") ||
+    num.startsWith("OPN-") ||
+    num.startsWith("CN-") ||
+    num.startsWith("DN-") ||
+    num.startsWith("QT-") ||
+    num.startsWith("PI-") ||
+    num.startsWith("EST-")
+  ) {
+    return false;
+  }
+
+  // POS Counter Receipts start with REC-, RCPT-, POS-
+  if (num.startsWith("REC-") || num.startsWith("RCPT-") || num.startsWith("POS-") || ref.startsWith("REC-")) {
+    return true;
+  }
+
+  // Explicit thermal template configuration (only if not an INV- or standard invoice series)
+  const tpl = String(inv.print_template_id || inv.template_id || inv.receipt_format || "").toLowerCase().trim();
+  if (tpl === "thermal" || tpl.startsWith("tpl-thm-")) {
+    return true;
+  }
+
+  return false;
+};
+
 export function PosInvoicesHistory() {
   const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
@@ -746,24 +782,11 @@ export function PosInvoicesHistory() {
               if (matchedTx.receipt_number) matchedPosTxIds.add(String(matchedTx.receipt_number).toLowerCase());
             }
 
-            const isThermal = Boolean(
-              inv.print_template_id?.toLowerCase() === "thermal" ||
-              inv.template_id?.toLowerCase() === "thermal" ||
-              inv.custom_fields?.print_template_id?.toLowerCase() === "thermal" ||
-              inv.custom_fields?.template_id?.toLowerCase() === "thermal" ||
-              inv.custom_fields?.bill_type?.toLowerCase() === "thermal" ||
-              inv.custom_fields?.source?.toLowerCase() === "pos" ||
-              inv.custom_fields?.print_status === "Thermal Printed" ||
-              invNumClean.startsWith("rec-") ||
-              rawRefNum.startsWith("rec-") ||
-              posReceiptMap.has(invNumClean) ||
-              posReceiptMap.has(rawRefNum) ||
-              (inv.notes && (inv.notes.toLowerCase().includes("pos terminal") || inv.notes.toLowerCase().includes("receipt #"))) ||
-              matchedTx ||
-              (localMatch && (localMatch.print_status === "Thermal Printed" || localMatch.is_pos))
-            );
+            const isThermal = isThermalDocument(inv);
 
-            const determinedPrintStatus = (localMatch && localMatch.print_status) ? localMatch.print_status : (isThermal ? "Thermal Printed" : "A4 PDF Generated");
+            const determinedPrintStatus = (localMatch && localMatch.print_status && (isThermal ? localMatch.print_status.includes("Thermal") : !localMatch.print_status.includes("Thermal")))
+              ? localMatch.print_status
+              : (isThermal ? "Thermal Printed" : "A4 PDF Generated");
 
             let resolvedPaymentMode = inv.payment_terms || inv.payment_method || "Cash";
             if (inv.payments && Array.isArray(inv.payments) && inv.payments.length > 0) {
@@ -868,9 +891,9 @@ export function PosInvoicesHistory() {
               eway_bill_date: inv.eway_bill_date || inv.custom_fields?.eway_bill_date || undefined,
               challan_number: inv.challan_number || inv.delivery_challan_number || inv.custom_fields?.challan_number || inv.custom_fields?.challan_no || inv.custom_fields?.delivery_challan || undefined,
               delivery_challan_number: inv.delivery_challan_number || inv.challan_number || inv.custom_fields?.delivery_challan || inv.custom_fields?.challan_number || undefined,
-              print_template_id: (!isThermal && inv.print_template_id !== "thermal") ? (inv.print_template_id || inv.template_id || inv.custom_fields?.print_template_id || inv.custom_fields?.template_id || undefined) : (inv.template_id && inv.template_id !== "thermal" ? inv.template_id : undefined),
-              template_id: (!isThermal && inv.template_id !== "thermal") ? (inv.template_id || inv.print_template_id || inv.custom_fields?.template_id || undefined) : undefined,
-              is_pos: isThermal || Boolean(matchedTx) || Boolean(inv.is_pos),
+              print_template_id: isThermal ? "thermal" : (inv.print_template_id || inv.template_id || "a4"),
+              template_id: isThermal ? "thermal" : (inv.template_id || inv.print_template_id || "a4"),
+              is_pos: isThermal,
               receipt_format: isThermal ? "thermal" : undefined,
               custom_fields: inv.custom_fields,
               items: lines,
@@ -1002,10 +1025,10 @@ export function PosInvoicesHistory() {
             remote.total_tax = inv.total_tax;
             remote.grand_total = inv.grand_total;
           }
-          if ((inv as any).is_thermal) {
-            remote.is_thermal = true;
-            remote.print_mode = "thermal";
-          }
+          const isRemoteThermal = isThermalDocument(remote) || isThermalDocument(inv);
+          remote.is_thermal = isRemoteThermal;
+          remote.print_mode = isRemoteThermal ? "thermal" : "a4";
+          remote.print_status = isRemoteThermal ? "Thermal Printed" : "A4 PDF Generated";
           if ((inv as any).display_number && !(remote as any).display_number) {
             (remote as any).display_number = (inv as any).display_number;
           }
@@ -1072,16 +1095,11 @@ export function PosInvoicesHistory() {
             inv.payment_status = "Returned";
             inv.return_info = retRecord;
           }
-          const isThermal = Boolean(
-            (inv as any).is_thermal ||
-            (inv as any).print_mode === "thermal" ||
-            inv.print_status === "Thermal Printed" ||
-            cleanInvNum.startsWith("rec-") ||
-            String((inv as any).reference_number || "").toLowerCase().startsWith("rec-")
-          );
+          const isThermal = isThermalDocument(inv);
           (inv as any).is_thermal = isThermal;
           (inv as any).print_mode = isThermal ? "thermal" : "a4";
           (inv as any).display_number = inv.invoice_number;
+          inv.print_status = isThermal ? "Thermal Printed" : "A4 PDF Generated";
 
           mergedMap.set(inv.invoice_number, inv);
           registerAlias(inv.invoice_number, inv);
@@ -1631,12 +1649,7 @@ export function PosInvoicesHistory() {
         (inv.sales_executive && inv.sales_executive.toLowerCase().includes(q)) ||
         locStr.includes(q);
 
-      const isTherm = Boolean(
-        (inv as any).is_thermal ||
-        (inv as any).print_mode === "thermal" ||
-        inv.print_status === "Thermal Printed" ||
-        String((inv as any).display_number || inv.invoice_number).toLowerCase().startsWith("rec-")
-      );
+      const isTherm = isThermalDocument(inv);
       const matchesDocType = (() => {
         if (docTypeFilter === "All" || !docTypeFilter) return true;
         if (docTypeFilter === "thermal") return isTherm;
@@ -1725,26 +1738,11 @@ export function PosInvoicesHistory() {
   }, [invoices, searchQuery, docTypeFilter, statusFilter, paymentModeFilter, printFilter, locationFilter, salesRepFilter, dateFilter, customStartDate, customEndDate, sortOrder]);
 
   const thermalBillsCount = React.useMemo(() => {
-    return invoices.filter((inv) =>
-      Boolean(
-        (inv as any).is_thermal ||
-        (inv as any).print_mode === "thermal" ||
-        inv.print_status === "Thermal Printed" ||
-        String((inv as any).display_number || inv.invoice_number).toLowerCase().startsWith("rec-")
-      )
-    ).length;
+    return invoices.filter((inv) => isThermalDocument(inv)).length;
   }, [invoices]);
 
   const a4BillsCount = React.useMemo(() => {
-    return invoices.filter(
-      (inv) =>
-        !Boolean(
-          (inv as any).is_thermal ||
-          (inv as any).print_mode === "thermal" ||
-          inv.print_status === "Thermal Printed" ||
-          String((inv as any).display_number || inv.invoice_number).toLowerCase().startsWith("rec-")
-        )
-    ).length;
+    return invoices.filter((inv) => !isThermalDocument(inv)).length;
   }, [invoices]);
 
   // Unique locations for filter

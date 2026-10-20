@@ -26,10 +26,11 @@ import { nav } from "@/data/navigation";
 import { CommandPalette } from "@/components/command-palette";
 import { ChangePasswordModal } from "./ChangePasswordModal";
 import { cn, AVAILABLE_CURRENCIES, getActiveCurrency, setActiveCurrency } from "@/lib/utils";
-import { liveNotificationsApi, LiveNotification } from "@/lib/api-client";
+import { liveNotificationsApi, LiveNotification, copilotApi, pushNotificationsApi, employeesApi, NotificationBroadcast } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { WhatsAppStatusIndicator } from "./WhatsAppStatusIndicator";
+import { Hash, User as UserIcon, Loader2, AlertCircle, Tag, RefreshCw } from "lucide-react";
 
 const moduleDisplayList = [
   {
@@ -318,70 +319,193 @@ export function AppTopbar({
 
   // Messages Center State
   const [activeMessageTab, setActiveMessageTab] = useState<"team" | "broadcasts" | "assistant">("team");
-  const [selectedThreadId, setSelectedThreadId] = useState<string | null>("t1");
+  const [selectedThreadId, setSelectedThreadId] = useState<string>("c-general");
   const [messageInput, setMessageInput] = useState("");
+  const [messageTag, setMessageTag] = useState<string>("Normal");
   const [aiAssistantInput, setAiAssistantInput] = useState("");
+  const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiChatHistory, setAiChatHistory] = useState<Array<{ sender: "user" | "ai"; text: string; time: string }>>([
-    { sender: "ai", text: "Hello! I am your BusinessOS AI Assistant. Ask me anything about stock movement, workspace invoices, or inventory status.", time: "Just now" }
-  ]);
-  const [teamThreads, setTeamThreads] = useState([
     {
-      id: "t1",
-      name: "Operations & Logistics",
-      avatar: "OP",
-      lastMsg: "Inter-workspace stock transfer REC-809 dispatched successfully.",
-      time: "10m ago",
-      unread: 1,
-      messages: [
-        { id: "m1", sender: "Priya Sharma", role: "Logistics Lead", text: "Stock transfer requested from Main Store to Warehouse 2.", time: "10:15 AM", isSelf: false },
-        { id: "m2", sender: "You", role: "Manager", text: "Approved. Please ensure goods receipt note is tagged.", time: "10:20 AM", isSelf: true },
-        { id: "m3", sender: "Priya Sharma", role: "Logistics Lead", text: "Inter-workspace stock transfer REC-809 dispatched successfully.", time: "10:25 AM", isSelf: false }
-      ]
-    },
-    {
-      id: "t2",
-      name: "Finance & Accounts",
-      avatar: "FA",
-      lastMsg: "GST e-invoices reconciled for current active workspace.",
-      time: "1h ago",
-      unread: 0,
-      messages: [
-        { id: "m4", sender: "Rahul Verma", role: "Chief Accountant", text: "GST e-invoices reconciled for current active workspace.", time: "09:30 AM", isSelf: false }
-      ]
-    },
-    {
-      id: "t3",
-      name: "POS Retail Counter",
-      avatar: "POS",
-      lastMsg: "Terminal 01 cash register opened with opening float ₹5,000.",
-      time: "2h ago",
-      unread: 0,
-      messages: [
-        { id: "m5", sender: "Cashier Desk", role: "POS Operator", text: "Terminal 01 cash register opened with opening float ₹5,000.", time: "08:00 AM", isSelf: false }
-      ]
+      sender: "ai",
+      text: "👋 Hello! I am your BusinessOS Enterprise AI Copilot. Ask me anything about stock movement, standard GST invoices, POS reconciliation, or customer sales returns.",
+      time: "Just now"
     }
   ]);
 
-  const [broadcasts, setBroadcasts] = useState([
+  // Persistent Team Chat Channels & Colleague Directory
+  const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
+  const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
+  const chatStorageKey = `bos_team_chat_${currentTenantId}_${currentCompanyId}`;
+
+  const defaultTeamChannels = useMemo(() => [
     {
-      id: "b1",
-      title: "Workspace Inventory Audit Tomorrow",
-      author: "System Administrator",
-      date: "Today at 09:00 AM",
-      body: "All department managers must finalize pending stock adjustments before 6 PM.",
-      tag: "Notice",
-      tagColor: "bg-purple-100 text-purple-700"
+      id: "c-general",
+      name: "general",
+      title: "General & All-Hands",
+      desc: "Company-wide updates & general team coordination",
+      avatar: "📢",
+      unread: 0,
+      isChannel: true,
     },
     {
-      id: "b2",
-      title: "New Inter-Workspace Stock Transfer Enabled",
-      author: "Supply Chain HQ",
-      date: "Yesterday",
-      body: "You can now seamlessly transfer inventory and raw materials between separate company workspaces with instant real-time synchronization.",
-      tag: "Feature",
-      tagColor: "bg-emerald-100 text-emerald-700"
+      id: "c-operations",
+      name: "operations-logistics",
+      title: "Operations & Logistics",
+      desc: "Warehouse stock transfers, goods receipts & dispatch",
+      avatar: "📦",
+      unread: 0,
+      isChannel: true,
+    },
+    {
+      id: "c-sales",
+      name: "sales-billing-pos",
+      title: "Sales Counter & POS",
+      desc: "Counter billing, customer orders, registers & discounts",
+      avatar: "🧾",
+      unread: 0,
+      isChannel: true,
+    },
+    {
+      id: "c-accounts",
+      name: "finance-accounts",
+      title: "Finance & Accounts",
+      desc: "Tax invoices, ledger reconciliations, credit notes & payments",
+      avatar: "💳",
+      unread: 0,
+      isChannel: true,
+    },
+  ], []);
+
+  const [teamMessages, setTeamMessages] = useState<Record<string, Array<{
+    id: string;
+    sender: string;
+    role: string;
+    text: string;
+    time: string;
+    isSelf: boolean;
+    tag?: string;
+  }>>>({});
+
+  const [colleagues, setColleagues] = useState<Array<{ id: string; name: string; role: string; email?: string }>>([]);
+
+  // Load team messages from localStorage & sync across windows
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(chatStorageKey);
+      if (raw) {
+        setTeamMessages(JSON.parse(raw));
+      } else {
+        const initial = {
+          "c-general": [
+            {
+              id: "init-1",
+              sender: "System Administrator",
+              role: "Admin HQ",
+              text: `Welcome to ${tenant.name || "the workspace"} communications hub. All workspace team coordination and urgent notices are synced here.`,
+              time: "09:00 AM",
+              isSelf: false,
+              tag: "Notice",
+            }
+          ],
+          "c-operations": [
+            {
+              id: "init-2",
+              sender: "Logistics Team",
+              role: "Warehouse Operations",
+              text: "Stock transfers between store and central warehouse are active. Please ensure GRN is verified on arrival.",
+              time: "09:30 AM",
+              isSelf: false,
+              tag: "Logistics",
+            }
+          ],
+          "c-sales": [
+            {
+              id: "init-3",
+              sender: "Counter Lead",
+              role: "Store POS Counter",
+              text: "Counter terminals are active. Remember to verify customer GSTIN when issuing B2B tax invoices.",
+              time: "10:00 AM",
+              isSelf: false,
+              tag: "Billing",
+            }
+          ],
+          "c-accounts": [
+            {
+              id: "init-4",
+              sender: "Accounts Desk",
+              role: "Finance",
+              text: "Daily sales collections and credit notes can be reconciled under POS Invoices History and Tax Reports.",
+              time: "10:15 AM",
+              isSelf: false,
+              tag: "Accounts",
+            }
+          ],
+        };
+        setTeamMessages(initial);
+        localStorage.setItem(chatStorageKey, JSON.stringify(initial));
+      }
+    } catch (e) {}
+
+    // Fetch team colleagues from employeesApi
+    employeesApi.list(1, 100, undefined, tenant?.id).then((res: any) => {
+      const emps = res?.items || (Array.isArray(res) ? res : []);
+      if (Array.isArray(emps) && emps.length > 0) {
+        setColleagues(emps.map((e: any) => ({
+          id: `dm-${e.id}`,
+          name: e.full_name || e.name || "Team Member",
+          role: e.designation || e.department || "Colleague",
+          email: e.email,
+        })));
+      }
+    }).catch(() => {});
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === chatStorageKey && e.newValue) {
+        try {
+          setTeamMessages(JSON.parse(e.newValue));
+        } catch {}
+      }
+    };
+    const handleChatSync = () => {
+      try {
+        const raw = localStorage.getItem(chatStorageKey);
+        if (raw) setTeamMessages(JSON.parse(raw));
+      } catch {}
+    };
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener("bos_team_chat_sync", handleChatSync);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("bos_team_chat_sync", handleChatSync);
+    };
+  }, [chatStorageKey, tenant?.id, tenant.name]);
+
+  // Live Broadcasts / Notices State
+  const [broadcasts, setBroadcasts] = useState<NotificationBroadcast[]>([]);
+  const [isLoadingBroadcasts, setIsLoadingBroadcasts] = useState(false);
+  const [isPostingNotice, setIsPostingNotice] = useState(false);
+  const [newNoticeTitle, setNewNoticeTitle] = useState("");
+  const [newNoticeBody, setNewNoticeBody] = useState("");
+  const [newNoticeCategory, setNewNoticeCategory] = useState("notice");
+  const [isSubmittingNotice, setIsSubmittingNotice] = useState(false);
+
+  const loadBroadcasts = async () => {
+    setIsLoadingBroadcasts(true);
+    try {
+      const data = await pushNotificationsApi.listBroadcasts(50);
+      if (Array.isArray(data)) {
+        setBroadcasts(data);
+      }
+    } catch (err) {
+      console.warn("Failed to load broadcasts:", err);
+    } finally {
+      setIsLoadingBroadcasts(false);
     }
-  ]);
+  };
+
+  useEffect(() => {
+    loadBroadcasts();
+  }, [tenant?.id]);
 
   const fetchLiveNotifications = async (isFirst = false) => {
     try {
@@ -421,77 +545,107 @@ export function AppTopbar({
     const newMsgText = messageInput.trim();
     setMessageInput("");
 
-    setTeamThreads(prev => prev.map(t => {
-      if (t.id === selectedThreadId) {
-        const updatedMsgs = [
-          ...t.messages,
-          { id: `msg-${Date.now()}`, sender: "You", role: "Manager", text: newMsgText, time: "Just now", isSelf: true }
-        ];
-        return {
-          ...t,
-          lastMsg: newMsgText,
-          time: "Just now",
-          messages: updatedMsgs
-        };
-      }
-      return t;
-    }));
+    const myName = user?.name || (user as any)?.fullName || (user?.email ? user.email.split('@')[0] : "You");
+    const myRole = activeRole?.name || "Manager";
+    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    toast.success("Message sent to team channel!");
+    const newMsg = {
+      id: `msg-${Date.now()}`,
+      sender: myName,
+      role: myRole,
+      text: newMsgText,
+      time: nowTime,
+      isSelf: true,
+      tag: messageTag !== "Normal" ? messageTag : undefined,
+    };
 
-    // Simulate auto-acknowledgement after 1.5s
-    setTimeout(() => {
-      setTeamThreads(prev => prev.map(t => {
-        if (t.id === selectedThreadId) {
-          const ackMsg = {
-            id: `msg-${Date.now()}`,
-            sender: t.name.split(" ")[0] + " Bot",
-            role: "Automated ACK",
-            text: `Received: "${newMsgText.slice(0, 30)}..." - updating workspace records.`,
-            time: "Just now",
-            isSelf: false
-          };
-          return {
-            ...t,
-            lastMsg: ackMsg.text,
-            time: "Just now",
-            messages: [...t.messages, ackMsg]
-          };
-        }
-        return t;
-      }));
-    }, 1500);
+    setTeamMessages((prev) => {
+      const existing = prev[selectedThreadId] || [];
+      const updated = {
+        ...prev,
+        [selectedThreadId]: [...existing, newMsg]
+      };
+      try {
+        localStorage.setItem(chatStorageKey, JSON.stringify(updated));
+        window.dispatchEvent(new Event("bos_team_chat_sync"));
+      } catch (err) {}
+      return updated;
+    });
+
+    toast.success("Message dispatched to team channel");
   };
 
-  const handleSendAiAssistant = (e?: React.FormEvent) => {
+  const handlePublishNotice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newNoticeTitle.trim() || !newNoticeBody.trim()) {
+      toast.error("Please provide both notice title and message body.");
+      return;
+    }
+
+    setIsSubmittingNotice(true);
+    try {
+      const res = await pushNotificationsApi.sendBroadcast({
+        title: newNoticeTitle.trim(),
+        body: newNoticeBody.trim(),
+        category: newNoticeCategory,
+        target_type: "all_org",
+        channels: ["in_app", "web_push"]
+      });
+
+      toast.success(res?.message || "Notice published to all workspace members!");
+      setNewNoticeTitle("");
+      setNewNoticeBody("");
+      setIsPostingNotice(false);
+      await loadBroadcasts();
+      void fetchLiveNotifications();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to broadcast notice.");
+    } finally {
+      setIsSubmittingNotice(false);
+    }
+  };
+
+  const handleSendAiAssistant = async (queryText?: string, e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!aiAssistantInput.trim()) return;
+    const query = (queryText || aiAssistantInput).trim();
+    if (!query || isAiLoading) return;
 
-    const query = aiAssistantInput.trim();
     setAiAssistantInput("");
+    const userMsg = { sender: "user" as const, text: query, time: "Just now" };
 
-    setAiChatHistory(prev => [
-      ...prev,
-      { sender: "user", text: query, time: "Just now" }
-    ]);
+    setAiChatHistory((prev) => [...prev, userMsg]);
+    setIsAiLoading(true);
 
-    // Intelligent context response
-    setTimeout(() => {
-      let reply = `In ${tenant.name || "your active workspace"}, inventory and stock movement operations are synchronized with the backend. You can initiate inter-workspace transfers directly from the Stock Movement tab.`;
-      const qLower = query.toLowerCase();
-      if (qLower.includes("stock") || qLower.includes("warehouse") || qLower.includes("transfer")) {
-        reply = `To transfer stock between workspaces, go to Inventory > Stock Movement > 'Inter-Workspace Transfer'. Choose your source warehouse in ${tenant.name} and destination warehouse in your other company.`;
-      } else if (qLower.includes("user") || qLower.includes("role") || qLower.includes("split")) {
-        reply = `Users can be split across specific workspaces from Core ERP > User Management. You can filter and assign staff to ${tenant.name} or keep them organization-wide.`;
-      } else if (qLower.includes("pos") || qLower.includes("bill") || qLower.includes("sale")) {
-        reply = `POS transactions are scoped to ${tenant.name}. Receipts and stock deductions take effect in your default Main Store warehouse.`;
-      }
+    try {
+      // Build history for backend AI Copilot
+      const historyPayload = aiChatHistory.slice(-8).map((m) => ({
+        role: m.sender === "user" ? "user" : "assistant",
+        content: m.text,
+      }));
 
-      setAiChatHistory(prev => [
+      const res = await copilotApi.chat(query, historyPayload);
+      const reply = res?.reply || "I am connected to your workspace data and ready to assist with sales, inventory, or billing.";
+
+      setAiChatHistory((prev) => [
         ...prev,
-        { sender: "ai", text: reply, time: "Just now" }
+        {
+          sender: "ai",
+          text: reply,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
       ]);
-    }, 600);
+    } catch (err: any) {
+      setAiChatHistory((prev) => [
+        ...prev,
+        {
+          sender: "ai",
+          text: "I experienced an error connecting to the Copilot AI engine. Please verify backend service availability or try again in a moment.",
+          time: "Just now"
+        }
+      ]);
+    } finally {
+      setIsAiLoading(false);
+    }
   };
 
   const handleMarkAllRead = async () => {
@@ -969,162 +1123,396 @@ export function AppTopbar({
 
             {/* TAB 1: Team Chat */}
             {activeMessageTab === "team" && (
-              <div className="flex flex-col h-[380px]">
-                {/* Threads horizontal selector */}
-                <div className="flex items-center gap-1.5 p-2 border-b bg-slate-50/50 dark:bg-slate-900/30 overflow-x-auto shrink-0">
-                  {teamThreads.map((t) => (
+              <div className="flex flex-col h-[420px]">
+                {/* Horizontal Channel & Direct Message Selector */}
+                <div className="flex items-center gap-1.5 p-2 border-b bg-slate-50/70 dark:bg-slate-900/50 overflow-x-auto shrink-0 scrollbar-none">
+                  {defaultTeamChannels.map((c) => (
                     <button
-                      key={t.id}
+                      key={c.id}
                       type="button"
-                      onClick={() => setSelectedThreadId(t.id)}
+                      onClick={() => setSelectedThreadId(c.id)}
                       className={cn(
-                        "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all border",
-                        selectedThreadId === t.id
+                        "flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all border cursor-pointer",
+                        selectedThreadId === c.id
                           ? "bg-purple-600 text-white border-purple-600 shadow-xs"
                           : "bg-background text-slate-700 dark:text-slate-300 border-border hover:bg-muted"
                       )}
                     >
-                      <span className="text-[10px] uppercase font-bold">{t.avatar}</span>
-                      <span className="truncate max-w-[110px]">{t.name}</span>
+                      <span>{c.avatar}</span>
+                      <span className="font-mono text-[11px]">#{c.name}</span>
                     </button>
                   ))}
+                  {colleagues.map((emp) => (
+                    <button
+                      key={emp.id}
+                      type="button"
+                      onClick={() => setSelectedThreadId(emp.id)}
+                      className={cn(
+                        "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all border cursor-pointer",
+                        selectedThreadId === emp.id
+                          ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                          : "bg-background text-slate-700 dark:text-slate-300 border-border hover:bg-muted"
+                      )}
+                    >
+                      <UserIcon className="size-3 text-slate-400 shrink-0" />
+                      <span className="truncate max-w-[100px]">{emp.name}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Active Channel Subheader */}
+                <div className="px-3 py-1.5 bg-slate-100/50 dark:bg-slate-900/40 border-b flex items-center justify-between text-[11px] text-muted-foreground shrink-0">
+                  <div className="truncate">
+                    {(() => {
+                      const ch = defaultTeamChannels.find((c) => c.id === selectedThreadId);
+                      if (ch) return <span className="font-semibold text-slate-700 dark:text-slate-200">{ch.avatar} {ch.title}: <span className="font-normal opacity-80">{ch.desc}</span></span>;
+                      const emp = colleagues.find((e) => e.id === selectedThreadId);
+                      if (emp) return <span className="font-semibold text-indigo-700 dark:text-indigo-300">👤 {emp.name} <span className="font-normal opacity-80">({emp.role})</span></span>;
+                      return <span>Team Discussion Channel</span>;
+                    })()}
+                  </div>
+                  <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200">● Live Synced</span>
                 </div>
 
                 {/* Conversation Body */}
                 <div className="flex-1 p-3 overflow-y-auto space-y-2.5 bg-slate-50/30 dark:bg-slate-950/20 text-xs">
                   {(() => {
-                    const currentThread = teamThreads.find(t => t.id === selectedThreadId) || teamThreads[0];
-                    return currentThread.messages.map((m) => (
+                    const activeMessages = teamMessages[selectedThreadId] || [];
+                    if (activeMessages.length === 0) {
+                      return (
+                        <div className="h-full flex flex-col items-center justify-center text-center p-4 text-slate-400">
+                          <MessageSquare className="size-8 text-slate-300 mb-2" />
+                          <p className="font-semibold text-slate-600 dark:text-slate-300">No messages in this thread yet</p>
+                          <p className="text-[11px]">Send the first message below to collaborate with team members.</p>
+                        </div>
+                      );
+                    }
+                    return activeMessages.map((m) => (
                       <div
                         key={m.id}
                         className={cn(
                           "flex flex-col max-w-[85%] rounded-2xl p-2.5 shadow-2xs",
                           m.isSelf
-                            ? "ml-auto bg-purple-600 text-white rounded-br-xs"
+                            ? "ml-auto bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-br-xs"
                             : "mr-auto bg-white dark:bg-slate-800 border text-slate-800 dark:text-slate-100 rounded-bl-xs"
                         )}
                       >
-                        <div className="flex items-center justify-between gap-2 mb-0.5">
+                        <div className="flex items-center justify-between gap-2 mb-1">
                           <span className={cn("font-bold text-[10px]", m.isSelf ? "text-purple-100" : "text-purple-600")}>
-                            {m.sender} <span className="opacity-70 font-normal">({m.role})</span>
+                            {m.sender} <span className="opacity-75 font-normal">({m.role})</span>
                           </span>
                           <span className={cn("text-[9px]", m.isSelf ? "text-purple-200" : "text-slate-400")}>
                             {m.time}
                           </span>
                         </div>
-                        <p className="leading-snug text-xs">{m.text}</p>
+                        {m.tag && (
+                          <div className="mb-1">
+                            <span className={cn(
+                              "text-[9px] font-bold px-1.5 py-0.5 rounded",
+                              m.isSelf ? "bg-white/20 text-white" : "bg-purple-100 text-purple-800 border border-purple-200"
+                            )}>
+                              {m.tag}
+                            </span>
+                          </div>
+                        )}
+                        <p className="leading-relaxed text-xs">{m.text}</p>
                       </div>
                     ));
                   })()}
                 </div>
 
-                {/* Send Message Input */}
-                <form onSubmit={handleSendMessage} className="p-2.5 border-t bg-background flex items-center gap-1.5 shrink-0">
-                  <input
-                    type="text"
-                    value={messageInput}
-                    onChange={(e) => setMessageInput(e.target.value)}
-                    placeholder="Type a team message..."
-                    className="flex-1 text-xs px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border-none outline-hidden focus:ring-1 focus:ring-purple-500"
-                  />
-                  <Button
-                    type="submit"
-                    size="sm"
-                    className="h-8 px-3 rounded-xl gradient-brand text-white text-xs font-semibold shadow-xs"
-                  >
-                    <Send className="size-3" />
-                  </Button>
+                {/* Send Message Input with Tag Pills */}
+                <form onSubmit={handleSendMessage} className="p-2.5 border-t bg-background shrink-0 space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      value={messageTag}
+                      onChange={(e) => setMessageTag(e.target.value)}
+                      className="text-[10px] font-semibold h-7 px-1.5 rounded-lg border bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 outline-none cursor-pointer"
+                      title="Select message tag"
+                    >
+                      <option value="Normal">💬 Normal</option>
+                      <option value="Urgent 🚨">🚨 Urgent</option>
+                      <option value="Stock Request 📦">📦 Stock</option>
+                      <option value="Billing / Invoice 📄">📄 Invoice</option>
+                    </select>
+                    <input
+                      type="text"
+                      value={messageInput}
+                      onChange={(e) => setMessageInput(e.target.value)}
+                      placeholder="Type a team message..."
+                      className="flex-1 text-xs px-3 py-1.5 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 border-none outline-none focus:ring-1 focus:ring-purple-500"
+                    />
+                    <Button
+                      type="submit"
+                      size="sm"
+                      className="h-7 px-3 rounded-lg gradient-brand text-white text-xs font-semibold shadow-xs cursor-pointer"
+                    >
+                      <Send className="size-3" />
+                    </Button>
+                  </div>
                 </form>
               </div>
             )}
 
-            {/* TAB 2: Workspace Broadcasts */}
+            {/* TAB 2: Workspace Broadcasts / Notices */}
             {activeMessageTab === "broadcasts" && (
-              <div className="p-3 space-y-2.5 max-h-[380px] overflow-y-auto">
-                {broadcasts.map((b) => (
-                  <div key={b.id} className="p-3 rounded-xl border bg-background hover:bg-slate-50/70 transition-colors space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className={cn("text-[9px] font-bold uppercase px-2 py-0.5 rounded-full border", b.tagColor)}>
-                        {b.tag}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">{b.date}</span>
-                    </div>
-                    <h5 className="font-bold text-xs text-foreground">{b.title}</h5>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">{b.body}</p>
-                    <div className="text-[9.5px] text-purple-700 font-semibold pt-1 flex items-center gap-1">
-                      <Megaphone className="size-2.5" /> Posted by {b.author}
-                    </div>
+              <div className="flex flex-col h-[420px]">
+                {/* Notices Header Actions */}
+                <div className="p-2 border-b bg-slate-50/70 dark:bg-slate-900/50 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
+                    <Megaphone className="size-3.5 text-purple-600" />
+                    <span>Workspace Notices ({broadcasts.length})</span>
                   </div>
-                ))}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => loadBroadcasts()}
+                      className="p-1 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-colors cursor-pointer"
+                      title="Refresh Notices"
+                    >
+                      <RefreshCw className={cn("size-3", isLoadingBroadcasts && "animate-spin text-purple-600")} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsPostingNotice(!isPostingNotice)}
+                      className="px-2 py-1 rounded-lg text-[10.5px] font-bold bg-purple-600 text-white hover:bg-purple-700 transition-all flex items-center gap-1 cursor-pointer shadow-xs"
+                    >
+                      <Plus className="size-3" />
+                      <span>{isPostingNotice ? "View Notices" : "Post Notice"}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {isPostingNotice ? (
+                  /* Create / Post Notice Form */
+                  <form onSubmit={handlePublishNotice} className="flex-1 p-3.5 overflow-y-auto space-y-3 bg-card">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                        Notice Title <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={newNoticeTitle}
+                        onChange={(e) => setNewNoticeTitle(e.target.value)}
+                        placeholder="e.g. Month-End Stock Count / Store Schedule"
+                        className="w-full text-xs px-3 py-1.5 rounded-lg border bg-background focus:ring-1 focus:ring-purple-500 outline-none"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                        Category
+                      </label>
+                      <select
+                        value={newNoticeCategory}
+                        onChange={(e) => setNewNoticeCategory(e.target.value)}
+                        className="w-full text-xs px-2.5 py-1.5 rounded-lg border bg-background focus:ring-1 focus:ring-purple-500 outline-none cursor-pointer"
+                      >
+                        <option value="notice">📢 General Notice</option>
+                        <option value="urgent">🚨 Urgent / Action Required</option>
+                        <option value="policy">📜 Policy & Compliance</option>
+                        <option value="feature">✨ System / Store Update</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                        Notice Content <span className="text-rose-500">*</span>
+                      </label>
+                      <textarea
+                        rows={4}
+                        value={newNoticeBody}
+                        onChange={(e) => setNewNoticeBody(e.target.value)}
+                        placeholder="Enter notice details for all organization team members..."
+                        className="w-full text-xs px-3 py-2 rounded-lg border bg-background focus:ring-1 focus:ring-purple-500 outline-none resize-none"
+                        required
+                      />
+                    </div>
+
+                    <div className="pt-2 flex items-center justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setIsPostingNotice(false)}
+                        className="h-8 text-xs cursor-pointer"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="submit"
+                        disabled={isSubmittingNotice}
+                        size="sm"
+                        className="h-8 px-4 gradient-brand text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer"
+                      >
+                        {isSubmittingNotice ? (
+                          <>
+                            <Loader2 className="size-3 animate-spin mr-1.5" />
+                            Broadcasting...
+                          </>
+                        ) : (
+                          <>
+                            <Megaphone className="size-3 mr-1.5" />
+                            Broadcast to Team
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </form>
+                ) : (
+                  /* Notices List */
+                  <div className="flex-1 p-3 space-y-2.5 overflow-y-auto">
+                    {broadcasts.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center p-4 text-slate-400">
+                        <Megaphone className="size-8 text-slate-300 mb-2" />
+                        <p className="font-semibold text-slate-600 dark:text-slate-300">No active notices</p>
+                        <p className="text-[11px] mt-0.5">Click 'Post Notice' to broadcast an announcement to your team.</p>
+                      </div>
+                    ) : (
+                      broadcasts.map((b) => (
+                        <div key={b.id} className="p-3 rounded-xl border bg-background hover:bg-slate-50/70 transition-colors space-y-1.5 shadow-2xs">
+                          <div className="flex items-center justify-between">
+                            <span className={cn(
+                              "text-[9px] font-bold uppercase px-2 py-0.5 rounded-full border",
+                              b.category === "urgent"
+                                ? "bg-rose-50 text-rose-700 border-rose-200"
+                                : b.category === "policy"
+                                ? "bg-blue-50 text-blue-700 border-blue-200"
+                                : b.category === "feature"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : "bg-purple-50 text-purple-700 border-purple-200"
+                            )}>
+                              {b.category || "Notice"}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {b.created_at ? new Date(b.created_at).toLocaleDateString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Today"}
+                            </span>
+                          </div>
+                          <h5 className="font-bold text-xs text-foreground">{b.title}</h5>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed whitespace-pre-line">{b.body}</p>
+                          <div className="text-[9.5px] text-purple-700 font-semibold pt-1 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 mt-2">
+                            <span className="flex items-center gap-1">
+                              <Megaphone className="size-2.5" /> Posted by {b.sender_name || (b as any).sent_by || "System Admin"}
+                            </span>
+                            {b.recipients_count ? (
+                              <span className="text-[9px] text-slate-400">Delivered to {b.recipients_count} members</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
-            {/* TAB 3: AI Assistant */}
+            {/* TAB 3: BusinessOS Copilot AI Assistant */}
             {activeMessageTab === "assistant" && (
-              <div className="flex flex-col h-[380px]">
-                <div className="flex-1 p-3 overflow-y-auto space-y-2 text-xs">
+              <div className="flex flex-col h-[420px]">
+                {/* AI Header */}
+                <div className="px-3 py-1.5 bg-purple-50/70 dark:bg-purple-950/30 border-b flex items-center justify-between text-[11px] shrink-0">
+                  <span className="font-bold text-purple-800 dark:text-purple-300 flex items-center gap-1.5">
+                    <Sparkles className="size-3 text-purple-600" />
+                    BusinessOS Copilot AI
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setAiChatHistory([{ sender: "ai", text: "Chat history cleared. How can I help you today?", time: "Just now" }])}
+                    className="text-[10px] text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
+                  >
+                    Clear History
+                  </button>
+                </div>
+
+                {/* Conversation Body */}
+                <div className="flex-1 p-3 overflow-y-auto space-y-2.5 text-xs">
                   {aiChatHistory.map((item, idx) => (
                     <div
                       key={idx}
                       className={cn(
                         "p-2.5 rounded-2xl max-w-[90%] leading-relaxed shadow-2xs",
                         item.sender === "user"
-                          ? "ml-auto bg-purple-600 text-white rounded-br-xs"
-                          : "mr-auto bg-purple-50/70 dark:bg-slate-800 border border-purple-100 text-slate-800 dark:text-slate-100 rounded-bl-xs"
+                          ? "ml-auto bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-br-xs"
+                          : "mr-auto bg-white dark:bg-slate-800 border border-purple-100 dark:border-purple-900/40 text-slate-800 dark:text-slate-100 rounded-bl-xs"
                       )}
                     >
-                      <div className="flex items-center gap-1 mb-1 font-bold text-[10px]">
-                        {item.sender === "ai" ? (
-                          <>
-                            <Sparkles className="size-3 text-purple-600" />
-                            <span className="text-purple-700">BusinessOS AI</span>
-                          </>
-                        ) : (
-                          <span className="text-purple-100">You</span>
-                        )}
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className={cn("font-bold text-[10px] flex items-center gap-1", item.sender === "ai" ? "text-purple-600" : "text-purple-100")}>
+                          {item.sender === "ai" ? (
+                            <>
+                              <Bot className="size-3 text-purple-600" />
+                              <span>BusinessOS AI</span>
+                            </>
+                          ) : (
+                            <span>You</span>
+                          )}
+                        </span>
+                        <span className={cn("text-[9px]", item.sender === "ai" ? "text-slate-400" : "text-purple-200")}>
+                          {item.time}
+                        </span>
                       </div>
-                      <p>{item.text}</p>
+                      <p className="whitespace-pre-line leading-relaxed text-xs">{item.text}</p>
                     </div>
                   ))}
+
+                  {isAiLoading && (
+                    <div className="mr-auto bg-white dark:bg-slate-800 border border-purple-100 dark:border-purple-900/40 p-2.5 rounded-2xl rounded-bl-xs flex items-center gap-2 text-xs text-purple-700 shadow-2xs">
+                      <Loader2 className="size-3.5 animate-spin text-purple-600" />
+                      <span className="font-medium text-[11px]">Copilot AI is analyzing workspace records...</span>
+                    </div>
+                  )}
                 </div>
 
-                {/* Quick Prompts */}
-                <div className="px-3 py-1.5 flex items-center gap-1 overflow-x-auto border-t bg-slate-50/60 dark:bg-slate-900/40 shrink-0">
+                {/* Quick AI Prompts */}
+                <div className="px-3 py-1.5 flex items-center gap-1 overflow-x-auto border-t bg-slate-50/70 dark:bg-slate-900/40 shrink-0 scrollbar-none">
                   <button
                     type="button"
-                    onClick={() => {
-                      setAiAssistantInput("How do I transfer stock between workspaces?");
-                    }}
-                    className="text-[10px] font-medium px-2 py-0.5 bg-background border rounded-full text-slate-600 hover:text-purple-700 whitespace-nowrap cursor-pointer"
+                    onClick={() => handleSendAiAssistant("Show total product stock and inventory summary.")}
+                    className="text-[10px] font-medium px-2 py-0.5 bg-background border rounded-full text-slate-600 hover:text-purple-700 whitespace-nowrap cursor-pointer hover:border-purple-300"
                   >
-                    🔄 Inter-workspace transfer
+                    📦 Stock & Catalog
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setAiAssistantInput("How to split staff per company?");
-                    }}
-                    className="text-[10px] font-medium px-2 py-0.5 bg-background border rounded-full text-slate-600 hover:text-purple-700 whitespace-nowrap cursor-pointer"
+                    onClick={() => handleSendAiAssistant("How do I create a standard A4 GST tax invoice?")}
+                    className="text-[10px] font-medium px-2 py-0.5 bg-background border rounded-full text-slate-600 hover:text-purple-700 whitespace-nowrap cursor-pointer hover:border-purple-300"
                   >
-                    👥 Assign workspace users
+                    📄 Standard A4 Invoice
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendAiAssistant("How do I process a sales return and refund?")}
+                    className="text-[10px] font-medium px-2 py-0.5 bg-background border rounded-full text-slate-600 hover:text-purple-700 whitespace-nowrap cursor-pointer hover:border-purple-300"
+                  >
+                    🔄 Sales Return
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendAiAssistant("How do I send invoices directly via WhatsApp to customers?")}
+                    className="text-[10px] font-medium px-2 py-0.5 bg-background border rounded-full text-slate-600 hover:text-purple-700 whitespace-nowrap cursor-pointer hover:border-purple-300"
+                  >
+                    📱 WhatsApp Send
                   </button>
                 </div>
 
-                {/* AI input */}
-                <form onSubmit={handleSendAiAssistant} className="p-2.5 border-t bg-background flex items-center gap-1.5 shrink-0">
+                {/* AI Input Form */}
+                <form onSubmit={(e) => handleSendAiAssistant(undefined, e)} className="p-2.5 border-t bg-background flex items-center gap-1.5 shrink-0">
                   <input
                     type="text"
                     value={aiAssistantInput}
                     onChange={(e) => setAiAssistantInput(e.target.value)}
-                    placeholder="Ask AI anything about this workspace..."
-                    className="flex-1 text-xs px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border-none outline-hidden focus:ring-1 focus:ring-purple-500"
+                    placeholder="Ask Copilot AI anything about this company..."
+                    disabled={isAiLoading}
+                    className="flex-1 text-xs px-3 py-1.5 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 border-none outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50"
                   />
                   <Button
                     type="submit"
+                    disabled={isAiLoading || !aiAssistantInput.trim()}
                     size="sm"
-                    className="h-8 px-3 rounded-xl gradient-brand text-white text-xs font-semibold shadow-xs"
+                    className="h-8 px-3 rounded-xl gradient-brand text-white text-xs font-semibold shadow-xs cursor-pointer disabled:opacity-50"
                   >
-                    <Send className="size-3" />
+                    {isAiLoading ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
                   </Button>
                 </form>
               </div>
