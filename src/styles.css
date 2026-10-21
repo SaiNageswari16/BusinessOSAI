@@ -278,20 +278,44 @@
 }
 
 /* ==========================================================================
-   INVISIBLE / HIDDEN SCROLLBAR GLOBALLY
+   CUSTOM SLEEK DRAGGABLE SCROLLBAR
    ========================================================================== */
-html,
-body,
-* {
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
+html {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(147, 51, 234, 0.5) rgba(241, 245, 249, 0.9);
 }
 
-*::-webkit-scrollbar,
-html::-webkit-scrollbar,
-body::-webkit-scrollbar {
-  display: none !important;
-  width: 0px !important;
-  height: 0px !important;
-  background: transparent !important;
+html.dark {
+  scrollbar-color: rgba(168, 85, 247, 0.5) rgba(15, 23, 42, 0.9);
 }
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+html.dark ::-webkit-scrollbar-track,
+.dark::-webkit-scrollbar-track {
+  background: #0b1120;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #a855f7 0%, #6366f1 100%);
+  border-radius: 9999px;
+  border: 2px solid #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #9333ea 0%, #4f46e5 100%);
+}
+
+html.dark ::-webkit-scrollbar-thumb,
+.dark::-webkit-scrollbar-thumb {
+  border-color: #0b1120;
+  background: linear-gradient(180deg, #c084fc 0%, #818cf8 100%);
+}
+

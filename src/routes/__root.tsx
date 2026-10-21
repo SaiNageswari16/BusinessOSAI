@@ -115,30 +115,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html
-      lang="en"
-      className="bg-[#f8f9fa] text-slate-900"
-      style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-    >
+    <html lang="en" className="bg-[#f8f9fa] text-slate-900">
       <head>
         <HeadContent />
-        <style>{`
-          /* Globally hide scrollbar */
-          ::-webkit-scrollbar {
-            display: none !important;
-            width: 0 !important;
-            height: 0 !important;
-          }
-          html, body, * {
-            scrollbar-width: none !important;
-            -ms-overflow-style: none !important;
-          }
-        `}</style>
       </head>
-      <body
-        className="bg-[#f8f9fa] text-slate-900 antialiased selection:bg-purple-500/20 selection:text-purple-900 font-sans"
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-      >
+      <body className="bg-[#f8f9fa] text-slate-900 antialiased selection:bg-purple-500/20 selection:text-purple-900 font-sans">
         {children}
         <Scripts />
       </body>

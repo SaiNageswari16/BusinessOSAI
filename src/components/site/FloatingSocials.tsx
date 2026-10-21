@@ -2,6 +2,8 @@
 
 import React, { useState } from "react";
 import {
+  ChevronUp,
+  ChevronDown,
   Instagram,
   Facebook,
   Linkedin,
@@ -86,14 +88,49 @@ const SOCIAL_LINKS: SocialLink[] = [
 export function FloatingSocials() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
+  const scrollToBottom = () => {
+    window.scrollTo({
+      top: document.documentElement.scrollHeight,
+      behavior: "smooth",
+    });
+  };
+
   return (
     <>
-      {/* 1. Desktop Fixed Vertical Dock (Visible only on md screens and above) */}
+      {/* 1. Desktop Fixed Vertical Dock (Visible on right edge on md screens and above) */}
       <aside
-        aria-label="Floating Social Media Links"
-        className="hidden md:flex fixed right-3 sm:right-5 top-1/2 -translate-y-1/2 z-50 flex-col items-center select-none"
+        aria-label="Floating Navigation & Social Links"
+        className="hidden md:flex fixed right-3 sm:right-5 top-1/2 -translate-y-1/2 flex-col items-center select-none"
+        style={{ zIndex: 99999 }}
       >
-        <div className="flex flex-col items-center gap-2 p-1.5 sm:p-2 rounded-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200/90 dark:border-slate-800 shadow-[0_10px_35px_-5px_rgba(0,0,0,0.18)] transition-all duration-300 hover:shadow-[0_14px_45px_-5px_rgba(0,0,0,0.25)]">
+        <div className="flex flex-col items-center gap-1.5 p-1.5 sm:p-2 rounded-full bg-white/92 dark:bg-slate-900/92 backdrop-blur-xl border border-slate-200/90 dark:border-slate-800 shadow-[0_12px_40px_-5px_rgba(0,0,0,0.18)] transition-all duration-300 hover:shadow-[0_16px_50px_-5px_rgba(124,58,237,0.22)]">
+          {/* Top Arrow: Scroll to Top */}
+          <button
+            type="button"
+            onClick={scrollToTop}
+            aria-label="Scroll to top of website"
+            className="relative group flex items-center justify-center size-9 sm:size-10 rounded-full text-slate-700 dark:text-slate-200 bg-slate-100/80 dark:bg-slate-800/80 hover:bg-gradient-to-tr hover:from-purple-600 hover:to-indigo-600 hover:text-white transition-all duration-200 hover:scale-110 active:scale-95 shadow-2xs cursor-pointer"
+          >
+            <ChevronUp className="size-4.5 sm:size-5 transition-transform duration-200 group-hover:-translate-y-0.5" />
+
+            {/* Tooltip */}
+            <span className="absolute right-full mr-3.5 px-2.5 py-1 rounded-md bg-slate-950 text-white text-[11px] font-bold tracking-wide whitespace-nowrap opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all duration-200 pointer-events-none shadow-xl border border-white/10 z-50">
+              Scroll to Top
+              <span className="absolute left-full top-1/2 -translate-y-1/2 border-4 border-transparent border-l-slate-950" />
+            </span>
+          </button>
+
+          {/* Micro Divider */}
+          <div className="w-5 h-px bg-slate-200/90 dark:bg-slate-700/80 my-0.5" />
+
+          {/* Floating Social Media Icons */}
           {SOCIAL_LINKS.map((item) => {
             const Icon = item.icon;
             return (
@@ -107,7 +144,7 @@ export function FloatingSocials() {
               >
                 <Icon className="size-4 sm:size-4.5 transition-transform duration-200 group-hover:scale-105" />
 
-                {/* Tooltip on hover */}
+                {/* Tooltip on hover (flying out to the left) */}
                 <span className="absolute right-full mr-3.5 px-2.5 py-1 rounded-md bg-slate-950 text-white text-[11px] font-bold tracking-wide whitespace-nowrap opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all duration-200 pointer-events-none shadow-xl border border-white/10 z-50">
                   {item.label}
                   <span className="absolute left-full top-1/2 -translate-y-1/2 border-4 border-transparent border-l-slate-950" />
@@ -115,14 +152,51 @@ export function FloatingSocials() {
               </a>
             );
           })}
+
+          {/* Micro Divider */}
+          <div className="w-5 h-px bg-slate-200/90 dark:bg-slate-700/80 my-0.5" />
+
+          {/* Bottom Arrow: Scroll to Bottom */}
+          <button
+            type="button"
+            onClick={scrollToBottom}
+            aria-label="Scroll to bottom of website"
+            className="relative group flex items-center justify-center size-9 sm:size-10 rounded-full text-slate-700 dark:text-slate-200 bg-slate-100/80 dark:bg-slate-800/80 hover:bg-gradient-to-tr hover:from-purple-600 hover:to-indigo-600 hover:text-white transition-all duration-200 hover:scale-110 active:scale-95 shadow-2xs cursor-pointer"
+          >
+            <ChevronDown className="size-4.5 sm:size-5 transition-transform duration-200 group-hover:translate-y-0.5" />
+
+            {/* Tooltip */}
+            <span className="absolute right-full mr-3.5 px-2.5 py-1 rounded-md bg-slate-950 text-white text-[11px] font-bold tracking-wide whitespace-nowrap opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all duration-200 pointer-events-none shadow-xl border border-white/10 z-50">
+              Scroll to Bottom
+              <span className="absolute left-full top-1/2 -translate-y-1/2 border-4 border-transparent border-l-slate-950" />
+            </span>
+          </button>
         </div>
       </aside>
 
       {/* 2. Mobile Floating Action Button (FAB) (Visible only on mobile < md) */}
-      <div className="md:hidden fixed right-4 bottom-5 z-40 flex flex-col items-end select-none">
-        {/* Expanded Social Icons Sheet */}
+      <div
+        className="md:hidden fixed right-4 bottom-5 flex flex-col items-end select-none"
+        style={{ zIndex: 99999 }}
+      >
+        {/* Expanded Sheet with Up Arrow, Social Icons & Down Arrow */}
         {mobileOpen && (
           <div className="mb-2.5 flex flex-col items-center gap-2 p-2 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-800 shadow-2xl animate-in fade-in slide-in-from-bottom-3 duration-200">
+            {/* Mobile Top Arrow */}
+            <button
+              type="button"
+              onClick={() => {
+                scrollToTop();
+                setMobileOpen(false);
+              }}
+              aria-label="Scroll to top"
+              className="flex items-center justify-center size-9 rounded-full text-white bg-purple-600 shadow-xs active:scale-95 transition-all"
+            >
+              <ChevronUp className="size-4.5" />
+            </button>
+
+            <div className="w-5 h-px bg-slate-200 dark:bg-slate-700" />
+
             {SOCIAL_LINKS.map((item) => {
               const Icon = item.icon;
               return (
@@ -139,6 +213,21 @@ export function FloatingSocials() {
                 </a>
               );
             })}
+
+            <div className="w-5 h-px bg-slate-200 dark:bg-slate-700" />
+
+            {/* Mobile Bottom Arrow */}
+            <button
+              type="button"
+              onClick={() => {
+                scrollToBottom();
+                setMobileOpen(false);
+              }}
+              aria-label="Scroll to bottom"
+              className="flex items-center justify-center size-9 rounded-full text-white bg-purple-600 shadow-xs active:scale-95 transition-all"
+            >
+              <ChevronDown className="size-4.5" />
+            </button>
           </div>
         )}
 
@@ -146,7 +235,7 @@ export function FloatingSocials() {
         <button
           type="button"
           onClick={() => setMobileOpen(!mobileOpen)}
-          aria-label={mobileOpen ? "Close social links" : "Open social links"}
+          aria-label={mobileOpen ? "Close menu" : "Open menu"}
           className={`size-11 rounded-full flex items-center justify-center text-white shadow-lg transition-transform duration-200 active:scale-90 ${
             mobileOpen
               ? "bg-slate-900 dark:bg-slate-800"
