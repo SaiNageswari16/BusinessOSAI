@@ -1034,6 +1034,47 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
     };
   };
 
+// Safe ISO and Date normalizers to prevent "Invalid time value" crashes on varied OCR date formats (DD-MM-YYYY vs YYYY-MM-DD)
+const safeToIsoString = (val?: string): string | undefined => {
+  if (!val || typeof val !== "string") return undefined;
+  const trimmed = val.trim();
+  if (!trimmed) return undefined;
+  const parts = trimmed.split(/[-/.]/);
+  if (parts.length === 3) {
+    if (parts[2].length === 4 && parts[0].length <= 2) {
+      const d = new Date(`${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}T00:00:00.000Z`);
+      if (!isNaN(d.getTime())) return d.toISOString();
+    } else if (parts[0].length === 4) {
+      const d = new Date(`${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}T00:00:00.000Z`);
+      if (!isNaN(d.getTime())) return d.toISOString();
+    }
+  }
+  const parsed = new Date(trimmed);
+  if (!isNaN(parsed.getTime())) return parsed.toISOString();
+  return undefined;
+};
+
+const normalizeDateToYyyyMmDd = (val?: string): string => {
+  if (!val || typeof val !== "string") return new Date().toISOString().slice(0, 10);
+  const trimmed = val.trim();
+  if (!trimmed) return new Date().toISOString().slice(0, 10);
+  const parts = trimmed.split(/[-/.]/);
+  if (parts.length === 3) {
+    if (parts[2].length === 4 && parts[0].length <= 2) {
+      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+    if (parts[0].length === 4) {
+      return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+    }
+    if (parts[2].length === 2 && parts[0].length <= 2) {
+      return `20${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+  }
+  const parsed = new Date(trimmed);
+  if (!isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  return new Date().toISOString().slice(0, 10);
+};
+
   // Submit Handler
   const handleSaveDocument = async () => {
     if (items.length === 0) return toast.error("Please add at least one item to the document.");
@@ -1135,7 +1176,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             po_number: docNumber,
             supplier_id: supplierIdToUse,
             purchase_request_id: linkedPrId || undefined,
-            delivery_date: dueDate ? new Date(dueDate).toISOString() : undefined,
+            delivery_date: safeToIsoString(dueDate),
             status: currentPoStatus || "Draft",
             items: resolvedItems.map((it) => ({
               product_id: it.product_id,
@@ -1153,7 +1194,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           const createdPo = await inventoryApi.createPurchaseOrder({
             po_number: `PO-${docNumber.replace(/^PINV-/, '')}-${Math.floor(1000 + Math.random() * 9000)}`,
             supplier_id: supplierIdToUse,
-            delivery_date: dueDate ? new Date(dueDate).toISOString() : undefined,
+            delivery_date: safeToIsoString(dueDate),
             status: currentPoStatus === "Paid" ? "Billed" : (currentPoStatus || "Received"),
             items: resolvedItems.map((it) => ({
               product_id: it.product_id,
@@ -1176,7 +1217,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           total_amount: roundedTotal,
           paid_amount: finalPaidAmount,
           status: billStatus,
-          due_date: dueDate ? new Date(dueDate).toISOString() : undefined,
+          due_date: safeToIsoString(dueDate),
         });
         toast.success(`Purchase Invoice ${docNumber} recorded successfully (Status: ${billStatus})!`);
       }
@@ -1216,13 +1257,13 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       }
     }
     if (data.delivery_date && docType === "PO") {
-      setDueDate(data.delivery_date);
+      setDueDate(normalizeDateToYyyyMmDd(data.delivery_date));
     }
     if (data.due_date) {
-      setDueDate(data.due_date);
+      setDueDate(normalizeDateToYyyyMmDd(data.due_date));
     }
     if (data.invoice_date) {
-      setDocDate(data.invoice_date);
+      setDocDate(normalizeDateToYyyyMmDd(data.invoice_date));
     }
     if (data.items && data.items.length > 0) {
       setItems(data.items.map((it: any) => {

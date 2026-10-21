@@ -3043,9 +3043,19 @@ def _heuristic_regex_invoice_parser(text: str) -> dict:
     inv_m = re.search(r'(?:Invoice\s*No|Bill\s*No|Inv\s*No|Invoice\s*Number)\s*[:\s]+([A-Za-z0-9\-\/]+)', text, re.IGNORECASE)
     invoice_number = inv_m.group(1).strip() if inv_m else None
 
-    # Date
+    # Date (normalized to standard ISO YYYY-MM-DD format to prevent frontend Invalid time value errors)
     date_m = re.search(r'(?:Date|Invoice\s*Date|Dated)\s*[:\s]+(\d{1,2}[-\/.]\d{1,2}[-\/.]\d{2,4})', text, re.IGNORECASE)
     invoice_date = date_m.group(1).strip() if date_m else None
+    if invoice_date:
+        parts = re.split(r'[-\/.]', invoice_date)
+        if len(parts) == 3:
+            p1, p2, p3 = parts
+            if len(p3) == 4 and len(p1) <= 2:
+                invoice_date = f"{p3}-{p2.zfill(2)}-{p1.zfill(2)}"
+            elif len(p1) == 4 and len(p3) <= 2:
+                invoice_date = f"{p1}-{p2.zfill(2)}-{p3.zfill(2)}"
+            elif len(p3) == 2 and len(p1) <= 2:
+                invoice_date = f"20{p3}-{p2.zfill(2)}-{p1.zfill(2)}"
 
     # Grand Total
     gt_m = re.search(r'(?:GRAND\s*TOTAL|TOTAL\s*AMOUNT|NET\s*PAYABLE|INVOICE\s*VALUE)\s*[:\s]*(\d+(?:\.\d+)?)', text, re.IGNORECASE)
@@ -3211,11 +3221,12 @@ async def _execute_multimodal_ai_ocr(prompt: str, contents: bytes, filename: str
         "image/png" if filename.lower().endswith(".png") else "image/jpeg"
     )
 
-    # 0. Offload CPU-heavy file reading, Base64 encode, and Digital PDF extraction to worker thread
+    # 0. Offload CPU-heavy file reading, Base64 encode, 300 DPI PDF rasterization, and Digital PDF extraction to worker thread
     def _preprocess_document():
         import base64
         b64 = base64.b64encode(contents).decode("utf-8")
         text = ""
+        png_pages_b64: list[str] = []
         if is_pdf:
             try:
                 import io, pypdf
@@ -3228,9 +3239,27 @@ async def _execute_multimodal_ai_ocr(prompt: str, contents: bytes, filename: str
                 text = "\n\n".join(pages_text).strip()
             except Exception as pe:
                 logger.warning(f"Could not extract digital PDF text: {pe}")
-        return b64, text
 
-    b64_data, raw_pdf_text = await asyncio.to_thread(_preprocess_document)
+            # 1. High-Resolution 300 DPI Image Preprocessing via PyMuPDF (fitz)
+            # Avoids native PDF rasterization/Files API downscaling on dense financial tables
+            try:
+                import fitz
+                doc = fitz.open(stream=contents, filetype="pdf")
+                # 300 DPI: standard PDF resolution is 72 DPI, so scale is 300 / 72 ≈ 4.16667
+                zoom = 300.0 / 72.0
+                mat = fitz.Matrix(zoom, zoom)
+                for page in doc:
+                    pix = page.get_pixmap(matrix=mat, alpha=False)
+                    page_b64 = base64.b64encode(pix.tobytes("png")).decode("utf-8")
+                    png_pages_b64.append(page_b64)
+                doc.close()
+                logger.info(f"[PDF Preprocessing] Converted {len(png_pages_b64)} pages to 300 DPI PNG buffers.")
+            except Exception as fe:
+                logger.warning(f"PyMuPDF 300 DPI rasterization fallback: {fe}")
+
+        return b64, text, png_pages_b64
+
+    b64_data, raw_pdf_text, png_pages_b64 = await asyncio.to_thread(_preprocess_document)
 
     # 0. High-Speed 100% Deterministic Extraction for Digital PDFs (0.05s execution, zero API timeout)
     if raw_pdf_text:
@@ -3250,7 +3279,7 @@ async def _execute_multimodal_ai_ocr(prompt: str, contents: bytes, filename: str
             f"{raw_pdf_text[:35000]}"
         )
 
-    preferred_provider = (getattr(settings, "ai_provider", "claude") or "claude").lower().strip()
+    preferred_provider = (getattr(settings, "ai_provider", "gemini") or "gemini").lower().strip()
 
     # Enter concurrency semaphore: processes up to 3 parallel requests, smoothly queueing the 4th..10th users
     async with _ocr_semaphore:
@@ -3320,41 +3349,95 @@ async def _execute_multimodal_ai_ocr(prompt: str, contents: bytes, filename: str
                         break
                 return {}
 
-            # 2. Google Gemini
+            # 2. Google Gemini Pro Multimodal Pipeline (300 DPI Preprocessed Images, temperature=0.0, maxOutputTokens=8192)
             async def _call_gemini() -> dict:
                 gemini_key = _get_next_api_key(getattr(settings, "gemini_api_key", None), "gemini")
                 if not gemini_key:
                     return {}
-                model = getattr(settings, "gemini_model", None) or "gemini-3.8-flash"
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
-                gemini_parts = [{"text": active_prompt}]
-                if not is_pdf or not raw_pdf_text:
-                    gemini_parts.append({"inline_data": {"mime_type": mime_type, "data": b64_data}})
+
+                # Gemini Pro reasoning models (avoid Flash for dense multi-page invoices with 30+ items)
+                configured_model = getattr(settings, "gemini_model", None)
+                model_candidates = [
+                    m for m in [
+                        configured_model,
+                        "gemini-1.5-pro",
+                        "gemini-3.1-pro-preview",
+                        "gemini-pro-latest"
+                    ] if m
+                ]
+
+                # Assemble high-resolution 300 DPI page parts followed by system/extraction prompt
+                gemini_parts = []
+                if is_pdf and png_pages_b64:
+                    for page_b64 in png_pages_b64:
+                        gemini_parts.append({
+                            "inline_data": {
+                                "mime_type": "image/png",
+                                "data": page_b64
+                            }
+                        })
+                else:
+                    gemini_parts.append({
+                        "inline_data": {
+                            "mime_type": mime_type,
+                            "data": b64_data
+                        }
+                    })
+                gemini_parts.append({"text": active_prompt})
+
+                generation_config = {
+                    "responseMimeType": "application/json",
+                    "temperature": 0.0,
+                    "maxOutputTokens": 8192
+                }
 
                 body = {
                     "contents": [{
                         "parts": gemini_parts
                     }],
-                    "generationConfig": {"responseMimeType": "application/json"}
+                    "generationConfig": generation_config
                 }
-                for attempt in range(2):
-                    try:
-                        res = await client.post(url, json=body, headers={"Content-Type": "application/json"}, timeout=60.0)
-                        if res.status_code == 200:
-                            raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                            parsed = _clean_ocr_json(raw_text)
-                            if parsed:
-                                return parsed
-                        elif res.status_code == 429:
-                            logger.warning(f"[OCR Gemini 429 Rate Limit] Backing off 2.0s...")
-                            await asyncio.sleep(2.0)
-                            continue
-                        else:
-                            logger.warning(f"[OCR Gemini] returned status {res.status_code}: {res.text[:200]}")
+
+                for candidate_model in model_candidates:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{candidate_model}:generateContent?key={gemini_key}"
+                    for attempt in range(2):
+                        try:
+                            res = await client.post(url, json=body, headers={"Content-Type": "application/json"}, timeout=120.0)
+                            if res.status_code == 200:
+                                res_json = res.json()
+                                candidates = res_json.get("candidates", [])
+                                if not candidates:
+                                    logger.warning(f"[OCR Gemini] No candidates in response: {res.text[:200]}")
+                                    break
+                                candidate = candidates[0]
+                                finish_reason = candidate.get("finishReason")
+                                if finish_reason == "MAX_TOKENS":
+                                    logger.warning(
+                                        f"[OCR Gemini WARNING] Extraction response from {candidate_model} terminated with "
+                                        f"finishReason='MAX_TOKENS'. Output was truncated mid-JSON!"
+                                    )
+
+                                raw_text = candidate.get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+                                parsed = _clean_ocr_json(raw_text)
+                                if parsed:
+                                    logger.info(f"[OCR Gemini] Successfully extracted invoice using {candidate_model} (finishReason={finish_reason})")
+                                    return parsed
+                                else:
+                                    logger.warning(f"[OCR Gemini] JSON decode failed for {candidate_model}. Raw preview: {raw_text[:200]}")
+                                    break
+                            elif res.status_code == 404:
+                                logger.info(f"[OCR Gemini] Model {candidate_model} returned 404. Trying next Pro model candidate...")
+                                break
+                            elif res.status_code == 429:
+                                logger.warning(f"[OCR Gemini 429 Rate Limit] Backing off 2.0s...")
+                                await asyncio.sleep(2.0)
+                                continue
+                            else:
+                                logger.warning(f"[OCR Gemini] {candidate_model} returned status {res.status_code}: {res.text[:200]}")
+                                break
+                        except Exception as g_ex:
+                            logger.warning(f"[OCR Gemini Error with {candidate_model}] {repr(g_ex)}")
                             break
-                    except Exception as g_ex:
-                        logger.warning(f"[OCR Gemini Error] {g_ex}")
-                        break
                 return {}
 
             # 3. OpenAI GPT-4o Fallback
@@ -3659,9 +3742,12 @@ Extract the following JSON structure:
         {
           "item_number": 1,
           "product_name": "AP APEX AB2 1 LT",
+          "description": "AP APEX AB2 1 LT",
           "hsn_code": "32091090",
           "quantity": 3.0,
           "uom": "Nos",
+          "units": "Nos",
+          "packing": "1 LT",
           "tax_inclusive_rate": 368.16,
           "tax_exclusive_rate": 312.00,
           "unit_price": 312.00,
@@ -3685,13 +3771,15 @@ Extract the following JSON structure:
   ]
 }
 
-CRITICAL RULES:
-1. Extract EVERY SINGLE line item in the invoice table without omission or truncation. If there are 30+ items (like in large grocery, FMCG, electronics, or pharma bills), extract ALL 30+ items.
-2. "unit_price" MUST ALWAYS be the Tax-Exclusive Base Rate (e.g. 7.42).
-3. "tax_percent" should be the total GST rate (e.g. 5, 12, 18, 28). If CGST 2.5% + SGST 2.5%, tax_percent is 5.0.
-4. Extract accurate product_name, HSN codes, UOM (PCS, NOS, BOX, KGS, etc.), Quantity, Rate, and Line Total.
-5. Extract supplier_name, supplier_gstin, supplier_phone, supplier_address, place_of_supply, invoice_number, invoice_date, and due_date.
-6. Return ONLY valid JSON.
+CRITICAL SYSTEM INSTRUCTIONS FOR ACCURATE FINANCIAL EXTRACTION:
+a) Process Multi-Page Documents Sequentially: Review each page in order (Page 1 -> Page 2 -> Page 3...).
+b) Extract EVERY Single Line Item: Extract every line item without omitting, summarizing, or skipping rows in the middle. If there are 30+ or 50+ items across multiple pages, ALL rows must be captured sequentially in the "items" array.
+c) Handle Cross-Page Split Tables: Connect tables and tax breakdowns split across page boundaries (e.g., items or tax sections that start at the bottom of Page 1 and continue at the top of Page 2).
+d) Preserve Exact Numerical Precision: Do not round or estimate numerical values before returning output. Preserve exact rates (e.g. 7.42), quantities, tax percentages, and line totals as printed.
+e) Flexible Schemas: The fields "product_name", "description", "uom", "units", and "packing" are flexible strings, NOT rigid enums. Accept any unit format (e.g., 'Pcs', 'Gms', 'BOX', 'Nos', 'Kg', 'Pack', 'Bottle').
+f) Tax Exclusive Base Rate: "unit_price" and "tax_exclusive_rate" MUST be the base rate before GST.
+g) Standard ISO Dates: Format all dates (invoice_date, due_date) as "YYYY-MM-DD" (e.g., "2026-10-20").
+h) Output Format: Return ONLY raw, valid JSON conforming to the schema above without markdown fences or preamble.
 """
         parsed = await _execute_multimodal_ai_ocr(prompt, contents, file.filename)
         if parsed:
