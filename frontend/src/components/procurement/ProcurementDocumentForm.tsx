@@ -1202,11 +1202,15 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       if (docType === "PINV") setDocNumber(data.bill_number || data.invoice_number);
       else if (docType === "PO" && !data.po_number) setDocNumber(data.invoice_number || data.bill_number);
     }
-    if (data.supplier_name) {
-      const matchedSupplier = suppliers.find((s) =>
-        s.name.toLowerCase().includes(data.supplier_name.toLowerCase()) ||
-        data.supplier_name.toLowerCase().includes(s.name.toLowerCase())
-      );
+    if (data.supplier_name || data.supplier_gstin) {
+      const gstinClean = (data.supplier_gstin || "").trim().toUpperCase();
+      const nameClean = (data.supplier_name || "").trim().toLowerCase();
+      const matchedSupplier = suppliers.find((s) => {
+        const sTax = ((s as any).tax_id || (s as any).gstin || "").trim().toUpperCase();
+        if (gstinClean && sTax && sTax === gstinClean) return true;
+        const sName = s.name.toLowerCase();
+        return nameClean && (sName.includes(nameClean) || nameClean.includes(sName));
+      });
       if (matchedSupplier) {
         setSelectedSupplierId(matchedSupplier.id);
       }
@@ -1231,17 +1235,17 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           id: Math.random().toString(36).substring(2, 9),
           product_id: foundProd?.id,
           product_name: foundProd ? foundProd.name : pName,
-          hsn_code: it.hsn_code || foundProd?.hsn_code || "32091090",
-          uom: it.uom || (foundProd as any)?.uom_name || "Nos",
+          hsn_code: it.hsn_code || foundProd?.hsn_code || "21069090",
+          uom: it.uom || (foundProd as any)?.uom_name || "PCS",
           batch_number: it.batch_number || `B-${Math.floor(100 + Math.random() * 900)}`,
           mrp: grossPrice,
           quantity: Number(it.quantity) || 1,
           unit_price: unitPrice,
           tax_inclusive_rate: Number(it.tax_inclusive_rate) || grossPrice,
           tax_exclusive_rate: Number(it.tax_exclusive_rate) || unitPrice,
-          discount_value: 0,
+          discount_value: Number(it.discount_value) || 0,
           discount_type: "percent",
-          tax_rate: Number(it.tax_percent) || foundProd?.tax_percent || 18,
+          tax_rate: Number(it.tax_percent) || foundProd?.tax_percent || 5,
         };
       }));
     }
@@ -1605,9 +1609,12 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           {/* OCR Status / Actions */}
           <div className="flex flex-col gap-2 min-w-[160px]">
             {isExtracting && (
-              <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
-                <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
-                <span className="text-xs font-medium text-indigo-700">Extracting...</span>
+              <div className="flex items-center gap-2.5 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 shadow-sm">
+                <Loader2 className="w-4 h-4 animate-spin text-indigo-600 flex-shrink-0" />
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-indigo-700">Extracting All Bill Details...</span>
+                  <span className="text-[10px] text-indigo-500">Running in background. You can continue working.</span>
+                </div>
               </div>
             )}
             {ocrResult && !isExtracting && (

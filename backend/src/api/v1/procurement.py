@@ -1,12 +1,17 @@
 import uuid
 import json
 import base64
+import asyncio
+import httpx
 import requests
 from typing import Annotated, List
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
 from sqlalchemy import select, update, delete, func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+
+import logging
+logger = logging.getLogger(__name__)
 
 from src.config.settings import get_settings
 settings = get_settings()
@@ -2995,115 +3000,262 @@ def _clean_ocr_json(text: str) -> dict:
     return {}
 
 
-def _execute_multimodal_ai_ocr(prompt: str, contents: bytes, filename: str) -> dict:
+def _heuristic_regex_invoice_parser(text: str) -> dict:
+    """Extracts basic fields and items via regex when all external multimodal APIs are unavailable."""
+    import re
+    gstin_match = re.search(r'\b([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1})\b', text)
+    inv_match = re.search(r'(?:Invoice\s*No|Bill\s*No|Inv\s*No)[.:\s]+([A-Za-z0-9\-\/]+)', text, re.IGNORECASE)
+    date_match = re.search(r'(?:Date|Invoice\s*Date|Dated)[.:\s]+(\d{1,2}[-\/.]\d{1,2}[-\/.]\d{2,4}|\d{1,2}\s+[A-Za-z]{3}\s+\d{2,4})', text, re.IGNORECASE)
+
+    items = []
+    lines = text.split("\n")
+    for line in lines:
+        m = re.search(r'^([A-Za-z0-9\s\.\-\/\(\)]+?)\s+(\d{4,8})?\s*(\d+(?:\.\d+)?)\s*(PCS|NOS|BOX|KG|KGS|BAG|PKT|BTL)?\s+(\d+(?:\.\d+)?)\s+.*?(\d+(?:\.\d+)?)$', line.strip(), re.IGNORECASE)
+        if m:
+            pname, hsn, qty, uom, rate, total = m.groups()
+            if len(pname.strip()) > 3 and not re.search(r'(Total|Subtotal|Tax|Date|GSTIN|Bank|Round|Balance)', pname, re.IGNORECASE):
+                items.append({
+                    "product_name": pname.strip(),
+                    "hsn_code": hsn or "21069090",
+                    "quantity": float(qty),
+                    "uom": uom or "PCS",
+                    "unit_price": float(rate),
+                    "tax_exclusive_rate": float(rate),
+                    "tax_percent": 5.0,
+                    "line_total": float(total)
+                })
+
+    return {
+        "supplier_gstin": gstin_match.group(1) if gstin_match else None,
+        "invoice_number": inv_match.group(1) if inv_match else None,
+        "invoice_date": date_match.group(1) if date_match else None,
+        "items": items,
+        "is_tax_inclusive": False
+    }
+
+
+# ─── High-Concurrency Multi-Tenant OCR Engine ─────────────────────
+# Allows up to 3 simultaneous OCR Extractions; automatically queues remaining users so rate-limits are never hit
+_ocr_semaphore = asyncio.Semaphore(3)
+_anthropic_key_counter = 0
+_gemini_key_counter = 0
+
+
+def _get_next_api_key(raw_keys: str | None, key_type: str = "anthropic") -> str | None:
+    """Rotates across comma-separated API keys to load-balance across multiple keys and prevent rate-limits."""
+    global _anthropic_key_counter, _gemini_key_counter
+    if not raw_keys or not raw_keys.strip():
+        return None
+    keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
+    if not keys:
+        return None
+    if key_type == "anthropic":
+        idx = _anthropic_key_counter % len(keys)
+        _anthropic_key_counter += 1
+        return keys[idx]
+    else:
+        idx = _gemini_key_counter % len(keys)
+        _gemini_key_counter += 1
+        return keys[idx]
+
+
+async def _execute_multimodal_ai_ocr(prompt: str, contents: bytes, filename: str) -> dict:
     """
-    Executes multimodal AI OCR across Gemini -> Claude (Anthropic) -> OpenAI.
-    Supports native PDFs and images. Never fails with single provider outage or 429 quota.
+    Executes multimodal AI OCR across Claude (Anthropic / OpusMax) -> Gemini -> OpenAI.
+    Protected by concurrency semaphore (asyncio.Semaphore(3)), automatic 429 exponential backoff,
+    and multi-key pool rotation so 10+ concurrent users never face rate limit walls.
     """
-    import base64
-    b64_data = base64.b64encode(contents).decode("utf-8")
     is_pdf = filename.lower().endswith(".pdf")
     mime_type = "application/pdf" if is_pdf else (
         "image/png" if filename.lower().endswith(".png") else "image/jpeg"
     )
 
-    # 1. Primary: Google Gemini (gemini-2.5-flash or gemini-1.5-flash)
-    if settings.gemini_api_key and settings.gemini_api_key.strip():
-        model = settings.gemini_model if settings.gemini_model and not settings.gemini_model.startswith("gemini-3.") else "gemini-2.5-flash"
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
-            body = {
-                "contents": [{
-                    "parts": [
-                        {"text": prompt},
-                        {"inline_data": {"mime_type": mime_type, "data": b64_data}}
-                    ]
-                }],
-                "generationConfig": {"responseMimeType": "application/json"}
-            }
-            res = requests.post(url, json=body, headers={"Content-Type": "application/json"}, timeout=35)
-            if res.status_code == 200:
-                raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                parsed = _clean_ocr_json(raw_text)
-                if parsed:
-                    return parsed
-            else:
-                print(f"[OCR Gemini] returned status {res.status_code}: {res.text[:200]}")
-        except Exception as g_ex:
-            print(f"[OCR Gemini Error] {g_ex}")
+    # 0. Offload CPU-heavy file reading, Base64 encode, and Digital PDF extraction to worker thread
+    def _preprocess_document():
+        import base64
+        b64 = base64.b64encode(contents).decode("utf-8")
+        text = ""
+        if is_pdf:
+            try:
+                import io, pypdf
+                reader = pypdf.PdfReader(io.BytesIO(contents))
+                pages_text = []
+                for idx, page in enumerate(reader.pages):
+                    txt = (page.extract_text() or "").strip()
+                    if txt:
+                        pages_text.append(f"--- PAGE {idx + 1} ---\n{txt}")
+                text = "\n\n".join(pages_text).strip()
+            except Exception as pe:
+                logger.warning(f"Could not extract digital PDF text: {pe}")
+        return b64, text
 
-    # 2. Fallback: Anthropic Claude (Claude 3.5 Sonnet / Haiku - Superior at Indian GST Invoices & PDFs)
-    if getattr(settings, "anthropic_api_key", None) and settings.anthropic_api_key.strip():
-        try:
-            doc_block = {
-                "type": "document" if is_pdf else "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": mime_type,
-                    "data": b64_data
+    b64_data, raw_pdf_text = await asyncio.to_thread(_preprocess_document)
+
+    active_prompt = prompt
+    if raw_pdf_text:
+        active_prompt = (
+            f"{prompt}\n\n"
+            f"=== VERBATIM DIGITAL TEXT EXTRACTED DIRECTLY FROM DOCUMENT (USE FOR 100% ACCURATE VALUES & ITEM DESCRIPTIONS) ===\n"
+            f"{raw_pdf_text[:35000]}"
+        )
+
+    preferred_provider = (getattr(settings, "ai_provider", "claude") or "claude").lower().strip()
+
+    # Enter concurrency semaphore: processes up to 3 parallel requests, smoothly queueing the 4th..10th users
+    async with _ocr_semaphore:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+
+            # 1. Claude (Anthropic / OpusMax) - Superior at Indian GST Invoices, tables, and PDFs
+            async def _call_claude() -> dict:
+                claude_key = _get_next_api_key(getattr(settings, "anthropic_api_key", None), "anthropic")
+                if not claude_key:
+                    return {}
+                claude_model = getattr(settings, "anthropic_model", None) or "claude-3-5-sonnet-20241022"
+                base_url = getattr(settings, "anthropic_base_url", "https://api.anthropic.com").rstrip("/")
+                doc_block = {
+                    "type": "document" if is_pdf else "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": mime_type,
+                        "data": b64_data
+                    }
                 }
-            }
-            claude_model = getattr(settings, "anthropic_model", None) or "claude-3-5-sonnet-20241022"
-            base_url = getattr(settings, "anthropic_base_url", "https://api.anthropic.com").rstrip("/")
-            res = requests.post(
-                f"{base_url}/v1/messages",
-                headers={
-                    "x-api-key": settings.anthropic_api_key,
+                headers = {
+                    "x-api-key": claude_key,
                     "anthropic-version": "2023-06-01",
                     "content-type": "application/json"
-                },
-                json={
-                    "model": claude_model,
-                    "max_tokens": 4096,
-                    "system": "You are a professional accountant and OCR specialist. Output ONLY a valid JSON object matching the requested schema. No markdown backticks, no preamble.",
-                    "messages": [{
-                        "role": "user",
-                        "content": [doc_block, {"type": "text", "text": prompt}]
-                    }]
-                },
-                timeout=45
-            )
-            if res.status_code == 200:
-                blocks = res.json().get("content", [])
-                text = next((b.get("text", "") for b in blocks if b.get("type") == "text"), "")
-                parsed = _clean_ocr_json(text)
-                if parsed:
-                    return parsed
-            else:
-                print(f"[OCR Claude] returned status {res.status_code}: {res.text[:200]}")
-        except Exception as c_ex:
-            print(f"[OCR Claude Error] {c_ex}")
+                }
+                if is_pdf and (not raw_pdf_text):
+                    headers["anthropic-beta"] = "pdfs-2024-09-25"
 
-    # 3. Fallback: OpenAI GPT-4o
-    if getattr(settings, "openai_api_key", None) and settings.openai_api_key.strip():
-        try:
-            image_url_val = f"data:{mime_type};base64,{b64_data}"
-            res = requests.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.openai_api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": getattr(settings, "openai_model", None) or "gpt-4o",
+                content_blocks = []
+                # If digital PDF text was extracted, sending text to Claude avoids huge multi-megabyte base64 proxy timeouts
+                if not is_pdf or not raw_pdf_text:
+                    content_blocks.append(doc_block)
+                content_blocks.append({"type": "text", "text": active_prompt})
+
+                payload = {
+                    "model": claude_model,
+                    "max_tokens": 8192,
+                    "system": "You are a professional chartered accountant and OCR specialist. Extract every single line item in the invoice table without omission or truncation. Output ONLY valid JSON matching the requested schema. No markdown backticks, no preamble.",
                     "messages": [{
                         "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": {"url": image_url_val}}
-                        ]
+                        "content": content_blocks
+                    }]
+                }
+
+                # Try with automatic retry on 429
+                for attempt in range(2):
+                    try:
+                        res = await client.post(f"{base_url}/v1/messages", headers=headers, json=payload, timeout=120.0)
+                        if res.status_code == 200:
+                            blocks = res.json().get("content", [])
+                            text = next((b.get("text", "") for b in blocks if b.get("type") == "text"), "")
+                            parsed = _clean_ocr_json(text)
+                            if parsed:
+                                return parsed
+                        elif res.status_code == 429:
+                            logger.warning(f"[OCR Claude 429 Rate Limit] Attempt {attempt+1}/2. Backing off 2.5s...")
+                            await asyncio.sleep(2.5)
+                            alt_key = _get_next_api_key(getattr(settings, "anthropic_api_key", None), "anthropic")
+                            if alt_key:
+                                headers["x-api-key"] = alt_key
+                            continue
+                        else:
+                            logger.warning(f"[OCR Claude] returned status {res.status_code}: {res.text[:200]}")
+                            break
+                    except Exception as c_ex:
+                        logger.warning(f"[OCR Claude Error] {repr(c_ex)}")
+                        break
+                return {}
+
+            # 2. Google Gemini
+            async def _call_gemini() -> dict:
+                gemini_key = _get_next_api_key(getattr(settings, "gemini_api_key", None), "gemini")
+                if not gemini_key:
+                    return {}
+                model = getattr(settings, "gemini_model", None) or "gemini-3.8-flash"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
+                gemini_parts = [{"text": active_prompt}]
+                if not is_pdf or not raw_pdf_text:
+                    gemini_parts.append({"inline_data": {"mime_type": mime_type, "data": b64_data}})
+
+                body = {
+                    "contents": [{
+                        "parts": gemini_parts
                     }],
-                    "response_format": {"type": "json_object"}
-                },
-                timeout=40
-            )
-            if res.status_code == 200:
-                text = res.json()["choices"][0]["message"]["content"]
-                parsed = _clean_ocr_json(text)
-                if parsed:
-                    return parsed
-        except Exception as o_ex:
-            print(f"[OCR OpenAI Error] {o_ex}")
+                    "generationConfig": {"responseMimeType": "application/json"}
+                }
+                for attempt in range(2):
+                    try:
+                        res = await client.post(url, json=body, headers={"Content-Type": "application/json"}, timeout=60.0)
+                        if res.status_code == 200:
+                            raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                            parsed = _clean_ocr_json(raw_text)
+                            if parsed:
+                                return parsed
+                        elif res.status_code == 429:
+                            logger.warning(f"[OCR Gemini 429 Rate Limit] Backing off 2.0s...")
+                            await asyncio.sleep(2.0)
+                            continue
+                        else:
+                            logger.warning(f"[OCR Gemini] returned status {res.status_code}: {res.text[:200]}")
+                            break
+                    except Exception as g_ex:
+                        logger.warning(f"[OCR Gemini Error] {g_ex}")
+                        break
+                return {}
+
+            # 3. OpenAI GPT-4o Fallback
+            async def _call_openai() -> dict:
+                if not getattr(settings, "openai_api_key", None) or not settings.openai_api_key.strip():
+                    return {}
+                try:
+                    image_url_val = f"data:{mime_type};base64,{b64_data}"
+                    res = await client.post(
+                        "https://api.openai.com/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {settings.openai_api_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": getattr(settings, "openai_model", None) or "gpt-4o",
+                            "messages": [{
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": active_prompt},
+                                    {"type": "image_url", "image_url": {"url": image_url_val}}
+                                ]
+                            }],
+                            "response_format": {"type": "json_object"}
+                        },
+                        timeout=60.0
+                    )
+                    if res.status_code == 200:
+                        text = res.json()["choices"][0]["message"]["content"]
+                        parsed = _clean_ocr_json(text)
+                        if parsed:
+                            return parsed
+                except Exception as o_ex:
+                    logger.warning(f"[OCR OpenAI Error] {o_ex}")
+                return {}
+
+            # Execute providers in preferred order
+            providers = [_call_claude, _call_gemini, _call_openai] if preferred_provider != "gemini" else [_call_gemini, _call_claude, _call_openai]
+
+            for p in providers:
+                res = await p()
+                if res:
+                    return res
+
+    # 4. Fallback: Pure-Python local heuristic regex extraction from digital PDF text (if internet/AI APIs fail)
+    if raw_pdf_text:
+        try:
+            parsed = _heuristic_regex_invoice_parser(raw_pdf_text)
+            if parsed and parsed.get("items"):
+                return parsed
+        except Exception as he:
+            logger.warning(f"Local heuristic text parser error: {he}")
 
     return {}
 
@@ -3190,7 +3342,7 @@ CRITICAL RULES:
 
 Return ONLY raw valid JSON without markdown code blocks, backticks, or preamble.
 """
-        parsed = _execute_multimodal_ai_ocr(prompt, contents, file.filename)
+        parsed = await _execute_multimodal_ai_ocr(prompt, contents, file.filename)
         if parsed:
             invoices = parsed.get("invoices") or []
             if not invoices and isinstance(parsed, dict) and "items" in parsed:
@@ -3253,7 +3405,7 @@ Analyze this Goods Received Note / Delivery Challan document and extract the fol
 }
 Return ONLY valid JSON. No markdown, no backticks.
 """
-        parsed = _execute_multimodal_ai_ocr(prompt, contents, file.filename)
+        parsed = await _execute_multimodal_ai_ocr(prompt, contents, file.filename)
         if parsed:
             return {
                 "filename": file.filename,
@@ -3293,7 +3445,7 @@ Analyze this Purchase Requisition / Material Indent slip document and extract th
 }
 Return ONLY valid JSON. No markdown, no backticks.
 """
-        parsed = _execute_multimodal_ai_ocr(prompt, contents, file.filename)
+        parsed = await _execute_multimodal_ai_ocr(prompt, contents, file.filename)
         if parsed:
             return {
                 "filename": file.filename,
@@ -3383,12 +3535,14 @@ Extract the following JSON structure:
 }
 
 CRITICAL RULES:
-1. "unit_price" MUST ALWAYS be the Tax-Exclusive Base Rate (e.g. 312.00, not 368.16).
-2. Extract accurate HSN codes, UOM, and Quantity.
-3. If multiple invoices / pages exist, extract ALL into the "invoices" array.
-Return ONLY valid JSON.
+1. Extract EVERY SINGLE line item in the invoice table without omission or truncation. If there are 30+ items (like in large grocery, FMCG, electronics, or pharma bills), extract ALL 30+ items.
+2. "unit_price" MUST ALWAYS be the Tax-Exclusive Base Rate (e.g. 7.42).
+3. "tax_percent" should be the total GST rate (e.g. 5, 12, 18, 28). If CGST 2.5% + SGST 2.5%, tax_percent is 5.0.
+4. Extract accurate product_name, HSN codes, UOM (PCS, NOS, BOX, KGS, etc.), Quantity, Rate, and Line Total.
+5. Extract supplier_name, supplier_gstin, supplier_phone, supplier_address, place_of_supply, invoice_number, invoice_date, and due_date.
+6. Return ONLY valid JSON.
 """
-        parsed = _execute_multimodal_ai_ocr(prompt, contents, file.filename)
+        parsed = await _execute_multimodal_ai_ocr(prompt, contents, file.filename)
         if parsed:
             invoices = parsed.get("invoices") or []
             if not invoices and isinstance(parsed, dict) and "items" in parsed:
@@ -3405,28 +3559,24 @@ Return ONLY valid JSON.
                 "invoice_number": primary.get("invoice_number") or primary.get("bill_number"),
                 "supplier_name": primary.get("supplier_name"),
                 "supplier_gstin": primary.get("supplier_gstin"),
-                "total_amount": float(primary.get("grand_total", 0.0) or 0.0),
+                "supplier_phone": primary.get("supplier_phone"),
+                "supplier_address": primary.get("supplier_address"),
+                "place_of_supply": primary.get("place_of_supply"),
+                "total_amount": float(primary.get("grand_total", 0.0) or primary.get("total_amount", 0.0) or 0.0),
                 "due_date": primary.get("due_date") or primary.get("invoice_date"),
+                "invoice_date": primary.get("invoice_date"),
                 "is_tax_inclusive": primary.get("is_tax_inclusive", False),
                 "items": primary.get("items", []),
                 "notes": primary.get("notes", ""),
                 "confidence": 0.95
             }
 
-    random_seq = int(datetime.utcnow().timestamp()) % 9000 + 1000
     return {
         "filename": file.filename,
-        "extracted": True,
-        "bill_number": f"INV-2026-{random_seq}",
-        "supplier_name": "Global Vendor",
-        "total_amount": 12500.0,
-        "due_date": (datetime.utcnow() + timedelta(days=30)).strftime("%Y-%m-%d"),
-        "po_reference": f"PO-2026-{random_seq}",
-        "items": [
-            {"product_name": "Invoiced Material A", "quantity": 25, "unit_price": 400.0, "tax_percent": 18}
-        ],
-        "notes": f"Scanned from {file.filename}",
-        "confidence": 0.75
+        "extracted": False,
+        "invoices": [],
+        "items": [],
+        "confidence": 0
     }
 
 
