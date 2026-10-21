@@ -146,6 +146,16 @@ class Settings(BaseSettings):
     demo_owner_email: str = Field(default="owner@demo.com", alias="DEMO_OWNER_EMAIL")
     demo_owner_password: str = Field(default="demo1234", alias="DEMO_OWNER_PASSWORD")
 
+    # Platform super admin
+    #
+    # Credentials for scripts/seed_platform_admin.py only. Nothing reads these
+    # at runtime: the platform service never seeds an admin at startup, because
+    # a password in this file is a password in the repository. The defaults are
+    # empty so that forgetting to set them fails loudly at the prompt rather
+    # than quietly creating a known-password account.
+    platform_admin_email: str = Field(default="", alias="PLATFORM_ADMIN_EMAIL")
+    platform_admin_password: str = Field(default="", alias="PLATFORM_ADMIN_PASSWORD")
+
     @property
     def async_database_url(self) -> str:
         """asyncpg DSN. Accepts either DATABASE_URL or the discrete POSTGRES_* fields."""

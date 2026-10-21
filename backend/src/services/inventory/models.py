@@ -211,6 +211,12 @@ class StorageLocation(ServiceBase, TimestampMixin):
     location_type: Mapped[StorageLocationType] = mapped_column(
         String(30), default=StorageLocationType.KITCHEN_STORE
     )
+    module: Mapped[str] = mapped_column(String(50), default="restaurant", index=True)
+    is_central: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    parent_location_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("storage_locations.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 

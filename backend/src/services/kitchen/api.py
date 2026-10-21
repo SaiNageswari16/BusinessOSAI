@@ -351,9 +351,9 @@ async def list_devices(identity: CurrentIdentity, db: DbDep,
 # ─── KOT tickets ─────────────────────────────────────────────────────────────
 
 @router.get("/kots", response_model=KOTListResponseModel, tags=["kds"],
-            summary="Board view: open tickets for one station")
+            summary="Board view: open tickets for kitchen")
 async def list_kots(identity: CurrentIdentity, db: DbDep,
-                    station_id: uuid.UUID,
+                    station_id: uuid.UUID | None = None,
                     outlet_id: uuid.UUID | None = None,
                     include_closed: bool = False,
                     limit: int = Query(default=100, le=500)):
@@ -366,8 +366,11 @@ async def list_kots(identity: CurrentIdentity, db: DbDep,
 
     stmt = select(KOT).where(
         KOT.tenant_id == identity.tenant_id,
-        KOT.station_id == station_id,
     )
+    if station_id is not None:
+        stmt = stmt.where(KOT.station_id == station_id)
+    if outlet_id is not None:
+        stmt = stmt.where(KOT.outlet_id == outlet_id)
     if not include_closed:
         stmt = stmt.where(KOT.status.not_in([KOTStatus.SERVED, KOTStatus.CANCELLED]))
     stmt = stmt.order_by(KOT.priority, KOT.fired_at).limit(limit)

@@ -106,6 +106,9 @@ class StorageLocationCreate(BaseModel):
     outlet_id: uuid.UUID
     name: str = Field(min_length=1, max_length=100)
     location_type: StorageLocationType = StorageLocationType.KITCHEN_STORE
+    module: str = Field(default="restaurant", max_length=50)
+    is_central: bool = False
+    parent_location_id: uuid.UUID | None = None
 
 
 class StorageLocationResponse(OrmModel):
@@ -113,6 +116,9 @@ class StorageLocationResponse(OrmModel):
     outlet_id: uuid.UUID
     name: str
     location_type: StorageLocationType
+    module: str = "restaurant"
+    is_central: bool = False
+    parent_location_id: uuid.UUID | None = None
     is_active: bool
     created_at: datetime
 
@@ -236,9 +242,87 @@ class CategoryResponse(OrmModel):
 
 
 class QuickAdjustmentCreate(BaseModel):
-    outlet_id: uuid.UUID
-    item_id: uuid.UUID
+    item_id: str
+    outlet_id: uuid.UUID | None = None
     qty_counted: float | None = None
     counted_qty: float | None = None
+    qty_delta: float | None = None
     location_id: uuid.UUID | None = None
     reason: str | None = None
+
+
+# ─── Stock Transfers (Hub & Spoke / Central to Module) ───────────────────────
+
+class StockTransferCreate(BaseModel):
+    outlet_id: uuid.UUID
+    inventory_item_id: uuid.UUID
+    source_location_id: uuid.UUID
+    destination_location_id: uuid.UUID
+    qty: float = Field(gt=0)
+    notes: str | None = None
+
+
+class StockTransferResponse(BaseModel):
+    item_id: uuid.UUID
+    item_name: str
+    source_location_id: uuid.UUID
+    source_location_name: str
+    destination_location_id: uuid.UUID
+    destination_location_name: str
+    qty: float
+    source_movement_id: uuid.UUID
+    destination_movement_id: uuid.UUID
+    transferred_at: datetime
+
+
+# ─── Global & Module Multi-Tier Inventory Rollup ─────────────────────────────
+
+class ModuleStockBreakdown(BaseModel):
+    location_id: uuid.UUID
+    location_name: str
+    module: str
+    location_type: str
+    is_central: bool
+    qty_on_hand: float
+    qty_available: float
+
+
+class GlobalItemRollup(BaseModel):
+    id: uuid.UUID
+    outlet_id: uuid.UUID | None
+    name: str
+    code: str
+    sku: str | None
+    item_type: InventoryItemType
+    standard_cost: float
+    reorder_level: float
+    is_active: bool
+    total_global_on_hand: float
+    total_global_available: float
+    central_warehouse_on_hand: float
+    module_stocks: list[ModuleStockBreakdown] = Field(default_factory=list)
+    stock_status: str  # "OK", "Low", "Critical"
+
+
+class GlobalInventoryOverview(BaseModel):
+    total_items: int
+    total_value: float
+    central_warehouse_value: float
+    module_values: dict[str, float] = Field(default_factory=dict)
+    low_stock_count: int
+    critical_stock_count: int
+    items: list[GlobalItemRollup] = Field(default_factory=list)
+
+
+# ─── Module Direct Stock Consumption (POS / Kitchen) ────────────────────────
+
+class StockConsumptionCreate(BaseModel):
+    outlet_id: uuid.UUID
+    inventory_item_id: uuid.UUID
+    location_id: uuid.UUID | None = None
+    module: str = "restaurant"
+    qty: float = Field(gt=0)
+    reference_type: str = "pos_sale"
+    reference_id: str | None = None
+    notes: str | None = None
+

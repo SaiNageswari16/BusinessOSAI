@@ -9,7 +9,14 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.services.platform.models import PlatformAdmin, PlatformAdminRole, _utcnow
+from src.services.platform.models import (
+    AccessPolicy,
+    ModuleLifecycleState,
+    PlatformAdmin,
+    PlatformAdminRole,
+    TenantModuleState,
+    _utcnow,
+)
 from src.services.platform.schemas import (
     AccessPolicyCreateRequest,
     AccessPolicyResponse,
@@ -24,6 +31,7 @@ from src.services.platform.schemas import (
     TenantModuleStateResponse,
     TenantOnboardRequest,
     TenantOnboardResponse,
+    TenantSummaryResponse,
 )
 from src.services.platform.service import PlatformService
 from src.services.shared.service_factory import get_session
@@ -389,8 +397,49 @@ async def create_policy(
 async def fleet_health(admin: Annotated[PlatformAdmin, Depends(require_platform_admin)]):
     return await PlatformService.probe_fleet_health()
 
+@router.get("/tenants", response_model=list[TenantSummaryResponse])
+async def list_all_tenants(
+    admin: Annotated[PlatformAdmin, Depends(require_platform_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    """List all enterprise tenants with their active vertical modules and status."""
+    from src.services.shared.service_factory import session_factory
+    from src.services.auth.models import Tenant as AuthTenant
 
-# ─── Tenant Onboarding Wizard ────────────────────────────────────────────────
+    auth_session_maker = session_factory("auth")
+    async with auth_session_maker() as auth_session:
+        res = await auth_session.execute(select(AuthTenant).order_by(AuthTenant.created_at.desc()))
+        auth_tenants = list(res.scalars().all())
+
+    tenant_ids = [t.id for t in auth_tenants]
+    mod_map: dict[uuid.UUID, list[str]] = {}
+    if tenant_ids:
+        mod_res = await session.execute(
+            select(TenantModuleState).where(
+                TenantModuleState.tenant_id.in_(tenant_ids),
+                TenantModuleState.state == ModuleLifecycleState.ACTIVE,
+            )
+        )
+        for m in mod_res.scalars().all():
+            mod_map.setdefault(m.tenant_id, []).append(m.plugin_id)
+
+    return [
+        {
+            "tenant_id": t.id,
+            "name": t.name,
+            "slug": t.slug,
+            "status": t.status.value if hasattr(t.status, "value") else str(t.status or "active"),
+            "plan": t.plan,
+            "contact_email": t.contact_email,
+            "active_modules": mod_map.get(
+                t.id,
+                [t.settings.get("vertical", "restaurant") if t.settings else "restaurant"],
+            ),
+            "created_at": t.created_at,
+        }
+        for t in auth_tenants
+    ]
+
 
 @router.post("/tenants/onboard", response_model=TenantOnboardResponse, status_code=201)
 async def onboard_tenant(

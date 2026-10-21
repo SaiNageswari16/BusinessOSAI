@@ -29,15 +29,25 @@ if not _dsn:
         f"@{s.postgres_host}:{s.postgres_port}/{_descriptor.db_name}"
     )
 
+from sqlalchemy import text
 from src.services.shared.service_db import ServiceDatabase
 
 db = ServiceDatabase("organization", _dsn)
+
+async def _on_startup(app):
+    async with db.engine.begin() as conn:
+        try:
+            await conn.execute(
+                text("ALTER TABLE restaurant_tables ADD COLUMN IF NOT EXISTS shape VARCHAR(30) DEFAULT 'round'")
+            )
+        except Exception as e:
+            logging.warning("Organization startup migration check: %s", e)
 
 app = create_service_app(
     descriptor=_descriptor,
     db=db,
     routers=[router],
-    on_startup=None,
+    on_startup=_on_startup,
 )
 
 if __name__ == "__main__":

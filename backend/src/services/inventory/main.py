@@ -19,10 +19,27 @@ TAGS = [
     {"name": "inventory", "description": "Items, stock, movements, wastage, adjustments"},
 ]
 
+async def _on_startup(app=None) -> None:
+    from sqlalchemy import text
+
+    async with db.engine.begin() as conn:
+        await conn.execute(
+            text("ALTER TABLE storage_locations ADD COLUMN IF NOT EXISTS module VARCHAR(50) DEFAULT 'restaurant'")
+        )
+        await conn.execute(
+            text("ALTER TABLE storage_locations ADD COLUMN IF NOT EXISTS is_central BOOLEAN DEFAULT FALSE")
+        )
+        await conn.execute(
+            text("ALTER TABLE storage_locations ADD COLUMN IF NOT EXISTS parent_location_id UUID REFERENCES storage_locations(id) ON DELETE SET NULL")
+        )
+
+
 # build_service creates this service's own database and the FastAPI app. The
 # module-level `db` is what api.py's event handlers use for their own sessions
 # — they run outside any request, so they cannot borrow a request's session.
-app, db = build_service("inventory", [inventory_router], tags=TAGS)
+app, db = build_service(
+    "inventory", [inventory_router], on_startup=_on_startup, tags=TAGS
+)
 
 
 if __name__ == "__main__":

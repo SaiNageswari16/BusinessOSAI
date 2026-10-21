@@ -9,6 +9,12 @@ const errorMiddleware = createMiddleware().server(async ({ next }) => {
     if (error != null && typeof error === "object" && "statusCode" in error) {
       throw error;
     }
+    if (
+      (error as any)?.name === "AbortError" ||
+      (error as any)?.message?.includes("aborted")
+    ) {
+      return new Response(null, { status: 499 });
+    }
     console.error(error);
     return new Response(renderErrorPage(), {
       status: 500,

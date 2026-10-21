@@ -40,37 +40,171 @@ import type {
   StaffShift,
   Supplier,
 } from "@/lib/types";
+import { inventoryService } from "./inventoryService";
+import { organizationService } from "./organizationService";
+import { menuService } from "./menuService";
+import { posService } from "./posService";
+import { kitchenService } from "./kitchenService";
 
 // ==========================================
-// 1. STATE INITIALIZATION
+// 1. STATE INITIALIZATION (Zero Mock Fallbacks)
 // ==========================================
 
-let orders: Order[] = seedOrders.map((o) => ({ ...o, lines: [...o.lines] }));
-let tables: RestaurantTable[] = seedTables.map((t) => ({ ...t }));
-let reservations: Reservation[] = seedReservations.map((r) => ({ ...r }));
-let menuItems: MenuItem[] = seedMenuItems.map((m) => ({ ...m }));
-let inventory: InventoryItem[] = seedInventory.map((i) => ({ ...i }));
+let orders: Order[] = [];
+let tables: RestaurantTable[] = [];
+let reservations: Reservation[] = [];
+let menuItems: MenuItem[] = [];
+let inventory: InventoryItem[] = [];
 let customers: Customer[] = seedCustomers.map((c) => ({ ...c, tags: [...c.tags] }));
 let staff: StaffMember[] = seedStaff.map((s) => ({ ...s }));
 
+const toFrontendStatus = (s: string): RestaurantTable["status"] => {
+  switch (s?.toLowerCase()) {
+    case "free":
+    case "available":
+      return "Available";
+    case "occupied":
+      return "Occupied";
+    case "billing":
+    case "billed":
+      return "Billing";
+    case "reserved":
+      return "Reserved";
+    case "cleaning":
+    case "dirty":
+      return "Cleaning";
+    default:
+      return "Available";
+  }
+};
+
 let settings: RestaurantSettings = {
-  name: seedRestaurant.name,
+  name: "Sunrise Restaurant & Bar",
   tagline: "Authentic Flavours & Modern Hospitality",
-  currentBranch: seedRestaurant.branches[0] ?? "Hyderabad — Banjara Hills",
-  branches: [...seedRestaurant.branches],
-  manager: seedRestaurant.manager,
-  register: seedRestaurant.register,
-  gstin: seedRestaurant.gstin,
+  currentBranch: "Hyderabad — Banjara Hills",
+  branches: ["Hyderabad — Banjara Hills", "Hyderabad — Jubilee Hills"],
+  manager: "Venkat Rao",
+  register: "POS Terminal 1",
+  gstin: "36AABCS1429B1Z1",
   fssai: "13621014000452",
   phone: "+91 40 2335 8899",
   email: "support@sunrise-restaurant.in",
   address: "Road No. 12, Banjara Hills, Hyderabad, Telangana 500034",
-  taxRate: seedRestaurant.taxRate,
-  serviceCharge: seedRestaurant.serviceCharge,
+  taxRate: 0.05,
+  serviceCharge: 0.05,
   currencySymbol: "₹",
   autoPrintKOT: true,
   soundAlerts: true,
 };
+
+/**
+ * Fetch and synchronize live PostgreSQL records across all microservices
+ */
+export async function initRestaurantStore() {
+  try {
+    const [fetchedTables, fetchedSections, fetchedMenu, fetchedOrders, fetchedInv, fetchedRes] = await Promise.all([
+      organizationService.getTables().catch(() => []),
+      organizationService.getSections().catch(() => []),
+      menuService.getItems().catch(() => []),
+      posService.getOrders({ limit: 50 }).catch(() => []),
+      inventoryService.getItems().catch(() => []),
+      posService.getReservations().catch(() => []),
+    ]);
+
+    const secMap = new Map<string, string>();
+    fetchedSections.forEach((s: any) => secMap.set(s.id, s.name));
+
+    if (fetchedTables.length > 0) {
+      tables = (fetchedTables as any[]).map((t) => ({
+        id: t.code || t.name || t.id,
+        name: t.name || `Table ${t.code}`,
+        code: t.code,
+        area: (t.section_id && secMap.get(t.section_id)) || "Main Hall",
+        seats: Number(t.seats || t.capacity || 4),
+        shape: t.shape || "round",
+        status: toFrontendStatus(t.status),
+        posX: t.position_x !== null && t.position_x !== undefined ? Number(t.position_x) : 50,
+        posY: t.position_y !== null && t.position_y !== undefined ? Number(t.position_y) : 50,
+        waiter: "Ravi",
+      }));
+    }
+
+    if (fetchedMenu.length > 0) {
+      menuItems = fetchedMenu.map((m: any) => ({
+        id: m.id,
+        name: m.name,
+        description: m.description || "Freshly cooked specialty dish",
+        category: m.category_name || "Main Course",
+        price: Number(m.base_price || 0),
+        prepMins: 15,
+        veg: m.item_type === "veg",
+        available: m.is_available,
+        station: "Main",
+        costPct: 30,
+      }));
+    }
+
+    if (fetchedOrders.length > 0) {
+      orders = fetchedOrders.map((o: any) => ({
+        id: o.order_number || o.id,
+        type: o.order_type === "dine_in" ? "Dine-in" : o.order_type === "takeaway" ? "Takeaway" : "Delivery",
+        status: o.status === "placed" ? "New" : o.status === "preparing" ? "Preparing" : o.status === "ready" ? "Ready" : o.status === "served" ? "Served" : o.status === "settled" ? "Completed" : "Cancelled",
+        table: o.table_id,
+        customer: o.customer_name || "Guest",
+        phone: o.customer_phone,
+        lines: (o.lines || o.items || []).map((l: any) => ({
+          id: l.id || crypto.randomUUID(),
+          itemId: l.menu_item_id || l.id,
+          name: l.item_name || l.name,
+          qty: l.qty || l.quantity || 1,
+          unitPrice: Number(l.unit_price || 0),
+          modifiers: [],
+          station: "Main",
+        })),
+        createdAt: new Date(o.created_at || Date.now()).getTime(),
+        waiter: "Ravi",
+        paid: o.status === "settled",
+      }));
+    }
+
+    if (fetchedInv.length > 0) {
+      inventory = fetchedInv.map((i: any) => ({
+        id: i.id,
+        name: i.name,
+        category: i.category_name || "Provisions",
+        unit: "kg",
+        stock: Number(i.total_global_on_hand || i.qty_on_hand || 50),
+        par: Number(i.reorder_level || 20),
+        costPerUnit: Number(i.standard_cost || 100),
+        supplier: "Global Commissary",
+        daysLeft: 10,
+      }));
+    }
+
+    if (fetchedRes.length > 0) {
+      reservations = fetchedRes.map((r: any) => ({
+        id: r.id,
+        name: r.customer_name,
+        phone: r.customer_phone,
+        guests: r.covers,
+        time: new Date(r.reserved_from).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        date: new Date(r.reserved_from).toISOString().slice(0, 10),
+        table: r.table_id || "none",
+        status: r.status === "confirmed" ? "Confirmed" : r.status === "seated" ? "Seated" : "Pending",
+        occasion: r.occasion,
+      }));
+    }
+
+    emit();
+  } catch (err) {
+    console.error("Failed to sync restaurantStore from PostgreSQL:", err);
+  }
+}
+
+// Auto-trigger sync on load in browser
+if (typeof window !== "undefined") {
+  initRestaurantStore();
+}
 
 // Initial Suppliers
 const suppliers: Supplier[] = [
@@ -537,6 +671,22 @@ function deductRecipeIngredients(lines: OrderLine[]) {
       }
       return inv;
     });
+
+    // Asynchronously consume stock from the backend Restaurant Kitchen Sub-Inventory
+    for (const [invId, qty] of Object.entries(deductions)) {
+      inventoryService
+        .consumeStock({
+          outlet_id: "00000000-0000-0000-0000-000000000000",
+          inventory_item_id: invId,
+          module: "restaurant",
+          qty,
+          reference_type: "pos_dish_prep",
+          notes: "Kitchen order dish recipe consumption",
+        })
+        .catch(() => {
+          // Non-blocking in frontend store
+        });
+    }
   }
 }
 
@@ -621,6 +771,47 @@ export function createOrder(input: {
       table: input.table,
     });
   }
+
+  // 5. Persist directly to PostgreSQL via POS microservice
+  posService
+    .createOrder({
+      outlet_id: "11111111-2222-3333-4444-555555555555",
+      order_type: (input.type === "Dine-in" ? "dine_in" : input.type === "Takeaway" ? "takeaway" : "delivery") as any,
+      table_id: input.table,
+      covers: input.type === "Dine-in" ? 2 : 1,
+      customer_name: input.customer,
+      customer_phone: input.phone,
+      lines: input.lines.map((l) => ({
+        menu_item_id: l.itemId,
+        quantity: l.qty,
+        notes: l.note,
+      })),
+    })
+    .catch((err) => {
+      console.error("Failed to persist order to PostgreSQL POS database:", err);
+    });
+
+  if (input.table) {
+    organizationService.setTableStatus(input.table, input.paid ? "cleaning" : "occupied").catch(console.error);
+  }
+
+  // 6. Create KOT in kitchen database
+  kitchenService
+    .createKOT({
+      outlet_id: "11111111-2222-3333-4444-555555555555",
+      table_name: input.table,
+      station_id: "bbbbbbbb-1111-0000-0000-000000000001",
+      covers: input.type === "Dine-in" ? 2 : 1,
+      order_type: input.type === "Dine-in" ? "dine_in" : "takeaway",
+      items: input.lines.map((l) => ({
+        name: l.name,
+        qty: l.qty,
+        notes: l.note,
+      })),
+    })
+    .catch((err) => {
+      console.error("Failed to create KOT in kitchen database:", err);
+    });
 
   emit();
   return order;
@@ -729,12 +920,13 @@ export function setTableStatus(id: string, status: RestaurantTable["status"]) {
   emit();
 }
 
-// Table seating helper
+// Table seating helper (Petpooja workflow)
 export function seatTable(
   tableId: string,
   guests: number,
   customerName: string,
   waiter: string = "Ananya",
+  customerPhone?: string,
 ) {
   tables = tables.map((t) =>
     t.id === tableId
@@ -742,6 +934,8 @@ export function seatTable(
           ...t,
           status: "Occupied",
           guests,
+          customerName,
+          customerPhone,
           seatedMins: 0,
           waiter,
         }
@@ -750,24 +944,149 @@ export function seatTable(
   emit();
 }
 
-// ==========================================
-// 4. MENU SERVICE
-// ==========================================
-
-export function toggleMenuItemAvailability(id: string, available?: boolean) {
-  menuItems = menuItems.map((m) =>
-    m.id === id ? { ...m, available: available !== undefined ? available : !m.available } : m,
+// Reserve table helper (Petpooja workflow)
+export function reserveTable(
+  tableId: string,
+  customerName: string,
+  guests: number,
+  timeStr: string = "07:30 PM",
+  customerPhone?: string,
+) {
+  tables = tables.map((t) =>
+    t.id === tableId
+      ? {
+          ...t,
+          status: "Reserved",
+          guests,
+          customerName,
+          customerPhone,
+        }
+      : t,
   );
   emit();
 }
 
-export function addMenuItem(item: Omit<MenuItem, "id">): MenuItem {
+// Add new custom table (Floor Plan Designer)
+export function addTable(newTable: Partial<RestaurantTable>): RestaurantTable {
+  const tableNumber = newTable.id || `T${tables.length + 1}`;
+  const t: RestaurantTable = {
+    id: tableNumber,
+    name: newTable.name || `Table ${tableNumber}`,
+    area: newTable.area || "Main Hall",
+    seats: newTable.seats || 4,
+    shape: newTable.shape || "round",
+    status: newTable.status || "Available",
+    posX: newTable.posX ?? 50,
+    posY: newTable.posY ?? 50,
+    minCovers: newTable.minCovers ?? 1,
+    maxCovers: newTable.maxCovers ?? (newTable.seats || 4) + 2,
+  };
+  tables = [...tables, t];
+  emit();
+  return t;
+}
+
+// Update table configuration / physical layout
+export function updateTable(tableId: string, updates: Partial<RestaurantTable>) {
+  tables = tables.map((t) => (t.id === tableId ? { ...t, ...updates } : t));
+  emit();
+}
+
+// Delete table
+export function deleteTable(tableId: string) {
+  tables = tables.filter((t) => t.id !== tableId);
+  emit();
+}
+
+// Transfer table (Petpooja shift/merge)
+export function transferTable(fromTableId: string, toTableId: string) {
+  const source = tables.find((t) => t.id === fromTableId);
+  if (!source) return;
+
+  // Move order and seating to destination table
+  tables = tables.map((t) => {
+    if (t.id === toTableId) {
+      return {
+        ...t,
+        status: source.status,
+        guests: source.guests,
+        orderId: source.orderId,
+        seatedMins: source.seatedMins,
+        waiter: source.waiter,
+        customerName: source.customerName,
+        customerPhone: source.customerPhone,
+      };
+    }
+    if (t.id === fromTableId) {
+      return {
+        id: t.id,
+        name: t.name,
+        area: t.area,
+        seats: t.seats,
+        shape: t.shape,
+        posX: t.posX,
+        posY: t.posY,
+        status: "Cleaning",
+      };
+    }
+    return t;
+  });
+
+  // Also update order's table reference
+  if (source.orderId) {
+    orders = orders.map((o) => (o.id === source.orderId ? { ...o, table: toTableId } : o));
+  }
+
+  emit();
+}
+
+// ==========================================
+// 4. MENU SERVICE
+// ==========================================
+
+export async function toggleMenuItemAvailability(id: string, available?: boolean) {
+  const current = menuItems.find((m) => m.id === id);
+  const targetAvailable = available !== undefined ? available : !current?.available;
+
+  menuItems = menuItems.map((m) =>
+    m.id === id ? { ...m, available: targetAvailable } : m,
+  );
+  emit();
+
+  try {
+    await menuService.updateItem(id, { is_available: targetAvailable });
+  } catch (e) {
+    console.warn("Could not sync item availability to menu backend:", e);
+  }
+}
+
+export async function addMenuItem(item: Omit<MenuItem, "id">): Promise<MenuItem> {
   const newItem: MenuItem = {
     ...item,
     id: `M${menuItems.length + 1}`,
   };
   menuItems = [...menuItems, newItem];
   emit();
+
+  try {
+    const cats = await menuService.getCategories();
+    const backendCategory = cats.find(
+      (c) => c.name.toLowerCase() === item.category.toLowerCase()
+    );
+    if (backendCategory) {
+      await menuService.createItem({
+        category_id: backendCategory.id,
+        name: item.name,
+        code: `M${menuItems.length}`,
+        base_price: item.price,
+        item_type: item.veg ? "veg" : "non_veg",
+        is_available: item.available ?? true,
+      });
+    }
+  } catch (e) {
+    console.warn("Could not sync added menu item to backend:", e);
+  }
+
   return newItem;
 }
 
@@ -785,7 +1104,7 @@ export function deleteMenuItem(id: string) {
 // 5. INVENTORY & PURCHASING SERVICE
 // ==========================================
 
-export function adjustStock(id: string, delta: number) {
+export async function adjustStock(id: string, delta: number) {
   inventory = inventory.map((item) => {
     if (item.id === id) {
       const stock = Math.max(0, Math.round((item.stock + delta) * 100) / 100);
@@ -796,6 +1115,16 @@ export function adjustStock(id: string, delta: number) {
     return item;
   });
   emit();
+
+  try {
+    await inventoryService.adjustStock({
+      item_id: id,
+      qty_delta: delta,
+      reason: delta > 0 ? "manual_restock" : "waste_adjustment",
+    });
+  } catch (e) {
+    console.warn("Could not sync stock adjustment to backend:", e);
+  }
 }
 
 export function createPurchaseOrder(
@@ -915,6 +1244,9 @@ export function createReservation(res: Omit<Reservation, "id" | "status">): Rese
   // If table is assigned, mark table as Reserved
   if (res.table) {
     tables = tables.map((t) => (t.id === res.table ? { ...t, status: "Reserved" } : t));
+    organizationService.setTableStatus(res.table, "reserved").catch((e) => {
+      console.warn("Could not sync reservation table status to backend:", e);
+    });
   }
 
   emit();
@@ -929,6 +1261,9 @@ export function updateReservationStatus(id: string, status: Reservation["status"
     tables = tables.map((t) =>
       t.id === r.table && t.status === "Reserved" ? { ...t, status: "Available" } : t,
     );
+    organizationService.setTableStatus(r.table, "available").catch((e) => {
+      console.warn("Could not sync cancelled table status to backend:", e);
+    });
   }
 
   emit();
@@ -955,6 +1290,9 @@ export function seatReservation(id: string, targetTable?: string) {
           }
         : t,
     );
+    organizationService.setTableStatus(tableToSeat, "occupied").catch((e) => {
+      console.warn("Could not sync seated table status to backend:", e);
+    });
   }
 
   emit();

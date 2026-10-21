@@ -26,13 +26,19 @@ from src.services.inventory.models import (
     MovementType,
     StockAdjustment,
     StockMovement,
+    StorageLocation,
+    StorageLocationType,
     WastageLog,
     WastageReason,
     status_value,
 )
 from src.services.inventory.schemas import (
     DeductionResult,
+    GlobalInventoryOverview,
+    GlobalItemRollup,
+    ModuleStockBreakdown,
     RecipeLineSnapshot,
+    StockTransferResponse,
 )
 
 FOUR_PLACES = 4
@@ -160,7 +166,7 @@ async def record_movement(
         raise InventoryError("Movement quantity cannot be zero")
 
     stock = await stock_for(db, tenant_id, outlet_id, item.id, location_id)
-    new_on_hand = _q(stock.qty_on_hand + qty)
+    new_on_hand = _q(float(stock.qty_on_hand) + qty)
 
     if check_negative and new_on_hand < 0 and not item.allow_negative_stock:
         raise InventoryError(
@@ -174,13 +180,13 @@ async def record_movement(
         # average without changing it.
         total_units = float(stock.qty_on_hand) + qty
         if total_units > 0:
-            avg = (_q(stock.qty_on_hand * stock.avg_cost)
+            avg = (_q(float(stock.qty_on_hand) * float(stock.avg_cost))
                    + _q(qty * unit_cost)) / total_units
             stock.avg_cost = _q(avg)
         stock.last_cost = _q(unit_cost)
 
     stock.qty_on_hand = new_on_hand
-    stock.qty_available = _q(new_on_hand - stock.qty_reserved)
+    stock.qty_available = _q(new_on_hand - float(stock.qty_reserved))
 
     movement = StockMovement(
         tenant_id=tenant_id,
@@ -491,3 +497,334 @@ async def stock_value(db: AsyncSession, tenant_id: uuid.UUID) -> float:
         )).where(InventoryStock.tenant_id == tenant_id)
     )
     return round(float(total or 0), 2)
+
+
+# ─── Hub & Spoke Multi-Tier Topology (Global Central & Module Sub-Inventories) ─
+
+async def bootstrap_tenant_locations(
+    db: AsyncSession, tenant_id: uuid.UUID, outlet_id: uuid.UUID
+) -> list[StorageLocation]:
+    """Ensure standard Global Hub + Module Spoke locations exist for a tenant.
+
+    Hierarchy:
+      * Central Warehouse (module="central", is_central=True, parent_location_id=None)
+        * Restaurant Kitchen Store (module="restaurant", is_central=False, parent=Central)
+        * Bar & Beverage Store (module="bar", is_central=False, parent=Central)
+    """
+    stmt = select(StorageLocation).where(
+        StorageLocation.tenant_id == tenant_id,
+        StorageLocation.outlet_id == outlet_id,
+    )
+    existing = list((await db.execute(stmt)).scalars().all())
+
+    central = next((loc for loc in existing if loc.is_central or loc.location_type == StorageLocationType.WAREHOUSE), None)
+    if central is None:
+        central = StorageLocation(
+            tenant_id=tenant_id,
+            outlet_id=outlet_id,
+            name="Central Warehouse (Global Hub)",
+            location_type=StorageLocationType.WAREHOUSE,
+            module="central",
+            is_central=True,
+            parent_location_id=None,
+        )
+        db.add(central)
+        await db.flush()
+        existing.append(central)
+
+    # Restaurant Kitchen Store
+    rest_loc = next((loc for loc in existing if loc.module == "restaurant" and not loc.is_central), None)
+    if rest_loc is None:
+        rest_loc = StorageLocation(
+            tenant_id=tenant_id,
+            outlet_id=outlet_id,
+            name="Restaurant Kitchen Store",
+            location_type=StorageLocationType.KITCHEN_STORE,
+            module="restaurant",
+            is_central=False,
+            parent_location_id=central.id,
+        )
+        db.add(rest_loc)
+        await db.flush()
+        existing.append(rest_loc)
+
+    # Bar & Beverage Store
+    bar_loc = next((loc for loc in existing if loc.module == "bar" and not loc.is_central), None)
+    if bar_loc is None:
+        bar_loc = StorageLocation(
+            tenant_id=tenant_id,
+            outlet_id=outlet_id,
+            name="Bar & Beverage Store",
+            location_type=StorageLocationType.BAR_STORE,
+            module="bar",
+            is_central=False,
+            parent_location_id=central.id,
+        )
+        db.add(bar_loc)
+        await db.flush()
+        existing.append(bar_loc)
+
+    return existing
+
+
+async def transfer_stock(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    outlet_id: uuid.UUID,
+    source_location_id: uuid.UUID,
+    destination_location_id: uuid.UUID,
+    item: InventoryItem,
+    qty: float,
+    *,
+    notes: str | None = None,
+    created_by: uuid.UUID | None = None,
+) -> StockTransferResponse:
+    """Transfer stock between Central Warehouse and Module Sub-Inventories.
+
+    Writes an atomic pair of ledger entries:
+      1. TRANSFER_OUT at source location
+      2. TRANSFER_IN at destination location
+    """
+    if source_location_id == destination_location_id:
+        raise InventoryError("Source and destination locations cannot be identical")
+
+    transfer_qty = _q(qty)
+    if transfer_qty <= 0:
+        raise InventoryError("Transfer quantity must be greater than zero")
+
+    # Fetch locations for names and validation
+    src_loc = await db.scalar(
+        select(StorageLocation).where(
+            StorageLocation.id == source_location_id,
+            StorageLocation.tenant_id == tenant_id,
+        )
+    )
+    dst_loc = await db.scalar(
+        select(StorageLocation).where(
+            StorageLocation.id == destination_location_id,
+            StorageLocation.tenant_id == tenant_id,
+        )
+    )
+    if src_loc is None:
+        raise InventoryError(f"Source storage location '{source_location_id}' not found")
+    if dst_loc is None:
+        raise InventoryError(f"Destination storage location '{destination_location_id}' not found")
+
+    src_stock = await stock_for(db, tenant_id, outlet_id, item.id, source_location_id)
+    if float(src_stock.qty_on_hand) < transfer_qty and not item.allow_negative_stock:
+        raise InventoryError(
+            f"Insufficient stock in '{src_loc.name}' for {item.name}: "
+            f"on hand {src_stock.qty_on_hand}, requested transfer {transfer_qty}"
+        )
+
+    unit_cost = float(src_stock.avg_cost or item.standard_cost or 0)
+
+    # 1. Deduct from source
+    transfer_ref = f"TRF-{uuid.uuid4().hex[:8].upper()}"
+    out_move = await record_movement(
+        db, tenant_id, outlet_id, item, -transfer_qty, MovementType.TRANSFER_OUT,
+        location_id=source_location_id,
+        unit_cost=unit_cost,
+        reference_type="internal_transfer",
+        reference_id=transfer_ref,
+        notes=f"Transfer to {dst_loc.name}: {notes or ''}".strip(),
+        created_by=created_by,
+        check_negative=True,
+    )
+
+    # 2. Add to destination
+    in_move = await record_movement(
+        db, tenant_id, outlet_id, item, transfer_qty, MovementType.TRANSFER_IN,
+        location_id=destination_location_id,
+        unit_cost=unit_cost,
+        reference_type="internal_transfer",
+        reference_id=transfer_ref,
+        notes=f"Transfer from {src_loc.name}: {notes or ''}".strip(),
+        created_by=created_by,
+        check_negative=False,
+    )
+
+    return StockTransferResponse(
+        item_id=item.id,
+        item_name=item.name,
+        source_location_id=source_location_id,
+        source_location_name=src_loc.name,
+        destination_location_id=destination_location_id,
+        destination_location_name=dst_loc.name,
+        qty=transfer_qty,
+        source_movement_id=out_move.id,
+        destination_movement_id=in_move.id,
+        transferred_at=_now(),
+    )
+
+
+async def consume_module_stock(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    outlet_id: uuid.UUID,
+    item: InventoryItem,
+    qty: float,
+    *,
+    module: str = "restaurant",
+    location_id: uuid.UUID | None = None,
+    reference_type: str = "pos_sale",
+    reference_id: str | None = None,
+    notes: str | None = None,
+    created_by: uuid.UUID | None = None,
+) -> StockMovement:
+    """Consume stock from a specific module's sub-inventory."""
+    consume_qty = _q(qty)
+    if consume_qty <= 0:
+        raise InventoryError("Consumption quantity must be greater than zero")
+
+    target_loc_id = location_id
+    if target_loc_id is None:
+        loc = await db.scalar(
+            select(StorageLocation).where(
+                StorageLocation.tenant_id == tenant_id,
+                StorageLocation.outlet_id == outlet_id,
+                StorageLocation.module == module,
+                StorageLocation.is_active.is_(True),
+            )
+        )
+        if loc is not None:
+            target_loc_id = loc.id
+        else:
+            target_loc_id = item.default_location_id
+
+    st = await stock_for(db, tenant_id, outlet_id, item.id, target_loc_id)
+    unit_cost = float(st.avg_cost or item.standard_cost or 0)
+
+    return await record_movement(
+        db, tenant_id, outlet_id, item, -consume_qty, MovementType.CONSUMPTION,
+        location_id=target_loc_id,
+        unit_cost=unit_cost,
+        reference_type=reference_type,
+        reference_id=reference_id,
+        notes=notes or f"Consumed by {module} module",
+        created_by=created_by,
+        check_negative=False,
+    )
+
+
+async def get_global_rollup(
+    db: AsyncSession, tenant_id: uuid.UUID, outlet_id: uuid.UUID | None = None
+) -> GlobalInventoryOverview:
+    """Assemble an enterprise multi-tier inventory overview.
+
+    Calculates:
+      * Global total on-hand & available
+      * Central warehouse inventory
+      * Breakdown across each module's sub-inventory (Restaurant Kitchen, Bar, etc.)
+      * Valuation by module and central warehouse
+      * Critical/Low par statuses
+    """
+    # 1. Fetch all locations
+    loc_stmt = select(StorageLocation).where(StorageLocation.tenant_id == tenant_id)
+    if outlet_id:
+        loc_stmt = loc_stmt.where(StorageLocation.outlet_id == outlet_id)
+    locations = list((await db.execute(loc_stmt)).scalars().all())
+    locations_by_id = {loc.id: loc for loc in locations}
+
+    # 2. Fetch all items
+    item_stmt = select(InventoryItem).where(InventoryItem.tenant_id == tenant_id)
+    if outlet_id:
+        item_stmt = item_stmt.where(InventoryItem.outlet_id == outlet_id)
+    items = list((await db.execute(item_stmt)).scalars().all())
+
+    # 3. Fetch all stocks
+    stock_stmt = select(InventoryStock).where(InventoryStock.tenant_id == tenant_id)
+    if outlet_id:
+        stock_stmt = stock_stmt.where(InventoryStock.outlet_id == outlet_id)
+    stocks = list((await db.execute(stock_stmt)).scalars().all())
+
+    stocks_by_item: dict[uuid.UUID, list[InventoryStock]] = {}
+    for st in stocks:
+        stocks_by_item.setdefault(st.inventory_item_id, []).append(st)
+
+    total_value = 0.0
+    central_value = 0.0
+    module_values: dict[str, float] = {}
+    low_count = 0
+    crit_count = 0
+
+    item_rollups: list[GlobalItemRollup] = []
+
+    for item in items:
+        item_stocks = stocks_by_item.get(item.id, [])
+        global_on_hand = _q(sum(float(s.qty_on_hand) for s in item_stocks))
+        global_avail = _q(sum(float(s.qty_on_hand) - float(s.qty_reserved) for s in item_stocks))
+
+        central_on_hand = 0.0
+        module_breakdowns: list[ModuleStockBreakdown] = []
+
+        for s in item_stocks:
+            loc = locations_by_id.get(s.location_id) if s.location_id else None
+            loc_name = loc.name if loc else "Unassigned / General"
+            loc_module = loc.module if loc else "general"
+            loc_type = loc.location_type.value if loc and hasattr(loc.location_type, "value") else (str(loc.location_type) if loc else "general")
+            is_cent = bool(loc and (loc.is_central or loc_type == "warehouse"))
+
+            on_hand = float(s.qty_on_hand)
+            avail = float(s.qty_on_hand) - float(s.qty_reserved)
+            cost = float(s.avg_cost or item.standard_cost or 0)
+            val = round(on_hand * cost, 2)
+
+            total_value += val
+            if is_cent:
+                central_on_hand += on_hand
+                central_value += val
+            else:
+                module_values[loc_module] = module_values.get(loc_module, 0.0) + val
+
+            if s.location_id:
+                module_breakdowns.append(
+                    ModuleStockBreakdown(
+                        location_id=s.location_id,
+                        location_name=loc_name,
+                        module=loc_module,
+                        location_type=loc_type,
+                        is_central=is_cent,
+                        qty_on_hand=_q(on_hand),
+                        qty_available=_q(avail),
+                    )
+                )
+
+        reorder = float(item.reorder_level or 0)
+        status_label = "OK"
+        if global_avail <= reorder * 0.5:
+            status_label = "Critical"
+            crit_count += 1
+        elif global_avail <= reorder:
+            status_label = "Low"
+            low_count += 1
+
+        item_rollups.append(
+            GlobalItemRollup(
+                id=item.id,
+                outlet_id=item.outlet_id,
+                name=item.name,
+                code=item.code,
+                sku=item.sku,
+                item_type=item.item_type,
+                standard_cost=float(item.standard_cost),
+                reorder_level=reorder,
+                is_active=item.is_active,
+                total_global_on_hand=global_on_hand,
+                total_global_available=global_avail,
+                central_warehouse_on_hand=_q(central_on_hand),
+                module_stocks=module_breakdowns,
+                stock_status=status_label,
+            )
+        )
+
+    return GlobalInventoryOverview(
+        total_items=len(items),
+        total_value=round(total_value, 2),
+        central_warehouse_value=round(central_value, 2),
+        module_values={k: round(v, 2) for k, v in module_values.items()},
+        low_stock_count=low_count,
+        critical_stock_count=crit_count,
+        items=item_rollups,
+    )
+

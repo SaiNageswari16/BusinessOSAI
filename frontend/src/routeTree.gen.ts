@@ -12,16 +12,27 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AiRouteImport } from './routes/ai'
 import { Route as CrmRouteImport } from './routes/crm'
+import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as GymRouteImport } from './routes/gym'
+import { Route as HotelRouteImport } from './routes/hotel'
 import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as KitchenRouteImport } from './routes/kitchen'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as MenuRouteImport } from './routes/menu'
 import { Route as OperationsRouteImport } from './routes/operations'
 import { Route as OrdersRouteImport } from './routes/orders'
+import { Route as PlatformRouteImport } from './routes/platform'
 import { Route as PosRouteImport } from './routes/pos'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as ReservationsRouteImport } from './routes/reservations'
+import { Route as RetailRouteImport } from './routes/retail'
+import { Route as SalonRouteImport } from './routes/salon'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as StaffRouteImport } from './routes/staff'
+import { Route as PlatformIndexRouteImport } from './routes/platform/index'
+import { Route as PlatformModulesRouteImport } from './routes/platform/modules'
+import { Route as PlatformPermissionsRouteImport } from './routes/platform/permissions'
+import { Route as PlatformTenantsRouteImport } from './routes/platform/tenants'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -38,6 +49,21 @@ const CrmRoute = CrmRouteImport.update({
   path: '/crm',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GymRoute = GymRouteImport.update({
+  id: '/gym',
+  path: '/gym',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HotelRoute = HotelRouteImport.update({
+  id: '/hotel',
+  path: '/hotel',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InventoryRoute = InventoryRouteImport.update({
   id: '/inventory',
   path: '/inventory',
@@ -46,6 +72,11 @@ const InventoryRoute = InventoryRouteImport.update({
 const KitchenRoute = KitchenRouteImport.update({
   id: '/kitchen',
   path: '/kitchen',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MenuRoute = MenuRouteImport.update({
@@ -63,6 +94,11 @@ const OrdersRoute = OrdersRouteImport.update({
   path: '/orders',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PlatformRoute = PlatformRouteImport.update({
+  id: '/platform',
+  path: '/platform',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PosRoute = PosRouteImport.update({
   id: '/pos',
   path: '/pos',
@@ -78,6 +114,16 @@ const ReservationsRoute = ReservationsRouteImport.update({
   path: '/reservations',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RetailRoute = RetailRouteImport.update({
+  id: '/retail',
+  path: '/retail',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SalonRoute = SalonRouteImport.update({
+  id: '/salon',
+  path: '/salon',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -88,52 +134,104 @@ const StaffRoute = StaffRouteImport.update({
   path: '/staff',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PlatformIndexRoute = PlatformIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformModulesRoute = PlatformModulesRouteImport.update({
+  id: '/modules',
+  path: '/modules',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformPermissionsRoute = PlatformPermissionsRouteImport.update({
+  id: '/permissions',
+  path: '/permissions',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformTenantsRoute = PlatformTenantsRouteImport.update({
+  id: '/tenants',
+  path: '/tenants',
+  getParentRoute: () => PlatformRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ai': typeof AiRoute
   '/crm': typeof CrmRoute
+  '/dashboard': typeof DashboardRoute
+  '/gym': typeof GymRoute
+  '/hotel': typeof HotelRoute
   '/inventory': typeof InventoryRoute
   '/kitchen': typeof KitchenRoute
+  '/login': typeof LoginRoute
   '/menu': typeof MenuRoute
   '/operations': typeof OperationsRoute
   '/orders': typeof OrdersRoute
+  '/platform': typeof PlatformRouteWithChildren
   '/pos': typeof PosRoute
   '/reports': typeof ReportsRoute
   '/reservations': typeof ReservationsRoute
+  '/retail': typeof RetailRoute
+  '/salon': typeof SalonRoute
   '/settings': typeof SettingsRoute
   '/staff': typeof StaffRoute
+  '/platform/modules': typeof PlatformModulesRoute
+  '/platform/permissions': typeof PlatformPermissionsRoute
+  '/platform/tenants': typeof PlatformTenantsRoute
+  '/platform/': typeof PlatformIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ai': typeof AiRoute
   '/crm': typeof CrmRoute
+  '/dashboard': typeof DashboardRoute
+  '/gym': typeof GymRoute
+  '/hotel': typeof HotelRoute
   '/inventory': typeof InventoryRoute
   '/kitchen': typeof KitchenRoute
+  '/login': typeof LoginRoute
   '/menu': typeof MenuRoute
   '/operations': typeof OperationsRoute
   '/orders': typeof OrdersRoute
   '/pos': typeof PosRoute
   '/reports': typeof ReportsRoute
   '/reservations': typeof ReservationsRoute
+  '/retail': typeof RetailRoute
+  '/salon': typeof SalonRoute
   '/settings': typeof SettingsRoute
   '/staff': typeof StaffRoute
+  '/platform/modules': typeof PlatformModulesRoute
+  '/platform/permissions': typeof PlatformPermissionsRoute
+  '/platform/tenants': typeof PlatformTenantsRoute
+  '/platform': typeof PlatformIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/ai': typeof AiRoute
   '/crm': typeof CrmRoute
+  '/dashboard': typeof DashboardRoute
+  '/gym': typeof GymRoute
+  '/hotel': typeof HotelRoute
   '/inventory': typeof InventoryRoute
   '/kitchen': typeof KitchenRoute
+  '/login': typeof LoginRoute
   '/menu': typeof MenuRoute
   '/operations': typeof OperationsRoute
   '/orders': typeof OrdersRoute
+  '/platform': typeof PlatformRouteWithChildren
   '/pos': typeof PosRoute
   '/reports': typeof ReportsRoute
   '/reservations': typeof ReservationsRoute
+  '/retail': typeof RetailRoute
+  '/salon': typeof SalonRoute
   '/settings': typeof SettingsRoute
   '/staff': typeof StaffRoute
+  '/platform/modules': typeof PlatformModulesRoute
+  '/platform/permissions': typeof PlatformPermissionsRoute
+  '/platform/tenants': typeof PlatformTenantsRoute
+  '/platform/': typeof PlatformIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -141,60 +239,99 @@ export interface FileRouteTypes {
     | '/'
     | '/ai'
     | '/crm'
+    | '/dashboard'
+    | '/gym'
+    | '/hotel'
     | '/inventory'
     | '/kitchen'
+    | '/login'
     | '/menu'
     | '/operations'
     | '/orders'
+    | '/platform'
     | '/pos'
     | '/reports'
     | '/reservations'
+    | '/retail'
+    | '/salon'
     | '/settings'
     | '/staff'
+    | '/platform/modules'
+    | '/platform/permissions'
+    | '/platform/tenants'
+    | '/platform/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/ai'
     | '/crm'
+    | '/dashboard'
+    | '/gym'
+    | '/hotel'
     | '/inventory'
     | '/kitchen'
+    | '/login'
     | '/menu'
     | '/operations'
     | '/orders'
     | '/pos'
     | '/reports'
     | '/reservations'
+    | '/retail'
+    | '/salon'
     | '/settings'
     | '/staff'
+    | '/platform/modules'
+    | '/platform/permissions'
+    | '/platform/tenants'
+    | '/platform'
   id:
     | '__root__'
     | '/'
     | '/ai'
     | '/crm'
+    | '/dashboard'
+    | '/gym'
+    | '/hotel'
     | '/inventory'
     | '/kitchen'
+    | '/login'
     | '/menu'
     | '/operations'
     | '/orders'
+    | '/platform'
     | '/pos'
     | '/reports'
     | '/reservations'
+    | '/retail'
+    | '/salon'
     | '/settings'
     | '/staff'
+    | '/platform/modules'
+    | '/platform/permissions'
+    | '/platform/tenants'
+    | '/platform/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AiRoute: typeof AiRoute
   CrmRoute: typeof CrmRoute
+  DashboardRoute: typeof DashboardRoute
+  GymRoute: typeof GymRoute
+  HotelRoute: typeof HotelRoute
   InventoryRoute: typeof InventoryRoute
   KitchenRoute: typeof KitchenRoute
+  LoginRoute: typeof LoginRoute
   MenuRoute: typeof MenuRoute
   OperationsRoute: typeof OperationsRoute
   OrdersRoute: typeof OrdersRoute
+  PlatformRoute: typeof PlatformRouteWithChildren
   PosRoute: typeof PosRoute
   ReportsRoute: typeof ReportsRoute
   ReservationsRoute: typeof ReservationsRoute
+  RetailRoute: typeof RetailRoute
+  SalonRoute: typeof SalonRoute
   SettingsRoute: typeof SettingsRoute
   StaffRoute: typeof StaffRoute
 }
@@ -222,6 +359,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CrmRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gym': {
+      id: '/gym'
+      path: '/gym'
+      fullPath: '/gym'
+      preLoaderRoute: typeof GymRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/hotel': {
+      id: '/hotel'
+      path: '/hotel'
+      fullPath: '/hotel'
+      preLoaderRoute: typeof HotelRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/inventory': {
       id: '/inventory'
       path: '/inventory'
@@ -234,6 +392,13 @@ declare module '@tanstack/react-router' {
       path: '/kitchen'
       fullPath: '/kitchen'
       preLoaderRoute: typeof KitchenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/menu': {
@@ -257,6 +422,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrdersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/platform': {
+      id: '/platform'
+      path: '/platform'
+      fullPath: '/platform'
+      preLoaderRoute: typeof PlatformRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pos': {
       id: '/pos'
       path: '/pos'
@@ -278,6 +450,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReservationsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/retail': {
+      id: '/retail'
+      path: '/retail'
+      fullPath: '/retail'
+      preLoaderRoute: typeof RetailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/salon': {
+      id: '/salon'
+      path: '/salon'
+      fullPath: '/salon'
+      preLoaderRoute: typeof SalonRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -292,21 +478,74 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StaffRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/platform/': {
+      id: '/platform/'
+      path: '/'
+      fullPath: '/platform/'
+      preLoaderRoute: typeof PlatformIndexRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/modules': {
+      id: '/platform/modules'
+      path: '/modules'
+      fullPath: '/platform/modules'
+      preLoaderRoute: typeof PlatformModulesRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/permissions': {
+      id: '/platform/permissions'
+      path: '/permissions'
+      fullPath: '/platform/permissions'
+      preLoaderRoute: typeof PlatformPermissionsRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/tenants': {
+      id: '/platform/tenants'
+      path: '/tenants'
+      fullPath: '/platform/tenants'
+      preLoaderRoute: typeof PlatformTenantsRouteImport
+      parentRoute: typeof PlatformRoute
+    }
   }
 }
+
+interface PlatformRouteChildren {
+  PlatformModulesRoute: typeof PlatformModulesRoute
+  PlatformPermissionsRoute: typeof PlatformPermissionsRoute
+  PlatformTenantsRoute: typeof PlatformTenantsRoute
+  PlatformIndexRoute: typeof PlatformIndexRoute
+}
+
+const PlatformRouteChildren: PlatformRouteChildren = {
+  PlatformModulesRoute: PlatformModulesRoute,
+  PlatformPermissionsRoute: PlatformPermissionsRoute,
+  PlatformTenantsRoute: PlatformTenantsRoute,
+  PlatformIndexRoute: PlatformIndexRoute,
+}
+
+const PlatformRouteWithChildren = PlatformRoute._addFileChildren(
+  PlatformRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AiRoute: AiRoute,
   CrmRoute: CrmRoute,
+  DashboardRoute: DashboardRoute,
+  GymRoute: GymRoute,
+  HotelRoute: HotelRoute,
   InventoryRoute: InventoryRoute,
   KitchenRoute: KitchenRoute,
+  LoginRoute: LoginRoute,
   MenuRoute: MenuRoute,
   OperationsRoute: OperationsRoute,
   OrdersRoute: OrdersRoute,
+  PlatformRoute: PlatformRouteWithChildren,
   PosRoute: PosRoute,
   ReportsRoute: ReportsRoute,
   ReservationsRoute: ReservationsRoute,
+  RetailRoute: RetailRoute,
+  SalonRoute: SalonRoute,
   SettingsRoute: SettingsRoute,
   StaffRoute: StaffRoute,
 }

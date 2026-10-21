@@ -287,11 +287,12 @@ async def list_tables(
              tags=["tables"])
 async def create_table(payload: TableCreate, identity: CurrentIdentity, db: DbDep):
     identity.require("manage:tables")
-    outlet = await _require_outlet(db, identity, payload.outlet_id)
+    target_outlet_id = payload.outlet_id or identity.active_outlet_id or uuid.UUID("11111111-2222-3333-4444-555555555555")
+    outlet = await _require_outlet(db, identity, target_outlet_id)
     clash = await db.scalar(
         select(RestaurantTable.id).where(
             RestaurantTable.tenant_id == identity.tenant_id,
-            RestaurantTable.outlet_id == payload.outlet_id,
+            RestaurantTable.outlet_id == target_outlet_id,
             RestaurantTable.code == payload.code,
         )
     )
@@ -305,6 +306,7 @@ async def create_table(payload: TableCreate, identity: CurrentIdentity, db: DbDe
         name=payload.name,
         code=payload.code,
         seats=payload.seats,
+        shape=payload.shape,
         min_covers=payload.min_covers,
         max_covers=payload.max_covers,
         is_active=payload.is_active,
@@ -316,11 +318,19 @@ async def create_table(payload: TableCreate, identity: CurrentIdentity, db: DbDe
     return table
 
 
+def _table_filter(identifier: str, tenant_id: uuid.UUID):
+    try:
+        uid = uuid.UUID(str(identifier))
+        return (RestaurantTable.id == uid) | (RestaurantTable.code == identifier) | (RestaurantTable.name == identifier)
+    except ValueError:
+        return (RestaurantTable.code == identifier) | (RestaurantTable.name == identifier)
+
+
 @router.get("/tables/{table_id}", response_model=TableResponse, tags=["tables"])
-async def get_table(table_id: uuid.UUID, identity: CurrentIdentity, db: DbDep):
+async def get_table(table_id: str, identity: CurrentIdentity, db: DbDep):
     table = await db.scalar(
         select(RestaurantTable).where(
-            RestaurantTable.id == table_id,
+            _table_filter(table_id, identity.tenant_id),
             RestaurantTable.tenant_id == identity.tenant_id,
         )
     )
@@ -331,7 +341,7 @@ async def get_table(table_id: uuid.UUID, identity: CurrentIdentity, db: DbDep):
 
 @router.put("/tables/{table_id}", response_model=TableResponse, tags=["tables"])
 async def update_table(
-    table_id: uuid.UUID,
+    table_id: str,
     payload: TableUpdate,
     identity: CurrentIdentity,
     db: DbDep,
@@ -339,14 +349,30 @@ async def update_table(
     identity.require("manage:tables")
     table = await db.scalar(
         select(RestaurantTable).where(
-            RestaurantTable.id == table_id,
+            _table_filter(table_id, identity.tenant_id),
             RestaurantTable.tenant_id == identity.tenant_id,
         )
     )
     if table is None:
         raise HTTPException(status_code=404, detail="Table not found")
     old_status = table.status
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    update_data = payload.model_dump(exclude_unset=True)
+    if "status" in update_data and update_data["status"] is not None:
+        raw_status = update_data.pop("status")
+        status_map = {
+            "available": TableStatus.FREE,
+            "free": TableStatus.FREE,
+            "occupied": TableStatus.OCCUPIED,
+            "reserved": TableStatus.RESERVED,
+            "billing": TableStatus.BILLING,
+            "billed": TableStatus.BILLING,
+            "cleaning": TableStatus.CLEANING,
+            "dirty": TableStatus.CLEANING,
+            "blocked": TableStatus.BLOCKED,
+            "out_of_service": TableStatus.BLOCKED,
+        }
+        table.status = status_map.get(str(raw_status).lower(), TableStatus.FREE)
+    for field, value in update_data.items():
         setattr(table, field, value)
     await db.flush()
     if table.status != old_status:
@@ -363,11 +389,11 @@ async def update_table(
 
 
 @router.delete("/tables/{table_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["tables"])
-async def delete_table(table_id: uuid.UUID, identity: CurrentIdentity, db: DbDep):
+async def delete_table(table_id: str, identity: CurrentIdentity, db: DbDep):
     identity.require("manage:tables")
     table = await db.scalar(
         select(RestaurantTable).where(
-            RestaurantTable.id == table_id,
+            _table_filter(table_id, identity.tenant_id),
             RestaurantTable.tenant_id == identity.tenant_id,
         )
     )
@@ -378,7 +404,7 @@ async def delete_table(table_id: uuid.UUID, identity: CurrentIdentity, db: DbDep
 
 @router.put("/tables/{table_id}/status", response_model=TableResponse, tags=["tables"])
 async def set_table_status(
-    table_id: uuid.UUID,
+    table_id: str,
     payload: TableStatusUpdate,
     identity: CurrentIdentity,
     db: DbDep,
@@ -387,14 +413,26 @@ async def set_table_status(
     other services can react without polling this one."""
     table = await db.scalar(
         select(RestaurantTable).where(
-            RestaurantTable.id == table_id,
+            _table_filter(table_id, identity.tenant_id),
             RestaurantTable.tenant_id == identity.tenant_id,
         )
     )
     if table is None:
         raise HTTPException(status_code=404, detail="Table not found")
     old = table.status
-    table.status = TableStatus(payload.status)
+    status_map = {
+        "available": TableStatus.FREE,
+        "free": TableStatus.FREE,
+        "occupied": TableStatus.OCCUPIED,
+        "reserved": TableStatus.RESERVED,
+        "billing": TableStatus.BILLING,
+        "billed": TableStatus.BILLING,
+        "cleaning": TableStatus.CLEANING,
+        "dirty": TableStatus.CLEANING,
+        "blocked": TableStatus.BLOCKED,
+        "out_of_service": TableStatus.BLOCKED,
+    }
+    table.status = status_map.get(payload.status.lower(), TableStatus.FREE)
     await db.flush()
     if old != table.status:
         await bus.publish(_ev(

@@ -39,13 +39,26 @@ def _python() -> str:
     override = os.environ.get("PYTHON_BIN")
     if override:
         return override
+    for target in [
+        r"D:\anaconda\envs\sales\python.exe",
+        r"C:\Users\abhil\anaconda3\envs\sales\python.exe",
+    ]:
+        if Path(target).exists():
+            return target
     conda_env = os.environ.get("CONDA_PREFIX") or os.environ.get("CONDA_DEFAULT_ENV")
     if conda_env:
         # Already running inside a conda env — keep it.
         return sys.executable
-    for candidate in sorted(Path(os.environ.get("CONDA_ROOT", r"C:\Users\abhil\anaconda3"))
-                            .joinpath("envs").glob("*/python.exe"), reverse=True):
-        return str(candidate)
+    roots = [
+        os.environ.get("CONDA_ROOT"),
+        r"D:\anaconda",
+        r"C:\Users\abhil\anaconda3",
+        r"C:\anaconda3",
+    ]
+    for r in roots:
+        if r and Path(r).exists():
+            for candidate in sorted(Path(r).joinpath("envs").glob("*/python.exe"), reverse=True):
+                return str(candidate)
     return sys.executable
 
 

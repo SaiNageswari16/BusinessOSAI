@@ -139,11 +139,12 @@ class SectionResponse(_Scoped, _Timestamp):
 # ─── Table ───────────────────────────────────────────────────────────────────
 
 class TableCreate(BaseModel):
-    outlet_id: uuid.UUID
+    outlet_id: uuid.UUID | None = None
     section_id: uuid.UUID | None = None
     name: str = Field(min_length=1, max_length=50)
     code: str = Field(min_length=1, max_length=20)
     seats: int = Field(default=4, ge=1, le=100)
+    shape: str = Field(default="round")
     min_covers: int = Field(default=1, ge=1)
     max_covers: int = Field(default=6, ge=1)
     is_active: bool = True
@@ -155,6 +156,7 @@ class TableUpdate(BaseModel):
     name: str | None = None
     section_id: uuid.UUID | None = None
     seats: int | None = None
+    shape: str | None = None
     min_covers: int | None = None
     max_covers: int | None = None
     status: str | None = None
@@ -164,7 +166,7 @@ class TableUpdate(BaseModel):
 
 
 class TableStatusUpdate(BaseModel):
-    status: str = Field(pattern=r"^(free|occupied|reserved|billing|cleaning|blocked)$")
+    status: str = Field(pattern=r"^(free|available|occupied|reserved|billing|billed|cleaning|dirty|blocked|out_of_service)$")
 
 
 class TableResponse(_Scoped, _Timestamp):
@@ -175,6 +177,7 @@ class TableResponse(_Scoped, _Timestamp):
     name: str
     code: str
     seats: int
+    shape: str = "round"
     min_covers: int
     max_covers: int
     status: str
@@ -188,6 +191,7 @@ class TableResponse(_Scoped, _Timestamp):
 class FloorPlanUpdateEntry(BaseModel):
     id: uuid.UUID | None = None
     section_id: uuid.UUID | None = None
+    shape: str | None = None
     position_x: float | None = None
     position_y: float | None = None
 

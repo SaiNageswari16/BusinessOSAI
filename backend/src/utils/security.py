@@ -4,6 +4,14 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import bcrypt
+
+# Fix passlib 1.7.4 bug with bcrypt >= 4.0.0 where passlib reads _bcrypt.__about__.__version__
+if not hasattr(bcrypt, "__about__"):
+    class _BcryptAbout:
+        __version__ = getattr(bcrypt, "__version__", "4.0.0")
+    bcrypt.__about__ = _BcryptAbout()
+
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy import select
@@ -248,12 +256,20 @@ ROLE_PERMISSION_MAP: dict[str, list[str]] = {
 # ─── Password utilities ──────────────────────────────────────────
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    pwd_bytes = password.encode("utf-8")[:72]
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    if not hashed:
+    if not hashed or not plain:
         return False
+    try:
+        pwd_bytes = plain.encode("utf-8")[:72]
+        if hashed.startswith(("$2a$", "$2b$", "$2y$")):
+            return bcrypt.checkpw(pwd_bytes, hashed.encode("utf-8"))
+    except Exception:
+        pass
     try:
         return pwd_context.verify(plain, hashed)
     except Exception:

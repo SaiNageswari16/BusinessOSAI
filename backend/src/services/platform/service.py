@@ -240,22 +240,14 @@ DEFAULT_PERMISSIONS = [
 class PlatformService:
     @staticmethod
     async def seed_defaults(session: AsyncSession) -> None:
-        """Seed default super admin, plugins marketplace, and 60+ permission catalogue."""
-        # 1. Default Super Admin
-        admin_res = await session.execute(
-            select(PlatformAdmin).where(PlatformAdmin.email == "superadmin@businessos.ai")
-        )
-        if admin_res.scalar_one_or_none() is None:
-            admin = PlatformAdmin(
-                email="superadmin@businessos.ai",
-                hashed_password=hash_password("SuperAdmin@123"),
-                full_name="Platform Chief Administrator",
-                role=PlatformAdminRole.SUPER_ADMIN,
-                is_active=True,
-            )
-            session.add(admin)
+        """Seed the plugin marketplace and the permission catalogue.
 
-        # 2. Default Plugin Manifests
+        Deliberately does NOT create a super admin. That account is created
+        once, out of band, by ``scripts/seed_platform_admin.py`` — seeding it
+        here would mean the credential lives in the repository and the account
+        is recreated on every boot. Idempotent, so it is safe on every start.
+        """
+        # 1. Default Plugin Manifests
         for p in DEFAULT_PLUGINS:
             p_res = await session.execute(
                 select(PluginManifest).where(PluginManifest.id == p["id"])
@@ -277,7 +269,7 @@ class PlatformService:
                 )
                 session.add(manifest)
 
-        # 3. Default Permissions
+        # 2. Default Permissions
         for perm in DEFAULT_PERMISSIONS:
             perm_res = await session.execute(
                 select(PermissionCatalogue).where(PermissionCatalogue.code == perm["code"])

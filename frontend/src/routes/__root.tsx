@@ -4,6 +4,7 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
   type ErrorComponentProps,
@@ -119,12 +120,21 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const pathname = useRouterState({ select: (s) => s.location?.pathname || "" });
+  const isPlatform = pathname.startsWith("/platform");
+  const isPortal = pathname === "/" || pathname === "/login";
+
   return (
     <QueryClientProvider client={queryClient}>
-      <AppShell>
+      {isPlatform || isPortal ? (
         <Outlet />
-      </AppShell>
+      ) : (
+        <AppShell>
+          <Outlet />
+        </AppShell>
+      )}
       <Toaster position="bottom-right" />
     </QueryClientProvider>
   );
 }
+

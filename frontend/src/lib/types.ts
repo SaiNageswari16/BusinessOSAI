@@ -49,15 +49,27 @@ export interface Order {
   paid: boolean;
 }
 
+export type TableShape = "round" | "square" | "rectangle" | "l_shape" | "bar_counter";
+
 export interface RestaurantTable {
   id: string;
-  area: "Main Hall" | "Terrace" | "Private";
+  backendId?: string;
+  name?: string;
+  code?: string;
+  area: string;
   seats: number;
+  shape?: TableShape;
   status: TableStatus;
   guests?: number;
   orderId?: string;
   seatedMins?: number;
   waiter?: string;
+  customerName?: string;
+  customerPhone?: string;
+  posX?: number;
+  posY?: number;
+  minCovers?: number;
+  maxCovers?: number;
 }
 
 export interface Customer {

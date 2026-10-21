@@ -1,13 +1,15 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Bell,
   ChevronDown,
   CircleHelp,
+  LogIn,
   Menu,
   Moon,
   Plus,
   Search,
+  ShieldCheck,
   Sparkles,
   Sun,
   UtensilsCrossed,
@@ -28,24 +30,11 @@ import { switchBranch, useSettings } from "@/services/orderService";
 import { notifications } from "@/data/business";
 import { CommandPalette } from "./CommandPalette";
 import { AiAssistant } from "./AiAssistant";
+import { useAuth } from "@/hooks/use-auth";
+import { usePermissions } from "@/hooks/use-permissions";
+import { resolveTenantNavigation } from "@/lib/modules";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-
-export const navItems = [
-  { to: "/", label: "Dashboard" },
-  { to: "/operations", label: "Operations" },
-  { to: "/pos", label: "POS" },
-  { to: "/orders", label: "Orders" },
-  { to: "/menu", label: "Menu" },
-  { to: "/kitchen", label: "Kitchen" },
-  { to: "/inventory", label: "Inventory" },
-  { to: "/crm", label: "CRM" },
-  { to: "/reservations", label: "Reservations" },
-  { to: "/staff", label: "Staff" },
-  { to: "/reports", label: "Reports" },
-  { to: "/ai", label: "AI" },
-  { to: "/settings", label: "Settings" },
-] as const;
 
 const toneDot: Record<string, string> = {
   critical: "bg-critical",
@@ -62,20 +51,46 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [ai, setAi] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [dark, setDark] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const settings = useSettings();
   const navigate = useNavigate();
+  const { user, isAuthenticated, logout, switchOutlet } = useAuth();
+  const { hasPermission } = usePermissions();
 
   useEffect(() => {
-    setDark(localStorage.getItem("ros-theme") === "dark");
+    setMounted(true);
+  }, []);
+
+  const navItems = useMemo(() => {
+    return resolveTenantNavigation(undefined, hasPermission);
+  }, [hasPermission]);
+
+  useEffect(() => {
+    if (typeof localStorage !== "undefined") {
+      const stored = localStorage.getItem("ros-theme");
+      if (stored === "dark") {
+        localStorage.setItem("ros-theme", "light");
+        setDark(false);
+      } else {
+        setDark(false);
+      }
+    }
+    if (typeof document !== "undefined") {
+      document.documentElement.classList.remove("dark");
+    }
   }, []);
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", dark);
-    localStorage.setItem("ros-theme", dark ? "dark" : "light");
+    if (typeof document !== "undefined") {
+      document.documentElement.classList.toggle("dark", dark);
+    }
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("ros-theme", dark ? "dark" : "light");
+    }
   }, [dark]);
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-40 bg-nav text-nav-foreground">
+    <div className="flex min-h-screen flex-col bg-background text-foreground">
+      <header className="sticky top-0 z-40 bg-nav text-nav-foreground border-b border-nav-border">
         <div className="flex h-14 items-center gap-3 px-4 lg:px-6">
           <button
             className={cn(iconBtn, "lg:hidden")}
@@ -84,7 +99,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             <Menu />
           </button>
-          <Link to="/" className="flex items-center gap-2">
+          <Link to="/dashboard" className="flex items-center gap-2">
             <span className="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground">
               <UtensilsCrossed className="size-4" />
             </span>
@@ -136,7 +151,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </button>
             <button
               onClick={() => setAi(true)}
-              className="hidden h-8 items-center gap-1.5 rounded-md bg-ai/20 px-2.5 text-xs font-medium text-nav-foreground hover:bg-ai/30 md:flex"
+              className="hidden h-8 items-center gap-1.5 rounded-md bg-ai/10 border border-ai/20 px-2.5 text-xs font-medium text-ai hover:bg-ai/20 md:flex"
             >
               <Sparkles className="size-3.5" /> AI Assistant
             </button>
@@ -205,34 +220,51 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               {dark ? <Sun /> : <Moon />}
             </button>
-            <DropdownMenu>
-              <DropdownMenuTrigger className="ml-1 grid size-8 place-items-center rounded-full bg-chart-2 text-xs font-semibold text-nav">
-                AR
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuLabel>
-                  <div className="text-sm">Ananya Rao</div>
-                  <div className="text-xs font-normal text-muted-foreground">Branch Manager</div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate({ to: "/settings" })}>
-                  My Profile
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate({ to: "/settings" })}>
-                  Preferences
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => toast("Use the branch selector in the top bar")}>
-                  Switch Branch
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate({ to: "/settings" })}>
-                  Security
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => toast("Signed out (demo)")}>
-                  Logout
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {mounted && isAuthenticated && user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger className="ml-1 grid size-8 place-items-center rounded-full bg-primary/10 border border-primary/20 text-xs font-semibold text-primary">
+                  {user.fullName
+                    .split(" ")
+                    .map((w) => w[0])
+                    .join("")
+                    .slice(0, 2)
+                    .toUpperCase()}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>
+                    <div className="font-medium text-foreground">{user.fullName}</div>
+                    <div className="text-xs font-normal text-muted-foreground">{user.email}</div>
+                    <div className="mt-1 inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                      {user.role}
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate({ to: "/settings" })}>
+                    My Profile & Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate({ to: "/platform" })}>
+                    <ShieldCheck className="mr-2 size-4 text-primary" /> Platform Super Admin
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate({ to: "/" })}>
+                    <UtensilsCrossed className="mr-2 size-4 text-primary" /> Switch Business Portal
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => {
+                    logout();
+                    navigate({ to: "/" });
+                  }}>
+                    Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Link
+                to="/login"
+                className="ml-1 inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                <LogIn className="size-3.5" /> Sign In
+              </Link>
+            )}
           </div>
         </div>
         <nav className="hidden h-10 items-center gap-0.5 overflow-x-auto border-t border-nav-border px-4 lg:flex lg:px-6">

@@ -220,6 +220,7 @@ class RestaurantTable(ServiceBase, TimestampMixin):
     min_covers: Mapped[int] = mapped_column(Integer, default=1)
     max_covers: Mapped[int] = mapped_column(Integer, default=6)
     status: Mapped[TableStatus] = mapped_column(String(20), default=TableStatus.FREE, index=True)
+    shape: Mapped[str] = mapped_column(String(30), default="round")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     position_x: Mapped[float | None] = mapped_column(Float, nullable=True)
     position_y: Mapped[float | None] = mapped_column(Float, nullable=True)
