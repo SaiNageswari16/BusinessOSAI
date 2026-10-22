@@ -155,7 +155,9 @@ export function FullInvoicePrinter({
     try {
       const tid = tenant?.id || getTenantIdFromStorage();
       const storageKey = getTenantTemplatesKey(tid);
-      const saved = localStorage.getItem(storageKey) || localStorage.getItem('businessos_print_templates_v1');
+      // Strictly workspace-scoped template list — never fall back to the unsuffixed
+      // global key, which holds templates saved by other tenants/workspaces.
+      const saved = tid ? localStorage.getItem(storageKey) : null;
       if (saved) {
         const list = JSON.parse(saved);
         if (Array.isArray(list)) {
@@ -185,9 +187,7 @@ export function FullInvoicePrinter({
       }
       const savedTplId =
         userActiveInvoiceId ||
-        (tid ? localStorage.getItem(`bos_active_invoice_template_id_${tid}`) : null) ||
-        localStorage.getItem('bos_active_invoice_template_id') ||
-        localStorage.getItem('bos_default_inv_template_id');
+        (tid ? localStorage.getItem(`bos_active_invoice_template_id_${tid}`) : null);
 
       if (savedTplId && !isThermalReceiptId(savedTplId)) {
         return savedTplId;
@@ -376,9 +376,7 @@ export function FullInvoicePrinter({
 
         const savedTplId =
           userActiveInvoiceId ||
-          localStorage.getItem(`bos_active_invoice_template_id_${tenant?.id}`) ||
-          localStorage.getItem('bos_active_invoice_template_id') ||
-          localStorage.getItem('bos_default_inv_template_id');
+          localStorage.getItem(`bos_active_invoice_template_id_${tenant?.id}`);
 
         if (savedTplId && !isThermalReceiptId(savedTplId)) {
           setSelectedTemplateId(savedTplId);
@@ -404,9 +402,14 @@ export function FullInvoicePrinter({
         }
 
         // 4. Fetch fresh organization company data from API – guarantees real-time details
+        //    Use the active company (from localStorage bos_active_company_id) NOT the first item.
+        //    This prevents cross-workspace bleed (e.g. showing Ameya's details while in iotronics).
         companiesApi.list(1, 10).then((res) => {
           if (res?.items && res.items.length > 0) {
-            const active = res.items.find((c: any) => c.is_active) || res.items[0];
+            const activeCompanyId = localStorage.getItem('bos_active_company_id');
+            const active =
+              (activeCompanyId ? res.items.find((c: any) => c.id === activeCompanyId) : null) ||
+              res.items[0];
             if (active) {
               // Persist to localStorage so getActiveBillingGst() picks it up next time
               const tid = tenant?.id || getTenantIdFromStorage();
@@ -750,6 +753,9 @@ export function FullInvoicePrinter({
   };
 
   // 1. Store Name / Company Name Resolution
+  //    Priority: invoice party name → active workspace company (live API + localStorage) → billing GST → tenant name.
+  //    The template's baked-in storeName is never used as a source of truth for the company name —
+  //    it may have been saved under a different workspace and is stale.
   const invoiceSellerName =
     (invoice as any)?.seller_name ||
     (invoice as any)?.seller_trade_name ||
@@ -760,15 +766,12 @@ export function FullInvoicePrinter({
 
   const dynamicStoreName =
     (!isDummyStoreName(invoiceSellerName) ? invoiceSellerName : '') ||
-    currentOrg?.name ||
-    currentOrg?.trade_name ||
-    activeBillingGst?.trade_name ||
-    activeBillingGst?.legal_name ||
+    (!isDummyStoreName(currentOrg?.name) ? currentOrg?.name : '') ||
+    (!isDummyStoreName(currentOrg?.trade_name) ? currentOrg?.trade_name : '') ||
+    (!isDummyStoreName(activeBillingGst?.trade_name) ? activeBillingGst?.trade_name : '') ||
+    (!isDummyStoreName(activeBillingGst?.legal_name) ? activeBillingGst?.legal_name : '') ||
     (!isDummyStoreName(tenant?.name) ? tenant?.name : '') ||
-    (!isDummyStoreName(template.storeName) ? template.storeName : '') ||
-    currentOrg?.name ||
-    tenant?.name ||
-    'Business Organization';
+    '';
 
   // 2. Logo Resolution (Active organization company logo strictly isolated per tenant)
   const invoiceSellerLogo =

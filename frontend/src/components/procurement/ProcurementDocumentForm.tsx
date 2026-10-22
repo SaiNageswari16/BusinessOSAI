@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   ArrowLeft,
   ScanBarcode,
@@ -1093,27 +1093,35 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
       if (docType !== "PR" && selectedSupplierId) {
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedSupplierId);
         if (!isUUID) {
-          const tempSupp = suppliers.find((s) => s.id === selectedSupplierId);
+          const tempSupp: any = suppliers.find((s) => s.id === selectedSupplierId);
           const suppName = tempSupp?.name || "Vendor Partner";
           const codeSeq = Math.floor(1000 + Math.random() * 9000);
           const code = `VEN-${Date.now().toString().slice(-4)}-${codeSeq}`;
+          const gstin = tempSupp?.gst_number || tempSupp?.tax_id || tempSupp?.tax_number || "";
           const createdSupp = await inventoryApi.createSupplier({
             name: suppName,
             code: code,
-            type: "Manufacturer",
-            company_name: suppName,
-            credit_limit: 500000,
+            type: tempSupp?.type || "Manufacturer",
+            company_name: tempSupp?.company_name || suppName,
+            phone: tempSupp?.phone || undefined,
+            email: tempSupp?.email || undefined,
+            address: tempSupp?.address || tempSupp?.billing_address || undefined,
+            billing_address: tempSupp?.billing_address || tempSupp?.address || undefined,
+            state: tempSupp?.state || undefined,
+            credit_limit: 0,
             rating: 5.0,
             status: "Active",
-            products_desc: tempSupp?.tax_number ? `GSTIN: ${tempSupp.tax_number}` : undefined,
+            gst_number: gstin || undefined,
+            products_desc: gstin ? `GSTIN: ${gstin}` : tempSupp?.products_desc || undefined,
           });
-          supplierIdToUse = createdSupp.id;
-          setSelectedSupplierId(createdSupp.id);
-          setSuppliers((prev) => [createdSupp, ...prev.filter((p) => p.id !== selectedSupplierId)]);
+          const suppObj = createdSupp.data || createdSupp;
+          supplierIdToUse = suppObj.id;
+          setSelectedSupplierId(suppObj.id);
+          setSuppliers((prev) => [suppObj, ...prev.filter((p) => p.id !== selectedSupplierId)]);
         }
       }
 
-      // Helper to ensure line items have a valid UUID product_id
+      // Helper to ensure line items have a valid UUID product_id without fallbacks
       const resolvedItems = await Promise.all(
         items.map(async (it) => {
           let pId = it.product_id;
@@ -1125,17 +1133,15 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
             );
             if (existingProd) {
               pId = existingProd.id;
-            } else if (products.length > 0) {
-              pId = products[0].id;
             } else {
-              // Create product on the fly if inventory is empty
+              // Create actual product on the fly with extracted details (no fallback to products[0].id)
               const created = await inventoryApi.createProduct({
                 name: (it.product_name || "Procured Item").trim(),
-                hsn_code: it.hsn_code || "32091090",
+                hsn_code: it.hsn_code || undefined,
                 purchase_price: Number(it.unit_price) || 0,
                 mrp: Number(it.mrp) || Number(it.unit_price) || 0,
                 selling_price: Number(it.mrp) || Number(it.unit_price) || 0,
-                tax_percent: Number(it.tax_rate) || 18,
+                tax_percent: Number(it.tax_rate) || 0,
                 status: "active",
               });
               pId = created.id;
@@ -1146,7 +1152,7 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
             product_id: pId,
             quantity: Number(it.quantity) || 1,
             unit_price: it.is_free ? 0 : (Number(it.unit_price) || 0),
-            tax_percent: it.is_free ? 0 : (Number(it.tax_rate) || 18),
+            tax_percent: it.is_free ? 0 : (Number(it.tax_rate) || 0),
             estimated_price: it.is_free ? 0 : (Number(it.unit_price) || 0),
             is_free: Boolean(it.is_free),
           };
@@ -1239,7 +1245,9 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
   };
 
   // Helper to load a selected invoice (supports multi-page PDFs)
-  const applyOcrInvoice = (data: any) => {
+  const ocrCreatedVendor = useRef<string | null>(null); // track vendor ID created from OCR in this session
+
+  const applyOcrInvoice = async (data: any) => {
     if (!data) return;
 
     if (data.po_number && docType === "PO") {
@@ -1249,19 +1257,90 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
       if (docType === "PINV") setDocNumber(data.bill_number || data.invoice_number);
       else if (docType === "PO" && !data.po_number) setDocNumber(data.invoice_number || data.bill_number);
     }
-    if (data.supplier_name || data.supplier_gstin) {
+
+    // Vendor matching / creation: Use supplier_id from backend OCR or match/create with all available details
+    if (data.supplier_id) {
+      setSelectedSupplierId(data.supplier_id);
+      ocrCreatedVendor.current = data.supplier_id;
+      setSuppliers((prev) => {
+        const exists = prev.some((s) => s.id === data.supplier_id);
+        if (!exists) {
+          const suppObj: any = {
+            id: data.supplier_id,
+            name: data.supplier_name || "Vendor Partner",
+            code: data.supplier_code || "VEN-OCR",
+            type: "Manufacturer",
+            company_name: data.supplier_name,
+            phone: data.supplier_phone,
+            email: data.supplier_email,
+            address: data.supplier_address,
+            billing_address: data.supplier_address,
+            shipping_address: data.supplier_address,
+            state: data.supplier_state,
+            tax_id: data.supplier_gstin,
+            gst_number: data.supplier_gstin,
+            tax_number: data.supplier_gstin,
+            products_desc: data.supplier_gstin ? `GSTIN: ${data.supplier_gstin}` : undefined,
+            status: "Active",
+          };
+          return [suppObj, ...prev];
+        }
+        return prev;
+      });
+      if (data.supplier_created) {
+        toast.success(`Created real vendor "${data.supplier_name}" and linked to this document.`);
+      }
+    } else if (data.supplier_name || data.supplier_gstin) {
       const gstinClean = (data.supplier_gstin || "").trim().toUpperCase();
       const nameClean = (data.supplier_name || "").trim().toLowerCase();
-      const matchedSupplier = suppliers.find((s) => {
-        const sTax = ((s as any).tax_id || (s as any).gstin || "").trim().toUpperCase();
-        if (gstinClean && sTax && sTax === gstinClean) return true;
-        const sName = s.name.toLowerCase();
-        return nameClean && (sName.includes(nameClean) || nameClean.includes(sName));
+
+      let matchedSupplier = suppliers.find((s) => {
+        const sTax = String((s as any).tax_id || (s as any).gstin || (s as any).gst_number || "").trim().toUpperCase();
+        return gstinClean && sTax && sTax === gstinClean;
       });
+      if (!matchedSupplier && nameClean) {
+        matchedSupplier = suppliers.find((s) => {
+          const sName = s.name.toLowerCase();
+          return sName === nameClean || sName.includes(nameClean) || nameClean.includes(sName);
+        });
+      }
+
       if (matchedSupplier) {
         setSelectedSupplierId(matchedSupplier.id);
+      } else {
+        // No existing vendor — create one with all OCR-extracted details
+        try {
+          const vendorName = (data.supplier_name || "Vendor Party").trim();
+          const codeSeq = Math.floor(1000 + Math.random() * 9000);
+          const code = `VEN-OCR-${Date.now().toString().slice(-6)}-${codeSeq}`;
+          const createdSupp = await inventoryApi.createSupplier({
+            name: vendorName,
+            code,
+            type: "Manufacturer",
+            company_name: (data.supplier_company_name || data.supplier_name || vendorName).trim(),
+            products_desc: [
+              gstinClean ? `GSTIN: ${gstinClean}` : null,
+              data.supplier_pan ? `PAN: ${data.supplier_pan}` : null,
+              data.supplier_phone ? `Phone: ${data.supplier_phone}` : null,
+              data.supplier_email ? `Email: ${data.supplier_email}` : null,
+              data.supplier_address ? `Address: ${data.supplier_address}` : null,
+              data.bank_details?.bank_name ? `Bank: ${data.bank_details.bank_name} | A/C: ${data.bank_details.account_number || ""} | IFSC: ${data.bank_details.ifsc_code || ""}` : null,
+            ].filter(Boolean).join("\n") || undefined,
+            credit_limit: 0,
+            rating: 5.0,
+            status: "Active",
+          });
+          const suppObj = createdSupp.data || createdSupp;
+          ocrCreatedVendor.current = suppObj.id;
+          setSuppliers((prev) => [suppObj, ...prev]);
+          setSelectedSupplierId(suppObj.id);
+          toast.success(`Vendor "${vendorName}" created from OCR and linked to this bill.`);
+        } catch (e: any) {
+          console.warn("OCR vendor creation error:", e?.detail || e.message);
+        }
       }
     }
+
     if (data.delivery_date && docType === "PO") {
       setDueDate(normalizeDateToYyyyMmDd(data.delivery_date));
     }
@@ -1282,9 +1361,9 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
           id: Math.random().toString(36).substring(2, 9),
           product_id: foundProd?.id,
           product_name: foundProd ? foundProd.name : pName,
-          hsn_code: it.hsn_code || foundProd?.hsn_code || "21069090",
+          hsn_code: it.hsn_code || foundProd?.hsn_code || "",
           uom: it.uom || (foundProd as any)?.uom_name || "PCS",
-          batch_number: it.batch_number || `B-${Math.floor(100 + Math.random() * 900)}`,
+          batch_number: it.batch_number || "",
           mrp: grossPrice,
           quantity: Number(it.quantity) || 1,
           unit_price: unitPrice,
@@ -1292,7 +1371,7 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
           tax_exclusive_rate: Number(it.tax_exclusive_rate) || unitPrice,
           discount_value: Number(it.discount_value) || 0,
           discount_type: "percent",
-          tax_rate: Number(it.tax_percent) || foundProd?.tax_percent || 5,
+          tax_rate: (it.tax_percent !== undefined && it.tax_percent !== null && it.tax_percent !== "") ? Number(it.tax_percent) : (foundProd?.tax_percent !== undefined ? Number(foundProd.tax_percent) : 0),
         };
       }));
     }
@@ -1308,11 +1387,11 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
     try {
       const created = await inventoryApi.createProduct({
         name: item.product_name.trim(),
-        hsn_code: item.hsn_code || "32091090",
+        hsn_code: item.hsn_code || undefined,
         purchase_price: Number(item.unit_price) || 0,
         mrp: Number(item.mrp) || Number(item.unit_price) || 0,
         selling_price: Number(item.mrp) || Number(item.unit_price) || 0,
-        tax_percent: Number(item.tax_rate) || 18,
+        tax_percent: Number(item.tax_rate) || 0,
         status: "active"
       });
       setProducts(prev => [created, ...prev]);
@@ -1348,7 +1427,7 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
 
       // Auto-fill form fields from OCR result (primary invoice or root)
       const primary = (data.invoices && data.invoices.length > 0) ? data.invoices[0] : data;
-      applyOcrInvoice(primary);
+      await applyOcrInvoice(primary);
     } catch (err: any) {
       toast.error(err.message || "Failed to extract document data");
     } finally {
@@ -1720,7 +1799,7 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
                         type="button"
                         onClick={() => {
                           setSelectedOcrInvoiceIdx(i);
-                          applyOcrInvoice(inv);
+                          void applyOcrInvoice(inv);
                           toast.success(`Loaded Invoice #${invNo} (${itemCount} items)`);
                         }}
                         className={`p-3 rounded-xl text-left border transition-all flex flex-col justify-between ${

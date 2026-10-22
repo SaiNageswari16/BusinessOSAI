@@ -814,8 +814,10 @@ export function getActiveReceiptTemplate(tenantId?: string): ReceiptTemplate {
     try {
       const tplKey = getTenantTemplatesKey(tid);
       const defKey = getTenantDefaultsKey(tid);
-      const invTemplatesRaw = localStorage.getItem(tplKey) || localStorage.getItem('businessos_print_templates_v1');
-      const userActiveDefaultsRaw = localStorage.getItem(defKey) || localStorage.getItem('user_active_print_templates_v1');
+      // Strictly workspace-scoped template storage — never fall back to the
+      // unsuffixed global keys, which hold templates from other tenants.
+      const invTemplatesRaw = tid ? localStorage.getItem(tplKey) : null;
+      const userActiveDefaultsRaw = tid ? localStorage.getItem(defKey) : null;
 
       if (invTemplatesRaw) {
         const invTemplates = JSON.parse(invTemplatesRaw);
@@ -823,9 +825,7 @@ export function getActiveReceiptTemplate(tenantId?: string): ReceiptTemplate {
 
         const activeThermalId =
           (tid ? localStorage.getItem(`bos_active_receipt_template_id_${tid}`) : null) ||
-          localStorage.getItem('bos_active_receipt_template_id') ||
           (tid ? localStorage.getItem(`bos_active_thermal_template_id_${tid}`) : null) ||
-          localStorage.getItem('bos_active_thermal_template_id') ||
           activeDefaults.thermal ||
           activeDefaults.receipt;
         let matched = activeThermalId ? invTemplates.find((t: any) => t.id === activeThermalId) : null;
@@ -963,25 +963,16 @@ export function getResolvedActiveThermalTemplate(tenantId?: string): any {
     try {
       const tplKey = getTenantTemplatesKey(tid);
       const defKey = getTenantDefaultsKey(tid);
-      const rawTemplates =
-        localStorage.getItem(tplKey) ||
-        localStorage.getItem(`businessos_print_templates_v1_${tid}`) ||
-        localStorage.getItem('businessos_print_templates_v1');
-      const rawDefaults =
-        localStorage.getItem(defKey) ||
-        localStorage.getItem(`user_active_print_templates_v1_${tid}`) ||
-        localStorage.getItem('user_active_print_templates_v1') ||
-        localStorage.getItem(`businessos_active_template_ids_${tid}`) ||
-        localStorage.getItem('businessos_active_template_ids');
+      // Strictly workspace-scoped template storage — no unsuffixed global fallbacks
+      const rawTemplates = tid ? (localStorage.getItem(tplKey) || localStorage.getItem(`businessos_print_templates_v1_${tid}`)) : null;
+      const rawDefaults = tid ? (localStorage.getItem(defKey) || localStorage.getItem(`user_active_print_templates_v1_${tid}`) || localStorage.getItem(`businessos_active_template_ids_${tid}`)) : null;
 
       if (rawTemplates) {
         const templates = JSON.parse(rawTemplates);
         const defaults = rawDefaults ? JSON.parse(rawDefaults) : {};
         const activeThermalId =
           (tid ? localStorage.getItem(`bos_active_receipt_template_id_${tid}`) : null) ||
-          localStorage.getItem('bos_active_receipt_template_id') ||
           (tid ? localStorage.getItem(`bos_active_thermal_template_id_${tid}`) : null) ||
-          localStorage.getItem('bos_active_thermal_template_id') ||
           defaults.thermal ||
           defaults.receipt ||
           defaults.invoices;
@@ -2077,11 +2068,11 @@ export async function syncPrintTemplatesFromBackend(force: boolean = false): Pro
       });
 
       const merged = Array.from(templateMap.values());
+      // Write only to the workspace-scoped key — never to the unsuffixed global
+      // keys, which would leak this workspace's templates into other tenants.
       localStorage.setItem(storageKey, JSON.stringify(merged));
-      localStorage.setItem("businessos_print_templates_v1", JSON.stringify(merged));
-      localStorage.setItem("bos_barcode_custom_templates", JSON.stringify(merged.filter((t: any) => t.category === "barcodes" || t.docType === "barcode")));
 
-      // Also sync active map if present
+      // Also sync active map if present (workspace-scoped keys only)
       if (res.active_map) {
         const defaultsKey = getTenantDefaultsKey();
         const curDefRaw = localStorage.getItem(defaultsKey);
@@ -2089,15 +2080,11 @@ export async function syncPrintTemplatesFromBackend(force: boolean = false): Pro
         const updatedDef = { ...curDef, ...res.active_map };
         if (res.active_map.barcodes) {
           updatedDef.barcode = res.active_map.barcodes;
-          localStorage.setItem("bos_active_barcode_template_id", res.active_map.barcodes);
-          localStorage.setItem("bos_active_barcode_template_id_default", res.active_map.barcodes);
         }
         if (res.active_map.invoices) {
           updatedDef.invoice = res.active_map.invoices;
-          localStorage.setItem("bos_active_invoice_template_id", res.active_map.invoices);
         }
         localStorage.setItem(defaultsKey, JSON.stringify(updatedDef));
-        localStorage.setItem("user_active_print_templates_v1", JSON.stringify(updatedDef));
       }
 
       window.dispatchEvent(new Event("print_templates_updated"));
@@ -2119,8 +2106,9 @@ if (typeof window !== "undefined") {
   }, 1000);
 }
 
-export function getAllBarcodeTemplates(): any[] {
-  const activeGst = getActiveBillingGst();
+export function getAllBarcodeTemplates(tenantId?: string): any[] {
+  const tid = tenantId || getTenantIdFromStorage();
+  const activeGst = getActiveBillingGst(tid);
   const tenantOrgName = activeGst?.trade_name || activeGst?.legal_name || undefined;
 
   // Trigger background sync from backend database
@@ -2132,13 +2120,9 @@ export function getAllBarcodeTemplates(): any[] {
 
   if (typeof window !== "undefined") {
     try {
-      const storageKey = getTenantTemplatesKey();
-      const keysToCheck = [
-        storageKey,
-        "businessos_print_templates_v1",
-        "bos_barcode_custom_templates",
-        "bos_custom_barcode_templates_v1",
-      ];
+      const storageKey = getTenantTemplatesKey(tid);
+      // Strictly workspace-scoped keys — no unsuffixed global fallbacks
+      const keysToCheck = tid ? [storageKey, `businessos_print_templates_v1_${tid}`] : [];
 
       for (const k of keysToCheck) {
         try {
@@ -2214,23 +2198,23 @@ export function getAllBarcodeTemplates(): any[] {
   }));
 }
 
-export function getActiveBarcodeTemplate(): any {
-  const activeGst = getActiveBillingGst();
+export function getActiveBarcodeTemplate(tenantId?: string): any {
+  const tid = tenantId || getTenantIdFromStorage();
+  const activeGst = getActiveBillingGst(tid);
   const tenantOrgName = activeGst?.trade_name || activeGst?.legal_name || undefined;
 
-  const allTemplates = getAllBarcodeTemplates();
+  const allTemplates = getAllBarcodeTemplates(tid);
 
   if (typeof window !== 'undefined') {
     try {
-      const defaultsKey = getTenantDefaultsKey();
-      const userActiveDefaultsRaw = localStorage.getItem(defaultsKey) || localStorage.getItem('user_active_print_templates_v1');
+      const defaultsKey = getTenantDefaultsKey(tid);
+      const userActiveDefaultsRaw = tid ? localStorage.getItem(defaultsKey) : null;
       const activeDefaults = userActiveDefaultsRaw ? JSON.parse(userActiveDefaultsRaw) : {};
 
       const activeBarcodeId =
         activeDefaults.barcodes ||
         activeDefaults.barcode ||
-        localStorage.getItem('bos_active_barcode_template_id') ||
-        localStorage.getItem('bos_active_barcode_template_id_default');
+        (tid ? localStorage.getItem(`bos_active_barcode_template_id_${tid}`) : null);
 
       if (activeBarcodeId) {
         const found = allTemplates.find((t) => t.id === activeBarcodeId);
@@ -2260,22 +2244,21 @@ export function getActiveBarcodeTemplate(): any {
   };
 }
 
-export function setActiveBarcodeTemplate(id: string): void {
+export function setActiveBarcodeTemplate(id: string, tenantId?: string): void {
   if (typeof window === "undefined") return;
+  const tid = tenantId || getTenantIdFromStorage();
   try {
-    const defaultsKey = getTenantDefaultsKey();
-    const raw = localStorage.getItem(defaultsKey);
+    const defaultsKey = getTenantDefaultsKey(tid);
+    const raw = tid ? localStorage.getItem(defaultsKey) : null;
     const defaults = raw ? JSON.parse(raw) : {};
     defaults.barcodes = id;
     defaults.barcode = id;
-    localStorage.setItem(defaultsKey, JSON.stringify(defaults));
-    localStorage.setItem("user_active_print_templates_v1", JSON.stringify(defaults));
-    localStorage.setItem("bos_active_barcode_template_id", id);
-    localStorage.setItem("bos_active_barcode_template_id_default", id);
+    if (tid) localStorage.setItem(defaultsKey, JSON.stringify(defaults));
+    if (tid) localStorage.setItem(`bos_active_barcode_template_id_${tid}`, id);
 
-    // Also update isDefault in stored templates across all keys
-    const storageKey = getTenantTemplatesKey();
-    const keysToUpdate = [storageKey, "businessos_print_templates_v1", "bos_barcode_custom_templates"];
+    // Also update isDefault in stored templates (workspace-scoped keys only)
+    const storageKey = getTenantTemplatesKey(tid);
+    const keysToUpdate = tid ? [storageKey, `businessos_print_templates_v1_${tid}`] : [];
 
     keysToUpdate.forEach((k) => {
       try {
@@ -2308,7 +2291,8 @@ export function setActiveBarcodeTemplate(id: string): void {
 export function saveBarcodeTemplate(updated: any, setAsDefault: boolean = false): void {
   if (typeof window === "undefined") return;
   try {
-    const storageKey = getTenantTemplatesKey();
+    const tid = getTenantIdFromStorage();
+    const storageKey = getTenantTemplatesKey(tid);
     const barcodeTemplate = {
       ...updated,
       category: "barcodes",
@@ -2317,11 +2301,8 @@ export function saveBarcodeTemplate(updated: any, setAsDefault: boolean = false)
       isDefault: setAsDefault ? true : Boolean(updated.isDefault),
     };
 
-    const keysToSync = [
-      storageKey,
-      "businessos_print_templates_v1",
-      "bos_barcode_custom_templates",
-    ];
+    // Workspace-scoped keys only — no unsuffixed global writes
+    const keysToSync = tid ? [storageKey, `businessos_print_templates_v1_${tid}`] : [];
 
     keysToSync.forEach((k) => {
       try {
@@ -2355,15 +2336,14 @@ export function saveBarcodeTemplate(updated: any, setAsDefault: boolean = false)
     });
 
     if (setAsDefault) {
-      const defaultsKey = getTenantDefaultsKey();
-      const rawDef = localStorage.getItem(defaultsKey);
+      const tid = getTenantIdFromStorage();
+      const defaultsKey = getTenantDefaultsKey(tid);
+      const rawDef = tid ? localStorage.getItem(defaultsKey) : null;
       const defaults = rawDef ? JSON.parse(rawDef) : {};
       defaults.barcodes = updated.id;
       defaults.barcode = updated.id;
-      localStorage.setItem(defaultsKey, JSON.stringify(defaults));
-      localStorage.setItem("user_active_print_templates_v1", JSON.stringify(defaults));
-      localStorage.setItem("bos_active_barcode_template_id", updated.id);
-      localStorage.setItem("bos_active_barcode_template_id_default", updated.id);
+      if (tid) localStorage.setItem(defaultsKey, JSON.stringify(defaults));
+      if (tid) localStorage.setItem(`bos_active_barcode_template_id_${tid}`, updated.id);
     }
 
     // Persist directly to backend PostgreSQL database for the whole organization
@@ -2381,8 +2361,9 @@ export function saveBarcodeTemplate(updated: any, setAsDefault: boolean = false)
 export function deleteBarcodeTemplate(id: string): void {
   if (typeof window === "undefined") return;
   try {
-    const storageKey = getTenantTemplatesKey();
-    const keysToClean = [storageKey, "businessos_print_templates_v1", "bos_barcode_custom_templates"];
+    const tid = getTenantIdFromStorage();
+    const storageKey = getTenantTemplatesKey(tid);
+    const keysToClean = tid ? [storageKey, `businessos_print_templates_v1_${tid}`] : [];
 
     keysToClean.forEach((k) => {
       try {
@@ -2757,7 +2738,6 @@ export function setActiveInvoicePrintTemplate(templateId: string, tenantId?: str
         localStorage.setItem(`bos_active_invoice_template_id_${tid}_${cid}`, templateId);
       }
     }
-    localStorage.setItem('bos_active_invoice_template_id', templateId);
 
     if (!templateId || templateId === 'thermal' || templateId === 'pos' || String(templateId).startsWith('tpl-thm-') || String(templateId).includes('receipt')) {
       return;
@@ -2818,8 +2798,7 @@ export function getActiveInvoicePrintTemplate(tenantId?: string, companyId?: str
         (tid && cid ? localStorage.getItem(`bos_active_invoice_template_id_${tid}_${cid}`) : null) ||
         (tid ? localStorage.getItem(`bos_active_invoice_template_id_${tid}`) : null) ||
         activeDefaults.invoices ||
-        activeDefaults.invoice ||
-        localStorage.getItem('bos_active_invoice_template_id');
+        activeDefaults.invoice;
 
       const activeInvoiceId = isThermal(rawActiveInvoiceId) ? undefined : rawActiveInvoiceId;
 
@@ -2828,27 +2807,13 @@ export function getActiveInvoicePrintTemplate(tenantId?: string, companyId?: str
       if (invTemplatesRaw) {
         const invTemplates = JSON.parse(invTemplatesRaw);
         if (activeInvoiceId) {
+          // Use only the template explicitly selected for this workspace — no fallback to
+          // built-in/global templates (which may carry baked-in company data from other tenants)
           matched = invTemplates.find((t: any) => t.id === activeInvoiceId || t.themeName === activeInvoiceId);
         }
-        if (!matched && activeInvoiceId) {
-          matched = GLOBAL_INVOICE_TEMPLATES.find((t) => t.id === activeInvoiceId || t.themeName === activeInvoiceId);
-        }
-        if (!matched) {
-          matched = invTemplates.find((t: any) => t.id === 'tpl-word-default' || t.themeName === 'word_studio' || t.isWordTemplate) ||
-                    GLOBAL_INVOICE_TEMPLATES.find((t) => t.id === 'tpl-word-default') ||
-                    invTemplates.find((t: any) => (t.category === 'invoices' || t.docType === 'invoice') && t.isDefault && t.id !== 'tpl-inv-stylish') ||
-                    invTemplates.find((t: any) => (t.category === 'invoices' || t.docType === 'invoice') && t.isDefault) ||
-                    invTemplates.find((t: any) => t.category === 'invoices' || t.docType === 'invoice');
-        }
       }
 
-      if (!matched && activeInvoiceId) {
-        matched = GLOBAL_INVOICE_TEMPLATES.find((t) => t.id === activeInvoiceId || t.themeName === activeInvoiceId);
-      }
-
-      if (!matched) {
-        matched = GLOBAL_INVOICE_TEMPLATES[0];
-      }
+      // No saved/selected template for this workspace → defaultWord path with blank store fields
 
         if (matched) {
           const isProddatur = matched.storeAddress && (matched.storeAddress.includes('KK Street, Proddatur') || matched.storeAddress.includes('Proddatur, YSR Cuddapah'));
@@ -2863,7 +2828,7 @@ export function getActiveInvoicePrintTemplate(tenantId?: string, companyId?: str
             const res = {
               ...matched,
               gstin: activeGst.gstin || cleanGstin,
-              storeName: activeGst.trade_name || activeGst.legal_name || matched.storeName,
+              storeName: activeGst.trade_name || activeGst.legal_name || '',
               storeAddress: activeGst.address || cleanAddress,
               storePhone: activeGst.phone || cleanPhone,
               storeEmail: activeGst.email || matched.storeEmail,
@@ -2872,7 +2837,7 @@ export function getActiveInvoicePrintTemplate(tenantId?: string, companyId?: str
               signatureUrl: activeGst.signature_url || matched.signatureUrl || matched.signature_url || null,
               stampUrl: activeGst.stamp_url || matched.stampUrl || matched.stamp_url || null,
               signatureTitle: activeGst.signature_title || matched.signatureTitle || matched.signature_title || 'Authorized Signatory',
-              signatureCompanyName: activeGst.signature_company_name || matched.signatureCompanyName || `For ${activeGst.trade_name || activeGst.legal_name || matched.storeName || 'Organization'}`,
+              signatureCompanyName: activeGst.signature_company_name || `For ${activeGst.trade_name || activeGst.legal_name || 'Organization'}`,
             };
             if (res.wordConfig && typeof res.wordConfig === 'object') {
               res.wordConfig = {
@@ -2888,9 +2853,13 @@ export function getActiveInvoicePrintTemplate(tenantId?: string, companyId?: str
           }
           return {
             ...matched,
+            storeName: '',
             storeAddress: cleanAddress,
             gstin: cleanGstin,
             storePhone: cleanPhone,
+            storeEmail: '',
+            cin: '',
+            logoUrl: matched.logoUrl || matched.customLogoUrl || '',
             signatureUrl: matched.signatureUrl || matched.signature_url || null,
             stampUrl: matched.stampUrl || matched.stamp_url || null,
           };
@@ -2913,16 +2882,34 @@ export function getActiveInvoicePrintTemplate(tenantId?: string, companyId?: str
     isWordTemplate: true,
   };
 
+  // No fallback to GLOBAL_INVOICE_TEMPLATES[0] baked-in store details —
+  // when activeGst is null (no billing data for this workspace), the fields stay blank.
+  // Spread defaultWord last for structural fields only; company-specific fields are
+  // explicitly set from activeGst (or blank) so no cross-tenant data survives.
   const base = {
     ...defaultWord,
-    storeName: activeGst?.trade_name || activeGst?.legal_name || (defaultWord as any).storeName || 'Organization',
-    storeAddress: activeGst?.address || (defaultWord as any).storeAddress || '',
-    storePhone: activeGst?.phone || (defaultWord as any).storePhone || '',
-    gstin: activeGst?.gstin || (defaultWord as any).gstin || '',
-    logoUrl: activeGst?.logo_url || (defaultWord as any).logoUrl || '',
+    storeName: activeGst?.trade_name || activeGst?.legal_name || '',
+    storeAddress: activeGst?.address || '',
+    storePhone: activeGst?.phone || '',
+    storeEmail: activeGst?.email || '',
+    gstin: activeGst?.gstin || '',
+    cin: activeGst?.cin || '',
+    pan: activeGst?.pan || '',
+    logoUrl: activeGst?.logo_url || '',
     footerText: (defaultWord as any).footerText || 'Thank you for your business!',
-    termsText: activeGst?.terms_and_conditions || (defaultWord as any).termsText || '1. Goods once sold will not be taken back.\n2. All disputes subject to local jurisdiction.',
+    termsText: activeGst?.terms_and_conditions || '',
     bankDetails: activeGst?.bank_name ? `Bank: ${activeGst.bank_name} | A/C: ${activeGst.bank_account_number || ''} | IFSC: ${activeGst.bank_ifsc || ''}` : '',
+    // Strip any baked-in wordConfig company data from the global template
+    wordConfig: defaultWord.wordConfig
+      ? {
+          ...defaultWord.wordConfig,
+          companyName: activeGst?.trade_name || activeGst?.legal_name || '',
+          companyAddress: activeGst?.address || '',
+          companyGstin: activeGst?.gstin || '',
+          companyPhone: activeGst?.phone || '',
+          companyEmail: activeGst?.email || '',
+        }
+      : undefined,
   };
 
   return base;
@@ -2993,25 +2980,23 @@ export function saveActiveReceiptTemplate(updated: ReceiptTemplate, tenantId?: s
   }
   saveReceiptTemplates(newTemplates, tenantId);
 
-  // Synchronize with businessos_print_templates_v1 and user_active_print_templates_v1 per tenant
+  // Synchronize workspace-scoped keys only — never write the unsuffixed global
+  // keys, which would leak this workspace's template into other tenants.
   if (typeof window !== 'undefined') {
     try {
       const defKey = getTenantDefaultsKey(tenantId);
-      const rawActive = localStorage.getItem(defKey) || localStorage.getItem('user_active_print_templates_v1');
+      const rawActive = tenantId ? localStorage.getItem(defKey) : null;
       const activeMap = rawActive ? JSON.parse(rawActive) : {};
       activeMap.thermal = updated.id;
       activeMap.receipt = updated.id;
-      localStorage.setItem(defKey, JSON.stringify(activeMap));
-      localStorage.setItem('user_active_print_templates_v1', JSON.stringify(activeMap));
       if (tenantId) {
+        localStorage.setItem(defKey, JSON.stringify(activeMap));
         localStorage.setItem(`bos_active_receipt_template_id_${tenantId}`, updated.id);
         localStorage.setItem(`bos_active_thermal_template_id_${tenantId}`, updated.id);
       }
-      localStorage.setItem('bos_active_receipt_template_id', updated.id);
-      localStorage.setItem('bos_active_thermal_template_id', updated.id);
 
       const tplKey = getTenantTemplatesKey(tenantId);
-      const rawInv = localStorage.getItem(tplKey) || localStorage.getItem('businessos_print_templates_v1');
+      const rawInv = tenantId ? localStorage.getItem(tplKey) : null;
       let invList = rawInv ? JSON.parse(rawInv) : [];
       if (!Array.isArray(invList)) invList = [];
 
@@ -3119,8 +3104,8 @@ export function saveActiveReceiptTemplate(updated: ReceiptTemplate, tenantId?: s
       } else {
         invList.push(mappedInvTemplate);
       }
+      // Write only to the workspace-scoped key — never to the unsuffixed global key
       localStorage.setItem(tplKey, JSON.stringify(invList));
-      localStorage.setItem('businessos_print_templates_v1', JSON.stringify(invList));
 
       // Persist to backend
       printTemplatesApi.saveTemplate(mappedInvTemplate, true).catch(() => {});

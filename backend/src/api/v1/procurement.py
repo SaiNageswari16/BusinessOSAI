@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 from src.config.settings import get_settings
 settings = get_settings()
 
-from src.api.deps import CurrentUserContext, require_permission, get_current_user, get_current_user_context
+from src.api.deps import CurrentUserContext, require_permission, get_current_user, get_current_user_context, get_optional_user_context
 from src.database.session import get_db
 from src.models import (
     Supplier, SupplierCategory, SupplierContact, SupplierContract,
@@ -1979,31 +1979,26 @@ async def create_vendor_payment(
             if bill:
                 target_bill_id = bill.id
 
-    if not bill:
-        bill = await db.scalar(
-            select(VendorBill)
-            .where(VendorBill.tenant_id == ctx.tenant_id)
-            .order_by(VendorBill.created_at.desc())
-        )
-        if bill:
-            target_bill_id = bill.id
-        
     if not target_bill_id:
-        # Create a PO and vendor bill placeholder if none exists to satisfy schema foreign keys
-        supp = None
-        if payload.supplier_name:
-            supp = await db.scalar(
-                select(Supplier).where(
-                    Supplier.tenant_id == ctx.tenant_id,
-                    Supplier.name.ilike(f"%{payload.supplier_name}%")
-                )
+        if not payload.supplier_name:
+            raise HTTPException(
+                status_code=400,
+                detail="Valid vendor bill or vendor party name is required to record payment."
             )
+        import random
+        supp = await db.scalar(
+            select(Supplier).where(
+                Supplier.tenant_id == ctx.tenant_id,
+                Supplier.name.ilike(f"%{payload.supplier_name.strip()}%")
+            )
+        )
         if not supp:
-            supp = await db.scalar(select(Supplier).where(Supplier.tenant_id == ctx.tenant_id))
-        if not supp:
+            code_seq = f"VEN-{int(datetime.utcnow().timestamp()) % 10000:04d}-{random.randint(1000, 9999)}"
             supp = Supplier(
                 tenant_id=ctx.tenant_id,
-                name=payload.supplier_name or "Vendor / Supplier",
+                company_id=ctx.active_company_id,
+                name=payload.supplier_name.strip(),
+                code=code_seq,
                 status="Active"
             )
             db.add(supp)
@@ -3024,6 +3019,7 @@ def _heuristic_regex_invoice_parser(text: str) -> dict:
     # GSTIN extraction: if supplier PAN is on document, match the GSTIN containing the PAN
     all_gstins = re.findall(r'\b([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1})\b', text)
     supplier_gstin = None
+    sup_pan = None
     pan_m = re.search(r'PAN\s*[:\s]+([A-Z]{5}[0-9]{4}[A-Z]{1})', text, re.IGNORECASE)
     if pan_m and all_gstins:
         sup_pan = pan_m.group(1).strip().upper()
@@ -3031,6 +3027,8 @@ def _heuristic_regex_invoice_parser(text: str) -> dict:
             if sup_pan in g:
                 supplier_gstin = g
                 break
+    elif pan_m:
+        sup_pan = pan_m.group(1).strip().upper()
 
     if not supplier_gstin and all_gstins:
         m_gst = re.search(r'(?:Supplier\s*GSTIN|Seller\s*GSTIN|GSTIN)\s*[:\s]+([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1})', text, re.IGNORECASE)
@@ -3038,6 +3036,12 @@ def _heuristic_regex_invoice_parser(text: str) -> dict:
             supplier_gstin = m_gst.group(1).strip()
         else:
             supplier_gstin = all_gstins[0]
+
+    phone_m = re.search(r'(?:Phone|Mobile|Contact|Tel|Mob)\s*[:\s]+(\+?[0-9\s\-]{10,15})', text, re.IGNORECASE)
+    supplier_phone = phone_m.group(1).strip() if phone_m else None
+
+    email_m = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text)
+    supplier_email = email_m.group(0).strip() if email_m else None
 
     # Invoice Number
     inv_m = re.search(r'(?:Invoice\s*No|Bill\s*No|Inv\s*No|Invoice\s*Number)\s*[:\s]+([A-Za-z0-9\-\/]+)', text, re.IGNORECASE)
@@ -3120,7 +3124,7 @@ def _heuristic_regex_invoice_parser(text: str) -> dict:
                 rate = float(lines[i])
                 i += 1
 
-            gst_pct = 5.0
+            gst_pct = 0.0
             if i < len(lines) and re.match(r'^\d+(?:\.\d+)?$', lines[i]):
                 gst_pct = float(lines[i])
                 i += 1
@@ -3134,15 +3138,15 @@ def _heuristic_regex_invoice_parser(text: str) -> dict:
                 items.append({
                     "item_number": sl_no,
                     "product_name": pname,
-                    "hsn_code": hsn,
+                    "hsn_code": hsn or "",
                     "quantity": net_qty,
                     "uom": uom,
                     "mrp": mrp,
                     "unit_price": rate,
                     "tax_exclusive_rate": rate,
-                    "tax_inclusive_rate": round(rate * (1 + gst_pct / 100), 2),
+                    "tax_inclusive_rate": round(rate * (1 + gst_pct / 100), 2) if gst_pct else rate,
                     "tax_percent": gst_pct,
-                    "tax_amount": round(line_total - (net_qty * rate), 2) if line_total > (net_qty * rate) else round(net_qty * rate * (gst_pct / 100), 2),
+                    "tax_amount": round(line_total - (net_qty * rate), 2) if line_total > (net_qty * rate) else (round(net_qty * rate * (gst_pct / 100), 2) if gst_pct else 0.0),
                     "line_total": line_total
                 })
         else:
@@ -3158,13 +3162,13 @@ def _heuristic_regex_invoice_parser(text: str) -> dict:
                     items.append({
                         "item_number": len(items) + 1,
                         "product_name": pname.strip(),
-                        "hsn_code": hsn or "21069090",
+                        "hsn_code": hsn or "",
                         "quantity": float(qty),
                         "uom": uom or "Pcs",
                         "unit_price": float(rate),
                         "tax_exclusive_rate": float(rate),
-                        "tax_inclusive_rate": round(float(rate) * 1.05, 2),
-                        "tax_percent": 5.0,
+                        "tax_inclusive_rate": float(rate),
+                        "tax_percent": 0.0,
                         "line_total": float(total)
                     })
 
@@ -3174,6 +3178,9 @@ def _heuristic_regex_invoice_parser(text: str) -> dict:
     return {
         "supplier_name": supplier_name,
         "supplier_gstin": supplier_gstin,
+        "supplier_pan": sup_pan,
+        "supplier_phone": supplier_phone,
+        "supplier_email": supplier_email,
         "invoice_number": invoice_number,
         "invoice_date": invoice_date,
         "due_date": invoice_date,
@@ -3494,13 +3501,143 @@ async def _execute_multimodal_ai_ocr(prompt: str, contents: bytes, filename: str
     return {}
 
 
+async def _resolve_or_create_supplier_from_ocr(
+    db: AsyncSession | None,
+    ctx: CurrentUserContext | None,
+    supplier_name: str | None,
+    supplier_gstin: str | None = None,
+    supplier_pan: str | None = None,
+    supplier_phone: str | None = None,
+    supplier_email: str | None = None,
+    supplier_address: str | None = None,
+    supplier_city: str | None = None,
+    supplier_state: str | None = None,
+    supplier_pincode: str | None = None,
+) -> tuple[Supplier | None, bool]:
+    """
+    Finds existing real Supplier for this tenant or creates a persistent Supplier with all available extracted details.
+    Returns (supplier_object, was_created).
+    """
+    if not db or not ctx or not ctx.tenant_id:
+        return None, False
+
+    clean_name = (supplier_name or "").strip()
+    clean_gstin = (supplier_gstin or "").strip().upper()
+    clean_phone = (supplier_phone or "").strip()
+    clean_email = (supplier_email or "").strip()
+    clean_address = (supplier_address or "").strip()
+    clean_state = (supplier_state or "").strip()
+    clean_city = (supplier_city or "").strip()
+    clean_pan = (supplier_pan or "").strip().upper()
+
+    if not clean_name and not clean_gstin:
+        return None, False
+
+    # 1. Search existing suppliers for this tenant
+    existing_supplier: Supplier | None = None
+
+    if clean_gstin:
+        stmt = (
+            select(Supplier)
+            .where(
+                Supplier.tenant_id == ctx.tenant_id,
+                Supplier.products_desc.ilike(f"%{clean_gstin}%")
+            )
+            .limit(1)
+        )
+        res = await db.execute(stmt)
+        existing_supplier = res.scalars().first()
+
+    if not existing_supplier and clean_name:
+        stmt = (
+            select(Supplier)
+            .where(
+                Supplier.tenant_id == ctx.tenant_id,
+                or_(
+                    Supplier.name.ilike(clean_name),
+                    Supplier.company_name.ilike(clean_name)
+                )
+            )
+            .limit(1)
+        )
+        res = await db.execute(stmt)
+        existing_supplier = res.scalars().first()
+
+    if existing_supplier:
+        return existing_supplier, False
+
+    # 2. If not found, create an actual persistent Supplier entity
+    vendor_name = clean_name if clean_name else f"Vendor {clean_gstin}"
+    seq = int(datetime.utcnow().timestamp()) % 9000 + 1000
+    code = f"VEN-{datetime.utcnow().strftime('%y%m%d')}-{seq}"
+
+    existing_code = await db.scalar(
+        select(Supplier.id).where(Supplier.tenant_id == ctx.tenant_id, Supplier.code == code)
+    )
+    if existing_code:
+        code = f"VEN-{uuid.uuid4().hex[:6].upper()}"
+
+    desc_parts = []
+    if clean_gstin:
+        desc_parts.append(f"GSTIN: {clean_gstin}")
+    if clean_pan:
+        desc_parts.append(f"PAN: {clean_pan}")
+    if clean_phone:
+        desc_parts.append(f"Phone: {clean_phone}")
+    if clean_email:
+        desc_parts.append(f"Email: {clean_email}")
+    if clean_address:
+        desc_parts.append(f"Address: {clean_address}")
+    if clean_city:
+        desc_parts.append(f"City: {clean_city}")
+    if clean_state:
+        desc_parts.append(f"State: {clean_state}")
+    if supplier_pincode:
+        desc_parts.append(f"PIN: {str(supplier_pincode).strip()}")
+    desc_str = " | ".join(desc_parts) if desc_parts else None
+
+    new_supp = Supplier(
+        tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
+        name=vendor_name,
+        company_name=vendor_name,
+        code=code,
+        type="Manufacturer",
+        products_desc=desc_str,
+        credit_limit=0.0,
+        rating=5.0,
+        status="Active",
+    )
+    db.add(new_supp)
+    await db.flush()
+
+    if clean_phone or clean_email:
+        contact = SupplierContact(
+            tenant_id=ctx.tenant_id,
+            supplier_id=new_supp.id,
+            name=vendor_name,
+            role="Primary Contact",
+            phone=clean_phone if clean_phone else None,
+            email=clean_email if clean_email else None,
+        )
+        db.add(contact)
+
+    await db.commit()
+    await db.refresh(new_supp)
+    logger.info(f"Auto-created real vendor from scanned document: {new_supp.name} ({new_supp.id})")
+    return new_supp, True
+
+
 @router.post("/ocr/extract-po-document")
 async def extract_po_document_ocr(
     file: UploadFile = File(...),
+    ctx: Annotated[CurrentUserContext | None, Depends(get_optional_user_context)] = None,
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
 ):
     """
     OCR AI Document extraction for Purchase Order and Tax Invoice PDFs / images.
     Extracts complete GST details, Base / Tax-Exclusive Rates, HSN Codes, Line Items, and Multi-page Invoices.
+    Auto-creates real vendor entities with all extracted details if not already present.
     """
     contents = await file.read()
     filename = file.filename.lower()
@@ -3522,8 +3659,13 @@ Extract the following JSON structure:
       "payment_terms": "Due on Receipt",
       "supplier_name": "YOUNUSKHAN&Co.",
       "supplier_gstin": "36AUTPM0074F2ZF",
+      "supplier_pan": "AUTPM0074F",
       "supplier_phone": "9398936696",
+      "supplier_email": "younuskhan@example.com",
       "supplier_address": "G,FLOOR SHOP NO.1, ADITYA NAGAR FLYOVER KONDAPUR MAIN ROAD NEW HAFEEZPET HYDERABAD Telangana 500049",
+      "supplier_city": "Hyderabad",
+      "supplier_state": "Telangana",
+      "supplier_pincode": "500049",
       "buyer_name": "AAYS SOLUTIONS PRIVATE LIMITED",
       "buyer_gstin": "29ABACA7453P1Z2",
       "buyer_address": "55, S V COMPLEX KR ROAD, BASAVANAUDI, BENGALURU Bengaluru 560004 Karnataka",
@@ -3573,6 +3715,7 @@ CRITICAL RULES:
 4. Extract all line items accurately with HSN codes, UOM, Quantity, and Tax %.
 5. If the document has MULTIPLE invoices / pages (e.g. Invoice #3002 on Page 1 and Invoice #2983 on Page 2), extract ALL of them into the "invoices" array.
 6. Verify that Taxable Amount + Total Tax Amount == Grand Total.
+7. Extract all available vendor/supplier details: supplier_name, supplier_gstin, supplier_pan, supplier_phone, supplier_email, supplier_address, supplier_city, supplier_state, supplier_pincode.
 
 Return ONLY raw valid JSON without markdown code blocks, backticks, or preamble.
 """
@@ -3584,6 +3727,20 @@ Return ONLY raw valid JSON without markdown code blocks, backticks, or preamble.
 
             primary = invoices[0] if invoices else parsed
 
+            supplier_obj, was_created = await _resolve_or_create_supplier_from_ocr(
+                db=db,
+                ctx=ctx,
+                supplier_name=primary.get("supplier_name"),
+                supplier_gstin=primary.get("supplier_gstin"),
+                supplier_pan=primary.get("supplier_pan"),
+                supplier_phone=primary.get("supplier_phone"),
+                supplier_email=primary.get("supplier_email"),
+                supplier_address=primary.get("supplier_address"),
+                supplier_city=primary.get("supplier_city"),
+                supplier_state=primary.get("supplier_state"),
+                supplier_pincode=primary.get("supplier_pincode"),
+            )
+
             return {
                 "filename": file.filename,
                 "extracted": True,
@@ -3591,10 +3748,18 @@ Return ONLY raw valid JSON without markdown code blocks, backticks, or preamble.
                 "total_invoices_found": len(invoices),
                 "po_number": primary.get("po_number") or primary.get("invoice_number"),
                 "invoice_number": primary.get("invoice_number") or primary.get("po_number"),
-                "supplier_name": primary.get("supplier_name"),
+                "supplier_id": str(supplier_obj.id) if supplier_obj else None,
+                "supplier_code": supplier_obj.code if supplier_obj else None,
+                "supplier_created": was_created,
+                "supplier_name": supplier_obj.name if supplier_obj else primary.get("supplier_name"),
                 "supplier_gstin": primary.get("supplier_gstin"),
+                "supplier_pan": primary.get("supplier_pan"),
                 "supplier_phone": primary.get("supplier_phone"),
+                "supplier_email": primary.get("supplier_email"),
                 "supplier_address": primary.get("supplier_address"),
+                "supplier_city": primary.get("supplier_city"),
+                "supplier_state": primary.get("supplier_state"),
+                "supplier_pincode": primary.get("supplier_pincode"),
                 "buyer_name": primary.get("buyer_name"),
                 "buyer_gstin": primary.get("buyer_gstin"),
                 "buyer_address": primary.get("buyer_address"),
@@ -3692,29 +3857,28 @@ Return ONLY valid JSON. No markdown, no backticks.
                 "confidence": 0.88
             }
 
-    random_seq = int(datetime.utcnow().timestamp()) % 9000 + 1000
     return {
         "filename": file.filename,
-        "extracted": True,
-        "pr_number": f"PR-2026-{random_seq}",
-        "department": "Operations & Warehouse",
-        "priority": "Normal / Medium",
-        "purpose_justification": f"Auto-extracted requisition from uploaded document {file.filename}",
-        "items": [
-            {"product_name": "Material Stock Item A", "quantity": 50, "estimated_unit_cost": 120.0, "category": "General", "unit_of_measure": "Pcs"},
-            {"product_name": "Packaging Consumables B", "quantity": 100, "estimated_unit_cost": 45.0, "category": "Packaging", "unit_of_measure": "Pcs"}
-        ],
-        "confidence": 0.75
+        "extracted": False,
+        "pr_number": None,
+        "department": None,
+        "priority": None,
+        "purpose_justification": None,
+        "items": [],
+        "confidence": 0.0
     }
 
 
 @router.post("/ocr/extract-invoice-document")
 async def extract_invoice_document_ocr(
     file: UploadFile = File(...),
+    ctx: Annotated[CurrentUserContext | None, Depends(get_optional_user_context)] = None,
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
 ):
     """
     OCR AI Document extraction for Vendor Tax Invoices / Purchase Bills.
-    Extracts Invoice/Bill Number, Vendor Name, Total Amount, Due Date, and Line Items.
+    Extracts Invoice/Bill Number, Vendor Details (Name, GSTIN, PAN, Phone, Email, Address, State), Total Amount, Due Date, and Line Items.
+    Auto-creates persistent vendor record in the database if not already present.
     """
     contents = await file.read()
     filename = file.filename.lower()
@@ -3735,8 +3899,16 @@ Extract the following JSON structure:
       "due_date": "2026-08-05",
       "supplier_name": "YOUNUSKHAN&Co.",
       "supplier_gstin": "36AUTPM0074F2ZF",
+      "supplier_pan": "AUTPM0074F",
+      "supplier_phone": "+91 9398936696",
+      "supplier_email": "younuskhan@example.com",
+      "supplier_address": "G,FLOOR SHOP NO.1, ADITYA NAGAR FLYOVER KONDAPUR MAIN ROAD NEW HAFEEZPET HYDERABAD Telangana 500049",
+      "supplier_city": "Hyderabad",
+      "supplier_state": "Telangana",
+      "supplier_pincode": "500049",
       "buyer_name": "AAYS SOLUTIONS PRIVATE LIMITED",
       "buyer_gstin": "29ABACA7453P1Z2",
+      "place_of_supply": "Telangana (36)",
       "is_tax_inclusive": true,
       "items": [
         {
@@ -3779,7 +3951,8 @@ d) Preserve Exact Numerical Precision: Do not round or estimate numerical values
 e) Flexible Schemas: The fields "product_name", "description", "uom", "units", and "packing" are flexible strings, NOT rigid enums. Accept any unit format (e.g., 'Pcs', 'Gms', 'BOX', 'Nos', 'Kg', 'Pack', 'Bottle').
 f) Tax Exclusive Base Rate: "unit_price" and "tax_exclusive_rate" MUST be the base rate before GST.
 g) Standard ISO Dates: Format all dates (invoice_date, due_date) as "YYYY-MM-DD" (e.g., "2026-10-20").
-h) Output Format: Return ONLY raw, valid JSON conforming to the schema above without markdown fences or preamble.
+h) Vendor Extraction: Extract complete vendor / supplier information: supplier_name, supplier_gstin, supplier_pan, supplier_phone, supplier_email, supplier_address, supplier_city, supplier_state, and supplier_pincode.
+i) Output Format: Return ONLY raw, valid JSON conforming to the schema above without markdown fences or preamble.
 """
         parsed = await _execute_multimodal_ai_ocr(prompt, contents, file.filename)
         if parsed:
@@ -3789,6 +3962,20 @@ h) Output Format: Return ONLY raw, valid JSON conforming to the schema above wit
 
             primary = invoices[0] if invoices else parsed
 
+            supplier_obj, was_created = await _resolve_or_create_supplier_from_ocr(
+                db=db,
+                ctx=ctx,
+                supplier_name=primary.get("supplier_name"),
+                supplier_gstin=primary.get("supplier_gstin"),
+                supplier_pan=primary.get("supplier_pan"),
+                supplier_phone=primary.get("supplier_phone"),
+                supplier_email=primary.get("supplier_email"),
+                supplier_address=primary.get("supplier_address"),
+                supplier_city=primary.get("supplier_city"),
+                supplier_state=primary.get("supplier_state"),
+                supplier_pincode=primary.get("supplier_pincode"),
+            )
+
             return {
                 "filename": file.filename,
                 "extracted": True,
@@ -3796,10 +3983,18 @@ h) Output Format: Return ONLY raw, valid JSON conforming to the schema above wit
                 "total_invoices_found": len(invoices),
                 "bill_number": primary.get("bill_number") or primary.get("invoice_number"),
                 "invoice_number": primary.get("invoice_number") or primary.get("bill_number"),
-                "supplier_name": primary.get("supplier_name"),
+                "supplier_id": str(supplier_obj.id) if supplier_obj else None,
+                "supplier_code": supplier_obj.code if supplier_obj else None,
+                "supplier_created": was_created,
+                "supplier_name": supplier_obj.name if supplier_obj else primary.get("supplier_name"),
                 "supplier_gstin": primary.get("supplier_gstin"),
+                "supplier_pan": primary.get("supplier_pan"),
                 "supplier_phone": primary.get("supplier_phone"),
+                "supplier_email": primary.get("supplier_email"),
                 "supplier_address": primary.get("supplier_address"),
+                "supplier_city": primary.get("supplier_city"),
+                "supplier_state": primary.get("supplier_state"),
+                "supplier_pincode": primary.get("supplier_pincode"),
                 "place_of_supply": primary.get("place_of_supply"),
                 "total_amount": float(primary.get("grand_total", 0.0) or primary.get("total_amount", 0.0) or 0.0),
                 "due_date": primary.get("due_date") or primary.get("invoice_date"),

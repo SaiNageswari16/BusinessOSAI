@@ -204,12 +204,38 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   } catch {}
 
   const setTenant = useCallback((c: TenantCompany) => {
-    // Purge stale branch, template snapshots, and cross-company cache
+    // ── Purge stale state from the PREVIOUS tenant/workspace ──────────────────
+    // Read the previously-active tenant id before overwriting it so we can
+    // wipe its company-scoped keys (prevents cross-workspace bleed where a
+    // stale bos_active_billing_gst_details_<prev_tid> survives the switch).
+    let prevTid: string | null = null;
+    let prevCid: string | null = null;
+    try {
+      const prevRaw = localStorage.getItem("bos-tenant");
+      if (prevRaw) {
+        const prevParsed = JSON.parse(prevRaw);
+        prevTid = prevParsed?.raw?.tenant_id || prevParsed?.tenant_id || prevParsed?.id || null;
+      }
+      prevCid = localStorage.getItem("bos_active_company_id");
+    } catch {}
+
+    // Remove every tenant-scoped key belonging to the previous tenant
     try {
       localStorage.removeItem("bos-branch");
       localStorage.removeItem("bos_active_invoice_template_id");
       localStorage.removeItem("bos_default_inv_template_id");
       localStorage.removeItem("bos_pos_active_receipt_templates_v1");
+      if (prevTid) {
+        localStorage.removeItem(`bos_active_company_${prevTid}`);
+        localStorage.removeItem(`bos_active_billing_gst_details_${prevTid}`);
+        if (prevCid) localStorage.removeItem(`bos_active_company_${prevTid}_${prevCid}`);
+        localStorage.removeItem(`bos_active_billing_gst_details_${prevTid}_${prevCid}`);
+        localStorage.removeItem(`bos_active_receipt_template_id_${prevTid}`);
+        localStorage.removeItem(`bos_active_thermal_template_id_${prevTid}`);
+        localStorage.removeItem(`bos_active_invoice_template_id_${prevTid}`);
+        localStorage.removeItem(`businessos_print_templates_v1_${prevTid}`);
+        localStorage.removeItem(`user_active_print_templates_v1_${prevTid}`);
+      }
       setActiveBranchState(null);
     } catch {}
 
