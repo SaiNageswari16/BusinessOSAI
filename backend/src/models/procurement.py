@@ -27,7 +27,7 @@ class Supplier(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __table_args__ = (
         UniqueConstraint("tenant_id", "code", name="uq_tenant_supplier_code"),
     )
-    
+
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     code: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
     type: Mapped[str] = mapped_column(String(100), default="Manufacturer") # Manufacturer, Distributor, Service Provider
@@ -37,6 +37,17 @@ class Supplier(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     status: Mapped[str] = mapped_column(String(50), default="Active") # Active, Inactive
     company_name: Mapped[str | None] = mapped_column(String(150))
     company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
+
+    # Vendor identity / tax details
+    gst_number: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    pan: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Vendor address
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    city: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    pincode: Mapped[str | None] = mapped_column(String(20), nullable=True)
     
     category_id = mapped_column(ForeignKey("erp_supplier_categories.id", ondelete="SET NULL"), nullable=True)
     category: Mapped[SupplierCategory | None] = relationship(back_populates="suppliers")

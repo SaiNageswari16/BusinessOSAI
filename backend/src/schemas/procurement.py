@@ -38,10 +38,13 @@ class SupplierBase(BaseModel):
     company_name: Optional[str] = None
     category_id: Optional[uuid.UUID] = None
     gst_number: Optional[str] = None
+    pan: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
     address: Optional[str] = None
-    pan: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -62,6 +65,14 @@ class SupplierUpdate(BaseModel):
     status: Optional[str] = None
     company_name: Optional[str] = None
     category_id: Optional[uuid.UUID] = None
+    gst_number: Optional[str] = None
+    pan: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
 
 
 class SupplierResponse(SupplierBase):
@@ -455,6 +466,8 @@ class VendorBillResponse(VendorBillBase):
     grn_status: Optional[str] = None       # Verified / Draft — shows QC state
     supplier_id: Optional[uuid.UUID] = None
     supplier_name: Optional[str] = None
+    # Full vendor party details for the PI preview (GSTIN, address, contact, etc.)
+    supplier: Optional[dict] = None
     items: Optional[List[PurchaseOrderItemResponse]] = []
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

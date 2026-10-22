@@ -44,9 +44,20 @@ export function ProcurementShareModal({
 
   // Extract variables safely even when documentData is null
   const docNumber = documentData?.bill_number || documentData?.po_number || documentData?.request_number || documentData?.id?.slice(0, 8) || 'DOC-001';
-  const supplierName = documentData?.supplier_name || documentData?.supplier?.name || documentData?.customerName || 'Vendor Partner';
-  const supplierPhone = documentData?.supplier_phone || documentData?.supplier?.phone || documentData?.supplier?.contacts?.[0]?.phone || '';
-  const supplierEmail = documentData?.supplier_email || documentData?.supplier?.email || documentData?.supplier?.contacts?.[0]?.email || '';
+  const supp = documentData?.supplier;
+  const supplierName = documentData?.supplier_name || supp?.name || documentData?.customerName || 'Vendor Partner';
+  const supplierPhone = documentData?.supplier_phone || supp?.phone || supp?.contacts?.[0]?.phone || '';
+  const supplierEmail = documentData?.supplier_email || supp?.email || supp?.contacts?.[0]?.email || '';
+  // Full vendor party details (persisted on the Supplier record / OCR-extracted)
+  const supplierGst = (supp?.gst_number || supp?.tax_id || supp?.gstin || '').trim().toUpperCase();
+  const supplierPan = (supp?.pan || '').trim().toUpperCase();
+  const supplierAddress = [
+    supp?.address,
+    supp?.city,
+    supp?.state,
+    supp?.pincode,
+  ].filter(Boolean).join(', ').trim() || supp?.address || '';
+  const supplierCompany = supp?.company_name || supplierName;
   
   const totalAmount = Number(documentData?.total_amount || documentData?.grand_total || 0);
   const paidAmount = Number(documentData?.paid_amount || documentData?.amount_received || 0);
@@ -179,9 +190,10 @@ export function ProcurementShareModal({
     customerName: supplierName,
     customerPhone: phoneInput,
     customerEmail: emailInput,
-    customerCompany: documentData?.supplier?.company_name || supplierName,
-    customerGST: documentData?.supplier?.tax_id || (documentData?.supplier as any)?.gstin || '',
-    customerAddress: documentData?.supplier?.address || '',
+    customerCompany: supplierCompany,
+    customerGST: supplierGst,
+    customerPan: supplierPan,
+    customerAddress: supplierAddress,
     items: items.map((it: any) => {
       const pName = (it.product_name || it.name || '').trim().toLowerCase();
       const pId = it.product_id ? String(it.product_id).toLowerCase() : '';

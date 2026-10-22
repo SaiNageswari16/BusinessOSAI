@@ -77,6 +77,7 @@ export interface FullInvoiceData {
   customerEmail?: string;
   customerCompany?: string;
   customerGST?: string;
+  customerPan?: string;
   customerAddress?: string;
   customerBillingAddress?: string;
   customerShippingAddress?: string;
@@ -1718,6 +1719,7 @@ export function FullInvoicePrinter({
                             {invoice.customerPhone && <p className="text-[10px] text-slate-600">Ph: {invoice.customerPhone}</p>}
                             {invoice.customerEmail && <p className="text-[10px] text-slate-600">Email: {invoice.customerEmail}</p>}
                             {invoice.customerGST && <p className="text-[10px] font-bold text-slate-800">GSTIN: {invoice.customerGST}</p>}
+                            {invoice.customerPan && <p className="text-[10px] font-semibold text-slate-700">PAN: {invoice.customerPan}</p>}
                           </div>
 
                           {/* 2. Shipped To Column (Always clearly displayed) */}

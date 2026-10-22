@@ -137,6 +137,14 @@ async def list_suppliers(
                 company_name=s.company_name,
                 category_id=s.category_id,
                 category_name=category_name,
+                gst_number=getattr(s, "gst_number", None),
+                pan=getattr(s, "pan", None),
+                phone=getattr(s, "phone", None),
+                email=getattr(s, "email", None),
+                address=getattr(s, "address", None),
+                city=getattr(s, "city", None),
+                state=getattr(s, "state", None),
+                pincode=getattr(s, "pincode", None),
                 created_at=s.created_at,
                 updated_at=s.updated_at
             )
@@ -264,14 +272,14 @@ async def find_existing_vendor_match(
     clean_phone = (supplier_phone or "").strip()
     clean_email = (supplier_email or "").strip().lower()
 
-    # 1. Match by GSTIN if available
+    # 1. Match by GSTIN if available (dedicated column first, then legacy products_desc)
     if clean_gstin:
+        gstin_clauses = [Supplier.products_desc.ilike(f"%{clean_gstin}%")]
+        if hasattr(Supplier, "gst_number"):
+            gstin_clauses.insert(0, Supplier.gst_number == clean_gstin)
         stmt = (
             select(Supplier)
-            .where(
-                Supplier.tenant_id == tenant_id,
-                Supplier.products_desc.ilike(f"%{clean_gstin}%")
-            )
+            .where(Supplier.tenant_id == tenant_id, or_(*gstin_clauses))
             .order_by(Supplier.created_at.asc())
             .limit(1)
         )
@@ -282,12 +290,13 @@ async def find_existing_vendor_match(
 
     # 2. Match by PAN if available
     if clean_pan:
+        clean_pan_upper = clean_pan.upper()
+        pan_clauses = [Supplier.products_desc.ilike(f"%{clean_pan_upper}%")]
+        if hasattr(Supplier, "pan"):
+            pan_clauses.insert(0, Supplier.pan == clean_pan_upper)
         stmt = (
             select(Supplier)
-            .where(
-                Supplier.tenant_id == tenant_id,
-                Supplier.products_desc.ilike(f"%{clean_pan}%")
-            )
+            .where(Supplier.tenant_id == tenant_id, or_(*pan_clauses))
             .order_by(Supplier.created_at.asc())
             .limit(1)
         )
@@ -399,12 +408,25 @@ async def onboard_supplier(
             f"Vendor deduplication matched existing vendor {existing_vendor.name} "
             f"({existing_vendor.code}) for tenant {ctx.tenant_id} - reusing existing entity"
         )
-        # Enrich products_desc or details if payload has new info
+        # Enrich the matched vendor with any missing dedicated detail fields
         updated = False
+        for attr, val in [
+            ("gst_number", extracted_gstin),
+            ("pan", extracted_pan),
+            ("phone", phone_val),
+            ("email", email_val),
+            ("address", getattr(payload, "address", None)),
+            ("city", getattr(payload, "city", None)),
+            ("state", getattr(payload, "state", None)),
+            ("pincode", getattr(payload, "pincode", None)),
+        ]:
+            if hasattr(existing_vendor, attr) and val and not getattr(existing_vendor, attr, None):
+                setattr(existing_vendor, attr, val)
+                updated = True
         if payload.products_desc and not existing_vendor.products_desc:
             existing_vendor.products_desc = payload.products_desc
             updated = True
-        elif extracted_gstin and (not existing_vendor.products_desc or extracted_gstin not in existing_vendor.products_desc):
+        elif extracted_gstin and (not existing_vendor.products_desc or extracted_gstin not in (existing_vendor.products_desc or "")):
             extra = f"GSTIN: {extracted_gstin}"
             existing_vendor.products_desc = f"{existing_vendor.products_desc} | {extra}" if existing_vendor.products_desc else extra
             updated = True
@@ -426,7 +448,7 @@ async def onboard_supplier(
     if code_exists:
         code_to_use = f"VEN-{datetime.utcnow().strftime('%y%m%d')}-{uuid.uuid4().hex[:4].upper()}"
         
-    supplier = Supplier(
+    supplier_kwargs = dict(
         tenant_id=ctx.tenant_id,
         company_id=ctx.active_company_id,
         name=payload.name,
@@ -437,8 +459,22 @@ async def onboard_supplier(
         rating=payload.rating,
         status=payload.status or "Active",
         company_name=payload.company_name,
-        category_id=payload.category_id
+        category_id=payload.category_id,
     )
+    # Persist dedicated vendor detail columns when present on the payload
+    for _attr, _val in [
+        ("gst_number", extracted_gstin),
+        ("pan", extracted_pan),
+        ("phone", phone_val),
+        ("email", email_val),
+        ("address", getattr(payload, "address", None)),
+        ("city", getattr(payload, "city", None)),
+        ("state", getattr(payload, "state", None)),
+        ("pincode", getattr(payload, "pincode", None)),
+    ]:
+        if hasattr(Supplier, _attr) and _val:
+            supplier_kwargs[_attr] = _val
+    supplier = Supplier(**supplier_kwargs)
     db.add(supplier)
     await db.flush()
 
@@ -1799,6 +1835,7 @@ async def list_vendor_bills(
         grn_status = None
         resolved_grn_id = bill.grn_id
         
+        supplier_obj: dict | None = None
         if bill.purchase_order_id:
             po = await db.get(PurchaseOrder, bill.purchase_order_id)
             if po:
@@ -1808,7 +1845,22 @@ async def list_vendor_bills(
                     supp = await db.get(Supplier, supplier_id)
                     if supp:
                         supplier_name = supp.name
-                
+                        # Attach full vendor party details for the PI preview
+                        supplier_obj = {
+                            "id": str(supp.id),
+                            "name": supp.name,
+                            "company_name": getattr(supp, "company_name", None) or supp.name,
+                            "gst_number": getattr(supp, "gst_number", None),
+                            "pan": getattr(supp, "pan", None),
+                            "phone": getattr(supp, "phone", None),
+                            "email": getattr(supp, "email", None),
+                            "address": getattr(supp, "address", None),
+                            "city": getattr(supp, "city", None),
+                            "state": getattr(supp, "state", None),
+                            "pincode": getattr(supp, "pincode", None),
+                            "products_desc": getattr(supp, "products_desc", None),
+                        }
+
                 items_res = await db.execute(
                     select(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == po.id)
                 )
@@ -1861,6 +1913,7 @@ async def list_vendor_bills(
                 po_number=po_number,
                 supplier_id=supplier_id,
                 supplier_name=supplier_name,
+                supplier=supplier_obj,
                 items=po_items,
                 bill_date=bill.bill_date,
                 due_date=bill.due_date,
@@ -3371,6 +3424,27 @@ def _heuristic_regex_invoice_parser(text: str) -> dict:
     email_m = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text)
     supplier_email = email_m.group(0).strip() if email_m else None
 
+    # Supplier address / city / state / pincode
+    # Address: line(s) immediately after "Address" label, up to (but excluding) known field labels
+    supplier_address = None
+    addr_m = re.search(r'(?:Supplier\s*Address|Registered\s*Address|Address)\s*[:\n]\s*(.+?)(?=\n\s*(?:GSTIN|PAN|Phone|Mobile|Contact|Tel|Mob|Email|Invoice\s*No|Date|Place\s*of\s*Supply|State|City|Pin(?:code)?|Taxable|Sub\s*Total|CGST|SGST|IGST|Total|Grand|Bank|ACC|IFSC|Remarks|Declaration)\b|\Z)', text, re.IGNORECASE | re.DOTALL)
+    if addr_m:
+        raw_addr = addr_m.group(1).strip()
+        # Collapse newlines into single space for a clean one-line address
+        supplier_address = re.sub(r'\s+', ' ', raw_addr).strip().rstrip(',.')
+
+    # State: "State: Karnataka" or "State Code: 29"
+    state_m = re.search(r'(?:State\s*(?:Code)?\s*[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*?)(?:\s*\(\d{2}\))?)\s*(?:[,.]|$)', text)
+    supplier_state = state_m.group(1).strip() if state_m else None
+
+    # City
+    city_m = re.search(r'City\s*[:\s]+([A-Za-z\s\-]{2,50})', text, re.IGNORECASE)
+    supplier_city = city_m.group(1).strip() if city_m else None
+
+    # Pincode: standalone 6-digit block
+    pin_m = re.search(r'(?:Pin(?:code)?\s*[:\s]+)?\b([0-9]{6})\b', text)
+    supplier_pincode = pin_m.group(1) if pin_m else None
+
     # Invoice Number
     inv_m = re.search(r'(?:Invoice\s*No|Bill\s*No|Inv\s*No|Invoice\s*Number)\s*[:\s]+([A-Za-z0-9\-\/]+)', text, re.IGNORECASE)
     invoice_number = inv_m.group(1).strip() if inv_m else None
@@ -3509,6 +3583,10 @@ def _heuristic_regex_invoice_parser(text: str) -> dict:
         "supplier_pan": sup_pan,
         "supplier_phone": supplier_phone,
         "supplier_email": supplier_email,
+        "supplier_address": supplier_address,
+        "supplier_city": supplier_city,
+        "supplier_state": supplier_state,
+        "supplier_pincode": supplier_pincode,
         "invoice_number": invoice_number,
         "invoice_date": invoice_date,
         "due_date": invoice_date,
@@ -3874,10 +3952,26 @@ async def _resolve_or_create_supplier_from_ocr(
 
     if existing_supplier:
         logger.info(f"Vendor OCR deduplication matched existing vendor: {existing_supplier.name} ({existing_supplier.id})")
-        # Enrich products_desc if existing supplier is missing GSTIN or details
-        if clean_gstin and (not existing_supplier.products_desc or clean_gstin not in existing_supplier.products_desc):
+        # Enrich the matched vendor: fill missing dedicated detail columns from OCR
+        enriched = False
+        for _attr, _val in [
+            ("gst_number", clean_gstin or None),
+            ("pan", clean_pan or None),
+            ("phone", clean_phone or None),
+            ("email", clean_email or None),
+            ("address", clean_address or None),
+            ("city", clean_city or None),
+            ("state", clean_state or None),
+            ("pincode", (supplier_pincode or "").strip() or None),
+        ]:
+            if hasattr(existing_supplier, _attr) and _val and not getattr(existing_supplier, _attr, None):
+                setattr(existing_supplier, _attr, _val)
+                enriched = True
+        if clean_gstin and (not existing_supplier.products_desc or clean_gstin not in (existing_supplier.products_desc or "")):
             extra = f"GSTIN: {clean_gstin}"
             existing_supplier.products_desc = f"{existing_supplier.products_desc} | {extra}" if existing_supplier.products_desc else extra
+            enriched = True
+        if enriched:
             try:
                 await db.commit()
                 await db.refresh(existing_supplier)
@@ -3915,7 +4009,7 @@ async def _resolve_or_create_supplier_from_ocr(
         desc_parts.append(f"PIN: {str(supplier_pincode).strip()}")
     desc_str = " | ".join(desc_parts) if desc_parts else None
 
-    new_supp = Supplier(
+    new_supp_kwargs = dict(
         tenant_id=ctx.tenant_id,
         company_id=ctx.active_company_id,
         name=vendor_name,
@@ -3927,6 +4021,20 @@ async def _resolve_or_create_supplier_from_ocr(
         rating=5.0,
         status="Active",
     )
+    # Persist dedicated detail columns alongside products_desc
+    for _attr, _val in [
+        ("gst_number", clean_gstin or None),
+        ("pan", clean_pan or None),
+        ("phone", clean_phone or None),
+        ("email", clean_email or None),
+        ("address", clean_address or None),
+        ("city", clean_city or None),
+        ("state", clean_state or None),
+        ("pincode", (supplier_pincode or "").strip() or None),
+    ]:
+        if hasattr(Supplier, _attr) and _val:
+            new_supp_kwargs[_attr] = _val
+    new_supp = Supplier(**new_supp_kwargs)
     db.add(new_supp)
     await db.flush()
 

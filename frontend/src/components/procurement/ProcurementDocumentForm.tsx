@@ -1391,6 +1391,15 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
             code,
             type: "Manufacturer",
             company_name: (data.supplier_company_name || data.supplier_name || vendorName).trim(),
+            // Persist OCR-extracted vendor details as first-class fields (OCR is authoritative — it read the actual bill)
+            gst_number: gstinClean || undefined,
+            pan: (data.supplier_pan || "").trim().toUpperCase() || undefined,
+            phone: (data.supplier_phone || "").trim() || undefined,
+            email: (data.supplier_email || "").trim() || undefined,
+            address: (data.supplier_address || "").trim() || undefined,
+            city: (data.supplier_city || "").trim() || undefined,
+            state: (data.supplier_state || "").trim() || undefined,
+            pincode: (data.supplier_pincode || "").trim() || undefined,
             products_desc: [
               gstinClean ? `GSTIN: ${gstinClean}` : null,
               data.supplier_pan ? `PAN: ${data.supplier_pan}` : null,

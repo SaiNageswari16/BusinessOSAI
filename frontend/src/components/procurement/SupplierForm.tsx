@@ -78,26 +78,31 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
       const res = await inventoryApi.verifyGstin(cleanGst);
       if (res && res.valid) {
         setGstDetails(res);
+        // PAN is structurally trustworthy (chars 2–12 of the GSTIN) — always fill it.
         if (res.pan) setPan(res.pan);
         if (res.gstin) setGstin(res.gstin);
 
-        if (res.trade_name) setName(res.trade_name);
-        else if (res.legal_name) setName(res.legal_name);
-        if (res.legal_name) setCompanyName(res.legal_name);
+        const isSimulated = Boolean(res.is_simulated || res.is_fallback);
 
-        if (res.contact_person) setContactName(res.contact_person);
-        if (res.email) setEmail(res.email);
-        if (res.phone) setPhone(res.phone);
-        if (res.bank_name) setBankName(res.bank_name);
-        if (res.account_number) setAccountNumber(res.account_number);
-        if (res.ifsc_code) setIfscCode(res.ifsc_code);
-        if (res.business_nature) {
-          setProductsDesc(`[GST Registered Nature: ${res.business_nature}] Primary supplier for raw materials, packaging boxes, and store consumables.`);
+        // Names: auto-fill only when not a simulated PAN-decoded placeholder.
+        if (!isSimulated) {
+          if (res.trade_name) setName(res.trade_name);
+          else if (res.legal_name) setName(res.legal_name);
+          if (res.legal_name) setCompanyName(res.legal_name);
+          if (res.contact_person) setContactName(res.contact_person);
+          if (res.email) setEmail(res.email);
+          if (res.phone) setPhone(res.phone);
+          if (res.bank_name) setBankName(res.bank_name);
+          if (res.account_number) setAccountNumber(res.account_number);
+          if (res.ifsc_code) setIfscCode(res.ifsc_code);
+          if (res.business_nature) {
+            setProductsDesc(`[GST Registered Nature: ${res.business_nature}] Primary supplier for raw materials, packaging boxes, and store consumables.`);
+          }
         }
 
         toast.success(
-          res.is_fallback
-            ? `GST Structure Verified! (${res.state} - PAN: ${res.pan}). Enter your exact registered name above if needed.`
+          isSimulated
+            ? `GSTIN ${cleanGst} structure valid (state ${res.state_code} - PAN: ${res.pan}). Live portal details unavailable — verify the registered name/address manually.`
             : `GST Portal Verified! Auto-filled all details for "${res.trade_name || res.legal_name}" (${res.state})`
         );
       }
@@ -128,6 +133,10 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
             setRating(existing.rating || 5.0);
             setStatusVal(existing.status || "Active");
             setProductsDesc(existing.products_desc || "");
+            setGstin(existing.gst_number || existing.gstin || "");
+            setPan(existing.pan || "");
+            setPhone(existing.phone || "");
+            setEmail(existing.email || "");
           }
         } else {
           const seq = Math.floor(1000 + Math.random() * 9000);
@@ -150,6 +159,12 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
 
     setIsSaving(true);
     try {
+      const taxPayload = {
+        gst_number: gstin.trim().toUpperCase() || undefined,
+        pan: pan.trim().toUpperCase() || undefined,
+        phone: phone.trim() || undefined,
+        email: email.trim() || undefined,
+      };
       if (supplierId) {
         await inventoryApi.updateSupplier(supplierId, {
           name,
@@ -161,6 +176,7 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
           products_desc: productsDesc,
           category_id: categoryId || undefined,
           status: statusVal,
+          ...taxPayload,
         });
         toast.success(`Supplier "${name}" profile updated successfully!`);
       } else {
@@ -174,6 +190,7 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
           products_desc: productsDesc,
           category_id: categoryId || undefined,
           status: statusVal,
+          ...taxPayload,
         });
         toast.success(`Supplier "${name}" onboarded successfully!`);
       }
@@ -527,7 +544,7 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
                   <button
                     type="button"
                     disabled={isVerifyingGst}
-                    onClick={handleVerifyGstin}
+                    onClick={() => handleVerifyGstin()}
                     className="px-3.5 h-9 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold text-xs shrink-0 shadow-sm transition-all disabled:opacity-50 flex items-center gap-1.5"
                   >
                     {isVerifyingGst ? "Fetching..." : "Verify & Auto-Fill"}

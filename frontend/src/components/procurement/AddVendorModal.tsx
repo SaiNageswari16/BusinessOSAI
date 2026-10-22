@@ -131,31 +131,39 @@ export function AddVendorModal({ isOpen, onClose, onVendorCreated }: AddVendorMo
         }
         if (res.gstin) setNewVendorGST(res.gstin);
 
-        // Populate active address
-        const targetIdx =
-          activeAddrIndex >= 0 && activeAddrIndex < vendorAddresses.length
-            ? activeAddrIndex
-            : 0;
-        const fullAddr =
-          (res as any).principal_address || res.address || `${res.city || ""}, ${res.state || ""}`.trim();
-        const updated = [...vendorAddresses];
-        const primaryAddr = { ...updated[targetIdx] };
-        if (fullAddr) primaryAddr.street = fullAddr;
-        if (res.city) primaryAddr.city = res.city;
-        if (res.state) {
-          const matched = INDIAN_STATES.find(
-            (s) =>
-              s.name.toLowerCase() === res.state!.toLowerCase() ||
-              res.state!.toLowerCase().includes(s.name.toLowerCase()) ||
-              s.code === res.state_code
-          );
-          primaryAddr.state = matched?.name || res.state;
+        // Live lookup (not simulated): safe to backfill address details from the portal.
+        // Simulated fallback fills city/pin from a state-code table — those are guesses,
+        // so we never overwrite what the user typed or OCR found with them.
+        if (!res.is_simulated && !res.is_fallback) {
+          const targetIdx =
+            activeAddrIndex >= 0 && activeAddrIndex < vendorAddresses.length
+              ? activeAddrIndex
+              : 0;
+          const fullAddr =
+            (res as any).principal_address || res.address || `${res.city || ""}, ${res.state || ""}`.trim();
+          const updated = [...vendorAddresses];
+          const primaryAddr = { ...updated[targetIdx] };
+          if (fullAddr) primaryAddr.street = fullAddr;
+          if (res.city) primaryAddr.city = res.city;
+          if (res.state) {
+            const matched = INDIAN_STATES.find(
+              (s) =>
+                s.name.toLowerCase() === res.state!.toLowerCase() ||
+                res.state!.toLowerCase().includes(s.name.toLowerCase()) ||
+                s.code === res.state_code
+            );
+            primaryAddr.state = matched?.name || res.state;
+          }
+          if (res.pincode) primaryAddr.pincode = res.pincode;
+          updated[targetIdx] = primaryAddr;
+          setVendorAddresses(updated);
         }
-        if (res.pincode) primaryAddr.pincode = res.pincode;
-        updated[targetIdx] = primaryAddr;
-        setVendorAddresses(updated);
 
-        toast.success(`GST Verified! Auto-filled: "${companyName}"`);
+        toast.success(
+          res.is_simulated || res.is_fallback
+            ? `GSTIN ${cleanGst} structure valid (state ${res.state_code}). Live details unavailable — please confirm the vendor's address manually.`
+            : `GST Verified! Auto-filled: "${companyName}"`
+        );
       } else {
         toast.error("GST verification did not return valid business data.");
       }
@@ -210,11 +218,9 @@ export function AddVendorModal({ isOpen, onClose, onVendorCreated }: AddVendorMo
         gst_number: newVendorGST.trim().toUpperCase() || undefined,
         products_desc: newVendorGST ? `GSTIN: ${newVendorGST.trim().toUpperCase()}` : undefined,
         address: fullBillingAddress || undefined,
-        billing_address: fullBillingAddress || undefined,
-        shipping_address: fullShippingAddress || undefined,
         city: primaryBilling?.city || primaryShipping?.city || undefined,
         state: primaryBilling?.state || primaryShipping?.state || undefined,
-        postal_code: primaryBilling?.pincode || primaryShipping?.pincode || undefined,
+        pincode: primaryBilling?.pincode || primaryShipping?.pincode || undefined,
         addresses: vendorAddresses.map((a, i) => ({
           id: a.id || `addr-${i + 1}`,
           label: a.tag || "Primary",
@@ -236,7 +242,11 @@ export function AddVendorModal({ isOpen, onClose, onVendorCreated }: AddVendorMo
       vendorObj.email = newVendorEmail.trim();
       vendorObj.company_name = newVendorCompany.trim() || newVendorName.trim();
       vendorObj.gst_number = newVendorGST.trim().toUpperCase();
+      vendorObj.pan = newVendorGST.trim().toUpperCase().slice(2, 12) || "";
+      vendorObj.address = fullBillingAddress;
+      vendorObj.city = primaryBilling?.city || "";
       vendorObj.state = primaryBilling?.state || "";
+      vendorObj.pincode = primaryBilling?.pincode || "";
       vendorObj.billing_address = fullBillingAddress;
       vendorObj.shipping_address = fullShippingAddress;
       vendorObj.addresses = vendorAddresses;

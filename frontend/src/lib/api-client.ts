@@ -4506,6 +4506,7 @@ export const inventoryApi = {
       account_number?: string;
       ifsc_code?: string;
       is_fallback?: boolean;
+      is_simulated?: boolean;
     }>("POST", "/inventory/procurement/verify-gstin", { gstin }),
 
   lookupGstin: (gstin: string) =>
