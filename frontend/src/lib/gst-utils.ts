@@ -187,6 +187,7 @@ export function computeGstBreakdown(
     name?: string;
     hsn_code?: string;
     hsn?: string;
+    hsn_sac?: string;
     quantity?: number;
     unit_price?: number;
     price?: number;
@@ -197,6 +198,7 @@ export function computeGstBreakdown(
     tax_percent?: number;
     is_tax_inclusive?: boolean;
     subtotal?: number;
+    [key: string]: any;
   }>,
   isInterState: boolean,
   sellerState?: GstStateInfo,

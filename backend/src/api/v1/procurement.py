@@ -1,4 +1,5 @@
 import uuid
+import re
 import json
 import base64
 import asyncio
@@ -189,6 +190,187 @@ async def get_vendor_summary(
     }
 
 
+def normalize_vendor_name(name: str | None) -> str:
+    """
+    Normalizes vendor/supplier name for intelligent deduplication:
+    - Lowercases & strips whitespace
+    - Strips punctuation and symbols
+    - Removes common business/legal suffixes (Pvt Ltd, Private Limited, LLC, Inc, Co, etc.)
+    - Collapses multiple whitespace
+    """
+    if not name:
+        return ""
+    s = name.lower().strip()
+    s = re.sub(r"[^\w\s]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    
+    noise_words = {
+        "pvt", "ltd", "private", "limited", "llc", "llp", "inc", "corp",
+        "corporation", "co", "company", "enterprises", "enterprise",
+        "traders", "trading", "agency", "agencies", "industries", "industry"
+    }
+    tokens = [w for w in s.split() if w not in noise_words]
+    cleaned = " ".join(tokens)
+    return cleaned if len(cleaned) >= 2 else s
+
+
+def extract_gstin_from_str(text: str | None) -> str | None:
+    """
+    Extracts standard Indian 15-character GSTIN from text if present.
+    Format: 2 digits + 5 letters (PAN) + 4 digits + 1 letter + 1 char + Z + 1 char
+    """
+    if not text:
+        return None
+    match = re.search(r"\b[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[Z|z][0-9A-Z]{1}\b", text.upper())
+    if match:
+        return match.group(0).upper()
+    return None
+
+
+def extract_pan_from_str(text: str | None) -> str | None:
+    """
+    Extracts Indian 10-character PAN from text or GSTIN.
+    """
+    if not text:
+        return None
+    match = re.search(r"\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b", text.upper())
+    if match:
+        return match.group(0).upper()
+    return None
+
+
+async def find_existing_vendor_match(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    supplier_name: str | None = None,
+    supplier_gstin: str | None = None,
+    supplier_pan: str | None = None,
+    supplier_phone: str | None = None,
+    supplier_email: str | None = None,
+) -> Supplier | None:
+    """
+    Intelligently checks if a vendor/supplier is already registered for this tenant.
+    Matches across:
+    1. GSTIN (in products_desc or explicit GSTIN)
+    2. PAN (in products_desc or extracted from GSTIN)
+    3. Exact vendor name or company name (case-insensitive)
+    4. Normalized vendor name (stripping punctuation, legal suffixes like Pvt Ltd)
+    5. Primary contact phone or email
+    Returns the existing Supplier or None.
+    """
+    clean_gstin = extract_gstin_from_str(supplier_gstin) or (supplier_gstin.strip().upper() if supplier_gstin and len(supplier_gstin.strip()) == 15 else None)
+    clean_pan = extract_pan_from_str(supplier_pan) or (extract_pan_from_str(clean_gstin) if clean_gstin else None)
+    clean_name = (supplier_name or "").strip()
+    clean_phone = (supplier_phone or "").strip()
+    clean_email = (supplier_email or "").strip().lower()
+
+    # 1. Match by GSTIN if available
+    if clean_gstin:
+        stmt = (
+            select(Supplier)
+            .where(
+                Supplier.tenant_id == tenant_id,
+                Supplier.products_desc.ilike(f"%{clean_gstin}%")
+            )
+            .order_by(Supplier.created_at.asc())
+            .limit(1)
+        )
+        res = await db.execute(stmt)
+        matched = res.scalars().first()
+        if matched:
+            return matched
+
+    # 2. Match by PAN if available
+    if clean_pan:
+        stmt = (
+            select(Supplier)
+            .where(
+                Supplier.tenant_id == tenant_id,
+                Supplier.products_desc.ilike(f"%{clean_pan}%")
+            )
+            .order_by(Supplier.created_at.asc())
+            .limit(1)
+        )
+        res = await db.execute(stmt)
+        matched = res.scalars().first()
+        if matched:
+            return matched
+
+    # 3. Match by exact Name or Company Name (case-insensitive)
+    if clean_name:
+        stmt = (
+            select(Supplier)
+            .where(
+                Supplier.tenant_id == tenant_id,
+                or_(
+                    Supplier.name.ilike(clean_name),
+                    Supplier.company_name.ilike(clean_name)
+                )
+            )
+            .order_by(Supplier.created_at.asc())
+            .limit(1)
+        )
+        res = await db.execute(stmt)
+        matched = res.scalars().first()
+        if matched:
+            return matched
+
+    # 4. Match by Normalized Name (handles punctuation, "Pvt Ltd" vs "Private Limited", etc.)
+    if clean_name:
+        norm_query_name = normalize_vendor_name(clean_name)
+        if len(norm_query_name) >= 3:
+            all_supps_stmt = (
+                select(Supplier)
+                .where(Supplier.tenant_id == tenant_id)
+                .order_by(Supplier.created_at.asc())
+            )
+            all_supps_res = await db.execute(all_supps_stmt)
+            for supp in all_supps_res.scalars().all():
+                supp_norm = normalize_vendor_name(supp.name)
+                comp_norm = normalize_vendor_name(supp.company_name) if supp.company_name else ""
+                if supp_norm == norm_query_name or (comp_norm and comp_norm == norm_query_name):
+                    return supp
+                # Substring containment for descriptive names (e.g. >= 6 chars)
+                if len(norm_query_name) >= 6 and len(supp_norm) >= 6:
+                    if norm_query_name in supp_norm or supp_norm in norm_query_name:
+                        return supp
+
+    # 5. Match by Phone or Email in contacts or products_desc
+    if clean_phone and len(clean_phone) >= 7:
+        phone_match_stmt = (
+            select(Supplier)
+            .join(SupplierContact, SupplierContact.supplier_id == Supplier.id)
+            .where(
+                Supplier.tenant_id == tenant_id,
+                SupplierContact.phone.ilike(f"%{clean_phone[-10:]}%")
+            )
+            .order_by(Supplier.created_at.asc())
+            .limit(1)
+        )
+        phone_res = await db.execute(phone_match_stmt)
+        matched = phone_res.scalars().first()
+        if matched:
+            return matched
+
+    if clean_email and "@" in clean_email:
+        email_match_stmt = (
+            select(Supplier)
+            .join(SupplierContact, SupplierContact.supplier_id == Supplier.id)
+            .where(
+                Supplier.tenant_id == tenant_id,
+                SupplierContact.email.ilike(clean_email)
+            )
+            .order_by(Supplier.created_at.asc())
+            .limit(1)
+        )
+        email_res = await db.execute(email_match_stmt)
+        matched = email_res.scalars().first()
+        if matched:
+            return matched
+
+    return None
+
+
 @router.post("/suppliers", response_model=SupplierResponse, status_code=status.HTTP_201_CREATED)
 @router.post("/vendors", response_model=SupplierResponse, status_code=status.HTTP_201_CREATED)
 async def onboard_supplier(
@@ -196,18 +378,59 @@ async def onboard_supplier(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    # ── Intelligent Deduplication Check ──────────────────────────────────────
+    # Check if a vendor with identical GSTIN, normalized name, or details already exists for this tenant
+    extracted_gstin = extract_gstin_from_str(payload.products_desc) or getattr(payload, "gst_number", None)
+    extracted_pan = extract_pan_from_str(payload.products_desc) or getattr(payload, "pan", None)
+    phone_val = getattr(payload, "phone", None)
+    email_val = getattr(payload, "email", None)
+
+    existing_vendor = await find_existing_vendor_match(
+        db=db,
+        tenant_id=ctx.tenant_id,
+        supplier_name=payload.name or payload.company_name,
+        supplier_gstin=extracted_gstin,
+        supplier_pan=extracted_pan,
+        supplier_phone=phone_val,
+        supplier_email=email_val,
+    )
+    if existing_vendor:
+        logger.info(
+            f"Vendor deduplication matched existing vendor {existing_vendor.name} "
+            f"({existing_vendor.code}) for tenant {ctx.tenant_id} - reusing existing entity"
+        )
+        # Enrich products_desc or details if payload has new info
+        updated = False
+        if payload.products_desc and not existing_vendor.products_desc:
+            existing_vendor.products_desc = payload.products_desc
+            updated = True
+        elif extracted_gstin and (not existing_vendor.products_desc or extracted_gstin not in existing_vendor.products_desc):
+            extra = f"GSTIN: {extracted_gstin}"
+            existing_vendor.products_desc = f"{existing_vendor.products_desc} | {extra}" if existing_vendor.products_desc else extra
+            updated = True
+
+        if updated:
+            try:
+                await db.commit()
+                await db.refresh(existing_vendor)
+            except Exception as e:
+                logger.warning(f"Could not commit vendor enrichment: {e}")
+
+        return existing_vendor
+
     # Check uniqueness of code
     code_exists = await db.scalar(
         select(Supplier).where(Supplier.code == payload.code, Supplier.tenant_id == ctx.tenant_id)
     )
+    code_to_use = payload.code
     if code_exists:
-        raise HTTPException(status_code=400, detail="Supplier with this code already exists.")
+        code_to_use = f"VEN-{datetime.utcnow().strftime('%y%m%d')}-{uuid.uuid4().hex[:4].upper()}"
         
     supplier = Supplier(
         tenant_id=ctx.tenant_id,
         company_id=ctx.active_company_id,
         name=payload.name,
-        code=payload.code,
+        code=code_to_use,
         type=payload.type,
         products_desc=payload.products_desc,
         credit_limit=payload.credit_limit,
@@ -217,9 +440,109 @@ async def onboard_supplier(
         category_id=payload.category_id
     )
     db.add(supplier)
+    await db.flush()
+
+    if phone_val or email_val:
+        contact = SupplierContact(
+            tenant_id=ctx.tenant_id,
+            supplier_id=supplier.id,
+            name=payload.name,
+            role="Primary Contact",
+            phone=phone_val,
+            email=email_val,
+        )
+        db.add(contact)
+
     await db.commit()
     await db.refresh(supplier)
     return supplier
+
+
+@router.post("/suppliers/merge-duplicates")
+@router.post("/vendors/merge-duplicates")
+async def merge_duplicate_suppliers(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Scans suppliers for the current tenant, consolidates any duplicate records sharing
+    the same normalized name or GSTIN into the primary (original) vendor entity,
+    and safely re-links all associated purchase orders and records.
+    """
+    stmt = select(Supplier).where(Supplier.tenant_id == ctx.tenant_id).order_by(Supplier.created_at.asc())
+    res = await db.execute(stmt)
+    all_suppliers = res.scalars().all()
+
+    # Group by normalized name and/or GSTIN
+    grouped: dict[str, list[Supplier]] = {}
+    for s in all_suppliers:
+        gstin = extract_gstin_from_str(s.products_desc)
+        norm_name = normalize_vendor_name(s.name)
+        key = f"gstin:{gstin}" if gstin else f"name:{norm_name}"
+        if key not in grouped:
+            grouped[key] = []
+        grouped[key].append(s)
+
+    merged_count = 0
+    consolidated_names = []
+
+    for key, supp_list in grouped.items():
+        if len(supp_list) <= 1:
+            continue
+        primary = supp_list[0]
+        duplicates = supp_list[1:]
+
+        for dup in duplicates:
+            dup_id = dup.id
+            # Re-link Purchase Orders
+            await db.execute(
+                update(PurchaseOrder)
+                .where(PurchaseOrder.supplier_id == dup_id, PurchaseOrder.tenant_id == ctx.tenant_id)
+                .values(supplier_id=primary.id)
+            )
+            # Re-link Contacts
+            await db.execute(
+                update(SupplierContact)
+                .where(SupplierContact.supplier_id == dup_id, SupplierContact.tenant_id == ctx.tenant_id)
+                .values(supplier_id=primary.id)
+            )
+            # Re-link Contracts
+            await db.execute(
+                update(SupplierContract)
+                .where(SupplierContract.supplier_id == dup_id, SupplierContract.tenant_id == ctx.tenant_id)
+                .values(supplier_id=primary.id)
+            )
+            # Re-link Performance
+            await db.execute(
+                update(SupplierPerformance)
+                .where(SupplierPerformance.supplier_id == dup_id, SupplierPerformance.tenant_id == ctx.tenant_id)
+                .values(supplier_id=primary.id)
+            )
+            # Re-link Blacklist
+            await db.execute(
+                update(BlacklistedSupplier)
+                .where(BlacklistedSupplier.supplier_id == dup_id, BlacklistedSupplier.tenant_id == ctx.tenant_id)
+                .values(supplier_id=primary.id)
+            )
+            # Enrich primary products_desc if dup has additional info
+            if dup.products_desc and dup.products_desc != primary.products_desc:
+                if not primary.products_desc:
+                    primary.products_desc = dup.products_desc
+                elif dup.products_desc not in primary.products_desc:
+                    primary.products_desc = f"{primary.products_desc} | {dup.products_desc}"
+
+            # Delete the duplicate supplier
+            await db.delete(dup)
+            merged_count += 1
+            consolidated_names.append(primary.name)
+
+    await db.commit()
+    logger.info(f"Merged {merged_count} duplicate suppliers for tenant {ctx.tenant_id}")
+    return {
+        "merged_count": merged_count,
+        "message": f"Successfully consolidated {merged_count} duplicate vendor(s)." if merged_count > 0 else "No duplicate vendors found.",
+        "consolidated_vendors": list(set(consolidated_names))
+    }
 
 
 @router.patch("/suppliers/{id}", response_model=SupplierResponse)
@@ -964,6 +1287,7 @@ async def list_purchase_orders(
                     id=it.id,
                     product_id=it.product_id,
                     product_name=prod.name if prod else "Unknown",
+                    hsn_code=prod.hsn_code if prod else None,
                     quantity=float(it.quantity),
                     unit_price=float(it.unit_price),
                     tax_percent=float(it.tax_percent)
@@ -1037,6 +1361,7 @@ async def create_purchase_order(
                 id=item.id,
                 product_id=item.product_id,
                 product_name=prod.name if prod else "Unknown",
+                hsn_code=prod.hsn_code if prod else None,
                 quantity=float(item.quantity),
                 unit_price=float(item.unit_price),
                 tax_percent=float(item.tax_percent)
@@ -1118,6 +1443,7 @@ async def update_purchase_order(
                 id=it.id,
                 product_id=it.product_id,
                 product_name=prod.name if prod else "Unknown",
+                hsn_code=prod.hsn_code if prod else None,
                 quantity=float(it.quantity),
                 unit_price=float(it.unit_price),
                 tax_percent=float(it.tax_percent),
@@ -1495,6 +1821,7 @@ async def list_vendor_bills(
                             id=it.id,
                             product_id=it.product_id,
                             product_name=prod.name if prod else "Unknown Product",
+                            hsn_code=prod.hsn_code if prod else None,
                             quantity=float(it.quantity),
                             unit_price=float(it.unit_price),
                             tax_percent=float(it.tax_percent)
@@ -1703,6 +2030,7 @@ async def create_vendor_bill(
                     id=it.id,
                     product_id=it.product_id,
                     product_name=prod.name if prod else "Unknown Product",
+                    hsn_code=prod.hsn_code if prod else None,
                     quantity=float(it.quantity),
                     unit_price=float(it.unit_price),
                     tax_percent=float(it.tax_percent)
@@ -3533,37 +3861,28 @@ async def _resolve_or_create_supplier_from_ocr(
     if not clean_name and not clean_gstin:
         return None, False
 
-    # 1. Search existing suppliers for this tenant
-    existing_supplier: Supplier | None = None
-
-    if clean_gstin:
-        stmt = (
-            select(Supplier)
-            .where(
-                Supplier.tenant_id == ctx.tenant_id,
-                Supplier.products_desc.ilike(f"%{clean_gstin}%")
-            )
-            .limit(1)
-        )
-        res = await db.execute(stmt)
-        existing_supplier = res.scalars().first()
-
-    if not existing_supplier and clean_name:
-        stmt = (
-            select(Supplier)
-            .where(
-                Supplier.tenant_id == ctx.tenant_id,
-                or_(
-                    Supplier.name.ilike(clean_name),
-                    Supplier.company_name.ilike(clean_name)
-                )
-            )
-            .limit(1)
-        )
-        res = await db.execute(stmt)
-        existing_supplier = res.scalars().first()
+    # 1. Search existing suppliers for this tenant using intelligent deduplication
+    existing_supplier = await find_existing_vendor_match(
+        db=db,
+        tenant_id=ctx.tenant_id,
+        supplier_name=clean_name,
+        supplier_gstin=clean_gstin,
+        supplier_pan=clean_pan,
+        supplier_phone=clean_phone,
+        supplier_email=clean_email,
+    )
 
     if existing_supplier:
+        logger.info(f"Vendor OCR deduplication matched existing vendor: {existing_supplier.name} ({existing_supplier.id})")
+        # Enrich products_desc if existing supplier is missing GSTIN or details
+        if clean_gstin and (not existing_supplier.products_desc or clean_gstin not in existing_supplier.products_desc):
+            extra = f"GSTIN: {clean_gstin}"
+            existing_supplier.products_desc = f"{existing_supplier.products_desc} | {extra}" if existing_supplier.products_desc else extra
+            try:
+                await db.commit()
+                await db.refresh(existing_supplier)
+            except Exception as e:
+                logger.warning(f"Could not enrich supplier details: {e}")
         return existing_supplier, False
 
     # 2. If not found, create an actual persistent Supplier entity
@@ -3740,6 +4059,20 @@ Return ONLY raw valid JSON without markdown code blocks, backticks, or preamble.
                 supplier_state=primary.get("supplier_state"),
                 supplier_pincode=primary.get("supplier_pincode"),
             )
+
+            for inv in invoices:
+                inv["supplier_id"] = str(supplier_obj.id) if supplier_obj else None
+                inv["supplier_code"] = supplier_obj.code if supplier_obj else None
+                inv["supplier_name"] = supplier_obj.name if supplier_obj else primary.get("supplier_name")
+                inv["supplier_created"] = was_created
+                inv["supplier_gstin"] = primary.get("supplier_gstin")
+                inv["supplier_pan"] = primary.get("supplier_pan")
+                inv["supplier_phone"] = primary.get("supplier_phone")
+                inv["supplier_email"] = primary.get("supplier_email")
+                inv["supplier_address"] = primary.get("supplier_address")
+                inv["supplier_city"] = primary.get("supplier_city")
+                inv["supplier_state"] = primary.get("supplier_state")
+                inv["supplier_pincode"] = primary.get("supplier_pincode")
 
             return {
                 "filename": file.filename,
@@ -3975,6 +4308,20 @@ i) Output Format: Return ONLY raw, valid JSON conforming to the schema above wit
                 supplier_state=primary.get("supplier_state"),
                 supplier_pincode=primary.get("supplier_pincode"),
             )
+
+            for inv in invoices:
+                inv["supplier_id"] = str(supplier_obj.id) if supplier_obj else None
+                inv["supplier_code"] = supplier_obj.code if supplier_obj else None
+                inv["supplier_name"] = supplier_obj.name if supplier_obj else primary.get("supplier_name")
+                inv["supplier_created"] = was_created
+                inv["supplier_gstin"] = primary.get("supplier_gstin")
+                inv["supplier_pan"] = primary.get("supplier_pan")
+                inv["supplier_phone"] = primary.get("supplier_phone")
+                inv["supplier_email"] = primary.get("supplier_email")
+                inv["supplier_address"] = primary.get("supplier_address")
+                inv["supplier_city"] = primary.get("supplier_city")
+                inv["supplier_state"] = primary.get("supplier_state")
+                inv["supplier_pincode"] = primary.get("supplier_pincode")
 
             return {
                 "filename": file.filename,

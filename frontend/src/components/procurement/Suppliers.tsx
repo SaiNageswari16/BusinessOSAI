@@ -37,6 +37,25 @@ export function Suppliers() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
+  const [isMerging, setIsMerging] = useState(false);
+
+  const handleMergeDuplicates = async () => {
+    setIsMerging(true);
+    const toastId = toast.loading("Checking and consolidating duplicate vendors...");
+    try {
+      const res = await inventoryApi.mergeDuplicateSuppliers();
+      if (res.merged_count > 0) {
+        toast.success(res.message || `Consolidated ${res.merged_count} duplicate vendor(s).`, { id: toastId });
+        await fetchSuppliers();
+      } else {
+        toast.info("No duplicate vendors found. Master directory is clean!", { id: toastId });
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to consolidate duplicate vendors", { id: toastId });
+    } finally {
+      setIsMerging(false);
+    }
+  };
 
   useEffect(() => {
     setCurrentPage(1);
@@ -130,6 +149,16 @@ export function Suppliers() {
           <p className="text-sm text-muted-foreground">Manage your master supplier directory, tax GSTINs, credit limits, and bank accounts.</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            onClick={handleMergeDuplicates}
+            variant="outline"
+            disabled={isMerging}
+            className="border-amber-200 text-amber-700 bg-amber-50/50 hover:bg-amber-100 font-semibold rounded-lg shadow-sm"
+            title="Consolidate duplicate vendors with same GSTIN or name"
+          >
+            {isMerging ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Building2 className="size-4 mr-2" />}
+            Consolidate Duplicates
+          </Button>
           <Button onClick={() => setIsQuickAddOpen(true)} variant="outline" className="border-blue-200 text-blue-700 bg-blue-50/50 hover:bg-blue-100 font-semibold rounded-lg shadow-sm">
             <Plus className="size-4 mr-2" /> Quick Add Vendor
           </Button>

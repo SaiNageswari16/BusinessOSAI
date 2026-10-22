@@ -239,51 +239,51 @@ export function WordInvoiceStudioModal({
       gstDetails?.logo_url ||
       "/Logo.png";
 
+    const isDummyName = (n?: string) => !n || n.toLowerCase().includes('venatic') || n.toLowerCase().includes('head office') || n.toLowerCase() === 'company';
+    const isDummyAddr = (a?: string) => !a || a.toLowerCase().includes('cauvery block') || a.toLowerCase().includes('national games village');
+    const isDummyGst = (g?: string) => !g || g.includes('29AAACH7489R1ZX') || g.includes('36AAFCG6041L1Z');
+
     const resolvedName =
-      template?.wordConfig?.companyName ||
-      template?.companyName ||
-      template?.storeName ||
-      sName ||
-      gstDetails?.trade_name ||
-      gstDetails?.legal_name ||
-      "venatic";
+      (sName && !isDummyName(sName) ? sName : '') ||
+      (gstDetails?.trade_name && !isDummyName(gstDetails.trade_name) ? gstDetails.trade_name : '') ||
+      (gstDetails?.legal_name && !isDummyName(gstDetails.legal_name) ? gstDetails.legal_name : '') ||
+      (!isDummyName(template?.wordConfig?.companyName) ? template?.wordConfig?.companyName : '') ||
+      (!isDummyName(template?.companyName) ? template?.companyName : '') ||
+      (!isDummyName(template?.storeName) ? template?.storeName : '') ||
+      sName || "Organization";
 
     const resolvedTagline =
       template?.wordConfig?.companyTagline ||
       template?.companyTagline ||
-      "AUTHORIZED BILLING & COMMERCIAL INVOICING";
+      "";
 
     const resolvedAddress =
-      template?.wordConfig?.companyAddress ||
-      template?.companyAddress ||
-      template?.storeAddress ||
-      sAddr ||
-      gstDetails?.address ||
-      "India";
+      (sAddr && !isDummyAddr(sAddr) ? sAddr : '') ||
+      (gstDetails?.address && !isDummyAddr(gstDetails.address) ? gstDetails.address : '') ||
+      (!isDummyAddr(template?.wordConfig?.companyAddress) ? template?.wordConfig?.companyAddress : '') ||
+      (!isDummyAddr(template?.companyAddress) ? template?.companyAddress : '') ||
+      (!isDummyAddr(template?.storeAddress) ? template?.storeAddress : '') ||
+      sAddr || "";
 
     const resolvedPhone =
-      template?.wordConfig?.companyPhone ||
-      template?.companyPhone ||
-      template?.storePhone ||
-      sPh ||
-      gstDetails?.phone ||
-      "+91 98765 43210";
+      (sPh && !sPh.includes('98765 43210') ? sPh : '') ||
+      (gstDetails?.phone && !gstDetails.phone.includes('98765 43210') ? gstDetails.phone : '') ||
+      (template?.wordConfig?.companyPhone && !template.wordConfig.companyPhone.includes('98765 43210') ? template.wordConfig.companyPhone : '') ||
+      sPh || "";
 
     const resolvedEmail =
-      template?.wordConfig?.companyEmail ||
-      template?.companyEmail ||
-      template?.storeEmail ||
-      sEm ||
-      gstDetails?.email ||
-      "billing@venatic.com";
+      (sEm && !sEm.includes('venatic.com') ? sEm : '') ||
+      (gstDetails?.email && !gstDetails.email.includes('venatic.com') ? gstDetails.email : '') ||
+      (template?.wordConfig?.companyEmail && !template.wordConfig.companyEmail.includes('venatic.com') ? template.wordConfig.companyEmail : '') ||
+      sEm || "";
 
     const resolvedGstin =
-      template?.wordConfig?.companyGstin ||
-      template?.companyGstin ||
-      template?.gstin ||
-      sGst ||
-      gstDetails?.gstin ||
-      "36AAFCG6041L1Z";
+      (sGst && !isDummyGst(sGst) ? sGst : '') ||
+      (gstDetails?.gstin && !isDummyGst(gstDetails.gstin) ? gstDetails.gstin : '') ||
+      (!isDummyGst(template?.wordConfig?.companyGstin) ? template?.wordConfig?.companyGstin : '') ||
+      (!isDummyGst(template?.companyGstin) ? template?.companyGstin : '') ||
+      (!isDummyGst(template?.gstin) ? template?.gstin : '') ||
+      sGst || "";
 
     if (blank) {
       return {

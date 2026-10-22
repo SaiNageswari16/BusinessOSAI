@@ -37,6 +37,15 @@ class SupplierBase(BaseModel):
     status: Optional[str] = "Active"
     company_name: Optional[str] = None
     category_id: Optional[uuid.UUID] = None
+    gst_number: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    pan: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+        extra = "ignore"
 
 
 class SupplierCreate(SupplierBase):
@@ -266,6 +275,7 @@ class PurchaseOrderItemCreate(PurchaseOrderItemBase):
 class PurchaseOrderItemResponse(PurchaseOrderItemBase):
     id: uuid.UUID
     product_name: Optional[str] = None
+    hsn_code: Optional[str] = None
 
     class Config:
         from_attributes = True

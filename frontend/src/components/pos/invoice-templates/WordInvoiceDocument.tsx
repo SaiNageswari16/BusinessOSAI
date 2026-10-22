@@ -28,6 +28,72 @@ export interface WordInvoiceDocumentProps {
   template?: any;
 }
 
+const isDummyStoreName = (name?: string | null): boolean => {
+  if (!name || typeof name !== 'string') return true;
+  const lower = name.trim().toLowerCase();
+  return (
+    lower.includes('acme') ||
+    lower.includes('luxury store') ||
+    lower.includes('lazymonkey') ||
+    lower.includes('business organization') ||
+    lower.includes('default store') ||
+    lower.includes('sample store') ||
+    lower === 'company' ||
+    lower === 'organization' ||
+    lower === 'my workspace' ||
+    lower === 'main workspace' ||
+    lower === 'head office' ||
+    lower === 'venatic' ||
+    lower === 'businessos store' ||
+    lower === 'store'
+  );
+};
+
+const isDummyAddress = (addr?: string | null): boolean => {
+  if (!addr || typeof addr !== 'string') return true;
+  const lower = addr.trim().toLowerCase();
+  return (
+    lower.includes('kk street') ||
+    lower.includes('madanapalli') ||
+    lower.includes('proddatur') ||
+    lower.includes('cuddapah') ||
+    lower.includes('123 commercial hub') ||
+    lower.includes('royal avenue') ||
+    lower.includes('heritage plaza') ||
+    lower.includes('sector 18, noida') ||
+    lower.includes('state, india') ||
+    lower.includes('cauvery block') ||
+    lower.includes('national games village')
+  );
+};
+
+const isDummyGstin = (gstin?: string | null): boolean => {
+  if (!gstin || typeof gstin !== 'string') return true;
+  const clean = gstin.trim().toUpperCase();
+  return (
+    clean.includes('37AAFFK3904H2ZA') ||
+    clean.includes('37AAFCOE694G1Z4') ||
+    clean.includes('37AABCCH694G1Z4') ||
+    clean.includes('27AABCU9603R1ZM') ||
+    clean.includes('29AAACH7489R1ZX') ||
+    clean.includes('36AAFCG6041L1Z') ||
+    clean === 'GSTIN' ||
+    clean === '29ABCDE1234F1Z5'
+  );
+};
+
+const isDummyPhone = (phone?: string | null): boolean => {
+  if (!phone || typeof phone !== 'string') return true;
+  const clean = phone.replace(/[^0-9]/g, '');
+  return clean.includes('9849344919') || clean.includes('0849344919') || clean === '919876543210' || clean === '9876543210';
+};
+
+const isDummyEmail = (email?: string | null): boolean => {
+  if (!email || typeof email !== 'string') return true;
+  const clean = email.toLowerCase().trim();
+  return clean.includes('venatic.store') || clean.includes('billing@venatic.com') || clean.includes('support@businessos.ai');
+};
+
 export function WordInvoiceDocument({
   invoice,
   wordConfig: propWordConfig,
@@ -44,7 +110,8 @@ export function WordInvoiceDocument({
 }: WordInvoiceDocumentProps) {
   const { t } = useI18n();
 
-  const activeGst = getActiveBillingGst() as any;
+  const activeCompanyId = typeof window !== 'undefined' ? localStorage.getItem('bos_active_company_id') : undefined;
+  const activeGst = getActiveBillingGst(undefined, activeCompanyId || undefined) as any;
   const activeSig = getOrgSignatureSettings() as any;
 
   // Resolve Word Config from props or template
@@ -85,6 +152,63 @@ export function WordInvoiceDocument({
       resolvedFont = resolvedFont || "Inter, sans-serif";
     }
 
+    const isMock = Boolean(
+      !invoice?.invoice_number &&
+      (!invoice?.items || invoice.items.length === 0) &&
+      invoice?.id?.toString().startsWith("mock-")
+    );
+
+    const resolvedCompanyName =
+      (!isDummyStoreName(dynamicStoreName) ? dynamicStoreName : '') ||
+      (!isDummyStoreName(activeGst?.trade_name) ? activeGst?.trade_name : '') ||
+      (!isDummyStoreName(activeGst?.legal_name) ? activeGst?.legal_name : '') ||
+      (isMock && !isDummyStoreName(raw?.companyName) ? raw?.companyName : '') ||
+      dynamicStoreName ||
+      "Organization";
+
+    const resolvedCompanyAddress =
+      (!isDummyAddress(dynamicAddress) ? dynamicAddress : '') ||
+      (!isDummyAddress(activeGst?.address) ? activeGst?.address : '') ||
+      (isMock && !isDummyAddress(raw?.companyAddress) ? raw?.companyAddress : '') ||
+      dynamicAddress ||
+      "";
+
+    const resolvedCompanyGstin =
+      (!isDummyGstin(sellerGstin) ? sellerGstin : '') ||
+      (!isDummyGstin(activeGst?.gstin) ? activeGst?.gstin : '') ||
+      (isMock && !isDummyGstin(raw?.companyGstin) ? raw?.companyGstin : '') ||
+      sellerGstin ||
+      "";
+
+    const resolvedCompanyPhone =
+      (!isDummyPhone(dynamicPhone) ? dynamicPhone : '') ||
+      (!isDummyPhone(activeGst?.phone) ? activeGst?.phone : '') ||
+      (isMock && !isDummyPhone(raw?.companyPhone) ? raw?.companyPhone : '') ||
+      dynamicPhone ||
+      "";
+
+    const resolvedCompanyEmail =
+      (!isDummyEmail(dynamicEmail) ? dynamicEmail : '') ||
+      (!isDummyEmail(activeGst?.email) ? activeGst?.email : '') ||
+      (isMock && !isDummyEmail(raw?.companyEmail) ? raw?.companyEmail : '') ||
+      dynamicEmail ||
+      "";
+
+    const isCustomTemplateLogo = Boolean(
+      isMock &&
+      raw?.logoUrl &&
+      !raw.logoUrl.includes('/Logo.png') &&
+      !raw.logoUrl.includes('default') &&
+      !isDummyStoreName(raw?.companyName) &&
+      raw?.companyName === resolvedCompanyName
+    );
+
+    const resolvedLogoUrl =
+      (dynamicLogoUrl && !dynamicLogoUrl.includes('/Logo.png') ? dynamicLogoUrl : '') ||
+      (activeGst?.logo_url ? activeGst.logo_url : '') ||
+      (isCustomTemplateLogo ? raw.logoUrl : '') ||
+      "";
+
     return {
       id: raw?.id || "tpl-word-default",
       name: raw?.name || "Global Standard Invoice",
@@ -104,13 +228,13 @@ export function WordInvoiceDocument({
         (invoice.doc_type === 'proforma' || invoice.invoice_type === 'PROFORMA' || String(invoice.invoice_number || '').toUpperCase().startsWith('PI-')) ? "PROFORMA INVOICE" :
         (template?.headerTitle || "TAX INVOICE")
       ),
-      logoUrl: raw?.logoUrl || template?.logoUrl || dynamicLogoUrl || "",
-      companyName: raw?.companyName || template?.storeName || template?.companyName || dynamicStoreName || activeGst?.trade_name || activeGst?.legal_name || "Store",
-      companyTagline: raw?.companyTagline || template?.companyTagline || "",
-      companyAddress: raw?.companyAddress || template?.storeAddress || dynamicAddress || activeGst?.address || "",
-      companyPhone: raw?.companyPhone || template?.storePhone || dynamicPhone || activeGst?.phone || "",
-      companyEmail: raw?.companyEmail || template?.storeEmail || dynamicEmail || activeGst?.email || "",
-      companyGstin: raw?.companyGstin || template?.gstin || sellerGstin || activeGst?.gstin || "",
+      logoUrl: resolvedLogoUrl,
+      companyName: resolvedCompanyName,
+      companyTagline: (activeGst as any)?.tagline || (isMock ? raw?.companyTagline || "" : ""),
+      companyAddress: resolvedCompanyAddress,
+      companyPhone: resolvedCompanyPhone,
+      companyEmail: resolvedCompanyEmail,
+      companyGstin: resolvedCompanyGstin,
       companyPan: raw?.companyPan || activeGst?.pan || "",
       customerTitle: raw?.customerTitle || "Billed To (Customer):",
       customerName: raw?.customerName || "Customer Name",
@@ -212,7 +336,7 @@ export function WordInvoiceDocument({
         originalRate,
         description: it.product_name || it.name || it.description || `Item #${idx + 1}`,
         custom_note: it.custom_note || it.description || it.notes || "",
-        hsn: it.hsn_code || it.hsn || it.hsn_sac || "",
+        hsn: it.hsn_code || it.hsn || it.hsn_sac || (it as any).hsnCode || (it.product && (it.product.hsn_code || it.product.hsn)) || "",
         quantity: qty,
         unit: it.selected_uom || it.uom || it.measuring_unit || it.unit || "PCS",
         unit_type: it.secondary_uom && it.selected_uom === it.secondary_uom ? "Secondary Unit" : "Primary Unit",
@@ -815,9 +939,11 @@ export function WordInvoiceDocument({
                       <h1 className="font-black text-xl tracking-tight text-slate-900 leading-none">
                         {config.companyName}
                       </h1>
-                      <span className="text-[9.5px] font-semibold text-slate-400 uppercase tracking-wider block mt-0.5">
-                        {config.companyTagline || "Authorized Billing & Commercial Invoicing"}
-                      </span>
+                      {config.companyTagline ? (
+                        <span className="text-[9.5px] font-semibold text-slate-400 uppercase tracking-wider block mt-0.5">
+                          {config.companyTagline}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
 
@@ -1166,14 +1292,19 @@ export function WordInvoiceDocument({
 
                           // HSN / SAC Code
                           if (col.fieldKey === "hsn") {
+                            const cleanHsn = (item.hsn || item.hsn_code || "").toString().trim();
                             return (
                               <td
                                 key={col.id}
                                 className="py-3 px-2 text-center font-mono text-[9.5px] text-slate-600"
                               >
-                                <span className="bg-slate-100/80 px-1.5 py-0.5 rounded border border-slate-200/50">
-                                  {item.hsn}
-                                </span>
+                                {cleanHsn ? (
+                                  <span className="bg-slate-100/80 px-1.5 py-0.5 rounded border border-slate-200/50">
+                                    {cleanHsn}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 font-sans text-[11px]">—</span>
+                                )}
                               </td>
                             );
                           }

@@ -612,12 +612,16 @@ const INVALID_COMPANY_NAMES = new Set([
   'organization',
   'company',
   'default company',
+  'head office',
+  'venatic',
+  'businessos store',
+  'store',
 ]);
 
 export function isGenericBusinessTerm(name?: string | null): boolean {
   if (!name || typeof name !== 'string') return true;
   const clean = name.trim().toLowerCase();
-  return INVALID_COMPANY_NAMES.has(clean) || clean.startsWith('individual /') || clean === 'organization' || clean === 'company' || clean === 'default company';
+  return INVALID_COMPANY_NAMES.has(clean) || clean.startsWith('individual /') || clean === 'organization' || clean === 'company' || clean === 'default company' || clean === 'head office' || clean === 'venatic';
 }
 
 export function getActiveBillingGst(tenantId?: string, companyId?: string): ActiveGstDetails | null {
@@ -646,7 +650,16 @@ export function getActiveBillingGst(tenantId?: string, companyId?: string): Acti
     const isDummyAddress = (addr?: string | null): boolean => {
       if (!addr || !addr.trim()) return true;
       const lower = addr.toLowerCase().trim();
-      if (lower.includes('kk street') || lower.includes('123 commercial hub') || lower.includes('mandi road, proddatur') || lower.includes('apmc yard') || lower.includes('main market, proddatur') || lower.includes('hospital road, proddatur')) {
+      if (
+        lower.includes('kk street') ||
+        lower.includes('123 commercial hub') ||
+        lower.includes('mandi road, proddatur') ||
+        lower.includes('apmc yard') ||
+        lower.includes('main market, proddatur') ||
+        lower.includes('hospital road, proddatur') ||
+        lower.includes('cauvery block') ||
+        lower.includes('national games village')
+      ) {
         return true;
       }
       if (lower.includes('proddatur') && !tenantAddress.toLowerCase().includes('proddatur')) {

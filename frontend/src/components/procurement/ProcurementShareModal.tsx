@@ -16,6 +16,7 @@ import { Input } from '../ui/input';
 import { toast } from 'sonner';
 import { useCurrency } from '@/hooks/use-currency';
 import { useTenant } from '@/contexts/tenant-context';
+import { inventoryApi } from '@/lib/api-client';
 import { FullInvoicePrinter, FullInvoiceData } from '../pos/FullInvoicePrinter';
 import { getActiveBillingGst } from '@/lib/receipt-template-store';
 import { formatDisplayDate } from '@/lib/utils';
@@ -39,6 +40,7 @@ export function ProcurementShareModal({
   const [isPdfPrinterOpen, setIsPdfPrinterOpen] = useState<boolean>(false);
   const [phoneInput, setPhoneInput] = useState<string>('');
   const [emailInput, setEmailInput] = useState<string>('');
+  const [productHsnMap, setProductHsnMap] = useState<Record<string, string>>({});
 
   // Extract variables safely even when documentData is null
   const docNumber = documentData?.bill_number || documentData?.po_number || documentData?.request_number || documentData?.id?.slice(0, 8) || 'DOC-001';
@@ -59,29 +61,153 @@ export function ProcurementShareModal({
     }
   }, [documentData, supplierPhone, supplierEmail]);
 
+  // Fetch product HSN mapping if missing from any invoice items
+  useEffect(() => {
+    if (!documentData || !items || items.length === 0) return;
+    const missingHsn = items.some((it: any) => !(it.hsn_code || it.hsn || it.hsn_sac || it.product?.hsn_code));
+    if (missingHsn) {
+      inventoryApi.getProducts({ page_size: 1000 })
+        .then((res: any) => {
+          const prods = Array.isArray(res) ? res : (res?.items || []);
+          const map: Record<string, string> = {};
+          prods.forEach((p: any) => {
+            if (p.hsn_code) {
+              if (p.id) map[String(p.id).toLowerCase()] = p.hsn_code;
+              if (p.name) map[String(p.name).trim().toLowerCase()] = p.hsn_code;
+              if (p.sku) map[String(p.sku).trim().toLowerCase()] = p.hsn_code;
+            }
+          });
+          setProductHsnMap(map);
+        })
+        .catch((err) => {
+          console.warn('Failed to load inventory products for HSN resolution:', err);
+        });
+    }
+  }, [documentData, items]);
+
   // Active Store / Tenant details
-  const activeGst = getActiveBillingGst(tenant?.id);
-  const orgName = activeGst?.trade_name || activeGst?.legal_name || tenant?.name || 'BusinessOS Store';
-  const orgPhone = activeGst?.phone || (tenant as any)?.phone || '';
+  const activeCompanyId = typeof window !== 'undefined' ? localStorage.getItem('bos_active_company_id') : undefined;
+  const activeGst = getActiveBillingGst(tenant?.id, activeCompanyId || undefined);
+
+  const isDummyVal = (v?: string | null, type?: 'name' | 'address' | 'gst' | 'phone' | 'email'): boolean => {
+    if (!v || typeof v !== 'string') return true;
+    const lower = v.toLowerCase().trim();
+    if (type === 'name') {
+      return lower === 'head office' || lower === 'venatic' || lower === 'businessos store' || lower === 'company' || lower === 'organization' || lower.includes('acme');
+    }
+    if (type === 'address') {
+      return lower.includes('cauvery block') || lower.includes('national games village') || lower.includes('madanapalli') || lower.includes('proddatur');
+    }
+    if (type === 'gst') {
+      return lower.includes('29aaach7489r1zx');
+    }
+    if (type === 'phone') {
+      return lower.includes('9876543210') || lower.includes('919876543210') || lower.includes('9849344919');
+    }
+    if (type === 'email') {
+      return lower.includes('billing@venatic.com') || lower.includes('venatic.store');
+    }
+    return false;
+  };
+
+  let storedComp: any = null;
+  try {
+    const rawC = (activeCompanyId ? localStorage.getItem(`bos_active_company_${tenant?.id}_${activeCompanyId}`) : null) || localStorage.getItem('bos_active_company');
+    if (rawC) storedComp = JSON.parse(rawC);
+  } catch {}
+
+  const activeComp = (tenant as any)?.raw || storedComp || (tenant as any) || {};
+  const primaryReg = activeComp?.gst_registrations?.find((r: any) => r.is_primary) || activeComp?.gst_registrations?.[0];
+
+  const orgName =
+    (!isDummyVal(tenant?.name, 'name') ? tenant?.name : '') ||
+    (!isDummyVal(activeComp?.name, 'name') ? activeComp?.name : '') ||
+    (!isDummyVal(primaryReg?.trade_name, 'name') ? primaryReg?.trade_name : '') ||
+    (!isDummyVal(activeGst?.trade_name, 'name') ? activeGst?.trade_name : '') ||
+    (!isDummyVal(activeGst?.legal_name, 'name') ? activeGst?.legal_name : '') ||
+    tenant?.name ||
+    'Organization';
+
+  const orgGstin =
+    (!isDummyVal(primaryReg?.gstin, 'gst') ? primaryReg?.gstin : '') ||
+    (!isDummyVal(activeComp?.gst_number || activeComp?.gstin, 'gst') ? (activeComp?.gst_number || activeComp?.gstin) : '') ||
+    (!isDummyVal(activeGst?.gstin, 'gst') ? activeGst?.gstin : '') ||
+    '';
+
+  const orgAddress =
+    (!isDummyVal(primaryReg?.address, 'address') ? primaryReg?.address : '') ||
+    (!isDummyVal(activeComp?.address, 'address') ? activeComp?.address : '') ||
+    (!isDummyVal(activeGst?.address, 'address') ? activeGst?.address : '') ||
+    '';
+
+  const orgPhone =
+    (!isDummyVal(activeComp?.phone, 'phone') ? activeComp?.phone : '') ||
+    (!isDummyVal(activeGst?.phone, 'phone') ? activeGst?.phone : '') ||
+    '';
+
+  const orgEmail =
+    (!isDummyVal(activeComp?.email, 'email') ? activeComp?.email : '') ||
+    (!isDummyVal(activeGst?.email, 'email') ? activeGst?.email : '') ||
+    '';
+
+  const orgLogo =
+    (activeComp?.logo_url && !activeComp.logo_url.includes('/Logo.png') ? activeComp.logo_url : null) ||
+    (activeGst?.logo_url && !activeGst.logo_url.includes('/Logo.png') ? activeGst.logo_url : null) ||
+    (tenant?.logo_url && !tenant.logo_url.includes('/Logo.png') ? tenant.logo_url : null) ||
+    null;
 
   // Formatted FullInvoiceData for PDF Printer
   const fullInvoiceData: FullInvoiceData = {
     invoice_number: docNumber,
     invoice_date: documentData?.bill_date || documentData?.order_date || documentData?.created_at || new Date().toISOString(),
     due_date: documentData?.due_date || documentData?.delivery_date,
+    seller_name: orgName,
+    seller_trade_name: orgName,
+    company_name: orgName,
+    companyName: orgName,
+    store_name: orgName,
+    storeName: orgName,
+    seller_gstin: orgGstin,
+    company_gstin: orgGstin,
+    seller_address: orgAddress,
+    company_address: orgAddress,
+    seller_phone: orgPhone,
+    company_phone: orgPhone,
+    seller_email: orgEmail,
+    company_email: orgEmail,
+    seller_logo_url: orgLogo,
     customerName: supplierName,
     customerPhone: phoneInput,
     customerEmail: emailInput,
     customerCompany: documentData?.supplier?.company_name || supplierName,
     customerGST: documentData?.supplier?.tax_id || (documentData?.supplier as any)?.gstin || '',
     customerAddress: documentData?.supplier?.address || '',
-    items: items.map((it: any) => ({
-      product_name: it.product_name || it.name || 'Material Item',
-      quantity: Number(it.quantity) || 1,
-      unit_price: Number(it.unit_price) || 0,
-      tax_rate: Number(it.tax_percent) || 0,
-      subtotal: (Number(it.quantity) || 1) * (Number(it.unit_price) || 0) * (1 + (Number(it.tax_percent) || 0) / 100),
-    })),
+    items: items.map((it: any) => {
+      const pName = (it.product_name || it.name || '').trim().toLowerCase();
+      const pId = it.product_id ? String(it.product_id).toLowerCase() : '';
+      const rawHsn = 
+        it.hsn_code || 
+        it.hsn || 
+        it.hsn_sac || 
+        (it as any).hsnCode ||
+        it.product?.hsn_code || 
+        it.product?.hsn ||
+        (pId && productHsnMap[pId]) ||
+        (pName && productHsnMap[pName]) ||
+        '';
+
+      const hsnCode = typeof rawHsn === 'string' ? rawHsn.trim() : String(rawHsn || '').trim();
+
+      return {
+        product_name: it.product_name || it.name || 'Material Item',
+        hsn_code: hsnCode,
+        hsn: hsnCode,
+        quantity: Number(it.quantity) || 1,
+        unit_price: Number(it.unit_price) || 0,
+        tax_rate: Number(it.tax_percent) || 0,
+        subtotal: (Number(it.quantity) || 1) * (Number(it.unit_price) || 0) * (1 + (Number(it.tax_percent) || 0) / 100),
+      };
+    }),
     subtotal: documentData?.subtotal || totalAmount,
     tax_amount: documentData?.tax_amount || items.reduce((acc: number, it: any) => acc + ((Number(it.quantity) || 1) * (Number(it.unit_price) || 0) * (Number(it.tax_percent) || 0) / 100), 0),
     round_off: Number(documentData?.round_off || 0),

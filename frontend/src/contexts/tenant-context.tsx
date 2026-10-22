@@ -275,6 +275,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     window.dispatchEvent(new Event("storage"));
     window.dispatchEvent(new CustomEvent("bos-tenant-changed", { detail: c }));
     window.dispatchEvent(new CustomEvent("bos-company-changed", { detail: c }));
+    window.dispatchEvent(new CustomEvent("print_templates_updated"));
+    window.dispatchEvent(new CustomEvent("bos_invoice_template_changed"));
     if (queryClient) {
       try {
         queryClient.invalidateQueries();
@@ -427,7 +429,30 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         const tid = activeMatch.raw?.tenant_id || (activeMatch as any).tenant_id || activeMatch.id;
         if (tid) {
           safeSetItem(`bos_active_company_${tid}`, JSON.stringify(sanitizedMatch));
+          safeSetItem(`bos_active_company_${tid}_${activeMatch.id}`, JSON.stringify(sanitizedMatch));
         }
+        // Immediately sync billing GST snapshot for this company to prevent stale cross-workspace bleed
+        try {
+          const cRaw: any = activeMatch.raw || activeMatch;
+          const primaryReg = cRaw.gst_registrations?.find((r: any) => r.is_primary) || cRaw.gst_registrations?.[0];
+          const gstin = primaryReg?.gstin || cRaw.gst_number || cRaw.gstin || '';
+          const address = primaryReg?.address || cRaw.address || '';
+          const billingGst = sanitizeForStorage({
+            trade_name: cRaw.name,
+            legal_name: cRaw.legal_name || cRaw.name,
+            gstin: gstin,
+            address: address,
+            phone: cRaw.phone || '',
+            email: cRaw.email || '',
+            logo_url: cRaw.logo_url || null,
+            google_review_url: cRaw.google_review_url || null,
+          });
+          if (tid) {
+            safeSetItem(`bos_active_billing_gst_details_${tid}`, JSON.stringify(billingGst));
+            safeSetItem(`bos_active_billing_gst_details_${tid}_${activeMatch.id}`, JSON.stringify(billingGst));
+          }
+          safeSetItem("bos_active_billing_gst_details", JSON.stringify(billingGst));
+        } catch {}
       } else if (mappedCompanies.length > 0) {
         // Fallback to default company in list
         const defaultMatch = mappedCompanies.find(
@@ -444,7 +469,29 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         const tid = defaultMatch.raw?.tenant_id || (defaultMatch as any).tenant_id || defaultMatch.id;
         if (tid) {
           safeSetItem(`bos_active_company_${tid}`, JSON.stringify(sanitizedDefault));
+          safeSetItem(`bos_active_company_${tid}_${defaultMatch.id}`, JSON.stringify(sanitizedDefault));
         }
+        try {
+          const cRaw: any = defaultMatch.raw || defaultMatch;
+          const primaryReg = cRaw.gst_registrations?.find((r: any) => r.is_primary) || cRaw.gst_registrations?.[0];
+          const gstin = primaryReg?.gstin || cRaw.gst_number || cRaw.gstin || '';
+          const address = primaryReg?.address || cRaw.address || '';
+          const billingGst = sanitizeForStorage({
+            trade_name: cRaw.name,
+            legal_name: cRaw.legal_name || cRaw.name,
+            gstin: gstin,
+            address: address,
+            phone: cRaw.phone || '',
+            email: cRaw.email || '',
+            logo_url: cRaw.logo_url || null,
+            google_review_url: cRaw.google_review_url || null,
+          });
+          if (tid) {
+            safeSetItem(`bos_active_billing_gst_details_${tid}`, JSON.stringify(billingGst));
+            safeSetItem(`bos_active_billing_gst_details_${tid}_${defaultMatch.id}`, JSON.stringify(billingGst));
+          }
+          safeSetItem("bos_active_billing_gst_details", JSON.stringify(billingGst));
+        } catch {}
       }
 
       // Auto-select first branch if none selected

@@ -3,7 +3,7 @@ import { useI18n } from "@/contexts/i18n-context";
 import { createPortal } from 'react-dom';
 import { Printer, X, Download, FileText, CheckCircle2, Upload, Sparkles, MessageCircle, Mail, Send, Loader2 } from 'lucide-react';
 import { toast } from "sonner";
-import { getActiveInvoicePrintTemplate, setActiveInvoicePrintTemplate, GLOBAL_INVOICE_TEMPLATES, getActiveBillingGst, getOrgPaymentQrSettings, getOrgSignatureSettings, getTenantTemplatesKey, getTenantIdFromStorage } from '../../lib/receipt-template-store';
+import { getActiveInvoicePrintTemplate, setActiveInvoicePrintTemplate, GLOBAL_INVOICE_TEMPLATES, getActiveBillingGst, getOrgPaymentQrSettings, getOrgSignatureSettings, getTenantTemplatesKey, getTenantIdFromStorage, getTenantDefaultsKey } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { companiesApi, invoicesApi, printTemplatesApi, resolveImageUrl } from "@/lib/api-client";
@@ -174,10 +174,8 @@ export function FullInvoicePrinter({
     try {
       const tid = tenant?.id || getTenantIdFromStorage();
       const defaultsKey = getTenantDefaultsKey(tid);
-      const userActiveDefaultsRaw =
-        localStorage.getItem(defaultsKey) ||
-        localStorage.getItem(`user_active_print_templates_v1_${tid}`) ||
-        localStorage.getItem('user_active_print_templates_v1');
+      // Workspace-scoped default keys only — never the unsuffixed global fallback
+      const userActiveDefaultsRaw = tid ? localStorage.getItem(defaultsKey) : null;
       let userActiveInvoiceId: string | null = null;
       if (userActiveDefaultsRaw) {
         try {
@@ -404,41 +402,39 @@ export function FullInvoicePrinter({
         // 4. Fetch fresh organization company data from API – guarantees real-time details
         //    Use the active company (from localStorage bos_active_company_id) NOT the first item.
         //    This prevents cross-workspace bleed (e.g. showing Ameya's details while in iotronics).
-        companiesApi.list(1, 10).then((res) => {
+        companiesApi.list(1, 100).then((res) => {
           if (res?.items && res.items.length > 0) {
             const activeCompanyId = localStorage.getItem('bos_active_company_id');
-            const active =
-              (activeCompanyId ? res.items.find((c: any) => c.id === activeCompanyId) : null) ||
-              res.items[0];
+            const active = res.items.find((c: any) =>
+              (activeCompanyId && (String(c.id) === String(activeCompanyId) || c.id === activeCompanyId)) ||
+              (tenant?.id && (String(c.id) === String(tenant.id) || c.id === tenant.id)) ||
+              (tenant?.name && c.name?.toLowerCase().trim() === tenant.name?.toLowerCase().trim())
+            );
             if (active) {
               // Persist to localStorage so getActiveBillingGst() picks it up next time
               const tid = tenant?.id || getTenantIdFromStorage();
               if (tid) {
                 try {
+                  const primaryReg = active.gst_registrations?.find((r: any) => r.is_primary) || active.gst_registrations?.[0];
+                  const gstinVal = primaryReg?.gstin || active.gst_number || (active as any).gstin || '';
+                  const addressVal = primaryReg?.address || active.address || '';
+
+                  localStorage.setItem(`bos_active_company_${tid}_${active.id}`, JSON.stringify(active));
                   localStorage.setItem(`bos_active_company_${tid}`, JSON.stringify(active));
-                  // Also update the billing GST snapshot if the API returned richer data
-                  const existingGstRaw = localStorage.getItem(`bos_active_billing_gst_details_${tid}`);
-                  const existingGst = existingGstRaw ? JSON.parse(existingGstRaw) : {};
+                  localStorage.setItem('bos_active_company', JSON.stringify(active));
+
                   const merged = {
-                    trade_name: active.name || active.trade_name || existingGst.trade_name,
-                    legal_name: active.legal_name || existingGst.legal_name,
-                    gstin: active.gstin || active.gst_number || existingGst.gstin,
-                    address: active.address || existingGst.address,
-                    phone: active.phone || existingGst.phone,
-                    email: active.email || existingGst.email,
-                    logo_url: active.logo_url || existingGst.logo_url,
-                    google_review_url: active.google_review_url || existingGst.google_review_url,
-                    google_review_enabled: active.google_review_enabled ?? existingGst.google_review_enabled,
-                    ...existingGst,
-                    // Let live data override anything already cached
-                    ...(active.name ? { trade_name: active.name } : {}),
-                    ...(active.gstin ? { gstin: active.gstin } : {}),
-                    ...(active.address ? { address: active.address } : {}),
-                    ...(active.phone ? { phone: active.phone } : {}),
-                    ...(active.email ? { email: active.email } : {}),
-                    ...(active.logo_url ? { logo_url: active.logo_url } : {}),
-                    ...(active.google_review_url ? { google_review_url: active.google_review_url } : {}),
+                    trade_name: active.name || (active as any).trade_name || '',
+                    legal_name: active.legal_name || active.name || '',
+                    gstin: gstinVal,
+                    address: addressVal,
+                    phone: active.phone || '',
+                    email: active.email || '',
+                    logo_url: active.logo_url || null,
+                    google_review_url: active.google_review_url || null,
+                    google_review_enabled: active.google_review_enabled ?? true,
                   };
+                  localStorage.setItem(`bos_active_billing_gst_details_${tid}_${active.id}`, JSON.stringify(merged));
                   localStorage.setItem(`bos_active_billing_gst_details_${tid}`, JSON.stringify(merged));
                 } catch {}
               }
@@ -707,7 +703,10 @@ export function FullInvoicePrinter({
       lower === 'company' ||
       lower === 'organization' ||
       lower === 'my workspace' ||
-      lower === 'main workspace'
+      lower === 'main workspace' ||
+      lower === 'head office' ||
+      lower === 'venatic' ||
+      lower === 'businessos store'
     );
   };
 
@@ -723,7 +722,9 @@ export function FullInvoicePrinter({
       lower.includes('royal avenue') ||
       lower.includes('heritage plaza') ||
       lower.includes('sector 18, noida') ||
-      lower.includes('state, india')
+      lower.includes('state, india') ||
+      lower.includes('cauvery block') ||
+      lower.includes('national games village')
     );
   };
 
@@ -735,6 +736,8 @@ export function FullInvoicePrinter({
       clean.includes('37AAFCOE694G1Z4') ||
       clean.includes('37AABCCH694G1Z4') ||
       clean.includes('27AABCU9603R1ZM') ||
+      clean.includes('29AAACH7489R1ZX') ||
+      clean.includes('36AAFCG6041L1Z') ||
       clean === 'GSTIN' ||
       clean === '29ABCDE1234F1Z5'
     );
@@ -743,13 +746,13 @@ export function FullInvoicePrinter({
   const isDummyPhone = (phone?: string | null): boolean => {
     if (!phone || typeof phone !== 'string') return true;
     const clean = phone.replace(/[^0-9]/g, '');
-    return clean.includes('9849344919') || clean.includes('0849344919');
+    return clean.includes('9849344919') || clean.includes('0849344919') || clean === '919876543210' || clean === '9876543210';
   };
 
   const isDummyEmail = (email?: string | null): boolean => {
     if (!email || typeof email !== 'string') return true;
     const clean = email.toLowerCase().trim();
-    return clean.includes('venatic.store') || clean.includes('support@businessos.ai');
+    return clean.includes('venatic.store') || clean.includes('billing@venatic.com') || clean.includes('support@businessos.ai');
   };
 
   // 1. Store Name / Company Name Resolution
@@ -773,7 +776,7 @@ export function FullInvoicePrinter({
     (!isDummyStoreName(tenant?.name) ? tenant?.name : '') ||
     '';
 
-  // 2. Logo Resolution (Active organization company logo strictly isolated per tenant)
+  // 2. Logo Resolution (Active organization company logo strictly isolated per workspace)
   const invoiceSellerLogo =
     (invoice as any)?.seller_logo_url ||
     (invoice as any)?.seller_logo ||
@@ -784,7 +787,10 @@ export function FullInvoicePrinter({
     template.logoUrl &&
     template.logoUrl.trim() !== '' &&
     !template.logoUrl.includes('default') &&
-    !template.logoUrl.includes('/Logo.png')
+    !template.logoUrl.includes('/Logo.png') &&
+    template.storeName &&
+    dynamicStoreName &&
+    template.storeName.toLowerCase().trim() === dynamicStoreName.toLowerCase().trim()
   );
 
   const activeLogo =
@@ -794,10 +800,10 @@ export function FullInvoicePrinter({
     tenant?.logo_url ||
     tenantRaw?.logo_url ||
     (tenant as any)?.raw?.logo_url ||
-    (isTemplateLogoCustom ? template.logoUrl : '') ||
+    (isTemplateLogoCustom ? template.logoUrl : null) ||
     null;
 
-  const dynamicLogoUrl = resolveImageUrl(activeLogo || '') || '/Logo.png';
+  const dynamicLogoUrl = resolveImageUrl(activeLogo || '') || '';
 
   // 3. Address Resolution
   const invoiceSellerAddress =
@@ -824,7 +830,6 @@ export function FullInvoicePrinter({
     (!isDummyAddress(currentOrgAddress) ? currentOrgAddress : '') ||
     (!isDummyAddress(activeBillingGst?.address) ? activeBillingGst?.address : '') ||
     (!isDummyAddress(tenantAddressFormatted) ? tenantAddressFormatted : '') ||
-    (!isDummyAddress(template.storeAddress) ? template.storeAddress : '') ||
     currentOrgAddress ||
     '';
 
@@ -841,7 +846,6 @@ export function FullInvoicePrinter({
     (!isDummyPhone(currentOrg?.phone) ? currentOrg?.phone : '') ||
     (!isDummyPhone(activeBillingGst?.phone) ? activeBillingGst?.phone : '') ||
     (!isDummyPhone(tenantRaw?.phone || tenantSettings?.phone) ? (tenantRaw?.phone || tenantSettings?.phone) : '') ||
-    (!isDummyPhone(template.storePhone) ? template.storePhone : '') ||
     '';
 
   // 5. Email Resolution
@@ -857,7 +861,6 @@ export function FullInvoicePrinter({
     (!isDummyEmail(currentOrg?.email) ? currentOrg?.email : '') ||
     (!isDummyEmail(activeBillingGst?.email) ? activeBillingGst?.email : '') ||
     (!isDummyEmail(tenantRaw?.email || tenantSettings?.email) ? (tenantRaw?.email || tenantSettings?.email) : '') ||
-    (!isDummyEmail(template.storeEmail) ? template.storeEmail : '') ||
     '';
 
   // 6. GSTIN Resolution
@@ -880,7 +883,6 @@ export function FullInvoicePrinter({
       (!isDummyGstin(currentOrgGstin) ? currentOrgGstin : '') ||
       (!isDummyGstin(activeBillingGst?.gstin) ? activeBillingGst?.gstin : '') ||
       (!isDummyGstin(tenantRaw?.gst_number || tenantRaw?.gstin) ? (tenantRaw?.gst_number || tenantRaw?.gstin) : '') ||
-      (!isDummyGstin(template.gstin) ? template.gstin : '') ||
       currentOrgGstin ||
       ''
     ).trim().toUpperCase();
@@ -904,7 +906,9 @@ export function FullInvoicePrinter({
     if (liveCompanyData?.bank_name && (liveCompanyData?.bank_account_number || liveCompanyData?.account_number)) {
       return `Bank: ${liveCompanyData.bank_name} | A/C: ${liveCompanyData.bank_account_number || liveCompanyData.account_number} | IFSC: ${liveCompanyData.bank_ifsc || liveCompanyData.ifsc_code || ''} ${liveCompanyData.bank_branch || liveCompanyData.branch_name ? `| Branch: ${liveCompanyData.bank_branch || liveCompanyData.branch_name}` : ''}`;
     }
-    if (activeBillingGst?.bank_details) return activeBillingGst.bank_details;
+    if (activeBillingGst?.bank_name && (activeBillingGst?.bank_account_number || activeBillingGst?.bank_ifsc)) {
+      return `Bank: ${activeBillingGst.bank_name} | A/C: ${activeBillingGst.bank_account_number || ''} | IFSC: ${activeBillingGst.bank_ifsc || ''}`;
+    }
     if (customTemplate?.bankDetails) return customTemplate.bankDetails;
     const rawTplBank = (template.bankDetails || '').trim();
     const isTplDummy = !rawTplBank ||

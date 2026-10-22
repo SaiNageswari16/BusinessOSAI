@@ -271,7 +271,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [newProdName, setNewProdName] = useState<string>("");
   const [newProdSku, setNewProdSku] = useState<string>("");
   const [newProdBarcode, setNewProdBarcode] = useState<string>("");
-  const [newProdHsn, setNewProdHsn] = useState<string>("2202");
+  const [newProdHsn, setNewProdHsn] = useState<string>("");
   const [newProdCostPrice, setNewProdCostPrice] = useState<number | "">("");
   const [newProdSellingPrice, setNewProdSellingPrice] = useState<number | "">("");
   const [newProdMrp, setNewProdMrp] = useState<number | "">("");
@@ -449,7 +449,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                       id: Math.random().toString(36).substring(2, 9),
                       product_id: it.product_id,
                       product_name: it.product_name || prod?.name || "Material Item",
-                      hsn_code: prod?.hsn_code || "2202",
+                      hsn_code: prod?.hsn_code || it.hsn_code || "",
                       mrp: prod?.mrp || prod?.selling_price || 0,
                       quantity: Number(it.quantity) || 1,
                       unit_price: Number(it.unit_price) || prod?.cost_price || 0,
@@ -474,7 +474,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                     id: Math.random().toString(36).substring(2, 9),
                     product_id: it.product_id,
                     product_name: it.product_name || prod?.name || "Material Item",
-                    hsn_code: prod?.hsn_code || "2202",
+                    hsn_code: prod?.hsn_code || it.hsn_code || "",
                     mrp: prod?.mrp || prod?.selling_price || 0,
                     quantity: acceptedQty,
                     unit_price: prod?.cost_price || prod?.purchase_price || 0,
@@ -499,7 +499,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                 id: it.id || String(idx + 1),
                 product_id: it.product_id || foundProd?.id,
                 product_name: pName || foundProd?.name || "Purchased Product",
-                hsn_code: it.hsn_code || (foundProd as any)?.hsn_code || "2202",
+                hsn_code: it.hsn_code || (foundProd as any)?.hsn_code || "",
                 mrp: mrpVal,
                 quantity: Number(it.quantity) || 1,
                 unit_price: price,
@@ -539,7 +539,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             id: Math.random().toString(36).substring(2, 9),
             product_id: it.product_id,
             product_name: it.product_name || prod?.name || "Material Item",
-            hsn_code: prod?.hsn_code || "2202",
+            hsn_code: prod?.hsn_code || it.hsn_code || "",
             mrp: prod?.mrp || prod?.selling_price || 0,
             quantity: Number(it.quantity) || 1,
             unit_price: Number(it.estimated_price) || prod?.cost_price || prod?.selling_price || 0,
@@ -567,7 +567,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               id: Math.random().toString(36).substring(2, 9),
               product_id: it.product_id,
               product_name: it.product_name || prod?.name || "Material Item",
-              hsn_code: prod?.hsn_code || "2202",
+              hsn_code: prod?.hsn_code || it.hsn_code || "",
               mrp: prod?.mrp || prod?.selling_price || 0,
               quantity: Number(it.quantity) || 1,
               unit_price: Number(it.unit_price) || prod?.cost_price || 0,
@@ -595,7 +595,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               id: Math.random().toString(36).substring(2, 9),
               product_id: it.product_id,
               product_name: it.product_name || prod?.name || "Material Item",
-              hsn_code: prod?.hsn_code || "2202",
+              hsn_code: prod?.hsn_code || it.hsn_code || "",
               mrp: prod?.mrp || prod?.selling_price || 0,
               quantity: Number(it.quantity) || 1,
               unit_price: Number(it.unit_price) || prod?.cost_price || 0,
@@ -637,7 +637,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               id: Math.random().toString(36).substring(2, 9),
               product_id: it.product_id,
               product_name: it.product_name || prod?.name || "Material Item",
-              hsn_code: prod?.hsn_code || "2202",
+              hsn_code: prod?.hsn_code || it.hsn_code || "",
               mrp: prod?.mrp || prod?.selling_price || 0,
               quantity: acceptedQty,
               unit_price: prod?.cost_price || prod?.purchase_price || 0,
@@ -710,7 +710,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             const product = products.find((p) => p.id === value);
             if (product) {
               updated.product_name = product.name;
-              updated.hsn_code = product.hsn_code || "2202";
+              updated.hsn_code = product.hsn_code || "";
               updated.mrp = product.mrp || product.selling_price || 0;
               updated.unit_price = product.cost_price || product.selling_price || 0;
               updated.tax_rate = getEffectiveTaxRate(product);
@@ -778,7 +778,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           id: Math.random().toString(36).substring(2, 9),
           product_id: prod.id,
           product_name: prod.name,
-          hsn_code: prod.hsn_code || "2202",
+          hsn_code: prod.hsn_code || "",
           uom: (prod as any).uom_name || "Nos",
           batch_number: batchNumber,
           expiry_date: chosenBatch?.expiry_date || undefined,
@@ -825,7 +825,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         name: newProdName.trim(),
         sku: skuVal,
         barcode: barcodeVal,
-        hsn_code: newProdHsn.trim() || "2202",
+        hsn_code: newProdHsn.trim() || undefined,
         purchase_price: costVal,
         cost_price: costVal,
         selling_price: sellingVal,
@@ -850,7 +850,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           id: Math.random().toString(36).substring(2, 9),
           product_id: created.id,
           product_name: created.name,
-          hsn_code: created.hsn_code || "2202",
+          hsn_code: created.hsn_code || "",
           uom: "Nos",
           batch_number: created.batch_number || (created as any).stock_batch_number || "",
           mrp: mrpVal,
@@ -906,7 +906,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               id: Math.random().toString(36).substring(2, 9),
               product_id: product.id,
               product_name: product.name,
-              hsn_code: product.hsn_code || "2202",
+              hsn_code: product.hsn_code || "",
               batch_number: (product as any).stock_batch_number || (product as any).batch_number || "",
               mrp: mrpVal,
               quantity: 1,
@@ -935,7 +935,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               id: Math.random().toString(36).substring(2, 9),
               product_id: p.id,
               product_name: p.name,
-              hsn_code: p.hsn_code || "2202",
+              hsn_code: p.hsn_code || "",
               mrp: p.mrp || p.selling_price || costPrice || 0,
               quantity: 1,
               unit_price: costPrice,
@@ -1033,6 +1033,8 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       status: docType === "PINV" ? (currentPoStatus === "Paid" ? "Paid" : "Unpaid") : (currentPoStatus || "Draft"),
       items: items.map((it) => ({
         product_name: it.product_name || "Material Item",
+        hsn_code: it.hsn_code || "",
+        hsn: it.hsn_code || "",
         quantity: Number(it.quantity) || 1,
         unit_price: Number(it.unit_price) || 0,
         tax_percent: Number(it.tax_rate) || 0,
@@ -1094,30 +1096,47 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedSupplierId);
         if (!isUUID) {
           const tempSupp: any = suppliers.find((s) => s.id === selectedSupplierId);
-          const suppName = tempSupp?.name || "Vendor Partner";
-          const codeSeq = Math.floor(1000 + Math.random() * 9000);
-          const code = `VEN-${Date.now().toString().slice(-4)}-${codeSeq}`;
-          const gstin = tempSupp?.gst_number || tempSupp?.tax_id || tempSupp?.tax_number || "";
-          const createdSupp = await inventoryApi.createSupplier({
-            name: suppName,
-            code: code,
-            type: tempSupp?.type || "Manufacturer",
-            company_name: tempSupp?.company_name || suppName,
-            phone: tempSupp?.phone || undefined,
-            email: tempSupp?.email || undefined,
-            address: tempSupp?.address || tempSupp?.billing_address || undefined,
-            billing_address: tempSupp?.billing_address || tempSupp?.address || undefined,
-            state: tempSupp?.state || undefined,
-            credit_limit: 0,
-            rating: 5.0,
-            status: "Active",
-            gst_number: gstin || undefined,
-            products_desc: gstin ? `GSTIN: ${gstin}` : tempSupp?.products_desc || undefined,
+          const suppName = tempSupp?.name || selectedSupplierId || "Vendor Partner";
+          const gstin = (tempSupp?.gst_number || tempSupp?.tax_id || tempSupp?.tax_number || "").trim().toUpperCase();
+
+          const cleanStr = (v: string) => (v || "").toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+          const targetNorm = cleanStr(suppName);
+          const existingReal = suppliers.find((s) => {
+            const isSReal = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s.id);
+            if (!isSReal) return false;
+            const sGst = String((s as any).tax_id || (s as any).gst_number || (s as any).products_desc || "").toUpperCase();
+            if (gstin && sGst.includes(gstin)) return true;
+            const sNorm = cleanStr(s.name);
+            return sNorm && targetNorm && (sNorm === targetNorm || sNorm.includes(targetNorm) || targetNorm.includes(sNorm));
           });
-          const suppObj = createdSupp.data || createdSupp;
-          supplierIdToUse = suppObj.id;
-          setSelectedSupplierId(suppObj.id);
-          setSuppliers((prev) => [suppObj, ...prev.filter((p) => p.id !== selectedSupplierId)]);
+
+          if (existingReal) {
+            supplierIdToUse = existingReal.id;
+            setSelectedSupplierId(existingReal.id);
+          } else {
+            const codeSeq = Math.floor(1000 + Math.random() * 9000);
+            const code = `VEN-${Date.now().toString().slice(-4)}-${codeSeq}`;
+            const createdSupp = await inventoryApi.createSupplier({
+              name: suppName,
+              code: code,
+              type: tempSupp?.type || "Manufacturer",
+              company_name: tempSupp?.company_name || suppName,
+              phone: tempSupp?.phone || undefined,
+              email: tempSupp?.email || undefined,
+              address: tempSupp?.address || tempSupp?.billing_address || undefined,
+              billing_address: tempSupp?.billing_address || tempSupp?.address || undefined,
+              state: tempSupp?.state || undefined,
+              credit_limit: 0,
+              rating: 5.0,
+              status: "Active",
+              gst_number: gstin || undefined,
+              products_desc: gstin ? `GSTIN: ${gstin}` : tempSupp?.products_desc || undefined,
+            });
+            const suppObj = createdSupp.data || createdSupp;
+            supplierIdToUse = suppObj.id;
+            setSelectedSupplierId(suppObj.id);
+            setSuppliers((prev) => [suppObj, ...prev.filter((p) => p.id !== selectedSupplierId && p.id !== suppObj.id)]);
+          }
         }
       }
 
@@ -1133,6 +1152,12 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
             );
             if (existingProd) {
               pId = existingProd.id;
+              if (it.hsn_code && !existingProd.hsn_code) {
+                try {
+                  await inventoryApi.updateProduct(existingProd.id, { hsn_code: it.hsn_code });
+                  existingProd.hsn_code = it.hsn_code;
+                } catch {}
+              }
             } else {
               // Create actual product on the fly with extracted details (no fallback to products[0].id)
               const created = await inventoryApi.createProduct({
@@ -1258,6 +1283,16 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
       else if (docType === "PO" && !data.po_number) setDocNumber(data.invoice_number || data.bill_number);
     }
 
+    // Helper to normalize vendor name for deduplication
+    const normalizeVendorName = (val: string) => {
+      if (!val) return "";
+      const s = val.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+      const noise = ["pvt", "ltd", "private", "limited", "llc", "llp", "inc", "corp", "corporation", "co", "company", "enterprises", "enterprise", "traders", "trading", "agency", "agencies", "industries", "industry"];
+      const parts = s.split(" ").filter((w) => !noise.includes(w));
+      const res = parts.join(" ");
+      return res.length >= 2 ? res : s;
+    };
+
     // Vendor matching / creation: Use supplier_id from backend OCR or match/create with all available details
     if (data.supplier_id) {
       setSelectedSupplierId(data.supplier_id);
@@ -1289,26 +1324,64 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
       });
       if (data.supplier_created) {
         toast.success(`Created real vendor "${data.supplier_name}" and linked to this document.`);
+      } else {
+        toast.info(`Matched existing vendor "${data.supplier_name}" and linked to this document.`);
       }
     } else if (data.supplier_name || data.supplier_gstin) {
       const gstinClean = (data.supplier_gstin || "").trim().toUpperCase();
-      const nameClean = (data.supplier_name || "").trim().toLowerCase();
+      const nameNorm = normalizeVendorName(data.supplier_name || "");
 
+      // 1. Check in-memory suppliers list
       let matchedSupplier = suppliers.find((s) => {
-        const sTax = String((s as any).tax_id || (s as any).gstin || (s as any).gst_number || "").trim().toUpperCase();
-        return gstinClean && sTax && sTax === gstinClean;
+        const sTax = String((s as any).tax_id || (s as any).gstin || (s as any).gst_number || (s as any).products_desc || "").trim().toUpperCase();
+        return gstinClean && sTax.includes(gstinClean);
       });
-      if (!matchedSupplier && nameClean) {
+      if (!matchedSupplier && nameNorm) {
         matchedSupplier = suppliers.find((s) => {
-          const sName = s.name.toLowerCase();
-          return sName === nameClean || sName.includes(nameClean) || nameClean.includes(sName);
+          const sNameNorm = normalizeVendorName(s.name || "");
+          const sCompNorm = normalizeVendorName((s as any).company_name || "");
+          return (
+            sNameNorm === nameNorm ||
+            sCompNorm === nameNorm ||
+            (nameNorm.length >= 6 && sNameNorm.includes(nameNorm)) ||
+            (sNameNorm.length >= 6 && nameNorm.includes(sNameNorm))
+          );
         });
+      }
+
+      // 2. If not found in React state, fetch fresh suppliers list from backend before creating!
+      if (!matchedSupplier) {
+        try {
+          const freshSupps = await inventoryApi.getSuppliers();
+          if (Array.isArray(freshSupps) && freshSupps.length > 0) {
+            setSuppliers(freshSupps);
+            matchedSupplier = freshSupps.find((s) => {
+              const sTax = String((s as any).tax_id || (s as any).gstin || (s as any).gst_number || (s as any).products_desc || "").trim().toUpperCase();
+              return gstinClean && sTax.includes(gstinClean);
+            });
+            if (!matchedSupplier && nameNorm) {
+              matchedSupplier = freshSupps.find((s) => {
+                const sNameNorm = normalizeVendorName(s.name || "");
+                const sCompNorm = normalizeVendorName((s as any).company_name || "");
+                return (
+                  sNameNorm === nameNorm ||
+                  sCompNorm === nameNorm ||
+                  (nameNorm.length >= 6 && sNameNorm.includes(nameNorm)) ||
+                  (sNameNorm.length >= 6 && nameNorm.includes(sNameNorm))
+                );
+              });
+            }
+          }
+        } catch (fetchErr) {
+          console.warn("Could not reload suppliers:", fetchErr);
+        }
       }
 
       if (matchedSupplier) {
         setSelectedSupplierId(matchedSupplier.id);
+        toast.info(`Matched existing vendor "${matchedSupplier.name}" and linked to this bill.`);
       } else {
-        // No existing vendor — create one with all OCR-extracted details
+        // No existing vendor found anywhere — create one (backend also deduplicates!)
         try {
           const vendorName = (data.supplier_name || "Vendor Party").trim();
           const codeSeq = Math.floor(1000 + Math.random() * 9000);
@@ -1332,9 +1405,12 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
           });
           const suppObj = createdSupp.data || createdSupp;
           ocrCreatedVendor.current = suppObj.id;
-          setSuppliers((prev) => [suppObj, ...prev]);
+          setSuppliers((prev) => {
+            const exists = prev.some((s) => s.id === suppObj.id);
+            return exists ? prev : [suppObj, ...prev];
+          });
           setSelectedSupplierId(suppObj.id);
-          toast.success(`Vendor "${vendorName}" created from OCR and linked to this bill.`);
+          toast.success(`Vendor "${suppObj.name || vendorName}" linked to this bill.`);
         } catch (e: any) {
           console.warn("OCR vendor creation error:", e?.detail || e.message);
         }
@@ -1426,7 +1502,19 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
       toast.success(data.extracted ? "Document data extracted successfully via AI OCR!" : "Could not extract structured data. Please fill manually.");
 
       // Auto-fill form fields from OCR result (primary invoice or root)
-      const primary = (data.invoices && data.invoices.length > 0) ? data.invoices[0] : data;
+      const primary = (data.invoices && data.invoices.length > 0) ? { ...data.invoices[0] } : { ...data };
+      primary.supplier_id = primary.supplier_id || data.supplier_id;
+      primary.supplier_code = primary.supplier_code || data.supplier_code;
+      primary.supplier_name = primary.supplier_name || data.supplier_name;
+      primary.supplier_gstin = primary.supplier_gstin || data.supplier_gstin;
+      primary.supplier_pan = primary.supplier_pan || data.supplier_pan;
+      primary.supplier_phone = primary.supplier_phone || data.supplier_phone;
+      primary.supplier_email = primary.supplier_email || data.supplier_email;
+      primary.supplier_address = primary.supplier_address || data.supplier_address;
+      primary.supplier_city = primary.supplier_city || data.supplier_city;
+      primary.supplier_state = primary.supplier_state || data.supplier_state;
+      primary.supplier_pincode = primary.supplier_pincode || data.supplier_pincode;
+      primary.supplier_created = primary.supplier_created ?? data.supplier_created;
       await applyOcrInvoice(primary);
     } catch (err: any) {
       toast.error(err.message || "Failed to extract document data");
