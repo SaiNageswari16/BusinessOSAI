@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Sparkles,
   ArrowRight,
@@ -149,11 +149,29 @@ export function LandingHero() {
   const [dark, setDark] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [navVisible, setNavVisible] = useState(true);
   const [activeSection, setActiveSection] = useState("Home");
+  const lastScrollY = useRef(0);
 
   useEffect(() => {
     const handleScroll = () => {
-      setScrolled(window.scrollY > 15);
+      const currentScrollY = window.scrollY;
+      setScrolled(currentScrollY > 15);
+
+      // Smart navbar hide on scroll down, reveal on scroll up
+      if (currentScrollY > 120) {
+        if (currentScrollY > lastScrollY.current + 8) {
+          // Scrolling down -> hide navbar so it never covers section titles
+          setNavVisible(false);
+        } else if (currentScrollY < lastScrollY.current - 6) {
+          // Scrolling up -> reveal navbar
+          setNavVisible(true);
+        }
+      } else {
+        // At or near top of page -> always show navbar
+        setNavVisible(true);
+      }
+      lastScrollY.current = currentScrollY;
 
       // Scrollspy active section
       const sections = navItems.map((item) => ({
@@ -161,11 +179,11 @@ export function LandingHero() {
         el: document.querySelector(item.href),
       }));
 
-      const scrollPos = window.scrollY + 130;
+      const scrollPos = currentScrollY + 130;
       for (let i = sections.length - 1; i >= 0; i--) {
         const sec = sections[i];
         if (!sec || !sec.el) continue;
-        const top = sec.el.getBoundingClientRect().top + window.scrollY;
+        const top = sec.el.getBoundingClientRect().top + currentScrollY;
         if (scrollPos >= top) {
           setActiveSection(sec.name);
           break;
@@ -173,9 +191,20 @@ export function LandingHero() {
       }
     };
 
+    // Reveal navbar when cursor hovers near top 50px of window
+    const handleMouseMove = (e: MouseEvent) => {
+      if (e.clientY < 50) {
+        setNavVisible(true);
+      }
+    };
+
     window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("mousemove", handleMouseMove, { passive: true });
     handleScroll();
-    return () => window.removeEventListener("scroll", handleScroll);
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("mousemove", handleMouseMove);
+    };
   }, []);
 
   return (
@@ -187,7 +216,11 @@ export function LandingHero() {
       </div>
 
       {/* Sticky Floating Capsule Glass Navbar (hoisted to section root to escape shell stacking context) */}
-      <header className={`glass-navbar ${scrolled ? "is-scrolled" : ""}`}>
+      <header
+        className={`glass-navbar ${scrolled ? "is-scrolled" : ""} ${
+          navVisible || menuOpen ? "nav-visible" : "nav-hidden"
+        }`}
+      >
         <a href="#home" className="hero-brand" aria-label="IOTRONICS Home">
           <img
             src={dark ? "/logo-white.png" : "/logo.png"}

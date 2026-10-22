@@ -7,7 +7,7 @@ export function ApplicationsSection() {
   return (
     <section
       id="applications"
-      className="relative overflow-hidden py-4 md:py-5 bg-[#f8f9fb] text-zinc-900 font-sans border-y border-zinc-200/80"
+      className="relative overflow-hidden pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-16 bg-[#f8f9fb] text-zinc-900 font-sans border-y border-zinc-200/80 scroll-mt-24 md:scroll-mt-32"
     >
       <div className="relative mx-auto w-full max-w-7xl 2xl:max-w-[1560px] 3xl:max-w-[1840px] px-4 sm:px-6 2xl:px-8 3xl:px-12">
         {/* Section Heading */}

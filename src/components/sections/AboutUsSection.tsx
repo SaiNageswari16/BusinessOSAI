@@ -64,7 +64,7 @@ export function AboutUsSection({ className }: { className?: string }) {
         id="about"
         ref={sectionRef}
         className={
-          "py-4 md:py-6 bg-[#f8f9fb] text-zinc-900 font-sans flex items-center relative overflow-hidden border-y border-zinc-200/80 " +
+          "pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-16 bg-[#f8f9fb] text-zinc-900 font-sans flex items-center relative overflow-hidden border-y border-zinc-200/80 scroll-mt-24 md:scroll-mt-32 " +
           (className || "")
         }
       >

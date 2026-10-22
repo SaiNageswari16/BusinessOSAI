@@ -107,7 +107,7 @@ export function CustomizationSection({ className }: { className?: string }) {
     <section
       id="customization"
       className={
-        "w-full bg-[#f8f9fa] py-4 md:py-6 px-4 sm:px-6 md:px-12 font-sans overflow-hidden border-t border-slate-200/90 relative " +
+        "w-full bg-[#f8f9fa] pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-16 px-4 sm:px-6 md:px-12 font-sans overflow-hidden border-t border-slate-200/90 relative scroll-mt-24 md:scroll-mt-32 " +
         (className || "")
       }
     >
