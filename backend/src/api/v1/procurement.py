@@ -744,6 +744,8 @@ STATE_DETAILS = {
     "38": {"state": "Ladakh", "city": "Leh", "pin": "194101"},
 }
 
+STATE_CODE_MAP = STATE_DETAILS
+
 @router.post("/verify-gstin")
 async def verify_gstin(
     payload: dict,
@@ -3935,9 +3937,96 @@ async def _resolve_or_create_supplier_from_ocr(
     clean_state = (supplier_state or "").strip()
     clean_city = (supplier_city or "").strip()
     clean_pan = (supplier_pan or "").strip().upper()
+    clean_pin = (str(supplier_pincode or "")).strip()
+
+    # Extract GSTIN if embedded in name or other field
+    if not clean_gstin or len(clean_gstin) != 15:
+        extracted_gst = extract_gstin_from_str(clean_gstin or clean_name or "")
+        if extracted_gst:
+            clean_gstin = extracted_gst
+    if not clean_pan and clean_gstin and len(clean_gstin) >= 12:
+        clean_pan = clean_gstin[2:12]
 
     if not clean_name and not clean_gstin:
         return None, False
+
+    # 0. Asynchronous non-blocking GST Portal lookup to enrich vendor details
+    gst_info = None
+    if clean_gstin and len(clean_gstin) == 15:
+        try:
+            from src.services.gst_lookup_service import gst_lookup_service
+            tenant_cfg = getattr(ctx, "tenant_settings", None) if ctx else None
+            # Non-blocking async GST lookup (3.5s timeout so OCR extraction is never delayed)
+            gst_info = await asyncio.wait_for(
+                gst_lookup_service.lookup_gstin(clean_gstin, tenant_settings=tenant_cfg),
+                timeout=3.5
+            )
+        except Exception as exc:
+            logger.warning("[OCR GST Lookup] Non-blocking GST lookup skipped or timed out: %s", exc)
+
+    # Secondary non-blocking PIN lookup if postal PIN is present
+    pin_data = None
+    if clean_pin and len(clean_pin) == 6 and clean_pin.isdigit() and (not clean_city or not clean_state):
+        try:
+            from src.api.v1.utils import lookup_pincode
+            pin_data = await asyncio.wait_for(lookup_pincode(clean_pin), timeout=2.0)
+        except Exception as pin_exc:
+            logger.debug("[OCR Pincode Lookup] Non-blocking pincode lookup note: %s", pin_exc)
+
+    gst_trade = ""
+    gst_legal = ""
+    if gst_info and gst_info.get("valid"):
+        gst_trade = (gst_info.get("trade_name") or "").strip()
+        gst_legal = (gst_info.get("legal_name") or "").strip()
+        gst_addr = (gst_info.get("address") or gst_info.get("principal_address") or "").strip()
+        gst_cty = (gst_info.get("city") or "").strip()
+        gst_st = (gst_info.get("state") or "").strip()
+        gst_p = (str(gst_info.get("pincode") or "")).strip()
+        gst_pn = (gst_info.get("pan") or clean_gstin[2:12]).strip().upper()
+
+        if not clean_pan and gst_pn:
+            clean_pan = gst_pn
+        if not clean_address and gst_addr:
+            clean_address = gst_addr
+        if not clean_city and gst_cty:
+            clean_city = gst_cty
+        if not clean_state and gst_st:
+            clean_state = gst_st
+        if not clean_pin and gst_p:
+            clean_pin = gst_p
+        if (not clean_name or clean_name.lower().startswith("vendor") or "@" in clean_name) and (gst_trade or gst_legal):
+            if not gst_trade.startswith("Company /") and not gst_trade.startswith("Business Enterprise"):
+                clean_name = gst_trade or gst_legal
+
+    # Enrich from pincode lookup if city/state still missing
+    if pin_data and pin_data.get("state"):
+        if not clean_city and pin_data.get("city"):
+            clean_city = pin_data.get("city")
+        if not clean_state and pin_data.get("state"):
+            clean_state = pin_data.get("state")
+        if not clean_address and pin_data.get("area"):
+            clean_address = f"{pin_data.get('area')}, {clean_city}, {clean_state} - {clean_pin}"
+
+    # Fallback to state code map from GSTIN prefix if state still missing
+    if clean_gstin and len(clean_gstin) >= 2:
+        st_data = STATE_CODE_MAP.get(clean_gstin[:2])
+        if st_data:
+            if not clean_state:
+                clean_state = st_data.get("state")
+            if not clean_city:
+                clean_city = st_data.get("city")
+            if not clean_pin:
+                clean_pin = st_data.get("pin")
+            if not clean_address and clean_city and clean_state:
+                clean_address = f"{clean_city}, {clean_state} - {clean_pin}".strip(" -")
+
+    # If name looks like an email address, prettify into a readable name
+    if clean_name and "@" in clean_name:
+        clean_name = clean_name.split("@")[0].replace(".", " ").replace("_", " ").title()
+    if not clean_name and gst_legal:
+        clean_name = gst_legal
+
+    supplier_pincode = clean_pin
 
     # 1. Search existing suppliers for this tenant using intelligent deduplication
     existing_supplier = await find_existing_vendor_match(
@@ -3952,7 +4041,7 @@ async def _resolve_or_create_supplier_from_ocr(
 
     if existing_supplier:
         logger.info(f"Vendor OCR deduplication matched existing vendor: {existing_supplier.name} ({existing_supplier.id})")
-        # Enrich the matched vendor: fill missing dedicated detail columns from OCR
+        # Enrich the matched vendor: fill missing dedicated detail columns from OCR + GST lookup
         enriched = False
         for _attr, _val in [
             ("gst_number", clean_gstin or None),
@@ -3962,10 +4051,14 @@ async def _resolve_or_create_supplier_from_ocr(
             ("address", clean_address or None),
             ("city", clean_city or None),
             ("state", clean_state or None),
-            ("pincode", (supplier_pincode or "").strip() or None),
+            ("pincode", clean_pin or None),
         ]:
             if hasattr(existing_supplier, _attr) and _val and not getattr(existing_supplier, _attr, None):
                 setattr(existing_supplier, _attr, _val)
+                enriched = True
+        if gst_legal and hasattr(existing_supplier, "company_name"):
+            if not existing_supplier.company_name or existing_supplier.company_name == existing_supplier.name:
+                existing_supplier.company_name = gst_legal
                 enriched = True
         if clean_gstin and (not existing_supplier.products_desc or clean_gstin not in (existing_supplier.products_desc or "")):
             extra = f"GSTIN: {clean_gstin}"
@@ -3981,6 +4074,7 @@ async def _resolve_or_create_supplier_from_ocr(
 
     # 2. If not found, create an actual persistent Supplier entity
     vendor_name = clean_name if clean_name else f"Vendor {clean_gstin}"
+    vendor_comp_name = gst_legal or clean_name or vendor_name
     seq = int(datetime.utcnow().timestamp()) % 9000 + 1000
     code = f"VEN-{datetime.utcnow().strftime('%y%m%d')}-{seq}"
 
@@ -4005,15 +4099,15 @@ async def _resolve_or_create_supplier_from_ocr(
         desc_parts.append(f"City: {clean_city}")
     if clean_state:
         desc_parts.append(f"State: {clean_state}")
-    if supplier_pincode:
-        desc_parts.append(f"PIN: {str(supplier_pincode).strip()}")
+    if clean_pin:
+        desc_parts.append(f"PIN: {clean_pin}")
     desc_str = " | ".join(desc_parts) if desc_parts else None
 
     new_supp_kwargs = dict(
         tenant_id=ctx.tenant_id,
         company_id=ctx.active_company_id,
         name=vendor_name,
-        company_name=vendor_name,
+        company_name=vendor_comp_name,
         code=code,
         type="Manufacturer",
         products_desc=desc_str,
@@ -4030,7 +4124,7 @@ async def _resolve_or_create_supplier_from_ocr(
         ("address", clean_address or None),
         ("city", clean_city or None),
         ("state", clean_state or None),
-        ("pincode", (supplier_pincode or "").strip() or None),
+        ("pincode", clean_pin or None),
     ]:
         if hasattr(Supplier, _attr) and _val:
             new_supp_kwargs[_attr] = _val
@@ -4171,16 +4265,17 @@ Return ONLY raw valid JSON without markdown code blocks, backticks, or preamble.
             for inv in invoices:
                 inv["supplier_id"] = str(supplier_obj.id) if supplier_obj else None
                 inv["supplier_code"] = supplier_obj.code if supplier_obj else None
-                inv["supplier_name"] = supplier_obj.name if supplier_obj else primary.get("supplier_name")
+                inv["supplier_name"] = (supplier_obj.name if supplier_obj and supplier_obj.name else None) or primary.get("supplier_name")
+                inv["supplier_company_name"] = (supplier_obj.company_name if supplier_obj and supplier_obj.company_name else None) or primary.get("supplier_company_name")
                 inv["supplier_created"] = was_created
-                inv["supplier_gstin"] = primary.get("supplier_gstin")
-                inv["supplier_pan"] = primary.get("supplier_pan")
-                inv["supplier_phone"] = primary.get("supplier_phone")
-                inv["supplier_email"] = primary.get("supplier_email")
-                inv["supplier_address"] = primary.get("supplier_address")
-                inv["supplier_city"] = primary.get("supplier_city")
-                inv["supplier_state"] = primary.get("supplier_state")
-                inv["supplier_pincode"] = primary.get("supplier_pincode")
+                inv["supplier_gstin"] = (supplier_obj.gst_number if supplier_obj and supplier_obj.gst_number else None) or primary.get("supplier_gstin")
+                inv["supplier_pan"] = (supplier_obj.pan if supplier_obj and supplier_obj.pan else None) or primary.get("supplier_pan")
+                inv["supplier_phone"] = (supplier_obj.phone if supplier_obj and supplier_obj.phone else None) or primary.get("supplier_phone")
+                inv["supplier_email"] = (supplier_obj.email if supplier_obj and supplier_obj.email else None) or primary.get("supplier_email")
+                inv["supplier_address"] = (supplier_obj.address if supplier_obj and supplier_obj.address else None) or primary.get("supplier_address")
+                inv["supplier_city"] = (supplier_obj.city if supplier_obj and supplier_obj.city else None) or primary.get("supplier_city")
+                inv["supplier_state"] = (supplier_obj.state if supplier_obj and supplier_obj.state else None) or primary.get("supplier_state")
+                inv["supplier_pincode"] = (supplier_obj.pincode if supplier_obj and supplier_obj.pincode else None) or primary.get("supplier_pincode")
 
             return {
                 "filename": file.filename,
@@ -4192,15 +4287,16 @@ Return ONLY raw valid JSON without markdown code blocks, backticks, or preamble.
                 "supplier_id": str(supplier_obj.id) if supplier_obj else None,
                 "supplier_code": supplier_obj.code if supplier_obj else None,
                 "supplier_created": was_created,
-                "supplier_name": supplier_obj.name if supplier_obj else primary.get("supplier_name"),
-                "supplier_gstin": primary.get("supplier_gstin"),
-                "supplier_pan": primary.get("supplier_pan"),
-                "supplier_phone": primary.get("supplier_phone"),
-                "supplier_email": primary.get("supplier_email"),
-                "supplier_address": primary.get("supplier_address"),
-                "supplier_city": primary.get("supplier_city"),
-                "supplier_state": primary.get("supplier_state"),
-                "supplier_pincode": primary.get("supplier_pincode"),
+                "supplier_name": (supplier_obj.name if supplier_obj and supplier_obj.name else None) or primary.get("supplier_name"),
+                "supplier_company_name": (supplier_obj.company_name if supplier_obj and supplier_obj.company_name else None) or primary.get("supplier_company_name"),
+                "supplier_gstin": (supplier_obj.gst_number if supplier_obj and supplier_obj.gst_number else None) or primary.get("supplier_gstin"),
+                "supplier_pan": (supplier_obj.pan if supplier_obj and supplier_obj.pan else None) or primary.get("supplier_pan"),
+                "supplier_phone": (supplier_obj.phone if supplier_obj and supplier_obj.phone else None) or primary.get("supplier_phone"),
+                "supplier_email": (supplier_obj.email if supplier_obj and supplier_obj.email else None) or primary.get("supplier_email"),
+                "supplier_address": (supplier_obj.address if supplier_obj and supplier_obj.address else None) or primary.get("supplier_address"),
+                "supplier_city": (supplier_obj.city if supplier_obj and supplier_obj.city else None) or primary.get("supplier_city"),
+                "supplier_state": (supplier_obj.state if supplier_obj and supplier_obj.state else None) or primary.get("supplier_state"),
+                "supplier_pincode": (supplier_obj.pincode if supplier_obj and supplier_obj.pincode else None) or primary.get("supplier_pincode"),
                 "buyer_name": primary.get("buyer_name"),
                 "buyer_gstin": primary.get("buyer_gstin"),
                 "buyer_address": primary.get("buyer_address"),
@@ -4420,16 +4516,17 @@ i) Output Format: Return ONLY raw, valid JSON conforming to the schema above wit
             for inv in invoices:
                 inv["supplier_id"] = str(supplier_obj.id) if supplier_obj else None
                 inv["supplier_code"] = supplier_obj.code if supplier_obj else None
-                inv["supplier_name"] = supplier_obj.name if supplier_obj else primary.get("supplier_name")
+                inv["supplier_name"] = (supplier_obj.name if supplier_obj and supplier_obj.name else None) or primary.get("supplier_name")
+                inv["supplier_company_name"] = (supplier_obj.company_name if supplier_obj and supplier_obj.company_name else None) or primary.get("supplier_company_name")
                 inv["supplier_created"] = was_created
-                inv["supplier_gstin"] = primary.get("supplier_gstin")
-                inv["supplier_pan"] = primary.get("supplier_pan")
-                inv["supplier_phone"] = primary.get("supplier_phone")
-                inv["supplier_email"] = primary.get("supplier_email")
-                inv["supplier_address"] = primary.get("supplier_address")
-                inv["supplier_city"] = primary.get("supplier_city")
-                inv["supplier_state"] = primary.get("supplier_state")
-                inv["supplier_pincode"] = primary.get("supplier_pincode")
+                inv["supplier_gstin"] = (supplier_obj.gst_number if supplier_obj and supplier_obj.gst_number else None) or primary.get("supplier_gstin")
+                inv["supplier_pan"] = (supplier_obj.pan if supplier_obj and supplier_obj.pan else None) or primary.get("supplier_pan")
+                inv["supplier_phone"] = (supplier_obj.phone if supplier_obj and supplier_obj.phone else None) or primary.get("supplier_phone")
+                inv["supplier_email"] = (supplier_obj.email if supplier_obj and supplier_obj.email else None) or primary.get("supplier_email")
+                inv["supplier_address"] = (supplier_obj.address if supplier_obj and supplier_obj.address else None) or primary.get("supplier_address")
+                inv["supplier_city"] = (supplier_obj.city if supplier_obj and supplier_obj.city else None) or primary.get("supplier_city")
+                inv["supplier_state"] = (supplier_obj.state if supplier_obj and supplier_obj.state else None) or primary.get("supplier_state")
+                inv["supplier_pincode"] = (supplier_obj.pincode if supplier_obj and supplier_obj.pincode else None) or primary.get("supplier_pincode")
 
             return {
                 "filename": file.filename,
@@ -4441,15 +4538,16 @@ i) Output Format: Return ONLY raw, valid JSON conforming to the schema above wit
                 "supplier_id": str(supplier_obj.id) if supplier_obj else None,
                 "supplier_code": supplier_obj.code if supplier_obj else None,
                 "supplier_created": was_created,
-                "supplier_name": supplier_obj.name if supplier_obj else primary.get("supplier_name"),
-                "supplier_gstin": primary.get("supplier_gstin"),
-                "supplier_pan": primary.get("supplier_pan"),
-                "supplier_phone": primary.get("supplier_phone"),
-                "supplier_email": primary.get("supplier_email"),
-                "supplier_address": primary.get("supplier_address"),
-                "supplier_city": primary.get("supplier_city"),
-                "supplier_state": primary.get("supplier_state"),
-                "supplier_pincode": primary.get("supplier_pincode"),
+                "supplier_name": (supplier_obj.name if supplier_obj and supplier_obj.name else None) or primary.get("supplier_name"),
+                "supplier_company_name": (supplier_obj.company_name if supplier_obj and supplier_obj.company_name else None) or primary.get("supplier_company_name"),
+                "supplier_gstin": (supplier_obj.gst_number if supplier_obj and supplier_obj.gst_number else None) or primary.get("supplier_gstin"),
+                "supplier_pan": (supplier_obj.pan if supplier_obj and supplier_obj.pan else None) or primary.get("supplier_pan"),
+                "supplier_phone": (supplier_obj.phone if supplier_obj and supplier_obj.phone else None) or primary.get("supplier_phone"),
+                "supplier_email": (supplier_obj.email if supplier_obj and supplier_obj.email else None) or primary.get("supplier_email"),
+                "supplier_address": (supplier_obj.address if supplier_obj and supplier_obj.address else None) or primary.get("supplier_address"),
+                "supplier_city": (supplier_obj.city if supplier_obj and supplier_obj.city else None) or primary.get("supplier_city"),
+                "supplier_state": (supplier_obj.state if supplier_obj and supplier_obj.state else None) or primary.get("supplier_state"),
+                "supplier_pincode": (supplier_obj.pincode if supplier_obj and supplier_obj.pincode else None) or primary.get("supplier_pincode"),
                 "place_of_supply": primary.get("place_of_supply"),
                 "total_amount": float(primary.get("grand_total", 0.0) or primary.get("total_amount", 0.0) or 0.0),
                 "due_date": primary.get("due_date") or primary.get("invoice_date"),

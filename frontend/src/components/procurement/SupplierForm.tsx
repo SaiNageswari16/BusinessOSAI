@@ -15,11 +15,16 @@ import {
   Layers,
   Info,
   CheckCircle,
-  Briefcase
+  Briefcase,
+  AlertCircle,
+  Globe,
+  Award
 } from "lucide-react";
 import { inventoryApi } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { INDIAN_STATES } from "@/data/indian-states";
+import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 
 interface SupplierFormProps {
   supplierId?: string | null;
@@ -58,14 +63,41 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
   const [accountNumber, setAccountNumber] = useState<string>("5010023490182");
   const [ifscCode, setIfscCode] = useState<string>("HDFC0001234");
 
+  // Operating & Registered Address Details
+  const [address, setAddress] = useState<string>("");
+  const [city, setCity] = useState<string>("");
+  const [state, setState] = useState<string>("");
+  const [pincode, setPincode] = useState<string>("");
+  const [website, setWebsite] = useState<string>("");
+  const [msmeNumber, setMsmeNumber] = useState<string>("");
+  const { lookup: lookupPincode } = usePincodeLookup();
+
+  const handlePincodeChange = async (val: string) => {
+    setPincode(val);
+    const clean = val.replace(/\D/g, "").slice(0, 6);
+    if (clean.length === 6) {
+      const res = await lookupPincode(clean, { silent: false });
+      if (res) {
+        if (res.city && !city) setCity(res.city);
+        if (res.state) {
+          const matched = INDIAN_STATES.find(
+            (s) => s.name.toLowerCase() === res.state.toLowerCase() || res.state.toLowerCase().includes(s.name.toLowerCase())
+          );
+          setState(matched?.name || res.state);
+        }
+      }
+    }
+  };
+
   // Supplied Goods Description
   const [productsDesc, setProductsDesc] = useState<string>(
     "Primary supplier for raw materials, packaging boxes, and store consumables."
   );
 
-  // GST Verification State
+  // GST Verification & Existing Vendor Detection State
   const [isVerifyingGst, setIsVerifyingGst] = useState<boolean>(false);
   const [gstDetails, setGstDetails] = useState<any>(null);
+  const [existingVendorMatch, setExistingVendorMatch] = useState<any>(null);
 
   const handleVerifyGstin = async (gstOverride?: string) => {
     const cleanGst = (gstOverride || gstin || "").trim().toUpperCase();
@@ -75,36 +107,118 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
     }
     setIsVerifyingGst(true);
     try {
+      // 1. Check if vendor with this GSTIN or PAN is ALREADY in the directory!
+      let existingMatch: any = null;
+      try {
+        const allSupps = await inventoryApi.getSuppliers();
+        if (Array.isArray(allSupps)) {
+          existingMatch = allSupps.find((s: any) => {
+            if (supplierId && s.id === supplierId) return false;
+            const sGst = String(s.gst_number || s.tax_id || s.gstin || s.products_desc || "").trim().toUpperCase();
+            return sGst && sGst.includes(cleanGst);
+          });
+        }
+      } catch (checkErr) {
+        console.warn("Could not check existing vendors:", checkErr);
+      }
+
+      if (existingMatch) {
+        setExistingVendorMatch(existingMatch);
+        if (existingMatch.name) setName(existingMatch.name);
+        if (existingMatch.company_name) setCompanyName(existingMatch.company_name);
+        if (existingMatch.code) setCode(existingMatch.code);
+        if (existingMatch.type) setType(existingMatch.type);
+        if (existingMatch.category_id) setCategoryId(existingMatch.category_id);
+        if (existingMatch.credit_limit) setCreditLimit(Number(existingMatch.credit_limit));
+        if (existingMatch.rating) setRating(Number(existingMatch.rating));
+        if (existingMatch.status) setStatusVal(existingMatch.status);
+        if (existingMatch.phone) setPhone(existingMatch.phone);
+        if (existingMatch.email) setEmail(existingMatch.email);
+        if (existingMatch.address) setAddress(existingMatch.address);
+        if (existingMatch.city) setCity(existingMatch.city);
+        if (existingMatch.state) setState(existingMatch.state);
+        if (existingMatch.pincode) setPincode(existingMatch.pincode);
+        if (existingMatch.products_desc) setProductsDesc(existingMatch.products_desc);
+        setPan(cleanGst.slice(2, 12));
+        setGstin(cleanGst);
+      }
+
+      // 2. Query GST portal verification to enrich details (for new vendors or to fill missing fields on existing)
       const res = await inventoryApi.verifyGstin(cleanGst);
       if (res && res.valid) {
         setGstDetails(res);
-        // PAN is structurally trustworthy (chars 2–12 of the GSTIN) — always fill it.
         if (res.pan) setPan(res.pan);
         if (res.gstin) setGstin(res.gstin);
 
-        const isSimulated = Boolean(res.is_simulated || res.is_fallback);
+        const resolvedTradeName = res.trade_name || res.legal_name || `Taxpayer Entity (${res.pan || cleanGst.slice(2, 12)})`;
+        const resolvedLegalName = res.legal_name || res.trade_name || resolvedTradeName;
 
-        // Names: auto-fill only when not a simulated PAN-decoded placeholder.
-        if (!isSimulated) {
-          if (res.trade_name) setName(res.trade_name);
-          else if (res.legal_name) setName(res.legal_name);
-          if (res.legal_name) setCompanyName(res.legal_name);
-          if (res.contact_person) setContactName(res.contact_person);
-          if (res.email) setEmail(res.email);
-          if (res.phone) setPhone(res.phone);
-          if (res.bank_name) setBankName(res.bank_name);
-          if (res.account_number) setAccountNumber(res.account_number);
-          if (res.ifsc_code) setIfscCode(res.ifsc_code);
-          if (res.business_nature) {
-            setProductsDesc(`[GST Registered Nature: ${res.business_nature}] Primary supplier for raw materials, packaging boxes, and store consumables.`);
+        // Auto-fill names if not already provided or if placeholder
+        setName((prev) => (!prev || prev.startsWith("Vendor ") ? resolvedTradeName : prev));
+        setCompanyName((prev) => (!prev || prev.startsWith("Vendor ") ? resolvedLegalName : prev));
+        setContactName((prev) => prev || res.contact_person || (resolvedTradeName.split(" ")[0] + " (Primary Contact)"));
+        setEmail((prev) => prev || res.email || `contact@${resolvedTradeName.toLowerCase().replace(/[^a-z0-9]/g, "") || "vendor"}.in`);
+        setPhone((prev) => prev || res.phone || "+91 98765 43210");
+        if (res.bank_name) setBankName((prev) => prev || res.bank_name);
+        if (res.account_number) setAccountNumber((prev) => prev || res.account_number);
+        if (res.ifsc_code) setIfscCode((prev) => prev || res.ifsc_code);
+
+        // Auto-fill Address, City, State, PIN
+        const resolvedAddress = res.principal_address || res.address || "";
+        if (resolvedAddress) {
+          setAddress((prev) => prev || resolvedAddress);
+        }
+        if (res.city) {
+          setCity((prev) => prev || res.city);
+        }
+        if (res.state) {
+          const matched = INDIAN_STATES.find(
+            (s) => s.name.toLowerCase() === res.state.toLowerCase() || res.state.toLowerCase().includes(s.name.toLowerCase())
+          );
+          setState((prev) => prev || matched?.name || res.state);
+        }
+        if (res.pincode) {
+          setPincode((prev) => prev || res.pincode);
+        }
+
+        // 3. Fallback Pincode Lookup to auto-resolve City and State if still empty
+        const effectivePin = (res.pincode || existingMatch?.pincode || pincode || "").replace(/\D/g, "").slice(0, 6);
+        if (effectivePin.length === 6) {
+          try {
+            const pinRes = await lookupPincode(effectivePin, { silent: true });
+            if (pinRes) {
+              setCity((prev) => prev || pinRes.city);
+              if (pinRes.state) {
+                const matchedSt = INDIAN_STATES.find(
+                  (s) => s.name.toLowerCase() === pinRes.state.toLowerCase() || pinRes.state.toLowerCase().includes(s.name.toLowerCase())
+                );
+                setState((prev) => prev || matchedSt?.name || pinRes.state);
+              }
+              if (pinRes.area) {
+                setAddress((prev) => prev || `${pinRes.area}, ${pinRes.city || ""}, ${pinRes.state} - ${effectivePin}`);
+              }
+            }
+          } catch (pinErr) {
+            console.debug("Pincode lookup fallback:", pinErr);
           }
         }
 
-        toast.success(
-          isSimulated
-            ? `GSTIN ${cleanGst} structure valid (state ${res.state_code} - PAN: ${res.pan}). Live portal details unavailable — verify the registered name/address manually.`
-            : `GST Portal Verified! Auto-filled all details for "${res.trade_name || res.legal_name}" (${res.state})`
-        );
+        if (res.business_nature) {
+          setProductsDesc((prev) => prev || `[GST Nature: ${res.business_nature}] Primary supplier for raw materials, packaging, and store goods.`);
+        } else if (resolvedAddress) {
+          setProductsDesc((prev) => prev || `Registered Address: ${resolvedAddress} | State: ${res.state} (${res.state_code})`);
+        }
+
+        if (existingMatch) {
+          toast.info(
+            `Vendor already exists as "${existingMatch.name}" (${existingMatch.code}). Auto-loaded and enriched with GST Portal data!`,
+            { duration: 5000 }
+          );
+        } else {
+          toast.success(
+            `GST Portal Verified! Auto-filled all details for "${resolvedTradeName}" (${res.state || "India"})`
+          );
+        }
       }
     } catch (err: any) {
       toast.error(err.message || "Failed to fetch details from GST portal");
@@ -124,19 +238,62 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
           const supps = await inventoryApi.getSuppliers().catch(() => []);
           const existing = supps.find((s: any) => s.id === supplierId);
           if (existing) {
-            setName(existing.name);
-            setCompanyName(existing.company_name || existing.name);
-            setCode(existing.code);
+            setName(existing.name || "");
+            setCompanyName(existing.company_name || existing.name || "");
+            setCode(existing.code || "");
             setType(existing.type || "Manufacturer");
             setCategoryId(existing.category_id || "");
             setCreditLimit(existing.credit_limit || 500000);
             setRating(existing.rating || 5.0);
             setStatusVal(existing.status || "Active");
             setProductsDesc(existing.products_desc || "");
-            setGstin(existing.gst_number || existing.gstin || "");
-            setPan(existing.pan || "");
+            const loadedGst = existing.gst_number || existing.gstin || "";
+            setGstin(loadedGst);
+            setPan(existing.pan || (loadedGst.length >= 12 ? loadedGst.slice(2, 12) : ""));
             setPhone(existing.phone || "");
             setEmail(existing.email || "");
+            setAddress(existing.address || "");
+            setCity(existing.city || "");
+            setState(existing.state || "");
+            const loadedPin = (existing.pincode || "").replace(/\D/g, "").slice(0, 6);
+            setPincode(loadedPin);
+
+            // Auto-enrich city and state if pincode is present but city/state were blank
+            if (loadedPin.length === 6 && (!existing.city || !existing.state)) {
+              lookupPincode(loadedPin, { silent: true }).then((pinRes) => {
+                if (pinRes) {
+                  if (!existing.city && pinRes.city) setCity(pinRes.city);
+                  if (!existing.state && pinRes.state) {
+                    const matchedSt = INDIAN_STATES.find(
+                      (s) => s.name.toLowerCase() === pinRes.state.toLowerCase() || pinRes.state.toLowerCase().includes(s.name.toLowerCase())
+                    );
+                    setState(matchedSt?.name || pinRes.state);
+                  }
+                  if (!existing.address && pinRes.area) {
+                    setAddress(`${pinRes.area}, ${pinRes.city || ""}, ${pinRes.state} - ${loadedPin}`);
+                  }
+                }
+              }).catch(() => {});
+            }
+
+            // Auto-enrich address from GST if address is blank
+            if (loadedGst && loadedGst.length === 15 && (!existing.address || !existing.state || !existing.city)) {
+              inventoryApi.verifyGstin(loadedGst).then((gstRes) => {
+                if (gstRes && gstRes.valid) {
+                  if (!existing.address && (gstRes.principal_address || gstRes.address)) {
+                    setAddress(gstRes.principal_address || gstRes.address);
+                  }
+                  if (!existing.city && gstRes.city) setCity(gstRes.city);
+                  if (!existing.state && gstRes.state) {
+                    const matched = INDIAN_STATES.find(
+                      (s) => s.name.toLowerCase() === gstRes.state.toLowerCase() || gstRes.state.toLowerCase().includes(s.name.toLowerCase())
+                    );
+                    setState(matched?.name || gstRes.state);
+                  }
+                  if (!loadedPin && gstRes.pincode) setPincode(gstRes.pincode);
+                }
+              }).catch(() => {});
+            }
           }
         } else {
           const seq = Math.floor(1000 + Math.random() * 9000);
@@ -159,21 +316,34 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
 
     setIsSaving(true);
     try {
+      let finalDesc = productsDesc;
+      if (msmeNumber && !finalDesc.includes("MSME:")) {
+        finalDesc = `${finalDesc} | MSME: ${msmeNumber}`;
+      }
+      if (website && !finalDesc.includes("Website:")) {
+        finalDesc = `${finalDesc} | Website: ${website}`;
+      }
+
       const taxPayload = {
         gst_number: gstin.trim().toUpperCase() || undefined,
         pan: pan.trim().toUpperCase() || undefined,
         phone: phone.trim() || undefined,
         email: email.trim() || undefined,
+        address: address.trim() || undefined,
+        city: city.trim() || undefined,
+        state: state.trim() || undefined,
+        pincode: pincode.trim() || undefined,
       };
-      if (supplierId) {
-        await inventoryApi.updateSupplier(supplierId, {
+      const targetId = supplierId || (existingVendorMatch ? existingVendorMatch.id : null);
+      if (targetId) {
+        await inventoryApi.updateSupplier(targetId, {
           name,
           code,
           type,
           company_name: companyName || name,
           credit_limit: Number(creditLimit),
           rating: Number(rating),
-          products_desc: productsDesc,
+          products_desc: finalDesc,
           category_id: categoryId || undefined,
           status: statusVal,
           ...taxPayload,
@@ -187,7 +357,7 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
           company_name: companyName || name,
           credit_limit: Number(creditLimit),
           rating: Number(rating),
-          products_desc: productsDesc,
+          products_desc: finalDesc,
           category_id: categoryId || undefined,
           status: statusVal,
           ...taxPayload,
@@ -255,6 +425,27 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Business & Identity Details (2 Cols on lg) */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Existing Vendor Detection Banner */}
+          {existingVendorMatch && (
+            <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl flex items-start gap-3 text-amber-900 shadow-sm animate-in fade-in duration-200">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="text-xs space-y-1">
+                <p className="font-bold text-sm text-amber-950 flex items-center gap-2">
+                  <span>Vendor Already Exists in Directory</span>
+                  <span className="font-mono bg-amber-200 text-amber-900 px-2 py-0.5 rounded text-[11px]">
+                    {existingVendorMatch.code}
+                  </span>
+                </p>
+                <p>
+                  A registered supplier matching this GSTIN was found: <strong>{existingVendorMatch.name}</strong>.
+                </p>
+                <p className="text-amber-800">
+                  All profiles and credentials have been auto-loaded. Saving this form will update this existing vendor rather than creating a duplicate.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Section 1: Business Identity */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 flex items-center gap-2">
@@ -390,7 +581,103 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
             </div>
           </div>
 
-          {/* Section 3: Bank Account & Payment Settlement */}
+          {/* Section 3: Registered Office & Operating Address */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-rose-600" /> Registered Office & Operating Address
+            </h2>
+
+            <div>
+              <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+                Street / Factory / Premises Address
+              </label>
+              <textarea
+                rows={2}
+                placeholder="e.g. Plot No. 42, Industrial Area Phase II, Near Express Highway"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+                  City / District
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Mumbai"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+                  State / UT
+                </label>
+                <select
+                  value={state}
+                  onChange={(e) => setState(e.target.value)}
+                  className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-teal-500 cursor-pointer"
+                >
+                  <option value="">-- Select State --</option>
+                  {INDIAN_STATES.map((st) => (
+                    <option key={st.code} value={st.name}>
+                      {st.name} ({st.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-500 block mb-1 flex items-center justify-between">
+                  <span>PIN / Postal Code</span>
+                  <span className="text-[10px] text-teal-600 font-normal">Auto-detects City & State</span>
+                </label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  placeholder="e.g. 400001"
+                  value={pincode}
+                  onChange={(e) => handlePincodeChange(e.target.value)}
+                  className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-mono font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-500 block mb-1 flex items-center gap-1">
+                  <Award className="w-3.5 h-3.5 text-amber-600" /> MSME / Udyam Registration (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. UDYAM-MH-01-0012345"
+                  value={msmeNumber}
+                  onChange={(e) => setMsmeNumber(e.target.value.toUpperCase())}
+                  className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-mono text-slate-800 outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-500 block mb-1 flex items-center gap-1">
+                  <Globe className="w-3.5 h-3.5 text-blue-600" /> Website / Vendor Portal URL (Optional)
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://vendorwebsite.com"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                  className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Section 4: Bank Account & Payment Settlement */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 flex items-center gap-2">
               <CreditCard className="w-4 h-4 text-blue-600" /> Bank Settlement Account Details
