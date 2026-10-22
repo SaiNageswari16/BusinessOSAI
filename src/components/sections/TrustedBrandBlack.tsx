@@ -4,31 +4,31 @@ import React from "react";
 
 const SCREENSHOT_BRANDS = [
   {
-    name: "Peerzadiguda Municipal Corporation",
-    displayName: "Peerzadiguda (PMC)",
+    name: "Greater Hyderabad Municipal Corporation (GHMC)",
+    displayName: "GHMC (Greater Hyderabad)",
     subName: "MUNICIPAL CORPORATION",
-    url: "/logos/peerzadiguda.png",
-    heightClass: "h-[42px] md:h-[48px]",
+    url: "/logos/ghmc.png",
+    heightClass: "h-[40px] md:h-[46px]",
   },
   {
-    name: "ASCI - Administrative Staff College of India",
+    name: "Administrative Staff College of India (ASCI)",
     displayName: "ASCI Hyderabad",
     subName: "ADMIN STAFF COLLEGE OF INDIA",
     url: "/logos/asci.png",
     heightClass: "h-[38px] md:h-[44px]",
   },
   {
-    name: "Feedback Infra - Making Infrastructure Happen",
-    displayName: "Feedback Infra",
-    subName: "INFRASTRUCTURE ADVISORY",
-    url: "/logos/feedback-infra.png",
-    heightClass: "h-[32px] md:h-[36px]",
+    name: "CDMA - Commissioner & Director of Municipal Administration",
+    displayName: "CDMA Telangana",
+    subName: "MUNICIPAL ADMINISTRATION",
+    url: "/logos/cdma.png",
+    heightClass: "h-[44px] md:h-[50px]",
   },
   {
-    name: "GHMC - Greater Hyderabad Municipal Corporation",
-    displayName: "GHMC (Greater Hyderabad)",
-    subName: "MUNICIPAL CORPORATION",
-    url: "/logos/ghmc.png",
+    name: "Veterinary & Animal Husbandry Department (VAHD), Telangana",
+    displayName: "VAHD Telangana",
+    subName: "VETERINARY & ANIMAL HUSBANDRY",
+    url: "/logos/vahd.png",
     heightClass: "h-[40px] md:h-[46px]",
   },
   {
@@ -38,11 +38,32 @@ const SCREENSHOT_BRANDS = [
     url: "/logos/nizampet.png",
     heightClass: "h-[42px] md:h-[48px]",
   },
+  {
+    name: "Thumkunta Municipality",
+    displayName: "Thumkunta Municipality",
+    subName: "MUNICIPALITY (TELANGANA)",
+    url: "/logos/thumkunta.png",
+    heightClass: "h-[42px] md:h-[48px]",
+  },
+  {
+    name: "Peerzadiguda Municipal Corporation",
+    displayName: "Peerzadiguda (PMC)",
+    subName: "MUNICIPAL CORPORATION",
+    url: "/logos/peerzadiguda.png",
+    heightClass: "h-[42px] md:h-[48px]",
+  },
+  {
+    name: "Feedback Infra - Making Infrastructure Happen",
+    displayName: "Feedback Infra",
+    subName: "INFRASTRUCTURE ADVISORY",
+    url: "/logos/feedback-infra.png",
+    heightClass: "h-[32px] md:h-[36px]",
+  },
 ];
 
 export function TrustedBrandBlack({ className }: { className?: string }) {
-  // 2 sets per group to easily span wide monitors with no gaps
-  const brandGroup = [...SCREENSHOT_BRANDS, ...SCREENSHOT_BRANDS];
+  // 3 sets per group to easily span wide & ultrawide 4K monitors with seamless scroll
+  const brandGroup = [...SCREENSHOT_BRANDS, ...SCREENSHOT_BRANDS, ...SCREENSHOT_BRANDS];
 
   return (
     <>
@@ -58,7 +79,7 @@ export function TrustedBrandBlack({ className }: { className?: string }) {
         .brand-marquee-track {
           display: flex;
           width: max-content;
-          animation: brand-marquee-scroll 32s linear infinite;
+          animation: brand-marquee-scroll 48s linear infinite;
           will-change: transform;
         }
         .brand-marquee-track:hover {
@@ -66,7 +87,7 @@ export function TrustedBrandBlack({ className }: { className?: string }) {
         }
         @media (max-width: 768px) {
           .brand-marquee-track {
-            animation-duration: 22s;
+            animation-duration: 28s;
           }
         }
       `}</style>
@@ -77,7 +98,7 @@ export function TrustedBrandBlack({ className }: { className?: string }) {
           (className || "")
         }
       >
-        <div className="max-w-[1360px] mx-auto relative z-10 px-4 mb-1.5 text-center">
+        <div className="max-w-[1360px] 2xl:max-w-[1600px] 3xl:max-w-[1840px] mx-auto relative z-10 px-4 mb-1.5 text-center">
           <div className="inline-flex max-w-full items-center justify-center gap-1.5 sm:gap-2 px-3 py-0.5 rounded-full bg-white/80 border border-slate-200/90 shadow-2xs">
             <span className="size-1.5 shrink-0 rounded-full bg-emerald-500 animate-pulse" />
             <p className="text-[9.5px] sm:text-[11px] font-bold uppercase tracking-wider sm:tracking-[0.14em] text-slate-600 leading-tight">
@@ -97,7 +118,7 @@ export function TrustedBrandBlack({ className }: { className?: string }) {
                   className="flex flex-col items-center justify-center shrink-0 transition-all duration-300 hover:scale-105 gap-1 px-2 text-center group cursor-pointer"
                   title={brand.name}
                 >
-                  <div className="h-[40px] md:h-[44px] flex items-center justify-center">
+                  <div className="h-[44px] md:h-[50px] 2xl:h-[54px] flex items-center justify-center">
                     <img
                       src={brand.url}
                       alt={brand.name}
@@ -128,7 +149,7 @@ export function TrustedBrandBlack({ className }: { className?: string }) {
                   className="flex flex-col items-center justify-center shrink-0 transition-all duration-300 hover:scale-105 gap-1 px-2 text-center group cursor-pointer"
                   title={brand.name}
                 >
-                  <div className="h-[40px] md:h-[44px] flex items-center justify-center">
+                  <div className="h-[44px] md:h-[50px] 2xl:h-[54px] flex items-center justify-center">
                     <img
                       src={brand.url}
                       alt={brand.name}

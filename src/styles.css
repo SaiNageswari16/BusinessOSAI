@@ -23,6 +23,9 @@
   --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
+  --breakpoint-3xl: 1920px;
+  --breakpoint-4xl: 2560px;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -318,4 +321,3 @@ html.dark ::-webkit-scrollbar-thumb,
   border-color: #0b1120;
   background: linear-gradient(180deg, #c084fc 0%, #818cf8 100%);
 }
-

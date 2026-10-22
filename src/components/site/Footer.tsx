@@ -36,26 +36,26 @@ export function Footer({ className }: { className?: string }) {
 
       <footer
         className={
-          "w-full bg-[#F9FBFA] px-6 sm:px-12 lg:px-[80px] pt-8 sm:pt-10 pb-6 font-sans overflow-hidden border-t border-[#E4E7EB] " +
+          "w-full bg-[#F9FBFA] px-6 sm:px-12 lg:px-[80px] 2xl:px-12 3xl:px-16 pt-8 sm:pt-10 2xl:pt-14 pb-6 2xl:pb-10 font-sans overflow-hidden border-t border-[#E4E7EB] " +
           (className || "")
         }
       >
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-10 mb-8">
+        <div className="max-w-7xl 2xl:max-w-[1560px] 3xl:max-w-[1840px] mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-10 2xl:gap-14 mb-8 2xl:mb-12">
             {/* 1. Brand Section */}
             <div className="flex flex-col gap-6 col-span-1">
               <Link to="/" className="inline-flex flex-col items-start gap-1.5 group cursor-pointer" aria-label="IOTRONICS home">
                 <img
                   src="/logo.png"
                   alt="IOTRONICS Logo"
-                  className="h-8 sm:h-9 w-auto object-contain transition-transform duration-300 group-hover:scale-105"
+                  className="h-8 sm:h-9 2xl:h-11 w-auto object-contain transition-transform duration-300 group-hover:scale-105"
                 />
-                <span className="block text-[10px] font-bold uppercase tracking-wider text-purple-600 font-mono">
+                <span className="block text-[10px] 2xl:text-xs font-bold uppercase tracking-wider text-purple-600 font-mono">
                   Enterprise AI Systems
                 </span>
               </Link>
 
-              <p className="text-[15px] leading-[1.6] text-[#6A7281] max-w-[290px]">
+              <p className="text-[15px] 2xl:text-base leading-[1.6] text-[#6A7281] max-w-[290px] 2xl:max-w-[360px]">
                 Intelligent Solutions for a Smarter Future. Unifying ERP, POS, Fitness Operations,
                 Luxury Salons, and Automated Business Systems.
               </p>

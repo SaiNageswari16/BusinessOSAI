@@ -104,10 +104,10 @@ export function FloatingSocials() {
 
   return (
     <>
-      {/* 1. Desktop Fixed Vertical Dock (Visible on right edge on md screens and above) */}
+      {/* 1. Desktop Fixed Vertical Dock (Visible on right edge on md screens and above, gracefully clamped on ultrawides) */}
       <aside
         aria-label="Floating Navigation & Social Links"
-        className="hidden md:flex fixed right-3 sm:right-5 top-1/2 -translate-y-1/2 flex-col items-center select-none"
+        className="hidden md:flex fixed right-3 sm:right-5 [@media(min-width:2000px)]:right-[calc((100vw-1840px)/2+1.5rem)] top-1/2 -translate-y-1/2 flex-col items-center select-none"
         style={{ zIndex: 99999 }}
       >
         <div className="flex flex-col items-center gap-1.5 p-1.5 sm:p-2 rounded-full bg-white/92 dark:bg-slate-900/92 backdrop-blur-xl border border-slate-200/90 dark:border-slate-800 shadow-[0_12px_40px_-5px_rgba(0,0,0,0.18)] transition-all duration-300 hover:shadow-[0_16px_50px_-5px_rgba(124,58,237,0.22)]">

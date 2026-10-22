@@ -65,7 +65,7 @@ export function Section({
         className,
       )}
     >
-      <div className="relative mx-auto w-full max-w-7xl px-4 sm:px-6">{children}</div>
+      <div className="relative mx-auto w-full max-w-7xl 2xl:max-w-[1560px] 3xl:max-w-[1840px] px-4 sm:px-6 2xl:px-8 3xl:px-12">{children}</div>
     </section>
   );
 }

@@ -68,7 +68,7 @@ export function AboutUsSection({ className }: { className?: string }) {
           (className || "")
         }
       >
-        <div className="container mx-auto px-4 sm:px-6 max-w-7xl relative z-10">
+        <div className="container mx-auto px-4 sm:px-6 2xl:px-8 3xl:px-12 max-w-7xl 2xl:max-w-[1560px] 3xl:max-w-[1840px] relative z-10">
           <div>
             {/* Header */}
             <div
@@ -80,11 +80,11 @@ export function AboutUsSection({ className }: { className?: string }) {
                 <Sparkles className="size-3.5 text-purple-600" /> About IOTRONICS
               </div>
 
-              <h2 className="font-sans font-extrabold text-2xl sm:text-3xl md:text-4xl text-zinc-950 leading-[1.12] tracking-[-0.03em] max-w-4xl">
+              <h2 className="font-sans font-extrabold text-2xl sm:text-3xl md:text-4xl 2xl:text-5xl text-zinc-950 leading-[1.12] tracking-[-0.03em] max-w-4xl 2xl:max-w-5xl 3xl:max-w-6xl">
                 Automate the manual, accelerate the future. Our vertical AI operating systems
                 deliver measurable growth across business, fitness, and luxury salons.
               </h2>
-              <p className="mt-2.5 max-w-2xl text-xs sm:text-sm text-zinc-600 leading-relaxed font-normal">
+              <p className="mt-2.5 max-w-2xl 2xl:max-w-3xl text-xs sm:text-sm 2xl:text-base text-zinc-600 leading-relaxed font-normal">
                 We bridge the gap between daily operations and intelligent automation. By unifying
                 enterprise POS & ERP, fitness club management, and luxury salon bookings into one
                 ecosystem, IOTRONICS eliminates human error and accelerates profitability.
@@ -92,7 +92,7 @@ export function AboutUsSection({ className }: { className?: string }) {
             </div>
 
             {/* Grid (12 columns) */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 h-auto md:h-[430px]">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 2xl:gap-7 h-auto md:h-[430px] 2xl:h-[490px] 3xl:h-[530px]">
               {/* Card 1: Enterprise Operations Visual Card */}
               <div
                 className={`md:col-span-3 rounded-3xl overflow-hidden relative group h-[320px] md:h-full shadow-lg transition-all duration-700 ease-out delay-100 ${

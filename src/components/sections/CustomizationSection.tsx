@@ -24,7 +24,7 @@ interface CustomizationCellProps {
 
 function CustomizationCell({ icon: Icon, title, body, index }: CustomizationCellProps) {
   return (
-    <div className="group relative flex flex-col items-center justify-center text-center p-5 md:p-7 h-full overflow-hidden cursor-default transition-all duration-500 hover:-translate-y-1">
+    <div className="group relative flex flex-col items-center justify-center text-center p-5 md:p-7 2xl:p-9 3xl:p-10 h-full overflow-hidden cursor-default transition-all duration-500 hover:-translate-y-1">
       {/* Spotlight Glow on Hover */}
       <div className="absolute inset-0 bg-gradient-to-b from-purple-500/8 via-indigo-500/4 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
 
@@ -55,13 +55,13 @@ function CustomizationCell({ icon: Icon, title, body, index }: CustomizationCell
 
       {/* Cell Content */}
       <div className="relative z-10 flex flex-col items-center transition-transform duration-500 group-hover:-translate-y-1">
-        <div className="w-[54px] h-[54px] bg-purple-50 border border-purple-200/80 rounded-[14px] flex items-center justify-center mb-6 group-hover:bg-gradient-to-br group-hover:from-purple-600 group-hover:to-indigo-600 group-hover:shadow-[0_0_20px_rgba(147,51,234,0.3)] group-hover:border-purple-400 transition-all duration-500 text-purple-600 group-hover:text-white shadow-xs">
-          <Icon size={24} strokeWidth={1.75} />
+        <div className="w-[54px] h-[54px] 2xl:w-[62px] 2xl:h-[62px] bg-purple-50 border border-purple-200/80 rounded-[14px] 2xl:rounded-[18px] flex items-center justify-center mb-6 group-hover:bg-gradient-to-br group-hover:from-purple-600 group-hover:to-indigo-600 group-hover:shadow-[0_0_20px_rgba(147,51,234,0.3)] group-hover:border-purple-400 transition-all duration-500 text-purple-600 group-hover:text-white shadow-xs">
+          <Icon size={24} strokeWidth={1.75} className="2xl:scale-110" />
         </div>
-        <h3 className="text-slate-950 text-[22px] font-bold leading-[28px] tracking-tight mb-2.5 group-hover:text-purple-700 transition-colors duration-500">
+        <h3 className="text-slate-950 text-[22px] 2xl:text-[24px] font-bold leading-[28px] 2xl:leading-[32px] tracking-tight mb-2.5 group-hover:text-purple-700 transition-colors duration-500">
           {title}
         </h3>
-        <p className="text-slate-600 text-[15px] font-normal leading-[24px] max-w-[290px] group-hover:text-slate-800 transition-colors duration-500">
+        <p className="text-slate-600 text-[15px] 2xl:text-[16px] font-normal leading-[24px] 2xl:leading-[26px] max-w-[290px] 2xl:max-w-[340px] group-hover:text-slate-800 transition-colors duration-500">
           {body}
         </p>
       </div>
@@ -115,24 +115,24 @@ export function CustomizationSection({ className }: { className?: string }) {
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-purple-500/5 rounded-full blur-[120px] pointer-events-none" />
 
       {/* Section Header */}
-      <div className="max-w-4xl mx-auto text-center mb-5 sm:mb-6 relative z-10 space-y-2">
+      <div className="max-w-4xl 2xl:max-w-5xl 3xl:max-w-6xl mx-auto text-center mb-5 sm:mb-6 2xl:mb-8 relative z-10 space-y-2">
         <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-500/20 bg-purple-50 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-purple-700 shadow-xs">
           <Sparkles className="size-3.5 text-purple-600" /> Bespoke Engineering
         </span>
-        <h2 className="text-3xl sm:text-5xl font-extrabold text-slate-950 tracking-tight leading-tight">
+        <h2 className="text-3xl sm:text-5xl 2xl:text-6xl font-extrabold text-slate-950 tracking-tight leading-tight">
           Engineered to Match Your{" "}
           <span className="bg-gradient-to-r from-purple-700 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
             Unique Enterprise Scale
           </span>
         </h2>
-        <p className="text-slate-600 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed font-normal">
+        <p className="text-slate-600 text-sm sm:text-base 2xl:text-lg max-w-2xl 2xl:max-w-3xl mx-auto leading-relaxed font-normal">
           No rigid software templates. We custom-engineer applications, hardware bridges, and
           automated workflows tailored precisely to your operational requirements.
         </p>
       </div>
 
       {/* Audience / Customization Grid with Masked Border Beams */}
-      <div className="max-w-7xl mx-auto relative z-10">
+      <div className="max-w-7xl 2xl:max-w-[1560px] 3xl:max-w-[1840px] mx-auto relative z-10">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 relative border border-slate-200/90 rounded-3xl bg-white shadow-sm overflow-hidden">
           {customizationCapabilities.map((item, idx) => (
             <div

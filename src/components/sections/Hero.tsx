@@ -28,7 +28,7 @@ export function Hero() {
       <div className="pointer-events-none absolute inset-0 grid-lines opacity-40" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[60rem] bg-halo" />
 
-      <div className="relative mx-auto w-full max-w-7xl px-5 sm:px-8">
+      <div className="relative mx-auto w-full max-w-7xl 2xl:max-w-[1560px] 3xl:max-w-[1840px] px-5 sm:px-8 2xl:px-12">
         <div className="grid items-center gap-14 lg:grid-cols-[1.05fr_1fr]">
           <Reveal>
             <span className="inline-flex items-center gap-2 rounded-full border border-ink-border bg-ink-foreground/8 px-3.5 py-1.5 text-xs font-semibold tracking-[0.14em] text-accent uppercase">

@@ -24,10 +24,10 @@ export function Header() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-[100] h-[60px] bg-[#f8f9fa]/85 backdrop-blur-md px-4 sm:px-8 md:px-[60px] flex items-center justify-center border-b border-slate-200/80 transition-all duration-300">
-      <div className="max-w-[1050px] w-full mx-auto relative flex items-center justify-between md:justify-center">
+    <header className="sticky top-0 z-[100] h-[60px] 2xl:h-[70px] bg-[#f8f9fa]/85 backdrop-blur-md px-4 sm:px-8 md:px-[60px] 2xl:px-12 3xl:px-16 flex items-center justify-center border-b border-slate-200/80 transition-all duration-300">
+      <div className="max-w-[1050px] 2xl:max-w-[1400px] 3xl:max-w-[1600px] w-full mx-auto relative flex items-center justify-between md:justify-center">
         {/* Floating Capsule Bar */}
-        <div className="bg-white/95 border border-slate-200/90 backdrop-blur-2xl rounded-full pl-3.5 pr-1.5 py-1 flex items-center justify-between md:inline-flex md:gap-5 shadow-[0_4px_25px_rgba(0,0,0,0.06)] w-full md:w-auto">
+        <div className="bg-white/95 border border-slate-200/90 backdrop-blur-2xl rounded-full pl-3.5 pr-1.5 py-1 2xl:py-1.5 2xl:px-5 flex items-center justify-between md:inline-flex md:gap-5 2xl:gap-7 shadow-[0_4px_25px_rgba(0,0,0,0.06)] w-full md:w-auto">
           {/* Brand Logo */}
           <a
             href="/#top"
@@ -37,17 +37,17 @@ export function Header() {
             <img
               src="/logo.png"
               alt="IOTRONICS"
-              className="h-5.5 sm:h-6 w-auto object-contain transition-transform duration-300 group-hover:scale-105"
+              className="h-5.5 sm:h-6 2xl:h-7 w-auto object-contain transition-transform duration-300 group-hover:scale-105"
             />
           </a>
 
           {/* Desktop Nav Links */}
-          <div className="hidden md:flex items-center gap-4.5">
+          <div className="hidden md:flex items-center gap-4.5 2xl:gap-6 3xl:gap-7">
             {nav.map((link) => (
               <a
                 key={link.label}
                 href={link.href}
-                className="text-[12.5px] text-slate-600 hover:text-purple-700 cursor-pointer transition-colors flex items-center gap-1 font-semibold"
+                className="text-[12.5px] 2xl:text-[14px] text-slate-600 hover:text-purple-700 cursor-pointer transition-colors flex items-center gap-1 font-semibold"
               >
                 {link.label}
               </a>

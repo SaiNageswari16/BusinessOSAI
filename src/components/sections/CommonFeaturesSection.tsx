@@ -101,12 +101,12 @@ export function CommonFeaturesSection({ className }: { className?: string }) {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-500/5 rounded-full blur-[160px] pointer-events-none" />
 
         {/* SECTION HEADER */}
-        <div className="text-center mb-4 flex flex-col items-center gap-2 relative z-10 max-w-4xl mx-auto">
+        <div className="text-center mb-4 flex flex-col items-center gap-2 relative z-10 max-w-4xl 2xl:max-w-5xl 3xl:max-w-6xl mx-auto">
           <div className="inline-flex items-center gap-2 rounded-full border border-purple-500/20 bg-purple-50 px-3.5 py-1 text-[11px] font-bold tracking-wider text-purple-700 uppercase shadow-xs">
             <Sparkles className="size-3 text-purple-600" /> Unified Platform Intelligence
           </div>
 
-          <h2 className="font-extrabold text-2xl sm:text-3xl md:text-4xl leading-[1.15] tracking-tight text-slate-950">
+          <h2 className="font-extrabold text-2xl sm:text-3xl md:text-4xl 2xl:text-5xl leading-[1.15] tracking-tight text-slate-950">
             Built for Real Operations.
             <br />
             <span className="bg-gradient-to-r from-purple-700 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
@@ -114,7 +114,7 @@ export function CommonFeaturesSection({ className }: { className?: string }) {
             </span>
           </h2>
 
-          <p className="text-sm sm:text-base text-slate-600 max-w-2xl leading-relaxed font-normal">
+          <p className="text-sm sm:text-base 2xl:text-lg text-slate-600 max-w-2xl 2xl:max-w-3xl leading-relaxed font-normal">
             Eliminate fragmented tools. IOTRONICS synchronizes your{" "}
             <strong className="text-slate-900">AI Business OS</strong>,{" "}
             <strong className="text-slate-900">FIT CLUB AI</strong>, and{" "}
@@ -140,7 +140,7 @@ export function CommonFeaturesSection({ className }: { className?: string }) {
         </div>
 
         {/* BENTO GRID */}
-        <div className="flex flex-col gap-4 max-w-7xl mx-auto relative z-10">
+        <div className="flex flex-col gap-4 2xl:gap-6 max-w-7xl 2xl:max-w-[1560px] 3xl:max-w-[1840px] mx-auto relative z-10">
           {/* ROW 1: Auto Workflows (55%) + 3-Way Connected Graph (45%) */}
           <div className="grid grid-cols-1 lg:grid-cols-[55fr_45fr] gap-4">
             {/* CARD 1: Natural Language Business Copilot */}

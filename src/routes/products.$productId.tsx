@@ -3720,7 +3720,7 @@ function ProductDetailPage() {
     <div className="relative min-h-screen bg-[#f8f9fb] text-slate-900 font-sans selection:bg-purple-500/20 selection:text-purple-900">
       <Header />
 
-      <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-8 space-y-14">
+      <main className="relative z-10 max-w-7xl 2xl:max-w-[1560px] 3xl:max-w-[1840px] mx-auto px-4 sm:px-6 md:px-8 2xl:px-12 py-8 space-y-14">
         {/* Top Breadcrumb Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 font-medium border-b border-slate-200/90 pb-4">
           <div className="flex items-center gap-2">
