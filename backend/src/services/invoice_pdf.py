@@ -73,12 +73,12 @@ _DEFAULT_INVOICE_TEMPLATE: dict[str, Any] = {
     "primaryColor": "#2563eb",
     "fontFamily": "Helvetica",
     "headerTitle": "TAX INVOICE",
-    "storeName": "venatic",
-    "legalName": "AUTHORIZED BUSINESS ORGANIZATION",
-    "storeAddress": "Andhra Pradesh, India",
-    "storePhone": "+91 9398622127",
-    "gstin": "37AABCCH694G1Z4",
-    "footerText": "Thank you for choosing venatic!",
+    "storeName": "",
+    "legalName": "",
+    "storeAddress": "",
+    "storePhone": "",
+    "gstin": "",
+    "footerText": "Thank you for your business!",
     "termsText": "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only.",
     "bankDetails": "",
     "themeName": "stylish",
@@ -156,16 +156,10 @@ def _hex_to_rgb(hex_color: str | None) -> tuple[int, int, int]:
 def _find_logo_path(custom_url: str | None = None) -> str | None:
     """Resolve a valid local logo image path from Base64 data URI, HTTP URL, relative path, or file."""
     if not custom_url:
-        for p in _STATIC_LOGO_PATHS:
-            if p.exists() and p.stat().st_size > 100:
-                return str(p)
         return None
 
     cleaned_url = str(custom_url).strip()
-    if not cleaned_url:
-        for p in _STATIC_LOGO_PATHS:
-            if p.exists() and p.stat().st_size > 100:
-                return str(p)
+    if not cleaned_url or cleaned_url.lower() in ("none", "null", "undefined", ""):
         return None
 
     logos_cache_dir = INVOICE_PDF_DIR / "logos"
@@ -239,10 +233,6 @@ def _find_logo_path(custom_url: str | None = None) -> str | None:
         except Exception as dl_err:
             logger.warning("Failed to download remote logo URL %s: %s", cleaned_url, dl_err)
 
-    # 5. Fallback to static logo paths
-    for p in _STATIC_LOGO_PATHS:
-        if p.exists() and p.stat().st_size > 100:
-            return str(p)
     return None
 
 
@@ -375,7 +365,7 @@ async def get_active_invoice_template(
     """Return the tenant's active invoice/thermal print template dict merged with company info."""
     from src.models import Company, Tenant
 
-    # 1. Fetch Tenant and Company (use company_id if provided, else newest company)
+    # 1. Fetch Tenant and Company (use company_id if provided and valid, else newest company)
     tenant_res = await db.execute(select(Tenant).where(Tenant.id == tenant_id))
     tenant = tenant_res.scalar_one_or_none()
     tenant_settings = dict(tenant.settings) if tenant and tenant.settings else {}
@@ -383,8 +373,12 @@ async def get_active_invoice_template(
     company = None
     if company_id:
         company = await db.get(Company, company_id)
+        if company and company.tenant_id != tenant_id:
+            logger.warning("Requested company %s does not belong to tenant %s; resetting to tenant company", company_id, tenant_id)
+            company = None
+
     if not company:
-        # Prefer active/latest company created
+        # Prefer active/latest company created for this tenant
         company_res = await db.execute(
             select(Company).where(Company.tenant_id == tenant_id).order_by(Company.created_at.desc())
         )
@@ -393,9 +387,17 @@ async def get_active_invoice_template(
     # 2. Get configured template for the requested category (invoices or thermal receipts)
     print_templates = tenant_settings.get("print_templates", {})
     is_thermal_cat = category.lower() in ("thermal", "thermals", "receipt", "receipts")
-    
+    cat_key = "thermal" if is_thermal_cat else "invoices"
+
+    comp_id_str = str(company.id) if company else (str(company_id) if company_id else None)
+    company_cat_config = {}
+    if comp_id_str and isinstance(print_templates.get("companies"), dict):
+        comp_templates = print_templates["companies"].get(comp_id_str, {})
+        if isinstance(comp_templates, dict):
+            company_cat_config = comp_templates.get(cat_key) or (comp_templates.get("receipt") if is_thermal_cat else {}) or {}
+
     if is_thermal_cat:
-        cat_config = print_templates.get("thermal") or print_templates.get("receipt") or {}
+        cat_config = company_cat_config or print_templates.get("thermal") or print_templates.get("receipt") or {}
         active_id = cat_config.get("active")
         templates_map = cat_config.get("templates", {})
         if active_id and active_id in templates_map:
@@ -414,7 +416,7 @@ async def get_active_invoice_template(
                 "termsText": "Thank you for shopping with us! Please keep this receipt handy for returns.",
             }
     else:
-        invoice_config = print_templates.get("invoices", {})
+        invoice_config = company_cat_config or print_templates.get("invoices", {})
         active_id = invoice_config.get("active")
         templates_map = invoice_config.get("templates", {})
 
@@ -422,15 +424,15 @@ async def get_active_invoice_template(
             tpl = dict(templates_map[active_id])
         elif active_id and active_id in _BUILTIN_TEMPLATES:
             tpl = dict(_BUILTIN_TEMPLATES[active_id])
-        elif "tpl-word-default" in _BUILTIN_TEMPLATES:
-            tpl = dict(_BUILTIN_TEMPLATES.get(active_id or "tpl-word-default", _DEFAULT_INVOICE_TEMPLATE))
-        elif "tpl-inv-parle-teal" in _BUILTIN_TEMPLATES:
-            tpl = dict(_BUILTIN_TEMPLATES.get(active_id or "tpl-inv-parle-teal", _DEFAULT_INVOICE_TEMPLATE))
+        elif templates_map:
+            tpl = dict(next(iter(templates_map.values())))
         else:
             tpl = dict(_DEFAULT_INVOICE_TEMPLATE)
 
     # 3. Dynamic organization details override (replaces hardcoded defaults)
-    tenant_name = (tenant.name if tenant else "TESTINGORG") or "TESTINGORG"
+    tenant_name = (tenant.name if tenant else "") or ""
+    if tenant_name.upper() == "TESTINGORG":
+        tenant_name = ""
     gst_regs = getattr(company, "gst_registrations", []) or []
     active_gst_reg = gst_regs[0] if (isinstance(gst_regs, list) and len(gst_regs) > 0 and isinstance(gst_regs[0], dict)) else {}
     wa_settings = getattr(company, "whatsapp_settings", {}) or {}
@@ -441,25 +443,43 @@ async def get_active_invoice_template(
         payment_qr_settings = {}
 
     if company:
-        tpl["storeName"] = active_gst_reg.get("trade_name") or company.name or tenant_name
-        tpl["legalName"] = active_gst_reg.get("legal_name") or company.legal_name or company.name or "AUTHORIZED BUSINESS ORGANIZATION"
-        if company.address or active_gst_reg.get("address"):
-            tpl["storeAddress"] = active_gst_reg.get("address") or company.address
-        if company.phone or active_gst_reg.get("phone"):
-            tpl["storePhone"] = active_gst_reg.get("phone") or company.phone
-        if company.gst_number or active_gst_reg.get("gstin"):
-            tpl["gstin"] = active_gst_reg.get("gstin") or company.gst_number
-        if company.email:
-            tpl["storeEmail"] = company.email
+        trade_name = active_gst_reg.get("trade_name") or company.name or tenant_name
+        legal_name = active_gst_reg.get("legal_name") or company.legal_name or company.name or trade_name
+        address_val = active_gst_reg.get("address") or company.address or ""
+        phone_val = active_gst_reg.get("phone") or company.phone or ""
+        gstin_val = active_gst_reg.get("gstin") or company.gst_number or ""
+        email_val = company.email or ""
+
+        tpl["storeName"] = trade_name
+        tpl["legalName"] = legal_name
+        tpl["storeAddress"] = address_val
+        tpl["storePhone"] = phone_val
+        tpl["gstin"] = gstin_val
+        tpl["storeEmail"] = email_val
         if company.terms_and_conditions:
             tpl["termsText"] = company.terms_and_conditions
 
-        # Resolve logo: template custom logo > company logo > tenant logo > active gst reg logo
+        # Keep Word templates in sync with this company so they don't bleed previous company headers
+        if isinstance(tpl.get("wordConfig"), dict):
+            wc = tpl["wordConfig"]
+            wc["companyName"] = trade_name
+            wc["companyAddress"] = address_val
+            wc["companyGstin"] = gstin_val
+            wc["companyPhone"] = phone_val
+            wc["companyEmail"] = email_val
+            if isinstance(wc.get("signatureConfig"), dict):
+                wc["signatureConfig"]["companyName"] = f"For {trade_name}"
+
+        # Resolve logo: template custom logo > company logo > active gst reg logo > tenant logo
         tpl_logo = tpl.get("logoUrl") or tpl.get("customLogoUrl")
         comp_logo = company.logo_url
         tenant_logo = tenant_settings.get("logo_url") or tenant_settings.get("logo")
         gst_logo = active_gst_reg.get("logo_url")
-        is_tpl_custom = bool(tpl_logo and not str(tpl_logo).strip().lower().endswith(("/logo.png", "logo.png")))
+        is_tpl_custom = bool(
+            tpl_logo
+            and not str(tpl_logo).strip().lower().endswith(("/logo.png", "logo.png"))
+            and "placeholder" not in str(tpl_logo).lower()
+        )
 
         if is_tpl_custom:
             tpl["logoUrl"] = tpl_logo
@@ -467,10 +487,10 @@ async def get_active_invoice_template(
             tpl["logoUrl"] = comp_logo
         elif gst_logo:
             tpl["logoUrl"] = gst_logo
-        elif tpl_logo:
-            tpl["logoUrl"] = tpl_logo
         elif tenant_logo:
             tpl["logoUrl"] = tenant_logo
+        else:
+            tpl["logoUrl"] = ""
 
         # Google Review URL
         tpl["googleReviewUrl"] = company.google_review_url or tpl.get("googleReviewUrl") or tenant_settings.get("google_review_url")
@@ -499,16 +519,20 @@ async def get_active_invoice_template(
             tpl["upiId"] = resolved_upi
     else:
         tpl["storeName"] = tenant_name
-        tpl["legalName"] = "AUTHORIZED BUSINESS ORGANIZATION"
+        tpl["legalName"] = tenant_name
         tenant_logo = tenant_settings.get("logo_url") or tenant_settings.get("logo")
-        if tenant_logo and not tpl.get("logoUrl"):
-            tpl["logoUrl"] = tenant_logo
+        tpl["logoUrl"] = tenant_logo or ""
 
     return tpl
 
 
-async def set_active_invoice_template(db: AsyncSession, tenant_id: uuid.UUID, template: dict) -> None:
-    """Persist the active invoice print template into Tenant.settings."""
+async def set_active_invoice_template(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    template: dict,
+    company_id: uuid.UUID | None = None,
+) -> None:
+    """Persist the active invoice print template into Tenant.settings (scoped to company if provided)."""
     from src.models import Tenant
 
     result = await db.execute(
@@ -518,7 +542,18 @@ async def set_active_invoice_template(db: AsyncSession, tenant_id: uuid.UUID, te
     settings: dict = dict(row) if row else {}
 
     tpl_id = template.get("id", "tpl-inv-stylish")
-    settings.setdefault("print_templates", {})["invoices"] = {
+    print_templates = settings.setdefault("print_templates", {})
+
+    if company_id:
+        comp_id_str = str(company_id)
+        comp_dict = print_templates.setdefault("companies", {}).setdefault(comp_id_str, {})
+        comp_dict["invoices"] = {
+            "active": tpl_id,
+            "templates": {tpl_id: template},
+        }
+
+    # Also keep tenant default for backwards compatibility
+    print_templates["invoices"] = {
         "active": tpl_id,
         "templates": {tpl_id: template},
     }
@@ -1428,7 +1463,7 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
         getattr(invoice, "sales_rep_name", None)
         or getattr(invoice, "salesperson_name", None)
         or (getattr(getattr(invoice, "cashier", None), "full_name", None))
-        or "workspaceisolation",
+        or "",
         25,
     )
 
@@ -1755,14 +1790,14 @@ def _render_stylish_pdf(invoice: Any, template: dict) -> bytes:
     tpl_title = template.get("headerTitle") or template.get("invoiceTitle")
     header_title = _safe_text(tpl_title if (tpl_title and tpl_title != "TAX INVOICE") or not is_quote else default_stylish_title, 40)
 
-    store_name = _safe_text(template.get("storeName") or "venatic", 60)
-    legal_name = _safe_text(template.get("legalName") or "AUTHORIZED BUSINESS ORGANIZATION", 60)
+    store_name = _safe_text(template.get("storeName") or "", 60)
+    legal_name = _safe_text(template.get("legalName") or store_name or "", 60)
     store_address = _safe_text(template.get("storeAddress") or "", 120)
     store_phone = _safe_text(template.get("storePhone") or "", 40)
     store_email = _safe_text(template.get("storeEmail") or "", 60)
     gstin = _safe_text(template.get("gstin") or "", 30)
     terms_text = _safe_text(template.get("termsText") or "1. Goods once sold will not be taken back or exchanged.\n2. All disputes are subject to local jurisdiction only.", 500)
-    footer_text = _safe_text(template.get("footerText") or f"Thank you for shopping at {store_name}!", 200)
+    footer_text = _safe_text(template.get("footerText") or (f"Thank you for shopping at {store_name}!" if store_name else "Thank you for your business!"), 200)
     copy_type = _safe_text(getattr(invoice, "copy_type", None) or "ORIGINAL FOR RECIPIENT", 40)
 
     # Customer & Supply State

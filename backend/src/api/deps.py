@@ -413,6 +413,15 @@ async def get_current_user_context(
                 elif comp_obj.tenant_id == actual_tenant_uuid:
                     # For tenant user, only allow if the company belongs to their own tenant
                     active_company_id = comp_obj.id
+                else:
+                    logger.warning(
+                        "Company %s does not belong to user tenant %s; access denied",
+                        parsed_cid, actual_tenant_uuid
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Access denied: Company does not belong to active organization",
+                    )
             else:
                 # 2. Check if parsed_cid is the Tenant ID, and find that Tenant's primary company
                 if is_platform_admin_user or parsed_cid == actual_tenant_uuid:

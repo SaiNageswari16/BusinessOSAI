@@ -224,12 +224,7 @@ async def list_invoices(
         target_cid = ctx.active_company_id
 
     if target_cid:
-        query = query.where(
-            or_(
-                Invoice.company_id == target_cid,
-                Invoice.company_id.is_(None)
-            )
-        )
+        query = query.where(Invoice.company_id == target_cid)
     if status_filter:
         query = query.where(Invoice.status == status_filter)
     if invoice_type:
@@ -431,7 +426,7 @@ class SavePrintTemplatePayload(BaseModel):
 
 
 async def _resolve_tenant_for_templates(db: AsyncSession, ctx: CurrentUserContext):
-    """Safely resolve the tenant object even across different session tokens or incognito."""
+    """Safely resolve the tenant object for the authenticated user context."""
     from src.models import Tenant
     target_id = ctx.tenant_id
     if not target_id and hasattr(ctx, "user") and ctx.user:
@@ -455,11 +450,8 @@ async def _resolve_tenant_for_templates(db: AsyncSession, ctx: CurrentUserContex
         except Exception:
             pass
 
-    # Fallback to first active organization
-    tenant = await db.scalar(select(Tenant).where(Tenant.slug != "system").order_by(Tenant.created_at.asc()).limit(1))
-    if not tenant:
-        tenant = await db.scalar(select(Tenant).order_by(Tenant.created_at.asc()).limit(1))
-    return tenant
+    # Never fall back to oldest tenant in database — prevent cross-tenant bleed
+    return None
 
 
 @router.get("/print-templates")
@@ -468,7 +460,7 @@ async def list_organization_print_templates_endpoint(
     db: Annotated[AsyncSession, Depends(get_db)],
     category: Optional[str] = None,
 ):
-    """Fetch all saved custom print templates (barcodes, invoices, thermal, etc.) for this organization."""
+    """Fetch all saved custom print templates (barcodes, invoices, thermal, etc.) for this organization/company."""
     import copy
     tenant = await _resolve_tenant_for_templates(db, ctx)
     if not tenant:
@@ -476,39 +468,69 @@ async def list_organization_print_templates_endpoint(
 
     settings = copy.deepcopy(tenant.settings or {})
     print_templates = settings.get("print_templates", {})
+    active_cid = ctx.active_company_id
+    comp_templates = {}
+    if active_cid and isinstance(print_templates.get("companies"), dict):
+        comp_templates = print_templates["companies"].get(str(active_cid), {})
     
     all_templates = []
     active_map = {}
 
     for cat_name, cat_data in print_templates.items():
-        if isinstance(cat_data, dict):
-            if "active" in cat_data:
-                active_map[cat_name] = cat_data["active"]
-                if cat_name == "barcodes":
-                    active_map["barcode"] = cat_data["active"]
-                elif cat_name == "barcode":
-                    active_map["barcodes"] = cat_data["active"]
-                elif cat_name == "invoices":
-                    active_map["invoice"] = cat_data["active"]
-                elif cat_name == "invoice":
-                    active_map["invoices"] = cat_data["active"]
+        if cat_name == "companies" or not isinstance(cat_data, dict):
+            continue
+        if "active" in cat_data:
+            active_map[cat_name] = cat_data["active"]
+            if cat_name == "barcodes":
+                active_map["barcode"] = cat_data["active"]
+            elif cat_name == "barcode":
+                active_map["barcodes"] = cat_data["active"]
+            elif cat_name == "invoices":
+                active_map["invoice"] = cat_data["active"]
+            elif cat_name == "invoice":
+                active_map["invoices"] = cat_data["active"]
 
-            raw_tpls = cat_data.get("templates", {})
-            if isinstance(raw_tpls, dict):
-                for tpl_id, tpl_val in raw_tpls.items():
+        raw_tpls = cat_data.get("templates", {})
+        if isinstance(raw_tpls, dict):
+            for tpl_id, tpl_val in raw_tpls.items():
+                if isinstance(tpl_val, dict):
+                    if not tpl_val.get("id"):
+                        tpl_val["id"] = tpl_id
+                    if not tpl_val.get("category"):
+                        tpl_val["category"] = cat_name
+                    all_templates.append(tpl_val)
+        elif isinstance(raw_tpls, list):
+            for tpl_val in raw_tpls:
+                if isinstance(tpl_val, dict):
+                    if not tpl_val.get("category"):
+                        tpl_val["category"] = cat_name
+                    all_templates.append(tpl_val)
+
+    # Overlay company-specific templates and active selection
+    if isinstance(comp_templates, dict):
+        for c_cat_name, c_cat_data in comp_templates.items():
+            if not isinstance(c_cat_data, dict):
+                continue
+            if "active" in c_cat_data:
+                active_map[c_cat_name] = c_cat_data["active"]
+                if c_cat_name == "invoices":
+                    active_map["invoice"] = c_cat_data["active"]
+                elif c_cat_name == "invoice":
+                    active_map["invoices"] = c_cat_data["active"]
+                elif c_cat_name in ("thermal", "receipt"):
+                    active_map["thermal"] = c_cat_data["active"]
+                    active_map["receipt"] = c_cat_data["active"]
+            c_raw = c_cat_data.get("templates", {})
+            if isinstance(c_raw, dict):
+                for tpl_id, tpl_val in c_raw.items():
                     if isinstance(tpl_val, dict):
                         if not tpl_val.get("id"):
                             tpl_val["id"] = tpl_id
                         if not tpl_val.get("category"):
-                            tpl_val["category"] = cat_name
+                            tpl_val["category"] = c_cat_name
                         all_templates.append(tpl_val)
-            elif isinstance(raw_tpls, list):
-                for tpl_val in raw_tpls:
-                    if isinstance(tpl_val, dict):
-                        if not tpl_val.get("category"):
-                            tpl_val["category"] = cat_name
-                        all_templates.append(tpl_val)
-    # Sanitize & deduplicate any legacy/duplicate templates (e.g. rename 'Centered Offer' to 'Centered SP & MRP')
+
+    # Sanitize & deduplicate any legacy/duplicate templates
     cleaned_templates = []
     seen_ids = set()
     for tpl in all_templates:
@@ -561,12 +583,12 @@ async def save_organization_print_template_endpoint(
     ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Save a custom print template (e.g. Barcode Studio, Invoice Theme) to database for all users in this organization."""
+    """Save a custom print template (e.g. Barcode Studio, Invoice Theme) to database."""
     import copy
     from src.models import Tenant
     tenant = await _resolve_tenant_for_templates(db, ctx)
     if not tenant:
-        return {"success": False, "detail": "Tenant could not be resolved"}
+        raise HTTPException(status_code=403, detail="Tenant could not be resolved")
 
     target_tenant_id = tenant.id
     tpl = payload.template
@@ -584,7 +606,15 @@ async def save_organization_print_template_endpoint(
 
     settings = copy.deepcopy(tenant.settings or {})
     print_templates = settings.setdefault("print_templates", {})
-    cat_config = print_templates.setdefault(category, {})
+    active_cid = ctx.active_company_id
+
+    # Scope template storage to the active company if one is active
+    if active_cid:
+        comp_dict = print_templates.setdefault("companies", {}).setdefault(str(active_cid), {})
+        cat_config = comp_dict.setdefault(category, {})
+    else:
+        cat_config = print_templates.setdefault(category, {})
+
     templates_map = cat_config.setdefault("templates", {})
 
     tpl["updatedAt"] = datetime.utcnow().isoformat()
@@ -592,20 +622,30 @@ async def save_organization_print_template_endpoint(
         tpl["isDefault"] = True
         cat_config["active"] = tpl_id
         if category == "barcodes":
-            print_templates.setdefault("barcode", {})["active"] = tpl_id
+            cat_alias = "barcode"
         elif category == "invoices":
-            print_templates.setdefault("invoice", {})["active"] = tpl_id
+            cat_alias = "invoice"
         elif category == "thermal":
-            print_templates.setdefault("thermal", {})["active"] = tpl_id
-            print_templates.setdefault("receipt", {})["active"] = tpl_id
+            cat_alias = "receipt"
+        else:
+            cat_alias = None
+        if cat_alias:
+            if active_cid:
+                print_templates.setdefault("companies", {}).setdefault(str(active_cid), {}).setdefault(cat_alias, {})["active"] = tpl_id
+            else:
+                print_templates.setdefault(cat_alias, {})["active"] = tpl_id
     
     templates_map[tpl_id] = tpl
+
+    # Keep default tenant-level fallback if not yet set
+    if active_cid and category not in print_templates:
+        print_templates[category] = cat_config
 
     await db.execute(
         update(Tenant).where(Tenant.id == target_tenant_id).values(settings=copy.deepcopy(settings))
     )
     await db.commit()
-    logger.info("Saved print template %s (%s) for tenant %s into database", tpl_id, category, target_tenant_id)
+    logger.info("Saved print template %s (%s) for tenant %s (company %s)", tpl_id, category, target_tenant_id, active_cid)
     return {"success": True, "template": tpl, "active": cat_config.get("active")}
 
 
@@ -629,7 +669,14 @@ async def delete_organization_print_template_endpoint(
     deleted = False
 
     for cat_name, cat_data in print_templates.items():
-        if isinstance(cat_data, dict) and "templates" in cat_data:
+        if cat_name == "companies" and isinstance(cat_data, dict):
+            for _, c_cats in cat_data.items():
+                if isinstance(c_cats, dict):
+                    for _, c_obj in c_cats.items():
+                        if isinstance(c_obj, dict) and "templates" in c_obj and template_id in c_obj["templates"]:
+                            del c_obj["templates"][template_id]
+                            deleted = True
+        elif isinstance(cat_data, dict) and "templates" in cat_data:
             if template_id in cat_data["templates"]:
                 del cat_data["templates"][template_id]
                 deleted = True
@@ -648,10 +695,14 @@ async def delete_organization_print_template_endpoint(
 async def get_active_print_template_endpoint(
     ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: Optional[uuid.UUID] = None,
+    category: Optional[str] = "invoices",
 ):
     tenant = await _resolve_tenant_for_templates(db, ctx)
-    tenant_id = tenant.id if tenant else ctx.tenant_id
-    template = await get_active_invoice_template(db, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=403, detail="Tenant context required")
+    target_company_id = company_id or ctx.active_company_id
+    template = await get_active_invoice_template(db, tenant.id, company_id=target_company_id, category=category or "invoices")
     return {"active_template": template}
 
 
@@ -665,33 +716,43 @@ async def set_active_print_template_endpoint(
     from src.models import Tenant
     tenant = await _resolve_tenant_for_templates(db, ctx)
     if not tenant:
-        return {"success": False, "detail": "Tenant could not be resolved"}
+        raise HTTPException(status_code=403, detail="Tenant could not be resolved")
 
     target_tenant_id = tenant.id
     settings = copy.deepcopy(tenant.settings or {})
     print_templates = settings.setdefault("print_templates", {})
+    active_cid = ctx.active_company_id
 
     category = payload.category or "thermal"
     if category in ["barcode", "barcodes"]:
-        category = "barcodes"
-        print_templates.setdefault("barcodes", {})["active"] = payload.template_id
-        print_templates.setdefault("barcode", {})["active"] = payload.template_id
+        cat_key = "barcodes"
+        alt_key = "barcode"
     elif category in ["invoice", "invoices"]:
-        category = "invoices"
-        print_templates.setdefault("invoices", {})["active"] = payload.template_id
-        print_templates.setdefault("invoice", {})["active"] = payload.template_id
+        cat_key = "invoices"
+        alt_key = "invoice"
     elif category in ["thermal", "thermals", "receipt", "receipts"]:
-        category = "thermal"
-        print_templates.setdefault("thermal", {})["active"] = payload.template_id
-        print_templates.setdefault("receipt", {})["active"] = payload.template_id
+        cat_key = "thermal"
+        alt_key = "receipt"
     else:
-        print_templates.setdefault(category, {})["active"] = payload.template_id
+        cat_key = category
+        alt_key = None
+
+    if active_cid:
+        comp_dict = print_templates.setdefault("companies", {}).setdefault(str(active_cid), {})
+        comp_dict.setdefault(cat_key, {})["active"] = payload.template_id
+        if alt_key:
+            comp_dict.setdefault(alt_key, {})["active"] = payload.template_id
+
+    # Also keep tenant-level default
+    print_templates.setdefault(cat_key, {})["active"] = payload.template_id
+    if alt_key:
+        print_templates.setdefault(alt_key, {})["active"] = payload.template_id
 
     await db.execute(
         update(Tenant).where(Tenant.id == target_tenant_id).values(settings=copy.deepcopy(settings))
     )
     await db.commit()
-    logger.info("Updated active %s print template for tenant %s to %s", category, target_tenant_id, payload.template_id)
+    logger.info("Updated active %s print template for tenant %s (company %s) to %s", category, target_tenant_id, active_cid, payload.template_id)
     return {"success": True, "active": payload.template_id}
 
 
@@ -2294,15 +2355,7 @@ async def list_all_payments(
         .order_by(InvoicePayment.created_at.desc())
     )
     if ctx.active_company_id:
-        if ctx.is_primary_company:
-            query = query.where(
-                or_(
-                    Invoice.company_id == ctx.active_company_id,
-                    and_(Invoice.tenant_id == ctx.tenant_id, Invoice.company_id == None)
-                )
-            )
-        else:
-            query = query.where(Invoice.company_id == ctx.active_company_id)
+        query = query.where(Invoice.company_id == ctx.active_company_id)
 
     if customer_id:
         try:
@@ -2337,15 +2390,7 @@ async def list_all_payments(
         Invoice.amount_paid > 0.05
     ]
     if ctx.active_company_id:
-        if ctx.is_primary_company:
-            inv_conds.append(
-                or_(
-                    Invoice.company_id == ctx.active_company_id,
-                    and_(Invoice.tenant_id == ctx.tenant_id, Invoice.company_id == None)
-                )
-            )
-        else:
-            inv_conds.append(Invoice.company_id == ctx.active_company_id)
+        inv_conds.append(Invoice.company_id == ctx.active_company_id)
 
     if customer_id:
         try:

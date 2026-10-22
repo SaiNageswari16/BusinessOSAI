@@ -620,10 +620,11 @@ export function isGenericBusinessTerm(name?: string | null): boolean {
   return INVALID_COMPANY_NAMES.has(clean) || clean.startsWith('individual /') || clean === 'organization' || clean === 'company' || clean === 'default company';
 }
 
-export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null {
+export function getActiveBillingGst(tenantId?: string, companyId?: string): ActiveGstDetails | null {
   if (typeof window === 'undefined') return null;
   try {
     const tid = tenantId || getTenantIdFromStorage();
+    const activeCid = companyId || (typeof window !== 'undefined' ? localStorage.getItem('bos_active_company_id') : null);
 
     // 0. Authenticated session tenant from bos-tenant
     let sessionTenant: any = null;
@@ -658,42 +659,22 @@ export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null 
                          (!isGenericBusinessTerm(sessionTenant?.raw?.name) ? sessionTenant?.raw?.name : '') || 
                          'Workspace';
 
-    // Scoped Active Company in localStorage for this specific tenant
+    // Scoped Active Company in localStorage for this specific tenant & company
     let activeComp: any = null;
-    const activeCompanyRaw = tid ? localStorage.getItem(`bos_active_company_${tid}`) : null;
+    const activeCompanyRaw =
+      (tid && activeCid ? localStorage.getItem(`bos_active_company_${tid}_${activeCid}`) : null) ||
+      (tid ? localStorage.getItem(`bos_active_company_${tid}`) : null) ||
+      localStorage.getItem('bos_active_company');
     if (activeCompanyRaw) {
       try { activeComp = JSON.parse(activeCompanyRaw); } catch {}
     }
 
     const compAddress = (activeComp?.address || [activeComp?.city, activeComp?.state, activeComp?.country, activeComp?.pincode].filter(Boolean).join(', ') || '').trim();
 
-    // 1. Scoped Active Billing GST details for this specific tenant/workspace
-    const storedGstRaw = tid ? localStorage.getItem(`bos_active_billing_gst_details_${tid}`) : null;
-    if (storedGstRaw) {
-      const parsed = JSON.parse(storedGstRaw);
-      if (parsed && (parsed.trade_name || parsed.gstin || parsed.logo_url || parsed.google_review_url || parsed.terms_and_conditions || parsed.address)) {
-        const resolvedTradeName = !isGenericBusinessTerm(parsed.trade_name) ? parsed.trade_name : (!isGenericBusinessTerm(activeComp?.name) ? activeComp.name : fallbackName);
-        const resolvedLegalName = !isGenericBusinessTerm(parsed.legal_name) ? parsed.legal_name : (!isGenericBusinessTerm(activeComp?.legal_name) ? activeComp.legal_name : resolvedTradeName);
-        
-        const rawAddr = parsed.address;
-        const resolvedAddress = (!isDummyAddress(rawAddr) ? rawAddr : '') || (!isDummyAddress(compAddress) ? compAddress : '') || (!isDummyAddress(tenantAddress) ? tenantAddress : '') || (rawAddr || compAddress || tenantAddress || '');
-
-        return {
-          ...parsed,
-          trade_name: resolvedTradeName,
-          legal_name: resolvedLegalName,
-          address: resolvedAddress,
-          phone: parsed.phone || activeComp?.phone || raw.phone || settings.phone || sessionTenant?.phone || '',
-          email: parsed.email || activeComp?.email || raw.email || settings.email || sessionTenant?.email || '',
-          terms_and_conditions: parsed.terms_and_conditions || activeComp?.terms_and_conditions || null,
-        };
-      }
-    }
-
-    // 2. Active Company fallback
-    if (activeComp) {
+    // 1. Prioritize active company so company switch is instantaneous with zero stale snapshot bleed
+    if (activeComp && !isGenericBusinessTerm(activeComp.name)) {
       const activeReg = activeComp.gst_registrations?.find((r: any) => r.is_primary) || activeComp.gst_registrations?.[0];
-      const gstin = activeReg?.gstin || activeComp.gst_number || '';
+      const gstin = activeReg?.gstin || activeComp.gst_number || activeComp.gstin || '';
       const stateCode = activeReg?.state_code || (gstin ? gstin.slice(0, 2) : '29');
       const compTrade = !isGenericBusinessTerm(activeReg?.trade_name) ? activeReg?.trade_name : (!isGenericBusinessTerm(activeComp.name) ? activeComp.name : fallbackName);
       const compLegal = !isGenericBusinessTerm(activeComp.legal_name) ? activeComp.legal_name : compTrade;
@@ -716,6 +697,31 @@ export function getActiveBillingGst(tenantId?: string): ActiveGstDetails | null 
         google_review_enabled: activeComp.google_review_enabled !== false,
         terms_and_conditions: activeComp.terms_and_conditions || null,
       };
+    }
+
+    // 2. Scoped Active Billing GST details snapshot fallback
+    const storedGstRaw =
+      (tid && activeCid ? localStorage.getItem(`bos_active_billing_gst_details_${tid}_${activeCid}`) : null) ||
+      (tid ? localStorage.getItem(`bos_active_billing_gst_details_${tid}`) : null);
+    if (storedGstRaw) {
+      const parsed = JSON.parse(storedGstRaw);
+      if (parsed && (parsed.trade_name || parsed.gstin || parsed.logo_url || parsed.google_review_url || parsed.terms_and_conditions || parsed.address)) {
+        const resolvedTradeName = !isGenericBusinessTerm(parsed.trade_name) ? parsed.trade_name : (!isGenericBusinessTerm(activeComp?.name) ? activeComp.name : fallbackName);
+        const resolvedLegalName = !isGenericBusinessTerm(parsed.legal_name) ? parsed.legal_name : (!isGenericBusinessTerm(activeComp?.legal_name) ? activeComp.legal_name : resolvedTradeName);
+        
+        const rawAddr = parsed.address;
+        const resolvedAddress = (!isDummyAddress(rawAddr) ? rawAddr : '') || (!isDummyAddress(compAddress) ? compAddress : '') || (!isDummyAddress(tenantAddress) ? tenantAddress : '') || (rawAddr || compAddress || tenantAddress || '');
+
+        return {
+          ...parsed,
+          trade_name: resolvedTradeName,
+          legal_name: resolvedLegalName,
+          address: resolvedAddress,
+          phone: parsed.phone || activeComp?.phone || raw.phone || settings.phone || sessionTenant?.phone || '',
+          email: parsed.email || activeComp?.email || raw.email || settings.email || sessionTenant?.email || '',
+          terms_and_conditions: parsed.terms_and_conditions || activeComp?.terms_and_conditions || null,
+        };
+      }
     }
 
     // 3. Fallback: Authenticated session tenant from bos-tenant
@@ -2740,27 +2746,31 @@ export const GLOBAL_INVOICE_TEMPLATES = [
   },
 ];
 
-export function setActiveInvoicePrintTemplate(templateId: string, tenantId?: string): void {
+export function setActiveInvoicePrintTemplate(templateId: string, tenantId?: string, companyId?: string): void {
   if (typeof window === 'undefined') return;
   const tid = tenantId || getTenantIdFromStorage();
+  const cid = companyId || localStorage.getItem('bos_active_company_id');
   try {
-    localStorage.setItem(`bos_active_invoice_template_id_${tid}`, templateId);
+    if (tid) {
+      localStorage.setItem(`bos_active_invoice_template_id_${tid}`, templateId);
+      if (cid) {
+        localStorage.setItem(`bos_active_invoice_template_id_${tid}_${cid}`, templateId);
+      }
+    }
     localStorage.setItem('bos_active_invoice_template_id', templateId);
-    localStorage.setItem('bos_default_inv_template_id', templateId);
 
     if (!templateId || templateId === 'thermal' || templateId === 'pos' || String(templateId).startsWith('tpl-thm-') || String(templateId).includes('receipt')) {
       return;
     }
     const defaultsKey = getTenantDefaultsKey(tid);
-    const rawDefaults = localStorage.getItem(defaultsKey) || localStorage.getItem('user_active_print_templates_v1');
+    const rawDefaults = localStorage.getItem(defaultsKey);
     const parsedDefaults = rawDefaults ? JSON.parse(rawDefaults) : {};
     parsedDefaults.invoices = templateId;
     parsedDefaults.invoice = templateId;
     localStorage.setItem(defaultsKey, JSON.stringify(parsedDefaults));
-    localStorage.setItem('user_active_print_templates_v1', JSON.stringify(parsedDefaults));
 
     const tplKey = getTenantTemplatesKey(tid);
-    const rawTpls = localStorage.getItem(tplKey) || localStorage.getItem('businessos_print_templates_v1');
+    const rawTpls = localStorage.getItem(tplKey);
     if (rawTpls) {
       try {
         const tpls = JSON.parse(rawTpls);
@@ -2772,7 +2782,6 @@ export function setActiveInvoicePrintTemplate(templateId: string, tenantId?: str
             return t;
           });
           localStorage.setItem(tplKey, JSON.stringify(updated));
-          localStorage.setItem('businessos_print_templates_v1', JSON.stringify(updated));
         }
       } catch {}
     }
@@ -2786,16 +2795,17 @@ export function setActiveInvoicePrintTemplate(templateId: string, tenantId?: str
   }
 }
 
-export function getActiveInvoicePrintTemplate(tenantId?: string): any {
+export function getActiveInvoicePrintTemplate(tenantId?: string, companyId?: string): any {
   const tid = tenantId || getTenantIdFromStorage();
-  const activeGst = getActiveBillingGst(tid);
+  const cid = companyId || (typeof window !== 'undefined' ? localStorage.getItem('bos_active_company_id') : undefined);
+  const activeGst = getActiveBillingGst(tid, cid || undefined);
 
   if (typeof window !== 'undefined') {
     try {
       const storageKey = getTenantTemplatesKey(tid);
       const defaultsKey = getTenantDefaultsKey(tid);
-      const invTemplatesRaw = localStorage.getItem(storageKey) || localStorage.getItem('businessos_print_templates_v1');
-      const userActiveDefaultsRaw = localStorage.getItem(defaultsKey) || localStorage.getItem('user_active_print_templates_v1');
+      const invTemplatesRaw = localStorage.getItem(storageKey);
+      const userActiveDefaultsRaw = localStorage.getItem(defaultsKey);
 
       const isThermal = (id: any) => {
         if (!id) return false;
@@ -2805,11 +2815,11 @@ export function getActiveInvoicePrintTemplate(tenantId?: string): any {
 
       const activeDefaults = userActiveDefaultsRaw ? JSON.parse(userActiveDefaultsRaw) : {};
       const rawActiveInvoiceId =
+        (tid && cid ? localStorage.getItem(`bos_active_invoice_template_id_${tid}_${cid}`) : null) ||
+        (tid ? localStorage.getItem(`bos_active_invoice_template_id_${tid}`) : null) ||
         activeDefaults.invoices ||
         activeDefaults.invoice ||
-        (tid ? localStorage.getItem(`bos_active_invoice_template_id_${tid}`) : null) ||
-        localStorage.getItem('bos_active_invoice_template_id') ||
-        localStorage.getItem('bos_default_inv_template_id');
+        localStorage.getItem('bos_active_invoice_template_id');
 
       const activeInvoiceId = isThermal(rawActiveInvoiceId) ? undefined : rawActiveInvoiceId;
 
@@ -2850,7 +2860,7 @@ export function getActiveInvoicePrintTemplate(tenantId?: string): any {
           const cleanPhone = isDummyPhone ? '' : (matched.storePhone || '');
 
           if (activeGst) {
-            return {
+            const res = {
               ...matched,
               gstin: activeGst.gstin || cleanGstin,
               storeName: activeGst.trade_name || activeGst.legal_name || matched.storeName,
@@ -2858,12 +2868,23 @@ export function getActiveInvoicePrintTemplate(tenantId?: string): any {
               storePhone: activeGst.phone || cleanPhone,
               storeEmail: activeGst.email || matched.storeEmail,
               cin: activeGst.cin || matched.cin,
-              logoUrl: activeGst.logo_url || (activeGst.trade_name ? '' : matched.logoUrl) || '',
+              logoUrl: activeGst.logo_url || '',
               signatureUrl: activeGst.signature_url || matched.signatureUrl || matched.signature_url || null,
               stampUrl: activeGst.stamp_url || matched.stampUrl || matched.stamp_url || null,
               signatureTitle: activeGst.signature_title || matched.signatureTitle || matched.signature_title || 'Authorized Signatory',
               signatureCompanyName: activeGst.signature_company_name || matched.signatureCompanyName || `For ${activeGst.trade_name || activeGst.legal_name || matched.storeName || 'Organization'}`,
             };
+            if (res.wordConfig && typeof res.wordConfig === 'object') {
+              res.wordConfig = {
+                ...res.wordConfig,
+                companyName: activeGst.trade_name || activeGst.legal_name || res.storeName,
+                companyAddress: activeGst.address || res.storeAddress,
+                companyGstin: activeGst.gstin || res.gstin,
+                companyPhone: activeGst.phone || res.storePhone,
+                companyEmail: activeGst.email || res.storeEmail,
+              };
+            }
+            return res;
           }
           return {
             ...matched,
@@ -2937,7 +2958,7 @@ export function getStoredReceiptTemplates(tenantId?: string): ReceiptTemplate[] 
   if (typeof window === 'undefined') return [DEFAULT_RECEIPT_TEMPLATE];
   try {
     const key = getTenantReceiptTemplatesKey(tenantId);
-    const raw = localStorage.getItem(key) || localStorage.getItem('bos_pos_active_receipt_templates_v1');
+    const raw = localStorage.getItem(key);
     if (!raw) return [DEFAULT_RECEIPT_TEMPLATE];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) && parsed.length > 0 ? parsed : [DEFAULT_RECEIPT_TEMPLATE];
@@ -2952,7 +2973,6 @@ export function saveReceiptTemplates(templates: ReceiptTemplate[], tenantId?: st
   try {
     const key = getTenantReceiptTemplatesKey(tenantId);
     localStorage.setItem(key, JSON.stringify(templates));
-    localStorage.setItem('bos_pos_active_receipt_templates_v1', JSON.stringify(templates));
   } catch (err) {
     console.error('Failed to save receipt templates:', err);
   }

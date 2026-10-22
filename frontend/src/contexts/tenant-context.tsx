@@ -204,6 +204,15 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   } catch {}
 
   const setTenant = useCallback((c: TenantCompany) => {
+    // Purge stale branch, template snapshots, and cross-company cache
+    try {
+      localStorage.removeItem("bos-branch");
+      localStorage.removeItem("bos_active_invoice_template_id");
+      localStorage.removeItem("bos_default_inv_template_id");
+      localStorage.removeItem("bos_pos_active_receipt_templates_v1");
+      setActiveBranchState(null);
+    } catch {}
+
     setTenantState(c);
     const sanitizedCompany = sanitizeForStorage(c.raw || c);
     safeSetItem("bos-tenant", JSON.stringify(c));
@@ -212,6 +221,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     const tid = c.raw?.tenant_id || (c as any).tenant_id || c.id;
     if (tid && sanitizedCompany) {
       safeSetItem(`bos_active_company_${tid}`, JSON.stringify(sanitizedCompany));
+      safeSetItem(`bos_active_company_${tid}_${c.id}`, JSON.stringify(sanitizedCompany));
     }
     // Synchronize active billing GST details snapshot so invoices and POS instantly show the right company
     try {
@@ -231,6 +241,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       });
       if (tid) {
         safeSetItem(`bos_active_billing_gst_details_${tid}`, JSON.stringify(billingGst));
+        safeSetItem(`bos_active_billing_gst_details_${tid}_${c.id}`, JSON.stringify(billingGst));
       }
     } catch {}
     clearApiCache();
