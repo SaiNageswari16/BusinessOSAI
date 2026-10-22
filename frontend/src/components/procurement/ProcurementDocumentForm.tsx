@@ -312,6 +312,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   // Additional Charges & Rounding
   const [customCharges, setCustomCharges] = useState<AdditionalCharge[]>([]);
   const [autoRoundOff, setAutoRoundOff] = useState<boolean>(true);
+  const [manualRoundOff, setManualRoundOff] = useState<number>(0);
   const [amountPaid, setAmountPaid] = useState<number | "">(0);
 
   // Add Party Modal
@@ -1002,8 +1003,10 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
 
   const additionalChargesTotal = customCharges.reduce((acc, c) => acc + c.amount, 0);
   const rawTotal = subtotal + totalTax + additionalChargesTotal;
-  const roundedTotal = autoRoundOff ? Math.round(rawTotal * 100) / 100 : rawTotal;
-  const roundOffAmount = roundedTotal - rawTotal;
+  // True Indian GST Round-Off: rounds invoice to nearest whole currency unit (e.g. 54.52 -> 55.00 with round-off +0.48)
+  const autoRoundAmount = Number((Math.round(rawTotal) - rawTotal).toFixed(2));
+  const roundOffAmount = autoRoundOff ? autoRoundAmount : Number(manualRoundOff || 0);
+  const roundedTotal = autoRoundOff ? Math.round(rawTotal) : Number((rawTotal + Number(manualRoundOff || 0)).toFixed(2));
   
   // Auto-sync amountPaid if status is Paid
   const paidVal = currentPoStatus === "Paid" ? roundedTotal : (typeof amountPaid === "number" ? amountPaid : 0);
@@ -1022,6 +1025,9 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       bill_date: docDate,
       order_date: docDate,
       due_date: dueDate,
+      subtotal: subtotal,
+      tax_amount: totalTax,
+      round_off: roundOffAmount,
       total_amount: roundedTotal,
       paid_amount: paidVal,
       status: docType === "PINV" ? (currentPoStatus === "Paid" ? "Paid" : "Unpaid") : (currentPoStatus || "Draft"),
@@ -2669,16 +2675,67 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
               <span className="font-bold text-slate-800">+{currency.symbol}{totalTax.toFixed(2)}</span>
             </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-              <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-600">
-                <input
-                  type="checkbox"
-                  checked={autoRoundOff}
-                  onChange={(e) => setAutoRoundOff(e.target.checked)}
-                  className="rounded border-slate-300 text-blue-600"
-                />
-                Auto Round-Off ({roundOffAmount >= 0 ? `+₹${roundOffAmount.toFixed(2)}` : `-₹${Math.abs(roundOffAmount).toFixed(2)}`})
-              </label>
+            {/* Clear, Dedicated Round-Off Row */}
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/90 space-y-1.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-800">Round Off:</span>
+                  <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-semibold text-slate-500 hover:text-slate-800 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={autoRoundOff}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setAutoRoundOff(checked);
+                        if (!checked) {
+                          setManualRoundOff(autoRoundAmount);
+                        } else {
+                          setManualRoundOff(0);
+                        }
+                      }}
+                      className="size-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <span>Auto (to ₹1.00)</span>
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {autoRoundOff ? (
+                    <span
+                      className={cn(
+                        "text-xs font-extrabold px-2.5 py-1 rounded-lg border flex items-center gap-1 shadow-2xs",
+                        roundOffAmount > 0
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                          : roundOffAmount < 0
+                          ? "bg-rose-50 text-rose-700 border-rose-300"
+                          : "bg-slate-100 text-slate-600 border-slate-200"
+                      )}
+                    >
+                      {roundOffAmount > 0
+                        ? `+${currency.symbol}${roundOffAmount.toFixed(2)}`
+                        : roundOffAmount < 0
+                        ? `-${currency.symbol}${Math.abs(roundOffAmount).toFixed(2)}`
+                        : `${currency.symbol}0.00`}
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs font-bold text-slate-500">{currency.symbol}</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={manualRoundOff}
+                        onChange={(e) => setManualRoundOff(e.target.value === "" ? 0 : Number(e.target.value))}
+                        placeholder="0.00"
+                        className="w-20 bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-lg px-2 py-0.5 text-xs text-right font-bold text-slate-800 outline-none"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="text-[10px] text-slate-400 font-medium flex items-center justify-between pt-0.5">
+                <span>{autoRoundOff ? "Auto-adjusted for exact cash/bank settlement" : "Manual round-off adjustment"}</span>
+                <span>Unrounded: <span className="font-semibold text-slate-600">{currency.symbol}{rawTotal.toFixed(2)}</span></span>
+              </div>
             </div>
 
             <div className="pt-3 border-t border-slate-200 flex items-center justify-between text-base font-extrabold text-slate-900">
