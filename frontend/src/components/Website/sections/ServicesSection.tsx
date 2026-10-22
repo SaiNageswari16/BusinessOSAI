@@ -116,20 +116,20 @@ export function ServicesSection({ className }: { className?: string }) {
       id="services"
       className={"w-full bg-[#f8fafd] border-b border-slate-200/80 " + (className || "")}
     >
-      <div className="max-w-7xl mx-auto">
+      <div className="w-full">
         {/* Section Heading */}
         <Reveal>
-          <div className="max-w-3xl">
-            <span className="inline-flex items-center gap-2 rounded-full border border-pink-500/20 bg-pink-50 px-3.5 py-1 text-[11px] font-bold tracking-wider text-pink-700 uppercase shadow-2xs">
+          <div className="max-w-3xl 2xl:max-w-4xl 3xl:max-w-5xl">
+            <span className="inline-flex items-center gap-2 rounded-full border border-pink-500/20 bg-pink-50 px-3.5 py-1 text-[11px] 2xl:text-xs font-bold tracking-wider text-pink-700 uppercase shadow-2xs">
               <Sparkles className="size-3 text-pink-600" /> Enterprise Services &amp; Solutions
             </span>
-            <h2 className="mt-2 text-2xl sm:text-3xl md:text-4xl font-extrabold text-slate-950 tracking-tight leading-[1.15]">
+            <h2 className="mt-2 text-2xl sm:text-3xl md:text-4xl 2xl:text-5xl font-extrabold text-slate-950 tracking-tight leading-[1.15]">
               End-to-End Technology Services for{" "}
               <span className="bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
                 Modern Operations.
               </span>
             </h2>
-            <p className="mt-2 text-xs sm:text-sm text-slate-600 leading-relaxed max-w-2xl">
+            <p className="mt-2 text-xs sm:text-sm 2xl:text-base text-slate-600 leading-relaxed max-w-2xl 2xl:max-w-3xl">
               From custom web &amp; mobile engineering to enterprise cloud migration and generative
               AI integration, our technical architects build the solutions that power your company.
             </p>
@@ -137,32 +137,32 @@ export function ServicesSection({ className }: { className?: string }) {
         </Reveal>
 
         {/* 10 Services Grid */}
-        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5">
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5 2xl:gap-4.5 3xl:gap-5.5">
           {servicesData.map((service, idx) => {
             const Icon = service.icon;
             return (
               <Reveal key={service.id} delay={idx * 20}>
                 <div
                   id={service.id}
-                  className="group flex flex-col justify-between h-full rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs transition-all duration-300 hover:-translate-y-1 hover:border-pink-300/80 hover:shadow-md"
+                  className="group flex flex-col justify-between h-full rounded-2xl border border-slate-200/90 bg-white p-4 2xl:p-5 3xl:p-6 shadow-2xs transition-all duration-300 hover:-translate-y-1 hover:border-pink-300/80 hover:shadow-md"
                 >
                   <div>
                     <div className="flex items-center justify-between">
                       <div
-                        className={`size-9 rounded-xl flex items-center justify-center bg-gradient-to-br ${service.color} border border-slate-200/60 shadow-2xs group-hover:scale-108 transition-transform`}
+                        className={`size-9 2xl:size-10 3xl:size-11 rounded-xl flex items-center justify-center bg-gradient-to-br ${service.color} border border-slate-200/60 shadow-2xs group-hover:scale-108 transition-transform`}
                       >
-                        <Icon className="size-4.5" strokeWidth={2.2} />
+                        <Icon className="size-4.5 2xl:size-5 3xl:size-5.5" strokeWidth={2.2} />
                       </div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full font-mono">
+                      <span className="text-[10px] 2xl:text-xs font-bold uppercase tracking-wider text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full font-mono">
                         {service.badge}
                       </span>
                     </div>
 
-                    <h3 className="mt-3 text-sm font-bold text-slate-900 group-hover:text-pink-600 transition-colors">
+                    <h3 className="mt-3 text-sm 2xl:text-base font-bold text-slate-900 group-hover:text-pink-600 transition-colors">
                       {service.name}
                     </h3>
 
-                    <p className="mt-1.5 text-xs text-slate-600 leading-relaxed font-normal">
+                    <p className="mt-1.5 text-xs 2xl:text-[13px] 3xl:text-sm text-slate-600 leading-relaxed font-normal">
                       {service.description}
                     </p>
                   </div>
@@ -170,7 +170,7 @@ export function ServicesSection({ className }: { className?: string }) {
                   <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
                     <a
                       href="#contact"
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-pink-600 hover:text-pink-700 transition-colors"
+                      className="inline-flex items-center gap-1 text-[11px] 2xl:text-xs font-bold text-pink-600 hover:text-pink-700 transition-colors"
                     >
                       <span>Request Scope</span>
                       <ArrowRight className="size-3 transition-transform group-hover:translate-x-0.5" />

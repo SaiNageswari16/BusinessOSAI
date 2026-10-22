@@ -1,13 +1,17 @@
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, Sparkles, Layers, ChevronRight, ExternalLink } from "lucide-react";
-import { products } from "@/data/products";
+import { ArrowRight, Sparkles, Layers, ChevronRight, ExternalLink, Eye } from "lucide-react";
+import { products, type ProductItem } from "@/data/products";
 import { Icon } from "@/components/site/icon";
+import { ProductModal } from "./ProductModal";
 
 export function ApplicationsSection() {
+  const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
+
   return (
     <section
       id="applications"
-      className="relative overflow-hidden py-4 md:py-5 bg-[#f8f9fb] text-zinc-900 font-sans border-y border-zinc-200/80"
+      className="relative overflow-hidden pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-16 bg-[#f8f9fb] text-zinc-900 font-sans border-y border-zinc-200/80 scroll-mt-24 md:scroll-mt-32"
     >
       <div className="relative mx-auto w-full max-w-7xl px-4 sm:px-6">
         {/* Section Heading */}
@@ -28,7 +32,7 @@ export function ApplicationsSection() {
         </div>
 
         {/* Grid of 3 Product Cards Linking to Dedicated Full Pages */}
-        <div className="mt-4 grid grid-cols-1 gap-5 md:grid-cols-3">
+        <div className="mt-4 grid grid-cols-1 gap-5 2xl:gap-7 md:grid-cols-3">
           {products.map((prod) => (
             <div
               key={prod.id}
@@ -38,7 +42,7 @@ export function ApplicationsSection() {
               <Link
                 to="/products/$productId"
                 params={{ productId: prod.id }}
-                className="block relative h-44 w-full overflow-hidden bg-zinc-100 cursor-pointer"
+                className="block relative h-44 2xl:h-56 3xl:h-64 w-full overflow-hidden bg-zinc-100 cursor-pointer"
               >
                 <img
                   src={prod.image}
@@ -49,33 +53,33 @@ export function ApplicationsSection() {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
 
                 {prod.badge && (
-                  <span className="absolute top-2.5 right-2.5 rounded-full bg-purple-600/90 px-2.5 py-0.5 text-[9px] font-bold text-white shadow-sm backdrop-blur-sm">
+                  <span className="absolute top-2.5 right-2.5 rounded-full bg-purple-600/90 px-2.5 py-0.5 text-[9px] 2xl:text-[10px] font-bold text-white shadow-sm backdrop-blur-sm">
                     {prod.badge}
                   </span>
                 )}
 
                 <div className="absolute bottom-2.5 left-3 flex items-center gap-2">
-                  <span className="grid size-7 place-items-center rounded-lg bg-white text-purple-600 shadow-md">
-                    <Icon name={prod.icon} className="size-4" />
+                  <span className="grid size-7 2xl:size-8 place-items-center rounded-lg bg-white text-purple-600 shadow-md">
+                    <Icon name={prod.icon} className="size-4 2xl:size-4.5" />
                   </span>
-                  <span className="text-xs font-bold text-white drop-shadow-md">{prod.name}</span>
+                  <span className="text-xs 2xl:text-sm font-bold text-white drop-shadow-md">{prod.name}</span>
                 </div>
               </Link>
 
               {/* Card Body */}
-              <div className="flex flex-1 flex-col justify-between p-5 space-y-3.5 bg-white">
+              <div className="flex flex-1 flex-col justify-between p-5 2xl:p-6 3xl:p-7 space-y-3.5 bg-white">
                 <div>
-                  <p className="text-[11px] font-bold text-purple-600 uppercase tracking-wider">
+                  <p className="text-[11px] 2xl:text-xs font-bold text-purple-600 uppercase tracking-wider">
                     {prod.category}
                   </p>
                   <Link
                     to="/products/$productId"
                     params={{ productId: prod.id }}
-                    className="block text-base font-bold text-zinc-950 mt-0.5 hover:text-purple-600 transition-colors"
+                    className="block text-base 2xl:text-lg font-bold text-zinc-950 mt-0.5 hover:text-purple-600 transition-colors"
                   >
                     {prod.name}
                   </Link>
-                  <p className="mt-1 text-xs text-zinc-600 line-clamp-2 leading-relaxed font-normal">
+                  <p className="mt-1 text-xs 2xl:text-sm text-zinc-600 line-clamp-2 leading-relaxed font-normal">
                     {prod.description}
                   </p>
                 </div>
@@ -97,14 +101,24 @@ export function ApplicationsSection() {
                   )}
                 </div>
 
-                {/* Direct Link to Full Dedicated Page */}
+                {/* Quick View & Direct Link Actions */}
                 <div className="pt-2.5 border-t border-zinc-100 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProduct(prod)}
+                    className="flex items-center gap-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 px-3 py-2 text-xs font-bold text-purple-700 border border-purple-200 transition-all cursor-pointer shadow-2xs"
+                    title="Quick Preview"
+                  >
+                    <Eye className="size-3.5" />
+                    <span className="hidden sm:inline">Preview</span>
+                  </button>
+
                   <Link
                     to="/products/$productId"
                     params={{ productId: prod.id }}
-                    className="flex-1 flex items-center justify-between rounded-xl bg-zinc-50 hover:bg-purple-600 hover:text-white px-3.5 py-2.5 text-xs font-bold text-zinc-900 border border-zinc-200/80 transition-all cursor-pointer shadow-sm group-hover:border-purple-300"
+                    className="flex-1 flex items-center justify-between rounded-xl bg-zinc-50 hover:bg-purple-600 hover:text-white px-3.5 py-2 text-xs font-bold text-zinc-900 border border-zinc-200/80 transition-all cursor-pointer shadow-sm group-hover:border-purple-300"
                   >
-                    <span>Deep Dive Product Page</span>
+                    <span>Product Deep Dive</span>
                     <ChevronRight className="size-3.5 transition-transform group-hover:translate-x-1" />
                   </Link>
 
@@ -125,6 +139,14 @@ export function ApplicationsSection() {
           ))}
         </div>
       </div>
+
+      {/* Interactive Quick Preview Modal */}
+      {selectedProduct && (
+        <ProductModal
+          product={selectedProduct}
+          onClose={() => setSelectedProduct(null)}
+        />
+      )}
     </section>
   );
 }

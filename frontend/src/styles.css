@@ -1,8 +1,14 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,300..900;1,300..900&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+@source "../src";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
+
+/*
+ * IOTRONICS design system.
+ * Light neutral base, deep navy dark sections, premium violet primary,
+ * cyan AI accent. All colors in oklch, all surfaces semantic.
+ */
 
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
@@ -10,7 +16,16 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-3xl: calc(var(--radius) + 16px);
+  --radius-4xl: calc(var(--radius) + 24px);
+
+  --breakpoint-3xl: 120rem;
+  --breakpoint-4xl: 150rem;
+
+  --font-display: "Sora", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -19,6 +34,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-glow: var(--primary-glow);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -30,98 +46,51 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-ring-offset-background: var(--background);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-brand-violet: var(--brand-violet);
-  --color-brand-emerald: var(--brand-emerald);
-  --color-brand-amber: var(--brand-amber);
-  --color-brand-blue: var(--brand-blue);
-  --color-brand-purple: var(--brand-purple);
-  --color-brand-cyan: var(--brand-cyan);
-  --color-brand-green: var(--brand-green);
-  --font-sans: "Noto Sans Telugu", "Noto Sans Devanagari", "Noto Sans Kannada", "Noto Sans Arabic", "Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-heading: "Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-display: "Sora", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
-  --radius-4xl: calc(var(--radius) + 24px);
-
-  --color-primary-glow: var(--primary-glow);
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);
   --color-ink-foreground: var(--ink-foreground);
   --color-ink-muted: var(--ink-muted);
   --color-ink-border: var(--ink-border);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
 
   --shadow-soft: 0 1px 2px oklch(0.2 0.05 275 / 0.04), 0 8px 24px -12px oklch(0.2 0.05 275 / 0.12);
   --shadow-lift: 0 2px 4px oklch(0.2 0.05 275 / 0.05), 0 24px 48px -24px oklch(0.2 0.05 275 / 0.25);
   --shadow-glow: 0 24px 80px -32px oklch(0.55 0.22 295 / 0.55);
 }
 
-html {
-  scroll-behavior: smooth;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  font-family: var(--font-sans);
-}
-
 :root {
   --radius: 0.875rem;
-  --font-sans: "Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-heading: "Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --background: #ffffff; /* Pure White Background */
-  --foreground: oklch(0.145 0.015 285);
-  --card: #ffffff; /* Pure White Card */
-  --card-foreground: oklch(0.145 0.015 285);
-  --popover: #ffffff;
-  --popover-foreground: oklch(0.145 0.015 285);
-  --primary: oklch(0.53 0.25 285); /* LazyMonkey Electric Violet #6d28d9 */
-  --primary-foreground: #ffffff;
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.25 0.02 285);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.52 0.02 260);
-  --accent: oklch(0.95 0.015 285);
-  --accent-foreground: oklch(0.20 0.03 285);
-  --destructive: oklch(0.60 0.18 25);
-  --destructive-foreground: #ffffff;
-  --border: oklch(0.93 0.005 260); /* Clean subtle crisp border */
-  --input: oklch(0.93 0.005 260);
-  --ring: oklch(0.53 0.25 285);
-  --chart-1: #6d28d9; /* Violet */
-  --chart-2: #059669; /* Tech Emerald */
-  --chart-3: #d97706; /* Amber Gold */
-  --chart-4: #2563eb; /* Cobalt Blue */
-  --chart-5: #db2777; /* Rose */
-  --sidebar: #ffffff; /* Pure White Sidebar */
-  --sidebar-foreground: oklch(0.20 0.02 285);
-  --sidebar-primary: oklch(0.53 0.25 285);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.95 0.015 285);
-  --sidebar-accent-foreground: oklch(0.20 0.03 285);
-  --sidebar-border: oklch(0.92 0.008 260);
-  --sidebar-ring: oklch(0.53 0.25 285);
-  --brand-violet: #6d28d9;
-  --brand-emerald: #059669;
-  --brand-amber: #d97706;
-  --brand-blue: #2563eb;
-  --brand-purple: #7c3aed;
-  --brand-cyan: #0891b2;
-  --brand-green: #059669;
-  --glass-border: oklch(0.92 0.008 260);
 
+  --background: oklch(0.985 0.004 260);
+  --foreground: oklch(0.18 0.03 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.03 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.03 260);
+
+  --primary: oklch(0.53 0.22 293);
+  --primary-foreground: oklch(0.99 0.004 285);
   --primary-glow: oklch(0.68 0.17 300);
+
+  --secondary: oklch(0.96 0.008 260);
+  --secondary-foreground: oklch(0.24 0.04 260);
+
+  --muted: oklch(0.955 0.006 260);
+  --muted-foreground: oklch(0.48 0.02 260);
+
+  --accent: oklch(0.58 0.18 290);
+  --accent-foreground: oklch(0.18 0.04 270);
+
+  --destructive: oklch(0.58 0.22 27);
+  --destructive-foreground: oklch(0.99 0.004 285);
+
+  --border: oklch(0.9 0.006 260);
+  --input: oklch(0.9 0.006 260);
+  --ring: oklch(0.53 0.22 293);
 
   /* Grayish white section surfaces */
   --ink: oklch(0.975 0.005 260);
@@ -130,435 +99,62 @@ html {
   --ink-muted: oklch(0.48 0.02 260);
   --ink-border: oklch(0.89 0.008 260);
 
+  --chart-1: oklch(0.53 0.22 293);
+  --chart-2: oklch(0.72 0.14 215);
+  --chart-3: oklch(0.68 0.17 300);
+  --chart-4: oklch(0.75 0.15 165);
+  --chart-5: oklch(0.78 0.16 75);
+
   --gradient-brand: linear-gradient(135deg, var(--primary), var(--primary-glow) 55%, var(--accent));
   --gradient-ink: linear-gradient(160deg, #f8f9fa, #eef0f5);
-  --gradient-halo: radial-gradient(
-    60% 60% at 50% 0%,
-    oklch(0.53 0.22 293 / 0.08),
-    transparent 70%
-  );
+  --gradient-halo: radial-gradient(60% 60% at 50% 0%, oklch(0.53 0.22 293 / 0.08), transparent 70%);
 }
 
 .dark {
-  --background: oklch(0.12 0.015 285); /* Deep Obsidian Violet Night */
-  --foreground: oklch(0.97 0.005 285);
-  --card: oklch(0.155 0.018 285);
-  --card-foreground: oklch(0.97 0.005 285);
-  --popover: oklch(0.155 0.018 285);
-  --popover-foreground: oklch(0.97 0.005 285);
-  --primary: oklch(0.65 0.24 285); /* Vibrant Violet Glow */
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.22 0.02 285);
-  --secondary-foreground: oklch(0.97 0.005 285);
-  --muted: oklch(0.20 0.02 285);
-  --muted-foreground: oklch(0.65 0.02 285);
-  --accent: oklch(0.25 0.04 285);
-  --accent-foreground: oklch(0.97 0.005 285);
-  --destructive: oklch(0.65 0.18 25);
-  --destructive-foreground: oklch(0.97 0 0);
-  --border: oklch(1 0 0 / 9%);
-  --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.65 0.24 285);
-  --chart-1: #8b5cf6;
-  --chart-2: #10b981;
-  --chart-3: #f59e0b;
-  --chart-4: #38bdf8;
-  --chart-5: #f43f5e;
-  --sidebar: oklch(0.14 0.018 285);
-  --sidebar-foreground: oklch(0.95 0.01 285);
-  --sidebar-primary: oklch(0.65 0.24 285);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.22 0.02 285);
-  --sidebar-accent-foreground: oklch(0.97 0.005 285);
-  --sidebar-border: oklch(1 0 0 / 9%);
-  --sidebar-ring: oklch(0.65 0.24 285);
-  --brand-violet: #8b5cf6;
-  --brand-emerald: #10b981;
-  --brand-amber: #f59e0b;
-  --brand-blue: #38bdf8;
-  --brand-purple: #a855f7;
-  --brand-cyan: #22d3ee;
-  --brand-green: #10b981;
-  --glass-border: oklch(1 0 0 / 9%);
+  --background: oklch(0.985 0.004 260);
+  --foreground: oklch(0.18 0.03 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.03 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.03 260);
+  --secondary: oklch(0.96 0.008 260);
+  --secondary-foreground: oklch(0.24 0.04 260);
+  --muted: oklch(0.955 0.006 260);
+  --muted-foreground: oklch(0.48 0.02 260);
+  --border: oklch(0.9 0.006 260);
+  --input: oklch(0.9 0.006 260);
 }
 
 @layer base {
   * {
     border-color: var(--color-border);
   }
-  
-  /* Modern elegant custom scrollbar globally */
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: color-mix(in oklab, var(--foreground) 12%, transparent);
-    border-radius: 9999px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in oklab, var(--foreground) 25%, transparent);
-  }
-  
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in oklab, var(--foreground) 12%, transparent) transparent;
-  }
 
-  /* Utility class to hide scrollbar when explicitly needed */
-  .scrollbar-none,
-  .no-scrollbar {
-    scrollbar-width: none !important;
-    -ms-overflow-style: none !important;
-  }
-  .scrollbar-none::-webkit-scrollbar,
-  .no-scrollbar::-webkit-scrollbar {
-    display: none !important;
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 5.5rem;
+    overflow-x: hidden;
+    max-width: 100vw;
   }
 
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
     -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    letter-spacing: -0.011em;
+    overflow-x: hidden;
+    max-width: 100vw;
+    width: 100%;
   }
 
-  /* Cargoflow / Inter Tight Heading Style */
-  h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-heading);
-    font-weight: 700;
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
     letter-spacing: -0.025em;
   }
-
-  h1 {
-    letter-spacing: -0.035em;
-  }
-
-  /* ─── Global Standardized Table Headings (SS2 Benchmark) ─── */
-  thead {
-    background-color: #f8fafc;
-    border-bottom: 1px solid #e2e8f0;
-    color: #475569;
-    font-size: 0.75rem; /* text-xs (12px) */
-    line-height: 1rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em; /* tracking-wider */
-  }
-
-  th {
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #475569;
-  }
 }
-
-/* ─── Modern Card Surfaces ─────────────────────────────────────────── */
-@utility card-surface {
-  background-color: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
-}
-
-@utility glass {
-  background: color-mix(in oklab, var(--card) 75%, transparent);
-  backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid var(--glass-border);
-}
-
-@utility gradient-brand {
-  background-image: linear-gradient(135deg, #6d28d9 0%, #7c3aed 50%, #059669 100%);
-}
-
-@utility text-gradient-brand {
-  background-image: linear-gradient(135deg, #6d28d9 0%, #7c3aed 50%, #059669 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-@utility gradient-lazymonkey {
-  background-image: linear-gradient(135deg, #6d28d9 0%, #059669 100%);
-}
-
-@utility gradient-ai {
-  background-image: linear-gradient(135deg, #059669 0%, #10b981 50%, #34d399 100%);
-}
-
-@utility gradient-amber {
-  background-image: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
-}
-
-@utility shadow-elegant {
-  box-shadow: 0 8px 24px -8px color-mix(in oklab, var(--brand-violet) 22%, transparent);
-}
-
-@utility shadow-glow {
-  box-shadow: 0 0 0 1px var(--glass-border), 0 8px 40px -12px color-mix(in oklab, var(--brand-violet) 30%, transparent);
-}
-
-@utility shadow-emerald-glow {
-  box-shadow: 0 0 0 1px var(--glass-border), 0 8px 40px -12px color-mix(in oklab, var(--brand-emerald) 30%, transparent);
-}
-
-/* ─── Modern Translucent Badge Pill Styles (Template Match) ────────── */
-@utility badge-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.15rem 0.6rem;
-  border-radius: 9999px;
-  font-size: 0.6875rem; /* 11px */
-  font-weight: 700;
-  line-height: 1.2;
-  letter-spacing: 0.025em;
-  border-width: 1px;
-}
-
-@utility badge-success {
-  background-color: color-mix(in oklab, #10b981 12%, transparent);
-  color: #059669;
-  border-color: color-mix(in oklab, #10b981 25%, transparent);
-}
-
-@utility badge-primary {
-  background-color: color-mix(in oklab, #8442ff 12%, transparent);
-  color: #7c3aed;
-  border-color: color-mix(in oklab, #8442ff 25%, transparent);
-}
-
-@utility badge-info {
-  background-color: color-mix(in oklab, #6366f1 12%, transparent);
-  color: #4f46e5;
-  border-color: color-mix(in oklab, #6366f1 25%, transparent);
-}
-
-@utility badge-warning {
-  background-color: color-mix(in oklab, #f59e0b 14%, transparent);
-  color: #d97706;
-  border-color: color-mix(in oklab, #f59e0b 28%, transparent);
-}
-
-@utility badge-danger {
-  background-color: color-mix(in oklab, #ef4444 12%, transparent);
-  color: #dc2626;
-  border-color: color-mix(in oklab, #ef4444 25%, transparent);
-}
-
-@utility badge-neutral {
-  background-color: var(--muted);
-  color: var(--muted-foreground);
-  border-color: var(--border);
-}
-
-/* Print & Thermal Receipt Styles */
-@media print {
-  body.printing-receipt > *:not(#printable-receipt-portal),
-  body.printing-receipt #root > *:not(#printable-receipt-portal),
-  header, nav, footer, .no-print, [data-no-print] {
-    display: none !important;
-  }
-
-  body, html {
-    background-color: white !important;
-    color: black !important;
-    height: auto !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: visible !important;
-  }
-
-  #printable-receipt-portal {
-    display: block !important;
-    visibility: visible !important;
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    width: 72mm !important;
-    max-width: 72mm !important;
-    padding: 1mm 2mm !important;
-    margin: 0 !important;
-    background: #ffffff !important;
-    color: #000000 !important;
-    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Roboto", "Helvetica Neue", Arial, "Consolas", monospace !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
-    line-height: 1.3 !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-    text-rendering: geometricPrecision !important;
-    -webkit-font-smoothing: antialiased !important;
-  }
-
-  #printable-receipt-portal * {
-    visibility: visible !important;
-    color: #000000 !important;
-    border-color: #000000 !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  /* A4 Invoice Printing */
-  body:has(#a4-invoice-portal) > *:not(#a4-invoice-portal),
-  body:has(#a4-invoice-portal) #root,
-  body.printing-a4-invoice > *:not(#a4-invoice-portal),
-  body.printing-a4-invoice #root {
-    display: none !important;
-    visibility: hidden !important;
-  }
-
-  #a4-invoice-portal {
-    display: block !important;
-    visibility: visible !important;
-    position: static !important;
-    width: 100% !important;
-    height: auto !important;
-    background: #ffffff !important;
-    color: #000000 !important;
-    z-index: 999999 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: visible !important;
-  }
-
-  #a4-invoice-portal > div {
-    display: block !important;
-    position: static !important;
-    width: 100% !important;
-    max-width: none !important;
-    max-height: none !important;
-    height: auto !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #ffffff !important;
-    border: none !important;
-    box-shadow: none !important;
-    border-radius: 0 !important;
-    overflow: visible !important;
-  }
-
-  #a4-invoice-portal .print\:hidden {
-    display: none !important;
-    visibility: hidden !important;
-  }
-
-  #a4-invoice-printable-area {
-    display: block !important;
-    visibility: visible !important;
-    position: static !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    height: auto !important;
-    margin: 0 !important;
-    padding: 4mm 6mm !important;
-    background: #ffffff !important;
-    box-shadow: none !important;
-    border-radius: 0 !important;
-    overflow: visible !important;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-  }
-
-  #a4-invoice-printable-area * {
-    visibility: visible !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  body:has(#printable-barcode-portal) > *:not(#printable-barcode-portal) {
-    display: none !important;
-  }
-
-  #printable-barcode-portal {
-    display: block !important;
-    visibility: visible !important;
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    width: 100% !important;
-    background: white !important;
-    color: black !important;
-    z-index: 999999 !important;
-  }
-
-  #printable-barcode-portal * {
-    visibility: visible !important;
-    color: black !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  #printable-barcode-portal svg rect {
-    shape-rendering: crispEdges !important;
-    image-rendering: pixelated !important;
-  }
-
-  /* Thermal POS Receipt Print Styles */
-  body:has(#printable-receipt-portal) > *:not(#printable-receipt-portal) {
-    display: none !important;
-  }
-
-  #printable-receipt-portal {
-    display: block !important;
-    visibility: visible !important;
-    position: static !important;
-    margin: 0 auto !important;
-    background: #ffffff !important;
-    color: #000000 !important;
-    z-index: 999999 !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  #printable-receipt-portal * {
-    visibility: visible !important;
-    color: #000000 !important;
-    border-color: #000000 !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  #printable-receipt-portal .bg-black {
-    background-color: #000000 !important;
-    color: #ffffff !important;
-  }
-
-  #printable-receipt-portal .bg-black * {
-    color: #ffffff !important;
-  }
-}
-
-/* Thermal and Barcode Portals Screen Isolation - Never render on screen outside @media print */
-@media screen {
-  #printable-receipt-portal,
-  #bos-thermal-pdf-render-portal,
-  #bos-thermal-pdf-render-iframe,
-  #bos-in-page-print-iframe,
-  #thermal-print-iframe {
-    display: none !important;
-    visibility: hidden !important;
-    position: fixed !important;
-    left: -99999px !important;
-    top: -99999px !important;
-    width: 0 !important;
-    height: 0 !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
-  }
-}
-
-/* =========================================================================
-   IOTRONICS Website Design System Utilities & Animations
-   ========================================================================= */
 
 @utility text-gradient-brand {
   background-image: var(--gradient-brand);
@@ -605,8 +201,16 @@ html {
 
 @utility grid-lines {
   background-image:
-    linear-gradient(to right, color-mix(in oklab, var(--color-primary) 8%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in oklab, var(--color-primary) 8%, transparent) 1px, transparent 1px);
+    linear-gradient(
+      to right,
+      color-mix(in oklab, var(--color-primary) 8%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--color-primary) 8%, transparent) 1px,
+      transparent 1px
+    );
   background-size: 56px 56px;
 }
 
@@ -663,4 +267,34 @@ html {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
 
+/* ==========================================================================
+   INVISIBLE / HIDDEN SCROLLBAR GLOBALLY
+   ========================================================================== */
+html,
+body,
+* {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+*::-webkit-scrollbar,
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none !important;
+  width: 0px !important;
+  height: 0px !important;
+  background: transparent !important;
+}

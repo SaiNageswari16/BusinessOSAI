@@ -33,21 +33,21 @@ export function ContactSection() {
       <div className="pointer-events-none absolute inset-0 grid-lines opacity-15" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[30rem] bg-halo" />
 
-      <div className="relative grid gap-6 lg:grid-cols-[1.05fr_0.95fr] items-center">
+      <div className="relative grid gap-6 2xl:gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
         {/* Left Information Block */}
         <Reveal>
           <span className="inline-flex items-center gap-2 rounded-full border border-purple-500/20 bg-purple-50 px-4 py-1.5 text-xs font-bold tracking-[0.14em] text-purple-700 uppercase shadow-2xs">
             <Sparkles className="size-3.5 text-purple-600" /> Get in Touch
           </span>
 
-          <h2 className="mt-3 font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight text-slate-950">
+          <h2 className="mt-3 font-display text-3xl sm:text-4xl lg:text-5xl 2xl:text-6xl font-extrabold leading-tight text-slate-950">
             Let's Build{" "}
             <span className="bg-gradient-to-r from-purple-700 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
               Something Smarter.
             </span>
           </h2>
 
-          <p className="mt-2.5 text-sm sm:text-base text-slate-600 leading-relaxed max-w-lg font-normal">
+          <p className="mt-2.5 text-sm sm:text-base 2xl:text-lg text-slate-600 leading-relaxed max-w-lg 2xl:max-w-xl font-normal">
             Looking for an AI-powered solution for your business? Explore our applications, discover
             the right tools for your needs, or connect with our team to discuss your requirements.
           </p>

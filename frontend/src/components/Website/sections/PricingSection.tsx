@@ -56,32 +56,32 @@ export function PricingSection() {
       </div>
 
       {/* 4 Tier Cards */}
-      <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-10 grid grid-cols-1 gap-6 2xl:gap-8 sm:grid-cols-2 lg:grid-cols-4">
         {pricingPlans.map((plan, idx) => (
           <Reveal key={plan.name} delay={idx * 50}>
             <div
               className={cn(
-                "relative flex h-full flex-col justify-between rounded-3xl p-6 transition-all duration-200",
+                "relative flex h-full flex-col justify-between rounded-3xl p-6 2xl:p-8 transition-all duration-200",
                 plan.highlight
                   ? "border-2 border-primary bg-card shadow-xl ring-4 ring-primary/10"
                   : "border border-border bg-card shadow-sm hover:border-primary/40 hover:shadow-md",
               )}
             >
               {plan.highlight && (
-                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 rounded-full bg-gradient-brand px-3 py-0.5 text-[10px] font-bold tracking-wider text-primary-foreground uppercase shadow-sm">
+                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 rounded-full bg-gradient-brand px-3 py-0.5 text-[10px] 2xl:text-xs font-bold tracking-wider text-primary-foreground uppercase shadow-sm">
                   Most Popular
                 </div>
               )}
 
               <div>
-                <h3 className="font-display text-lg font-bold text-foreground">{plan.name}</h3>
-                <p className="mt-1 text-xs text-muted-foreground min-h-[32px]">{plan.tagline}</p>
+                <h3 className="font-display text-lg 2xl:text-xl font-bold text-foreground">{plan.name}</h3>
+                <p className="mt-1 text-xs 2xl:text-sm text-muted-foreground min-h-[32px]">{plan.tagline}</p>
 
                 <div className="mt-5 border-t border-border pt-4">
-                  <span className="font-display text-2xl font-bold text-foreground">
+                  <span className="font-display text-2xl 2xl:text-3xl font-bold text-foreground">
                     {plan.price}
                   </span>
-                  <span className="text-xs text-muted-foreground ml-1">
+                  <span className="text-xs 2xl:text-sm text-muted-foreground ml-1">
                     {plan.price === "Custom" || plan.price.includes("Sales")
                       ? "tailored to scale"
                       : "/ month"}
@@ -90,8 +90,8 @@ export function PricingSection() {
 
                 <ul className="mt-6 space-y-2.5 border-t border-border pt-4">
                   {plan.features.map((feat) => (
-                    <li key={feat} className="flex items-center gap-2 text-xs text-foreground">
-                      <Check className="size-3.5 text-primary shrink-0" />
+                    <li key={feat} className="flex items-center gap-2 text-xs 2xl:text-sm text-foreground">
+                      <Check className="size-3.5 2xl:size-4 text-primary shrink-0" />
                       <span>{feat}</span>
                     </li>
                   ))}

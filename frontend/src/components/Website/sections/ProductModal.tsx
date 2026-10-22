@@ -18,9 +18,9 @@ export function ProductModal({ product, onClose }: { product: ProductItem; onClo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/75 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
-      <div className="relative w-full max-w-3xl rounded-3xl border border-zinc-200 bg-white text-zinc-900 shadow-2xl overflow-hidden my-8 font-sans">
+      <div className="relative w-full max-w-3xl 2xl:max-w-4xl rounded-3xl border border-zinc-200 bg-white text-zinc-900 shadow-2xl overflow-hidden my-8 font-sans">
         {/* Modal Top Header with screenshot header */}
-        <div className="relative h-48 sm:h-56 w-full overflow-hidden bg-zinc-100">
+        <div className="relative h-48 sm:h-56 2xl:h-64 w-full overflow-hidden bg-zinc-100">
           <img
             src={product.image}
             alt={product.name}

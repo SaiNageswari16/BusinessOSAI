@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
-import { Menu, X, Sparkles, ArrowRight, LogIn, UserPlus } from "lucide-react";
+import { Menu, X, Sparkles, ArrowRight } from "lucide-react";
+import { getAuthUrl } from "@/lib/auth-navigation";
 
 const nav = [
-  { label: "Home", href: "/#top" },
+  { label: "Home", href: "/#home" },
   { label: "Services", href: "/#services" },
   { label: "Applications", href: "/#applications" },
   { label: "Verticals", href: "/#industries" },
   { label: "Analytics", href: "/#analytics" },
   { label: "Security", href: "/#security" },
+  { label: "Pricing", href: "/#pricing" },
+  { label: "FAQ", href: "/#faq" },
   { label: "About", href: "/#about" },
   { label: "Contact", href: "/#contact" },
 ];
@@ -16,6 +18,11 @@ const nav = [
 export function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  const [authUrl, setAuthUrl] = useState("/login");
+
+  useEffect(() => {
+    setAuthUrl(getAuthUrl("/login"));
+  }, []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -36,7 +43,7 @@ export function Header() {
             aria-label="IOTRONICS home"
           >
             <img
-              src="/Logo.png"
+              src="/logo.png"
               alt="IOTRONICS"
               className="h-5.5 sm:h-6 w-auto object-contain transition-transform duration-300 group-hover:scale-105"
             />
@@ -57,23 +64,13 @@ export function Header() {
 
           {/* Right Action Buttons */}
           <div className="flex items-center gap-1.5">
-            <Link
-              to="/login"
-              className="hidden sm:inline-flex items-center gap-1 text-[11.5px] sm:text-[12px] font-bold text-slate-700 hover:text-purple-700 px-3 py-1.5 rounded-full border border-slate-200 hover:bg-slate-100 transition-all cursor-pointer whitespace-nowrap"
+            <a
+              href={authUrl}
+              className="bg-slate-950 text-white text-[11.5px] sm:text-[12px] font-bold px-3.5 sm:px-4 py-1.5 rounded-full hover:bg-purple-700 transition-all cursor-pointer whitespace-nowrap shadow-sm flex items-center gap-1.5 hover:-translate-y-0.5"
             >
-              <LogIn className="size-3 text-slate-500" />
-              <span>Sign In</span>
-            </Link>
-
-            <Link
-              to="/login"
-              search={{ mode: "register" }}
-              className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-[11.5px] sm:text-[12px] font-bold px-3.5 sm:px-4 py-1.5 rounded-full hover:from-purple-700 hover:to-indigo-700 transition-all cursor-pointer whitespace-nowrap shadow-sm flex items-center gap-1.5 hover:-translate-y-0.5"
-            >
-              <UserPlus className="size-3 text-purple-200" />
+              <Sparkles className="size-3 text-purple-300" />
               <span>Sign Up</span>
-              <ArrowRight className="size-3" />
-            </Link>
+            </a>
 
             {/* Mobile Hamburger inside bar */}
             <button
@@ -93,9 +90,9 @@ export function Header() {
         <div className="absolute top-[60px] inset-x-0 border-b border-slate-200 bg-white/98 backdrop-blur-2xl md:hidden animate-in fade-in slide-in-from-top-2 duration-200 shadow-xl">
           <div className="mx-auto grid w-full max-w-md gap-1.5 px-6 py-5">
             <div className="flex items-center justify-between pb-3 mb-1 border-b border-slate-100">
-              <a href="/#top" onClick={() => setOpen(false)} className="flex items-center" aria-label="IOTRONICS home">
+              <a href="/#home" onClick={() => setOpen(false)} className="flex items-center" aria-label="IOTRONICS home">
                 <img
-                  src="/Logo.png"
+                  src="/logo.png"
                   alt="IOTRONICS"
                   className="h-7 w-auto object-contain"
                 />
@@ -115,24 +112,20 @@ export function Header() {
               </a>
             ))}
             <div className="mt-3 grid gap-2 pt-3 border-t border-slate-200">
-              <Link
-                to="/login"
+              <a
+                href="/#applications"
                 onClick={() => setOpen(false)}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-center text-xs font-semibold text-slate-900 hover:bg-slate-100 flex items-center justify-center gap-1.5"
+                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-center text-xs font-semibold text-slate-900 hover:bg-slate-100"
               >
-                <LogIn className="size-3.5 text-slate-600" />
-                <span>Sign In / Login</span>
-              </Link>
-              <Link
-                to="/login"
-                search={{ mode: "register" }}
+                Explore Products
+              </a>
+              <a
+                href={authUrl}
                 onClick={() => setOpen(false)}
-                className="rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700 px-4 py-2.5 text-center text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 transition-colors"
+                className="rounded-xl bg-slate-950 text-white hover:bg-purple-700 px-4 py-2.5 text-center text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 transition-colors"
               >
-                <UserPlus className="size-3.5 text-purple-200" />
-                <span>Sign Up / Create Workspace</span>
-                <ArrowRight className="size-3.5" />
-              </Link>
+                Sign Up <ArrowRight className="size-3.5" />
+              </a>
             </div>
           </div>
         </div>

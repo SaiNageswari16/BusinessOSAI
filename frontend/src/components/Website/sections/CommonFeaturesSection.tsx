@@ -91,7 +91,7 @@ export function CommonFeaturesSection({ className }: { className?: string }) {
       <section
         id="features"
         className={
-          "w-full px-4 sm:px-6 md:px-10 lg:px-16 py-4 md:py-6 bg-[#f4f6f9] font-sans text-slate-900 relative overflow-hidden border-y border-slate-200/80 " +
+          "w-full px-4 sm:px-6 md:px-10 lg:px-16 pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-16 bg-[#f4f6f9] font-sans text-slate-900 relative overflow-hidden border-y border-slate-200/80 scroll-mt-24 md:scroll-mt-32 " +
           (className || "")
         }
       >
@@ -101,12 +101,12 @@ export function CommonFeaturesSection({ className }: { className?: string }) {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-500/5 rounded-full blur-[160px] pointer-events-none" />
 
         {/* SECTION HEADER */}
-        <div className="text-center mb-4 flex flex-col items-center gap-2 relative z-10 max-w-4xl mx-auto">
-          <div className="inline-flex items-center gap-2 rounded-full border border-purple-500/20 bg-purple-50 px-3.5 py-1 text-[11px] font-bold tracking-wider text-purple-700 uppercase shadow-xs">
+        <div className="text-center mb-6 sm:mb-8 flex flex-col items-center gap-2.5 relative z-10 max-w-4xl 2xl:max-w-5xl 3xl:max-w-6xl mx-auto">
+          <div className="inline-flex items-center gap-2 rounded-full border border-purple-500/20 bg-purple-50 px-3.5 py-1 text-[11px] 2xl:text-xs font-bold tracking-wider text-purple-700 uppercase shadow-xs">
             <Sparkles className="size-3 text-purple-600" /> Unified Platform Intelligence
           </div>
 
-          <h2 className="font-extrabold text-2xl sm:text-3xl md:text-4xl leading-[1.15] tracking-tight text-slate-950">
+          <h2 className="font-extrabold text-2xl sm:text-3xl md:text-4xl 2xl:text-5xl leading-[1.15] tracking-tight text-slate-950">
             Built for Real Operations.
             <br />
             <span className="bg-gradient-to-r from-purple-700 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
@@ -114,35 +114,19 @@ export function CommonFeaturesSection({ className }: { className?: string }) {
             </span>
           </h2>
 
-          <p className="text-sm sm:text-base text-slate-600 max-w-2xl leading-relaxed font-normal">
+          <p className="text-sm sm:text-base 2xl:text-lg text-slate-600 max-w-2xl 2xl:max-w-3xl leading-relaxed font-normal">
             Eliminate fragmented tools. IOTRONICS synchronizes your{" "}
             <strong className="text-slate-900">AI Business OS</strong>,{" "}
             <strong className="text-slate-900">FIT CLUB AI</strong>, and{" "}
             <strong className="text-slate-900">Salon OS</strong> with autonomous workflows,
             cross-app ledgers, and zero data silos.
           </p>
-
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-            <a
-              href="#applications"
-              className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-xs sm:text-sm font-semibold bg-slate-950 text-white hover:bg-purple-700 transition-all shadow-md"
-            >
-              <span>Explore The 3 Operating Systems</span>
-              <ChevronRight className="size-4" />
-            </a>
-            <a
-              href="#contact"
-              className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-xs sm:text-sm font-medium border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 transition-colors shadow-xs"
-            >
-              Request Live Demo
-            </a>
-          </div>
         </div>
 
         {/* BENTO GRID */}
-        <div className="flex flex-col gap-4 max-w-7xl mx-auto relative z-10">
+        <div className="flex flex-col gap-4 2xl:gap-6 max-w-7xl 2xl:max-w-[1560px] 3xl:max-w-[1840px] mx-auto relative z-10">
           {/* ROW 1: Auto Workflows (55%) + 3-Way Connected Graph (45%) */}
-          <div className="grid grid-cols-1 lg:grid-cols-[55fr_45fr] gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-[55fr_45fr] gap-4 2xl:gap-6">
             {/* CARD 1: Natural Language Business Copilot */}
             <div className="bg-white rounded-2xl border border-slate-200/90 p-6 md:p-7 shadow-xs flex flex-col justify-between hover:border-purple-300 hover:shadow-md transition-all">
               <div>
@@ -441,7 +425,7 @@ export function CommonFeaturesSection({ className }: { className?: string }) {
           </div>
 
           {/* ROW 2: Customer 360 (42%) + Multi-Modal Knowledge Ingestion (58%) */}
-          <div className="grid grid-cols-1 lg:grid-cols-[42fr_58fr] gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-[42fr_58fr] gap-4 2xl:gap-6">
             {/* CARD 3: Universal Customer 360 */}
             <div className="bg-white rounded-2xl border border-slate-200/90 p-6 md:p-7 shadow-xs flex flex-col justify-between hover:border-purple-300 hover:shadow-md transition-all">
               <div>
@@ -639,7 +623,7 @@ export function CommonFeaturesSection({ className }: { className?: string }) {
           </div>
 
           {/* ROW 3: Multi-Station Live Work (33%) + Radar Telemetry (33%) + Enterprise Security (33%) */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 2xl:gap-6">
             {/* CARD 5: Multi-Station Live Operations */}
             <div className="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-xs flex flex-col justify-between hover:border-purple-300 hover:shadow-md transition-all">
               <div>

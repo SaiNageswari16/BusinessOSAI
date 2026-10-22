@@ -58,14 +58,14 @@ export function Section({
     <section
       id={id}
       className={cn(
-        "relative overflow-hidden py-4 md:py-5",
+        "relative overflow-hidden pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-16 scroll-mt-24 md:scroll-mt-32",
         tone === "light" && "bg-background text-foreground",
         tone === "muted" && "bg-secondary/50 text-foreground",
         tone === "ink" && "bg-gradient-ink text-ink-foreground",
         className,
       )}
     >
-      <div className="relative mx-auto w-full max-w-7xl px-4 sm:px-6">{children}</div>
+      <div className="relative mx-auto w-full max-w-7xl 2xl:max-w-[1560px] 3xl:max-w-[1840px] px-4 sm:px-6 2xl:px-8 3xl:px-12">{children}</div>
     </section>
   );
 }
@@ -80,7 +80,7 @@ export function Eyebrow({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold tracking-[0.14em] uppercase",
+        "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] 2xl:text-xs font-semibold tracking-[0.14em] uppercase",
         tone === "light"
           ? "border-primary/25 bg-primary/8 text-primary"
           : "border-ink-border bg-ink-foreground/8 text-accent",
@@ -105,11 +105,11 @@ export function SectionHeading({
   align?: "left" | "center";
 }) {
   return (
-    <div className={cn("max-w-3xl", align === "center" && "mx-auto text-center")}>
+    <div className={cn("max-w-3xl 2xl:max-w-4xl 3xl:max-w-5xl", align === "center" && "mx-auto text-center")}>
       {eyebrow ? <Eyebrow tone={tone}>{eyebrow}</Eyebrow> : null}
       <h2
         className={cn(
-          "mt-2 text-2xl leading-[1.1] font-semibold text-balance sm:text-3xl md:text-4xl",
+          "mt-2 text-2xl leading-[1.1] font-semibold text-balance sm:text-3xl md:text-4xl 2xl:text-5xl",
           tone === "ink" ? "text-ink-foreground" : "text-foreground",
         )}
       >
@@ -118,7 +118,7 @@ export function SectionHeading({
       {description ? (
         <p
           className={cn(
-            "mt-2 text-xs md:text-sm",
+            "mt-2 text-xs md:text-sm 2xl:text-base",
             tone === "ink" ? "text-ink-muted" : "text-muted-foreground",
           )}
         >

@@ -167,11 +167,11 @@ export default function WhyChooseUs01Finsyc({ className }: { className?: string 
           className,
         )}
       >
-        <div className="w-full max-w-[1440px] px-6 lg:px-[96px]">
-          <div className="w-full max-w-[1248px] mx-auto">
-            <div className="flex flex-col lg:flex-row items-start gap-8 lg:gap-[32px] justify-between">
+        <div className="w-full max-w-[1440px] 2xl:max-w-[1560px] 3xl:max-w-[1780px] px-6 lg:px-[96px] 2xl:px-12">
+          <div className="w-full max-w-[1248px] 2xl:max-w-[1480px] 3xl:max-w-[1700px] mx-auto">
+            <div className="flex flex-col lg:flex-row items-start gap-8 lg:gap-[32px] 2xl:gap-12 justify-between">
               {/* Left Column - Sticky */}
-              <div className="w-full lg:max-w-[622px] flex flex-col items-start lg:sticky lg:top-[120px] self-start">
+              <div className="w-full lg:max-w-[622px] 2xl:max-w-[720px] 3xl:max-w-[820px] flex flex-col items-start lg:sticky lg:top-[120px] self-start">
                 <div className="px-4 py-2 bg-purple-50 border border-purple-200/80 rounded-full flex items-center gap-2 mb-3 shadow-2xs">
                   <Sparkles className="w-4 h-4 text-purple-600 fill-purple-600" />
                   <span className="text-purple-700 font-sans text-sm font-bold">
@@ -180,7 +180,7 @@ export default function WhyChooseUs01Finsyc({ className }: { className?: string 
                 </div>
 
                 <h2
-                  className="text-slate-950 text-[32px] sm:text-[42px] md:text-[52px] font-extrabold leading-[38px] sm:leading-[48px] md:leading-[58px] tracking-tight mb-3"
+                  className="text-slate-950 text-[32px] sm:text-[42px] md:text-[52px] 2xl:text-[58px] font-extrabold leading-[38px] sm:leading-[48px] md:leading-[58px] 2xl:leading-[64px] tracking-tight mb-3"
                   style={{ fontFamily: "'Onest', sans-serif" }}
                 >
                   Take full control of your business growth with{" "}
@@ -190,7 +190,7 @@ export default function WhyChooseUs01Finsyc({ className }: { className?: string 
                   tools
                 </h2>
 
-                <p className="text-slate-600 font-sans text-lg md:text-[20px] font-normal leading-[26px] md:leading-[32px] mb-5 max-w-[560px]">
+                <p className="text-slate-600 font-sans text-lg md:text-[20px] 2xl:text-[22px] font-normal leading-[26px] md:leading-[32px] 2xl:leading-[36px] mb-5 max-w-[560px] 2xl:max-w-[660px]">
                   Manage your enterprise smarter with powerful tools designed to simplify tracking,
                   optimize workflows, and drive better business decisions.
                 </p>
@@ -199,7 +199,7 @@ export default function WhyChooseUs01Finsyc({ className }: { className?: string 
                   {tags.map((tag: string) => (
                     <span
                       key={tag}
-                      className="px-5 py-2.5 border border-slate-200/90 rounded-full text-slate-800 font-sans text-[15px] md:text-[16px] font-medium hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700 transition-all cursor-default bg-white shadow-2xs"
+                      className="px-5 py-2.5 border border-slate-200/90 rounded-full text-slate-800 font-sans text-[15px] md:text-[16px] 2xl:text-[17px] font-medium hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700 transition-all cursor-default bg-white shadow-2xs"
                     >
                       {tag}
                     </span>
@@ -210,7 +210,7 @@ export default function WhyChooseUs01Finsyc({ className }: { className?: string 
               {/* Right Column - Scrollable List */}
               <div
                 ref={containerRef}
-                className="flex-1 lg:max-w-[578px] flex items-start pr-0 lg:h-[220vh] h-auto relative w-full"
+                className="flex-1 lg:max-w-[578px] 2xl:max-w-[680px] 3xl:max-w-[780px] flex items-start pr-0 lg:h-[220vh] h-auto relative w-full"
               >
                 <div className="lg:sticky lg:top-[120px] lg:h-[800px] h-auto flex items-start w-full lg:overflow-hidden overflow-visible">
                   <div className="hidden lg:block absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-white via-white/95 to-transparent z-10 pointer-events-none" />

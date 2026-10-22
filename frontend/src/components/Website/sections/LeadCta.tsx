@@ -23,7 +23,7 @@ export function LeadCta() {
       <div className="pointer-events-none absolute inset-0 grid-lines opacity-25" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[30rem] bg-halo" />
 
-      <div className="relative grid gap-12 lg:grid-cols-[1.1fr_0.9fr] items-center">
+      <div className="relative grid gap-12 2xl:gap-16 lg:grid-cols-[1.1fr_0.9fr] items-center">
         {/* Left Value Proposition */}
         <Reveal>
           <div>
@@ -31,12 +31,12 @@ export function LeadCta() {
               <Sparkles className="size-3.5" /> Book an Enterprise Demo
             </span>
 
-            <h2 className="mt-6 font-display text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl text-ink-foreground">
+            <h2 className="mt-6 font-display text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl 2xl:text-6xl text-ink-foreground">
               Ready to unify your business on{" "}
               <span className="text-gradient-brand">IOTRONICS?</span>
             </h2>
 
-            <p className="mt-5 max-w-lg text-sm md:text-base text-ink-muted leading-relaxed">
+            <p className="mt-5 max-w-lg 2xl:max-w-xl text-sm md:text-base 2xl:text-lg text-ink-muted leading-relaxed">
               Get a tailored walkthrough with a solutions architect. We will model your branches,
               workflows, and catalog during a live 30-minute session.
             </p>
