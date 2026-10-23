@@ -101,6 +101,27 @@ class Settings(BaseSettings):
     ai_model_anthropic: str = Field(default="claude-sonnet-5", alias="AI_MODEL_ANTHROPIC")
     ai_max_tokens: int = Field(default=2048, alias="AI_MAX_TOKENS")
 
+    # AI recipe search (multimodal + cache + rate limit)
+    ai_multimodal_enabled: bool = Field(default=True, alias="AI_MULTIMODAL_ENABLED")
+    ai_recipe_cache_maxsize: int = Field(default=256, alias="AI_RECIPE_CACHE_MAXSIZE")
+    ai_recipe_cache_ttl_seconds: int = Field(default=300, alias="AI_RECIPE_CACHE_TTL_SECONDS")
+    ai_rate_capacity: int = Field(default=10, alias="AI_RATE_CAPACITY")
+    ai_rate_per_second: float = Field(default=2.0, alias="AI_RATE_PER_SECOND")
+    ai_recipe_rate_limit_per_min: int = Field(
+        default=5, alias="AI_RECIPE_RATE_LIMIT_PER_MIN",
+        description="Per-tenant recipe-search requests allowed per minute; the "
+                    "token bucket in menu/recipe_ai.py is sized from this.",
+    )
+    ai_recipe_max_results: int = Field(
+        default=5, alias="AI_RECIPE_MAX_RESULTS",
+        description="Default page size for /ai/recipe-search when the caller "
+                    "does not pass its own limit (also the hard cap for the "
+                    "hard-capped limit query field).",
+    )
+    # Aggregator base URLs (Zomato has a known docs URL; Swiggy needs one set)
+    zomato_menu_base: str = Field(default="https://www.zomato.com/api/v5", alias="ZOMATO_MENU_BASE")
+    swiggy_menu_base: str = Field(default="https://api.swiggy.com/api", alias="SWIGGY_MENU_BASE")
+
     # Payments
     razorpay_key_id: str = Field(default="", alias="RAZORPAY_KEY_ID")
     razorpay_key_secret: str = Field(default="", alias="RAZORPAY_KEY_SECRET")

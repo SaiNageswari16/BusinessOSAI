@@ -17,9 +17,14 @@ foreign key between two services is a hard runtime coupling, not a reference.
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import enum
+import logging
+import os
 import uuid
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -36,6 +41,11 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.services.shared.service_db import service_base
+
+if TYPE_CHECKING:
+    from src.services.shared.service_db import ServiceDatabase
+
+logger = logging.getLogger("billing.outbox")
 
 # This service's own base, not the shared ServiceBase. See service_db.
 ServiceBase = service_base("billing")
@@ -595,3 +605,75 @@ class NumberCounter(ServiceBase, TimestampMixin):
     key: Mapped[str] = mapped_column(String(160), nullable=False)
     prefix: Mapped[str] = mapped_column(String(40), nullable=False)
     next_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+
+class OutboxMessage(ServiceBase, TimestampMixin):
+    """Transactional outbox for bill events.
+
+    Every event this service would have published is instead written to this
+    table *inside the same transaction* as the bill change. A background
+    relay (``billing/reelay.py``) polls for unpublished rows and pushes them
+    to the event bus. This is what makes the event delivery atomic with the
+    write: no commit without the message, no lost events on crash.
+
+    Status transitions:
+      pending -> published (relay succeeded)
+      pending -> dead (retry count exceeded max)
+    """
+
+    __tablename__ = "outbox_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=_uuid
+    )
+    event_id: Mapped[str] = mapped_column(
+        String(64), nullable=False, unique=True, index=True
+    )
+    type: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    outlet_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    source_service: Mapped[str] = mapped_column(String(50), default="billing")
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending", nullable=False, index=True
+    )
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+
+class ConsumedEvent(ServiceBase, TimestampMixin):
+    """Durable idempotency ledger — one row per event this service consumed.
+
+    Written by the bus's consumer loop via the installed dedupe ledger
+    (``src.services.event_bus.dedupe``), so a redelivered event whose
+    event_id is already here is skipped even after a process restart. The
+    in-memory dedupe gate in ``EventBus`` alone is not restart-safe; this
+    table closes that gap.
+
+    ``event_id`` is the primary key — a redelivery with the same event_id
+    is a no-op insert (``ON CONFLICT DO NOTHING``), which is exactly the
+    check-then-mark primitive the dedupe helper needs.
+    """
+
+    __tablename__ = "consumed_events"
+
+    event_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True
+    )
+    type: Mapped[str] = mapped_column(
+        String(120), nullable=False, default="", index=True
+    )
+    consumed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )

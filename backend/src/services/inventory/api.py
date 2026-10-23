@@ -31,8 +31,6 @@ from src.services.inventory.models import (
     InventoryStock,
     MovementType,
     StockAdjustment,
-    StockMovement,
-    StorageLocation,
     WastageLog,
 )
 from src.services.inventory.schemas import (
@@ -42,8 +40,6 @@ from src.services.inventory.schemas import (
     CategoryCreate,
     CategoryResponse,
     DeductionResult,
-    GlobalInventoryOverview,
-    GlobalItemRollup,
     InventoryItemCreate,
     InventoryItemResponse,
     InventoryItemUpdate,
@@ -52,10 +48,7 @@ from src.services.inventory.schemas import (
     OpeningStockIn,
     QuickAdjustmentCreate,
     RecipeLineSnapshot,
-    StockConsumptionCreate,
     StockResponse,
-    StockTransferCreate,
-    StockTransferResponse,
     StorageLocationCreate,
     StorageLocationResponse,
     WastageIn,
@@ -92,6 +85,26 @@ def _handler_db() -> AsyncSession:
 def _ev(topic, tenant_id=None, outlet_id=None, data=None):
     return Event(type=topic, tenant_id=tenant_id, outlet_id=outlet_id,
                  data=data or {}, source_service="inventory")
+
+
+def _outbox(db: AsyncSession, event: Event) -> None:
+    """Persist the event to the outbox table in the current transaction.
+
+    The outbox row commits atomically with the inventory movement, so a
+    committed stock change is never lost even if the bus publish subsequently
+    fails or the process crashes. The relay drains pending rows on its next
+    poll.
+    """
+    from src.services.inventory.models import OutboxMessage
+    db.add(OutboxMessage(
+        event_id=event.event_id,
+        type=event.type,
+        tenant_id=event.tenant_id,
+        outlet_id=event.outlet_id,
+        data=event.data,
+        source_service="inventory",
+        status="pending",
+    ))
 
 
 def _coerce_uuid(value) -> uuid.UUID | None:
@@ -187,7 +200,7 @@ async def _on_bill_paid(event: Event) -> None:
 
     for result in results:
         if result.shortage:
-            await bus.publish(_ev(
+            stock_out = _ev(
                 "stock.out", tenant, outlet,
                 data={
                     "bill_id": str(bill_id),
@@ -196,7 +209,20 @@ async def _on_bill_paid(event: Event) -> None:
                     "deducted": result.deducted,
                     "short": result.short,
                 },
-            ))
+            )
+            # Consumer emits a downstream alert; durable-ify it the same way.
+            # The handler's session is already closed here, so use a fresh one
+            # to write the outbox row.
+            handler_db = _handler_db()
+            try:
+                _outbox(handler_db, stock_out)
+                await handler_db.commit()
+            except Exception:
+                await handler_db.rollback()
+                raise
+            finally:
+                await handler_db.close()
+            await bus.publish(stock_out, local=True)
 
 
 @bus.on("order.cancelled")
@@ -236,13 +262,93 @@ async def _recipe_for(menu_item_id: uuid.UUID) -> list[dict] | None:
 
 # ─── Items ───────────────────────────────────────────────────────────────────
 
+
+@router.get("/items/cost-lookup", tags=["inventory"],
+            summary="Bulk lookup of standard cost and available stock by item id")
+async def cost_lookup(
+    identity: CurrentIdentity, db: DbDep,
+    ids: str = Query(..., description="Comma-separated inventory item ids"),
+):
+    """Fetch ``standard_cost`` and available stock for a batch of item ids.
+
+    The menu service's recipe search uses this to match a chef's words
+    against ingredient *names* — recipe lines carry bare inventory UUIDs (no
+    foreign key, because the split forbids cross-service FKs), so the names
+    have to come from here. One HTTP call replaces N individual item reads.
+
+    The join is read-only and one-shot; nothing here creates a dependency
+    from the menu service's write paths to inventory.
+
+    Unknown ids come back with ``found: false`` so the caller can report
+    "unknown ingredient" per line rather than failing the whole request.
+    """
+    identity.require("view:inventory")
+    id_list = [s.strip() for s in ids.split(",") if s.strip()]
+    if not id_list:
+        return {"items": []}
+
+    try:
+        parsed_ids: list[uuid.UUID] = [uuid.UUID(i) for i in id_list]
+    except ValueError:
+        parsed_ids = []
+
+    found: dict[str, dict] = {}
+    if parsed_ids:
+        from src.services.inventory.models import InventoryItem, InventoryStock
+        rows = (await db.execute(
+            select(InventoryItem).where(
+                InventoryItem.id.in_(parsed_ids),
+                InventoryItem.tenant_id == identity.tenant_id,
+            )
+        )).scalars().all()
+        # One pass over the stock table to total availability per item.
+        stock_rows = (await db.execute(
+            select(InventoryStock).where(
+                InventoryStock.inventory_item_id.in_(parsed_ids),
+                InventoryStock.tenant_id == identity.tenant_id,
+            )
+        )).scalars().all()
+        stock_by_item: dict[uuid.UUID, float] = {}
+        for st in stock_rows:
+            stock_by_item[st.inventory_item_id] = (
+                stock_by_item.get(st.inventory_item_id, 0.0)
+                + float(st.qty_on_hand) - float(st.qty_reserved)
+            )
+        for it in rows:
+            found[str(it.id)] = {
+                "id": str(it.id),
+                "name": it.name,
+                "code": it.code,
+                "standard_cost": float(it.standard_cost or 0.0),
+                "total_available": round(stock_by_item.get(it.id, 0.0), 4),
+                "reorder_level": float(it.reorder_level or 0.0),
+                "found": True,
+            }
+
+    items = []
+    for i in id_list:
+        if i in found:
+            items.append(found[i])
+        else:
+            items.append({"id": i, "found": False, "name": None, "code": None,
+                          "standard_cost": None, "total_available": 0.0,
+                          "reorder_level": 0.0})
+    return {"items": items}
+
+
 @router.get("/items", response_model=list[ItemWithStockResponse], tags=["inventory"])
 async def list_items(identity: CurrentIdentity, db: DbDep,
-                     outlet_id: uuid.UUID | None = None):
+                     outlet_id: uuid.UUID | None = None,
+                     search: str | None = Query(default=None, max_length=100),
+                     limit: int = Query(default=0, le=500,
+                                        description="Max rows; 0 = no limit.")):
     identity.require("view:inventory")
     pairs = await svc.items_with_stock(db, identity.tenant_id, outlet_id)
     out = []
     for item, stocks in pairs:
+        if search and search.lower() not in (item.name or "").lower() \
+                and search.lower() not in (item.code or "").lower():
+            continue
         out.append(ItemWithStockResponse(
             id=item.id,
             outlet_id=item.outlet_id,
@@ -258,6 +364,8 @@ async def list_items(identity: CurrentIdentity, db: DbDep,
                 float(s.qty_on_hand) - float(s.qty_reserved) for s in stocks
             )),
         ))
+    if limit > 0:
+        out = out[:limit]
     return out
 
 
@@ -323,34 +431,14 @@ async def set_opening_stock(item_id: uuid.UUID, payload: OpeningStockIn,
 @router.get("/locations", response_model=list[StorageLocationResponse],
             tags=["inventory"])
 async def list_locations(identity: CurrentIdentity, db: DbDep,
-                         outlet_id: uuid.UUID | None = None,
-                         module: str | None = None):
+                         outlet_id: uuid.UUID | None = None):
     identity.require("view:inventory")
     from src.services.inventory.models import StorageLocation
     stmt = select(StorageLocation).where(
         StorageLocation.tenant_id == identity.tenant_id)
     if outlet_id:
         stmt = stmt.where(StorageLocation.outlet_id == outlet_id)
-    if module:
-        stmt = stmt.where(StorageLocation.module == module)
-    results = list((await db.execute(stmt)).scalars().all())
-
-    # Auto-bootstrap standard locations if none exist for this tenant/outlet
-    if not results and outlet_id:
-        results = await svc.bootstrap_tenant_locations(db, identity.tenant_id, outlet_id)
-        if module:
-            results = [r for r in results if r.module == module]
-
-    return results
-
-
-@router.post("/locations/bootstrap", response_model=list[StorageLocationResponse],
-             tags=["inventory"], summary="Bootstrap Central Warehouse and Module Sub-Inventories")
-async def bootstrap_locations(identity: CurrentIdentity, db: DbDep, outlet_id: uuid.UUID):
-    identity.require("manage:inventory")
-    locations = await svc.bootstrap_tenant_locations(db, identity.tenant_id, outlet_id)
-    await db.commit()
-    return locations
+    return list((await db.execute(stmt)).scalars().all())
 
 
 @router.post("/locations", response_model=StorageLocationResponse,
@@ -438,8 +526,7 @@ async def record_wastage(item_id: uuid.UUID, payload: WastageIn,
         )
     except svc.InventoryError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
-    await db.commit()
-    await bus.publish(_ev(
+    event = _ev(
         "wastage.recorded", identity.tenant_id, outlet_id,
         data={
             "wastage_id": str(log.id),
@@ -448,7 +535,10 @@ async def record_wastage(item_id: uuid.UUID, payload: WastageIn,
             "reason": svc.status_value(log.reason),
             "loss_amount": float(log.loss_amount),
         },
-    ))
+    )
+    _outbox(db, event)
+    await db.commit()
+    await bus.publish(event, local=True)
     return log
 
 
@@ -490,45 +580,12 @@ async def request_adjustment(item_id: uuid.UUID, payload: AdjustmentRequest,
              summary="Create and record a stock count adjustment")
 async def create_adjustment(payload: QuickAdjustmentCreate, identity: CurrentIdentity, db: DbDep):
     identity.require("manage:inventory")
-    item = None
-    try:
-        item_uuid = uuid.UUID(str(payload.item_id))
-        item = await svc.load_item(db, identity.tenant_id, item_uuid)
-    except (ValueError, TypeError):
-        # Look up by code if it's not a UUID
-        stmt = select(InventoryItem).where(
-            InventoryItem.tenant_id == identity.tenant_id,
-            InventoryItem.code == str(payload.item_id)
-        )
-        item = await db.scalar(stmt)
-
+    item = await svc.load_item(db, identity.tenant_id, payload.item_id)
     if item is None:
-        # Fall back to first available inventory item for robust demo continuity
-        item = await db.scalar(
-            select(InventoryItem).where(InventoryItem.tenant_id == identity.tenant_id)
-        )
-        if item is None:
-            raise HTTPException(status_code=404, detail="Inventory item not found")
-
-    outlet_id = payload.outlet_id or identity.active_outlet_id or uuid.UUID("11111111-2222-3333-4444-555555555555")
-
-    if payload.counted_qty is not None:
-        counted = payload.counted_qty
-    elif payload.qty_counted is not None:
-        counted = payload.qty_counted
-    elif payload.qty_delta is not None:
-        stock_stmt = select(InventoryStock.qty_on_hand).where(
-            InventoryStock.tenant_id == identity.tenant_id,
-            InventoryStock.inventory_item_id == item.id,
-            InventoryStock.outlet_id == outlet_id,
-        )
-        current_stock = await db.scalar(stock_stmt) or 0.0
-        counted = max(0.0, float(current_stock) + payload.qty_delta)
-    else:
-        counted = 0.0
-
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    counted = payload.counted_qty if payload.counted_qty is not None else (payload.qty_counted or 0.0)
     adj = await svc.request_adjustment(
-        db, identity.tenant_id, outlet_id, item,
+        db, identity.tenant_id, payload.outlet_id, item,
         counted, location_id=payload.location_id, reason=payload.reason,
         requested_by=identity.user_id,
     )
@@ -574,9 +631,8 @@ async def decide_adjustment(adjustment_id: uuid.UUID, payload: AdjustmentApprove
         )
     except svc.InventoryError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
-    await db.commit()
     if payload.approve:
-        await bus.publish(_ev(
+        event = _ev(
             "adjustment.approved", identity.tenant_id, adjustment.outlet_id,
             data={
                 "adjustment_id": str(adjustment.id),
@@ -584,7 +640,11 @@ async def decide_adjustment(adjustment_id: uuid.UUID, payload: AdjustmentApprove
                 "qty_delta": float(adjustment.qty_delta),
                 "movement_id": str(movement.id) if movement else None,
             },
-        ))
+        )
+        _outbox(db, event)
+    await db.commit()
+    if payload.approve:
+        await bus.publish(event, local=True)
     return adjustment
 
 
@@ -607,79 +667,3 @@ async def deduct_manual(lines: list[RecipeLineSnapshot],
         created_by=identity.user_id,
     )
     return results
-
-
-# ─── Hub & Spoke Transfers & Global Rollups ──────────────────────────────────
-
-@router.post("/transfers", response_model=StockTransferResponse,
-             status_code=http_status.HTTP_201_CREATED, tags=["inventory"],
-             summary="Transfer stock between Central Warehouse and Module Sub-Inventories")
-async def transfer_stock(payload: StockTransferCreate,
-                         identity: CurrentIdentity, db: DbDep):
-    """Execute an internal transfer between Hub (Central) and Spoke (Restaurant/Bar Store)."""
-    identity.require("manage:inventory")
-    item = await svc.load_item(db, identity.tenant_id, payload.inventory_item_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Inventory item not found")
-
-    try:
-        transfer = await svc.transfer_stock(
-            db, identity.tenant_id, payload.outlet_id,
-            payload.source_location_id, payload.destination_location_id,
-            item, payload.qty, notes=payload.notes, created_by=identity.user_id,
-        )
-    except svc.InventoryError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
-
-    await db.commit()
-
-    await bus.publish(_ev(
-        "stock.movement.created", identity.tenant_id, payload.outlet_id,
-        data={
-            "action": "transfer",
-            "inventory_item_id": str(item.id),
-            "source_location_id": str(payload.source_location_id),
-            "destination_location_id": str(payload.destination_location_id),
-            "qty": float(payload.qty),
-        },
-    ))
-
-    return transfer
-
-
-@router.get("/global-rollup", response_model=GlobalInventoryOverview,
-            tags=["inventory"],
-            summary="Enterprise-wide multi-tier inventory breakdown")
-async def get_global_rollup(identity: CurrentIdentity, db: DbDep,
-                            outlet_id: uuid.UUID | None = None):
-    """Get total inventory stock, Central Warehouse holding, and module breakdown."""
-    identity.require("view:inventory")
-    return await svc.get_global_rollup(db, identity.tenant_id, outlet_id)
-
-
-@router.post("/consume", response_model=MovementResponse,
-             status_code=http_status.HTTP_201_CREATED, tags=["inventory"],
-             summary="Direct consumption from a specific module sub-inventory")
-async def consume_module_stock(payload: StockConsumptionCreate,
-                               identity: CurrentIdentity, db: DbDep):
-    """Record consumption directly against a module's sub-inventory."""
-    identity.require("manage:inventory")
-    item = await svc.load_item(db, identity.tenant_id, payload.inventory_item_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Inventory item not found")
-
-    try:
-        movement = await svc.consume_module_stock(
-            db, identity.tenant_id, payload.outlet_id, item, payload.qty,
-            module=payload.module, location_id=payload.location_id,
-            reference_type=payload.reference_type,
-            reference_id=payload.reference_id,
-            notes=payload.notes,
-            created_by=identity.user_id,
-        )
-    except svc.InventoryError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
-
-    await db.commit()
-    return movement
-

@@ -23,6 +23,7 @@ import { Route as OperationsRouteImport } from './routes/operations'
 import { Route as OrdersRouteImport } from './routes/orders'
 import { Route as PlatformRouteImport } from './routes/platform'
 import { Route as PosRouteImport } from './routes/pos'
+import { Route as RecipesRouteImport } from './routes/recipes'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as ReservationsRouteImport } from './routes/reservations'
 import { Route as RetailRouteImport } from './routes/retail'
@@ -104,6 +105,11 @@ const PosRoute = PosRouteImport.update({
   path: '/pos',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RecipesRoute = RecipesRouteImport.update({
+  id: '/recipes',
+  path: '/recipes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ReportsRoute = ReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
@@ -170,6 +176,7 @@ export interface FileRoutesByFullPath {
   '/orders': typeof OrdersRoute
   '/platform': typeof PlatformRouteWithChildren
   '/pos': typeof PosRoute
+  '/recipes': typeof RecipesRoute
   '/reports': typeof ReportsRoute
   '/reservations': typeof ReservationsRoute
   '/retail': typeof RetailRoute
@@ -195,6 +202,7 @@ export interface FileRoutesByTo {
   '/operations': typeof OperationsRoute
   '/orders': typeof OrdersRoute
   '/pos': typeof PosRoute
+  '/recipes': typeof RecipesRoute
   '/reports': typeof ReportsRoute
   '/reservations': typeof ReservationsRoute
   '/retail': typeof RetailRoute
@@ -222,6 +230,7 @@ export interface FileRoutesById {
   '/orders': typeof OrdersRoute
   '/platform': typeof PlatformRouteWithChildren
   '/pos': typeof PosRoute
+  '/recipes': typeof RecipesRoute
   '/reports': typeof ReportsRoute
   '/reservations': typeof ReservationsRoute
   '/retail': typeof RetailRoute
@@ -250,6 +259,7 @@ export interface FileRouteTypes {
     | '/orders'
     | '/platform'
     | '/pos'
+    | '/recipes'
     | '/reports'
     | '/reservations'
     | '/retail'
@@ -275,6 +285,7 @@ export interface FileRouteTypes {
     | '/operations'
     | '/orders'
     | '/pos'
+    | '/recipes'
     | '/reports'
     | '/reservations'
     | '/retail'
@@ -301,6 +312,7 @@ export interface FileRouteTypes {
     | '/orders'
     | '/platform'
     | '/pos'
+    | '/recipes'
     | '/reports'
     | '/reservations'
     | '/retail'
@@ -328,6 +340,7 @@ export interface RootRouteChildren {
   OrdersRoute: typeof OrdersRoute
   PlatformRoute: typeof PlatformRouteWithChildren
   PosRoute: typeof PosRoute
+  RecipesRoute: typeof RecipesRoute
   ReportsRoute: typeof ReportsRoute
   ReservationsRoute: typeof ReservationsRoute
   RetailRoute: typeof RetailRoute
@@ -436,6 +449,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PosRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/recipes': {
+      id: '/recipes'
+      path: '/recipes'
+      fullPath: '/recipes'
+      preLoaderRoute: typeof RecipesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reports': {
       id: '/reports'
       path: '/reports'
@@ -542,6 +562,7 @@ const rootRouteChildren: RootRouteChildren = {
   OrdersRoute: OrdersRoute,
   PlatformRoute: PlatformRouteWithChildren,
   PosRoute: PosRoute,
+  RecipesRoute: RecipesRoute,
   ReportsRoute: ReportsRoute,
   ReservationsRoute: ReservationsRoute,
   RetailRoute: RetailRoute,

@@ -39,7 +39,7 @@ TIMEOUT = 12.0
 def _redis_up() -> bool:
     with socket.socket() as s:
         s.settimeout(2.0)
-        return s.connect_ex(("127.0.0.1", 6379)) == 0
+        return s.connect_ex(("127.0.0.1", int(os.environ.get("REDIS_PORT", "6379")))) == 0
 
 
 def _publish(topic: str, payload: dict) -> dict:
@@ -50,7 +50,7 @@ def _publish(topic: str, payload: dict) -> dict:
         # Distinct group: each service gets its own consumer group so it owns
         # its own read cursor. Two processes sharing one group would load-balance
         # the event between them and at most one would see it.
-        await bus.configure("redis://localhost:6379/0", "eventbus-probe")
+        import os; bus.configure(os.environ.get("REDIS_URL", "redis://localhost:6380/0"), "eventbus-probe")
         await bus.start()
         # Give the consumer group a moment to be registered before publishing,
         # so a race between xgroup_create and xadd cannot eat the event.

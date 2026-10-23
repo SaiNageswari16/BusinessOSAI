@@ -29,7 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from src.services.shared.base import ErrorDetail, ErrorEnvelope
-from src.services.shared.identity import Identity, bearer_scheme, _decode
+from src.services.shared.identity import Identity, bearer_scheme, _decode, dev_fallback_enabled, build_dev_fallback_identity
 from src.services.shared.registry import (
     all_services,
     base_url,
@@ -43,6 +43,54 @@ logger = logging.getLogger("gateway")
 GATEWAY_VERSION = "1.0.0"
 SERVICE_TIMEOUT = float(os.environ.get("GATEWAY_TIMEOUT_SECONDS", "30"))
 MAX_BODY_BYTES = 25 * 1024 * 1024
+
+
+# ─── Per-tenant module gate ───────────────────────────────────────────────────
+#
+# The platform service owns TenantModuleState (which verticals each tenant has
+# on). The gateway consults a single small platform endpoint,
+# GET /module-gate/check?tenant_id=...&module_key=..., and caches the answer
+# in-process with a short TTL so the common case (module active, or never
+# managed) costs one HTTP round-trip per TTL window, not per request.
+#
+# Failure policy is "fail open": if the platform service is unreachable the
+# request proceeds. A control-plane outage must not take down the data plane;
+# the platform is not load-bearing for a request that would otherwise succeed.
+# This is deliberate and documented, not a bug.
+
+_MODULE_GATE_TTL_SECONDS = int(os.environ.get("MODULE_GATE_TTL_SECONDS", "5"))
+_module_gate_cache: dict[tuple[str, str], tuple[float, bool]] = {}
+
+
+async def _module_gate_allows(
+    http: httpx.AsyncClient,
+    tenant_id: str,
+    module_key: str,
+) -> bool:
+    """Is ``module_key`` active for this tenant? Fail open on any error."""
+    key = (tenant_id, module_key)
+    now = time.monotonic()
+    if key in _module_gate_cache:
+        checked_at, allowed = _module_gate_cache[key]
+        if now - checked_at < _MODULE_GATE_TTL_SECONDS:
+            return allowed
+
+    platform_descriptor = get_descriptor("platform")
+    if platform_descriptor is None:
+        return True  # platform not registered: nothing to gate against
+    try:
+        resp = await http.get(
+            f"{base_url(platform_descriptor)}/api/v1/platform/module-gate/check",
+            params={"tenant_id": tenant_id, "module_key": module_key},
+            timeout=2.0,
+        )
+        allowed = resp.status_code == 200 and resp.json().get("allowed", True)
+    except Exception:
+        # Fail open: a slow or down platform service should not 503 the whole
+        # data plane. The cache is left untouched so the next call retries.
+        return True
+    _module_gate_cache[key] = (now, allowed)
+    return allowed
 
 
 def create_gateway() -> FastAPI:
@@ -297,32 +345,83 @@ def _register_service_proxy(gateway: FastAPI) -> None:
             except Exception:
                 identity = None
 
-        if identity is None:
-            tenant_hdr = request.headers.get("x-tenant-id")
-            try:
-                t_id = uuid.UUID(tenant_hdr) if tenant_hdr else uuid.UUID("e9fb216b-6289-43ca-900c-c09eada9840f")
-            except (ValueError, TypeError):
-                t_id = uuid.UUID("e9fb216b-6289-43ca-900c-c09eada9840f")
-
-            outlet_hdr = request.headers.get("x-outlet-id")
-            try:
-                o_id = uuid.UUID(outlet_hdr) if outlet_hdr else uuid.UUID("11111111-2222-3333-4444-555555555555")
-            except (ValueError, TypeError):
-                o_id = uuid.UUID("11111111-2222-3333-4444-555555555555")
-
-            identity = Identity(
-                user_id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
-                tenant_id=t_id,
-                email="admin@restaurantos.local",
-                full_name="Restaurant Admin",
-                permissions={"*"},
-                roles={"owner", "admin"},
-                is_tenant_owner=True,
-                tenant_slug="sunrise-banjara",
-                active_outlet_id=o_id,
-                allowed_outlet_ids={o_id},
-                auth_source="dev_fallback",
+        # The token bootstrap endpoints must be reachable with NO token — that
+        # is the whole point of them: they are how you get a token. Gating them
+        # on authentication is a circular lockout (401 on login, so no token,
+        # so everything else is 401). Same for the refresh rotation. These are
+        # safe without an edge check because the service validates the actual
+        # credentials (email+password) and issues the token; the gateway adds
+        # nothing here.
+        is_token_bootstrap = (
+            (service == "auth" and path.startswith("login") and request.method == "POST")
+            or (service == "auth" and path.startswith("refresh") and request.method == "POST")
+            or (service == "auth" and path.startswith("register") and request.method == "POST")
+            or (service == "platform" and path.startswith("auth/login") and request.method == "POST")
+        )
+        if is_token_bootstrap:
+            # Forward as-is; the downstream service handles authentication.
+            client: httpx.AsyncClient = gateway.state.http
+            target = f"{base_url(descriptor)}/api/v1/{service}/{path}"
+            if request.url.query:
+                target += f"?{request.url.query}"
+            body = await request.body()
+            upstream = await client.request(
+                request.method,
+                target,
+                content=body or None,
+                headers=_forwarded_headers(request, None),
             )
+            return Response(
+                content=upstream.content,
+                status_code=upstream.status_code,
+                headers={k: v for k, v in upstream.headers.items()
+                         if k.lower() not in _HOP_BY_HOP and k.lower() != "content-length"},
+            )
+
+        if identity is None:
+            # Mirror the gate in shared/identity.py — a single source of
+            # truth for the fallback policy, enforced at both edges.
+            if not dev_fallback_enabled():
+                return JSONResponse(
+                    status_code=401,
+                    content=ErrorEnvelope(
+                        error=ErrorDetail(
+                            code="UNAUTHENTICATED",
+                            message="Not authenticated",
+                        ),
+                        service="gateway",
+                        request_id=request.state.request_id,
+                    ).model_dump(mode="json"),
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            from src.services.shared.identity import build_dev_fallback_identity
+
+            identity = await build_dev_fallback_identity(request)
+
+        # Per-tenant module gate. Only runs for services that opted in via
+        # the registry's enforce_module_gate flag; that list is currently empty
+        # (see task #12), so this is a no-op today but the enforcement point
+        # is in place. When a service is flagged, a request whose tenant has
+        # that module suspended/archived in the platform DB gets a 404 with
+        # the standard "not found" envelope — no hint that the module exists
+        # for a different tenant.
+        if descriptor.enforce_module_gate and identity is not None:
+            module_key = descriptor.module_key or descriptor.name
+            client_for_gate: httpx.AsyncClient = gateway.state.http
+            if not await _module_gate_allows(
+                client_for_gate, str(identity.tenant_id), module_key
+            ):
+                return JSONResponse(
+                    status_code=404,
+                    content=ErrorEnvelope(
+                        error=ErrorDetail(
+                            code="MODULE_NOT_ACTIVE",
+                            message=f"Module '{module_key}' is not active for this tenant",
+                        ),
+                        service="gateway",
+                        request_id=request.state.request_id,
+                    ).model_dump(mode="json"),
+                )
 
         client: httpx.AsyncClient = gateway.state.http
         target = f"{base_url(descriptor)}/api/v1/{service}/{path}"

@@ -95,6 +95,27 @@ async def get_db(request: Request) -> AsyncSession:
 DbDep = Annotated[AsyncSession, Depends(get_db)]
 
 
+def _outbox(db: AsyncSession, event: Event) -> None:
+    """Write the event to the outbox inside the current transaction.
+
+    The outbox row is added to the same session that owns the bill change, so
+    both commit or roll back together. The relay background task picks up
+    pending rows and pushes them to the event bus. A crashed process leaves
+    the row in the database; the relay on the next boot picks it up.
+    """
+    from src.services.billing.models import OutboxMessage
+
+    db.add(OutboxMessage(
+        event_id=event.event_id,
+        type=event.type,
+        tenant_id=event.tenant_id,
+        outlet_id=event.outlet_id,
+        data=event.data,
+        source_service=event.source_service,
+        status="pending",
+    ))
+
+
 def _handler_db() -> AsyncSession:
     """A session owned by an event handler, not by a request.
 
@@ -309,11 +330,11 @@ async def settle_bill(bill_id: uuid.UUID, payload: SettleRequest,
                       identity: CurrentIdentity, db: DbDep):
     """Settle a bill, then tell the other services what changed.
 
-    Publishing happens AFTER the commit. If the bus publish failed but the
-    bill was settled, a retry of settlement is refused ("already settled") and
-    the event is never delivered — so a failed publish means the order never
-    learns its food was paid for. The bus itself never raises, so the only
-    failure here is the DB write, and rolling back that is correct.
+    The event is written to the outbox in the same transaction as the bill
+    change (atomic: no bill without its event), and a background relay task
+    delivers it to the event bus. The bus still gets an immediate local
+    dispatch for in-process handlers that want real-time reaction, but the
+    cross-service delivery is guaranteed by the outbox, not by the bus.
     """
     identity.require("manage:bills")
     bill = await svc.load_bill(db, identity.tenant_id, bill_id)
@@ -330,9 +351,8 @@ async def settle_bill(bill_id: uuid.UUID, payload: SettleRequest,
         )
     except svc.BillingError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
-    await db.commit()
 
-    await bus.publish(Event(
+    event = Event(
         type="bill.paid" if status_value(bill.status) == BillStatus.SETTLED else "bill.created",
         tenant_id=identity.tenant_id,
         outlet_id=bill.outlet_id,
@@ -351,7 +371,13 @@ async def settle_bill(bill_id: uuid.UUID, payload: SettleRequest,
             "is_credit_sale": bill.is_credit_sale,
         },
         source_service="billing",
-    ))
+    )
+    _outbox(db, event)
+    await db.commit()
+
+    # Immediate local dispatch for in-process handlers (real-time KOT, etc.)
+    # The relay picks up the outbox row for cross-service delivery.
+    await bus.publish(event, local=True)
     return bill
 
 
@@ -379,6 +405,8 @@ async def refund_payment(bill_id: uuid.UUID, payload: RefundRequest,
     Refunds publish ``bill.refunded`` separately from ``payment.received`` so
     the reports service can reverse revenue rather than just adding a negative
     payment. Money leaving must be a different event from money arriving.
+    The outbox guarantees the event lands in the stream even if the process
+    crashes between the DB commit and the bus publish.
     """
     identity.require("manage:refunds")
     bill = await svc.load_bill(db, identity.tenant_id, bill_id)
@@ -393,9 +421,8 @@ async def refund_payment(bill_id: uuid.UUID, payload: RefundRequest,
         )
     except svc.BillingError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
-    await db.commit()
 
-    await bus.publish(Event(
+    event = Event(
         type="bill.refunded",
         tenant_id=identity.tenant_id,
         outlet_id=bill.outlet_id,
@@ -409,7 +436,10 @@ async def refund_payment(bill_id: uuid.UUID, payload: RefundRequest,
             "reason": payload.reason,
         },
         source_service="billing",
-    ))
+    )
+    _outbox(db, event)
+    await db.commit()
+    await bus.publish(event, local=True)
     return bill
 
 

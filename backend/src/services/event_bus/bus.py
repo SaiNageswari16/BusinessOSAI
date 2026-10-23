@@ -311,7 +311,16 @@ class EventBus:
                             # claimed events this process sent, so reading its
                             # own entry back from the stream must not redeliver
                             # it. Peers' events are new to us and pass through.
-                            if self.mark_seen(event.event_id):
+                            #
+                            # The in-memory _seen dict only survives for the
+                            # life of this process. After a restart it is empty,
+                            # so a Redis redelivery would pass it and fire
+                            # handlers twice. The durable ledger (when installed
+                            # by this service) is the authoritative gate; we
+                            # consult it first, and also record in _seen so the
+                            # fast in-process path still dedupes.
+                            is_new = await self._durable_seen(event.event_id, event.type)
+                            if is_new and self.mark_seen(event.event_id):
                                 await self._dispatch_local(event)
                         with contextlib.suppress(Exception):
                             await self._redis.xack(STREAM_KEY, self._group, msg_id)
@@ -348,7 +357,12 @@ class EventBus:
         }
 
     def mark_seen(self, event_id: str) -> bool:
-        """Idempotency guard for at-least-once delivery. Returns True if new."""
+        """Idempotency guard for at-least-once delivery. Returns True if new.
+
+        In-memory only: this dict dies with the process, so it is a fast
+        first-layer gate, not the authoritative one. The durable ledger
+        (see ``_durable_seen``) is what makes dedupe survive a restart.
+        """
         now = time.time()
         for eid in [k for k, ts in self._seen.items() if now - ts > 3600]:
             del self._seen[eid]
@@ -356,6 +370,18 @@ class EventBus:
             return False
         self._seen[event_id] = now
         return True
+
+    async def _durable_seen(self, event_id: str, event_type: str) -> bool:
+        """Consult the service's durable ledger, if one is installed.
+
+        Falls back to True (treat as new) when no ledger is installed or the
+        ledger call fails, so a service that has not opted in — or a transient
+        DB error — never blocks delivery. When installed, this is what makes
+        dedupe survive a process restart: a redelivered event whose event_id
+        is already in ``consumed_events`` returns False and is skipped.
+        """
+        from src.services.event_bus.dedupe import durable_seen
+        return await durable_seen(event_id, event_type)
 
 
 bus = EventBus()

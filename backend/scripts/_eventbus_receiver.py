@@ -29,7 +29,7 @@ async def run(topic: str, marker: str, timeout: float) -> int:
     # Its own group, not the publisher's: a shared group would let Redis hand
     # the event to whichever consumer polled first instead of delivering it
     # here.
-    await bus.configure("redis://localhost:6379/0", "eventbus-receiver")
+    import os; bus.configure(os.environ.get("REDIS_URL", "redis://localhost:6380/0"), "eventbus-receiver")
     await bus.start()
 
     print(f"  receiver on '{topic}' — redis={'up' if bus.redis_available else 'DOWN'}")

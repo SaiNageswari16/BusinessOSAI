@@ -77,6 +77,25 @@ def _ev(topic, tenant_id=None, outlet_id=None, data=None):
                  data=data or {}, source_service="kitchen")
 
 
+def _outbox(db: AsyncSession, event: Event) -> None:
+    """Persist the event to the outbox table in the current transaction.
+
+    The outbox row commits atomically with the domain change, so a committed
+    KOT state change is never lost even if the bus publish subsequently fails
+    or the process crashes. The relay drains pending rows on its next poll.
+    """
+    from src.services.kitchen.models import OutboxMessage
+    db.add(OutboxMessage(
+        event_id=event.event_id,
+        type=event.type,
+        tenant_id=event.tenant_id,
+        outlet_id=event.outlet_id,
+        data=event.data,
+        source_service="kitchen",
+        status="pending",
+    ))
+
+
 def _coerce_uuid(value) -> uuid.UUID | None:
     """Parse a UUID from event data without raising on bad input.
 
@@ -167,10 +186,14 @@ async def _on_order_placed(event: Event) -> None:
             covers=int(data.get("covers") or 1),
             lines=data.get("lines") or [],
         )
-        await db.commit()
-        # Fire one event per ticket so a station's display updates precisely.
+        # Write all kot.fired events to the outbox in the same transaction as
+        # the KOT creation, then commit. The relay delivers them to the bus;
+        # a crash between the KOT commit and the bus publish is no longer
+        # silent. Build each event once so the outbox row and the bus publish
+        # carry the identical payload.
+        fire_events = []
         for kot in kots:
-            await bus.publish(_ev(
+            fire_events.append(_ev(
                 "kot.fired", event.tenant_id, outlet_id=kot.outlet_id,
                 data={
                     "kot_id": str(kot.id),
@@ -183,6 +206,10 @@ async def _on_order_placed(event: Event) -> None:
                     "fired_at": _stamp().isoformat(),
                 },
             ))
+            _outbox(db, fire_events[-1])
+        await db.commit()
+        for fire_event in fire_events:
+            await bus.publish(fire_event, local=True)
     except Exception:
         await db.rollback()
         raise
@@ -351,9 +378,9 @@ async def list_devices(identity: CurrentIdentity, db: DbDep,
 # ─── KOT tickets ─────────────────────────────────────────────────────────────
 
 @router.get("/kots", response_model=KOTListResponseModel, tags=["kds"],
-            summary="Board view: open tickets for kitchen")
+            summary="Board view: open tickets for one station")
 async def list_kots(identity: CurrentIdentity, db: DbDep,
-                    station_id: uuid.UUID | None = None,
+                    station_id: uuid.UUID,
                     outlet_id: uuid.UUID | None = None,
                     include_closed: bool = False,
                     limit: int = Query(default=100, le=500)):
@@ -366,11 +393,8 @@ async def list_kots(identity: CurrentIdentity, db: DbDep,
 
     stmt = select(KOT).where(
         KOT.tenant_id == identity.tenant_id,
+        KOT.station_id == station_id,
     )
-    if station_id is not None:
-        stmt = stmt.where(KOT.station_id == station_id)
-    if outlet_id is not None:
-        stmt = stmt.where(KOT.outlet_id == outlet_id)
     if not include_closed:
         stmt = stmt.where(KOT.status.not_in([KOTStatus.SERVED, KOTStatus.CANCELLED]))
     stmt = stmt.order_by(KOT.priority, KOT.fired_at).limit(limit)
@@ -385,7 +409,7 @@ async def create_kot(payload: KOTCreate, identity: CurrentIdentity, db: DbDep):
     station = await svc.load_station(db, identity.tenant_id, payload.station_id)
     if station is None:
         raise HTTPException(status_code=404, detail="Station not found")
-    kot_num = await svc.allocate_kot_number(db, identity.tenant_id, station)
+    kot_num = await svc.allocate_kot_number(db, identity.tenant_id, station.id)
     order_id = payload.order_id or uuid.uuid4()
     kot = KOT(
         tenant_id=identity.tenant_id,
@@ -423,7 +447,7 @@ async def create_kot(payload: KOTCreate, identity: CurrentIdentity, db: DbDep):
         db.add(k_item)
     await db.flush()
     reloaded = await svc.load_kot(db, identity.tenant_id, kot.id)
-    await _emit_kot_event(reloaded, KOTStatus.PENDING)
+    await _emit_kot_event(reloaded, KOTStatus.PENDING, db=db)
     return reloaded
 
 
@@ -470,7 +494,7 @@ async def update_kot_status(kot_id: uuid.UUID, payload: KOTStatusUpdate,
         )
     except svc.KitchenError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
-    await _emit_kot_event(kot, payload.to_status)
+    await _emit_kot_event(kot, payload.to_status, db=db)
     return kot
 
 
@@ -493,7 +517,7 @@ async def cancel_kot(kot_id: uuid.UUID, body: KOTCancelRequest,
     # One publish, not two: _emit_kot_event covers the "cancelled" state, so
     # publishing here as well would deliver kot.cancelled twice. Consumers are
     # supposed to be idempotent, but that is insurance, not something to test.
-    await _emit_kot_event(kot, KOTStatus.CANCELLED)
+    await _emit_kot_event(kot, KOTStatus.CANCELLED, db=db)
     return kot
 
 
@@ -512,21 +536,27 @@ async def update_kot_item(kot_id: uuid.UUID, item_id: uuid.UUID,
         await svc.update_kot_item_status(db, identity.tenant_id, kot, item_id, payload.to_status)
     except svc.KitchenError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    await bus.publish(_ev(
+    event = _ev(
         "kot.item.status.changed", identity.tenant_id, outlet_id=kot.outlet_id,
         data={"kot_id": str(kot.id), "item_id": str(item_id),
               "order_id": str(kot.order_id),
               "to_status": status_value(payload.to_status)},
-    ))
+    )
+    _outbox(db, event)
+    await bus.publish(event, local=True)
     return kot
 
 
-async def _emit_kot_event(kot: KOT, to: KOTStatus, *, from_status: str | None = None) -> None:
+async def _emit_kot_event(kot: KOT, to: KOTStatus, *, from_status: str | None = None,
+                          db: AsyncSession | None = None) -> None:
     """Publish the topic matching the new state, if any.
 
     Acknowledged and preparing are internal to the pass; the rest are what
     other services need. Publishing acknowledged too would spam billing, which
     has no interest in it.
+
+    When ``db`` is supplied the event is also written to the outbox in the
+    same transaction as the state change, making the delivery durable.
     """
     topic = {
         KOTStatus.ACKNOWLEDGED: "kot.acknowledged",
@@ -536,12 +566,15 @@ async def _emit_kot_event(kot: KOT, to: KOTStatus, *, from_status: str | None = 
     }.get(to)
     if not topic:
         return
-    await bus.publish(_ev(
+    event = _ev(
         topic, kot.tenant_id, outlet_id=kot.outlet_id,
         data={"kot_id": str(kot.id), "kot_number": kot.kot_number,
               "order_id": str(kot.order_id), "station_id": str(kot.station_id),
               "status": status_value(to), "from_status": from_status},
-    ))
+    )
+    if db is not None:
+        _outbox(db, event)
+    await bus.publish(event, local=True)
 
 
 async def _resolve_outlet(identity: CurrentIdentity, outlet_id: uuid.UUID) -> None:

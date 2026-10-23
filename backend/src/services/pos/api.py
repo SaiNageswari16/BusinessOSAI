@@ -154,6 +154,25 @@ def _ev(topic, tenant_id=None, outlet_id=None, data=None):
                  data=data or {}, source_service="pos")
 
 
+def _outbox(db: AsyncSession, event: Event) -> None:
+    """Persist the event to the outbox table in the current transaction.
+
+    The outbox row commits atomically with the domain change, so a committed
+    order is never lost even if the bus publish subsequently fails or the
+    process crashes. The relay drains pending rows on its next poll.
+    """
+    from src.services.pos.models import OutboxMessage
+    db.add(OutboxMessage(
+        event_id=event.event_id,
+        type=event.type,
+        tenant_id=event.tenant_id,
+        outlet_id=event.outlet_id,
+        data=event.data,
+        source_service="pos",
+        status="pending",
+    ))
+
+
 def _stamp() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -295,7 +314,7 @@ async def create_order(payload: OrderCreate, identity: CurrentIdentity, db: DbDe
         reloaded = await svc.reload_order(db, order)
         await svc.place_order(db, identity.tenant_id, reloaded)
         order = reloaded
-        await bus.publish(_ev(
+        event = _ev(
             "order.placed",
             identity.tenant_id,
             outlet_id=payload.outlet_id,
@@ -312,7 +331,9 @@ async def create_order(payload: OrderCreate, identity: CurrentIdentity, db: DbDe
                 "grand_total": float(order.grand_total),
                 "lines": svc.order_lines_payload(order),
             },
-        ))
+        )
+        _outbox(db, event)
+        await bus.publish(event, local=True)
     else:
         order = await svc.reload_order(db, order)
 
@@ -368,11 +389,13 @@ async def _open_table_session_if_any(db: AsyncSession, tenant_id: uuid.UUID, ord
     )
     db.add(session)
     await db.flush()
-    await bus.publish(_ev(
+    event = _ev(
         "table_session.opened", tenant_id, outlet_id=order.outlet_id,
         data={"session_id": str(session.id), "table_id": str(order.table_id),
               "order_id": str(order.id), "covers": order.covers},
-    ))
+    )
+    _outbox(db, event)
+    await bus.publish(event, local=True)
 
 
 @router.get("/orders/{order_id}", response_model=OrderDetailResponse, tags=["orders"])
@@ -490,11 +513,13 @@ async def cancel_order(order_id: uuid.UUID, identity: CurrentIdentity, db: DbDep
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
 
-    await bus.publish(_ev(
+    event = _ev(
         "order.cancelled", identity.tenant_id, outlet_id=order.outlet_id,
         data={"order_id": str(order.id), "reason": reason,
               "grand_total": float(order.grand_total)},
-    ))
+    )
+    _outbox(db, event)
+    await bus.publish(event, local=True)
     return order
 
 
@@ -508,13 +533,15 @@ async def _emit_status_change(db: AsyncSession, tenant_id: uuid.UUID,
         await svc.update_order_status(db, tenant_id, order, to)
     except svc.PosError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
-    await bus.publish(_ev(
+    event = _ev(
         "order.status.changed", tenant_id, outlet_id=order.outlet_id,
         data={"order_id": str(order.id),
               "order_number": order.order_number,
               "from": before,
               "to": status_value(order.status)},
-    ))
+    )
+    _outbox(db, event)
+    await bus.publish(event, local=True)
 
 
 # ─── Table sessions ──────────────────────────────────────────────────────────
@@ -536,11 +563,13 @@ async def create_table_session(payload: TableSessionCreate, identity: CurrentIde
     )
     db.add(session)
     await db.flush()
-    await bus.publish(_ev(
+    event = _ev(
         "table_session.opened", identity.tenant_id, outlet_id=payload.outlet_id,
         data={"session_id": str(session.id), "table_id": str(payload.table_id),
               "order_id": str(payload.order_id), "covers": payload.covers},
-    ))
+    )
+    _outbox(db, event)
+    await bus.publish(event, local=True)
     return session
 
 
@@ -574,11 +603,13 @@ async def close_table_session(session_id: uuid.UUID, identity: CurrentIdentity, 
     session.status = TableSessionStatus.CLOSED
     session.ended_at = _stamp()
     await db.flush()
-    await bus.publish(_ev(
+    event = _ev(
         "table_session.closed", identity.tenant_id, outlet_id=session.outlet_id,
         data={"session_id": str(session.id), "table_id": str(session.table_id),
               "order_id": str(session.order_id) if session.order_id else None},
-    ))
+    )
+    _outbox(db, event)
+    await bus.publish(event, local=True)
     return session
 
 

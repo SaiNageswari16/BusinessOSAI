@@ -29,6 +29,12 @@ from src.services.menu.schemas import (
     AddonGroupCreate,
     AddonGroupResponse,
     AddonResponse,
+    AiReconcileRequest,
+    AiReconcileResponse,
+    AiRecipeSearchRequest,
+    AiRecipeSearchResponse,
+    AiReorderRequest,
+    AiReorderResponse,
     CategoryCreate,
     CategoryResponse,
     CategoryUpdate,
@@ -46,9 +52,12 @@ from src.services.menu.schemas import (
     PricingRuleCreate,
     PricingRuleResponse,
     RecipeCreate,
+    RecipeBreakdownLine,
+    RecipeBreakdownResponse,
     RecipeLineCreate,
     RecipeLineResponse,
     RecipeResponse,
+    RecipeSearchResponse,
     VariantCreate,
     VariantResponse,
 )
@@ -178,6 +187,169 @@ async def list_items(
     return list((await db.execute(stmt)).scalars().all())
 
 
+# ─── Recipe catalog: search (RAG retrieval) + scaled breakdown ──────────────
+#
+# The catalog is the library of predefined recipes a chef picks from before a
+# dish exists on the menu. Catalog items are ordinary menu items whose code
+# starts with "CAT-" — the seed in ``catalog.py`` creates them on startup.
+# Keeping them as regular menu items (rather than a parallel table) means the
+# existing recipe endpoints, costing and stock-deduction paths all work on a
+# catalog recipe with no special-casing.
+
+
+def _ingredient_names_for_spec(spec) -> dict[str, str]:
+    """Build an ``inventory_code -> name`` map for one catalog recipe spec.
+
+    Names come straight from the static catalog data in ``catalog.py`` —
+    each ``CatalogLine`` carries a human-readable ``name`` field that is the
+    source of truth for what that ingredient is called. No database or HTTP
+    lookup is required, so search works even if the inventory service is
+    offline. Returns an empty dict if ``spec`` is None.
+    """
+    if spec is None:
+        return {}
+    return {ln.inventory_code: (ln.name or ln.inventory_code).lower()
+            for ln in spec.lines}
+
+
+# The search route must be registered before /items/{item_id} so FastAPI
+# matches "search" literally instead of trying to parse it as a UUID.
+
+@router.get("/items/search", response_model=list[RecipeSearchResponse],
+            tags=["recipes"])
+async def search_recipes(
+    identity: CurrentIdentity,
+    db: DbDep,
+    q: str = Query(default="", description="Free-text query: dish, ingredient, or tag."),
+    limit: int = Query(default=20, ge=1, le=100),
+    category: str | None = Query(default=None, description="Filter by item type."),
+):
+    """Search the predefined recipe catalog — the retrieval step.
+
+    RAG's retrieval half: given a chef's words ("something with chicken and
+    rice", "quick veg starter"), return the catalog recipes that best match,
+    ranked. Scoring is deliberately lexical and transparent:
+
+    * name match — 4 points per matched term
+    * description / tag / instruction match — 2 points per matched term
+    * shared ingredient — 1 point per ingredient the query names
+
+    This runs with no LLM and no API key, so the page works on a fresh
+    checkout. The scoring lives in one function (``_score_recipe``) behind one
+    endpoint precisely so it can later be swapped for an embedding-based
+    ranker without the frontend changing at all.
+
+    With an empty query every catalog recipe is returned, ranked by name, so
+    the page opens as a browsable library rather than an empty box.
+    """
+    stmt = (
+        select(MenuItem)
+        .where(
+            MenuItem.tenant_id == identity.tenant_id,
+            MenuItem.code.like("CAT-%"),
+            MenuItem.is_active.is_(True),
+        )
+        .options(selectinload(MenuItem.recipes).selectinload(Recipe.lines))
+    )
+    if category:
+        stmt = stmt.where(MenuItem.item_type == category)
+
+    items = (await db.execute(stmt)).scalars().all()
+
+    from src.services.menu.catalog import catalog_by_code
+    catalog_by_code_map = catalog_by_code()
+
+    terms = [t for t in q.lower().replace(",", " ").split() if t]
+    results: list[RecipeSearchResponse] = []
+    for it in items:
+        active = next((r for r in it.recipes if r.is_active), None)
+        if active is None:
+            continue
+        spec = catalog_by_code_map.get(it.code)
+        inv = _ingredient_names_for_spec(spec)
+        score, reasons = _score_recipe(it, active, terms, inv, spec)
+        if terms and score <= 0:
+            continue
+        results.append(
+            RecipeSearchResponse(
+                item_id=it.id,
+                code=it.code,
+                name=it.name,
+                description=it.description,
+                item_type=str(it.item_type),
+                base_price=float(it.base_price or 0),
+                yield_qty=float(active.yield_qty or 1),
+                instructions=active.instructions,
+                ingredient_count=len(spec.lines) if spec else len(active.lines),
+                score=round(score, 2),
+                match_reasons=reasons,
+            )
+        )
+
+    results.sort(key=lambda r: (-r.score, r.name.lower()))
+    return results[:limit]
+
+
+def _score_recipe(
+    item: MenuItem,
+    recipe: Recipe,
+    terms: list[str],
+    inv: dict[str, str],
+    spec=None,
+) -> tuple[float, list[str]]:
+    """Lexical relevance score for one catalog recipe against the query terms.
+
+    Returns ``(score, reasons)``. ``reasons`` names the actual things that
+    matched so the UI can explain *why* a recipe was returned rather than
+    presenting an opaque rank.
+
+    ``inv`` is an ``inventory_code -> lowercased name`` map built from the
+    catalog spec, so a term like "chicken" matches a recipe that uses
+    chicken even when the dish is called "Dum Biryani". No cross-service
+    lookup is required.
+    """
+    if not terms:
+        return 1.0, ["Full catalog"]
+
+    score = 0.0
+    reasons: list[str] = []
+
+    name = item.name.lower()
+    desc = (item.description or "").lower()
+    instr = (recipe.instructions or "").lower()
+
+    # Build the ingredient-name list from the static catalog spec.
+    ingredient_names: list[str] = []
+    if spec:
+        for ln_spec in spec.lines:
+            ingredient_names.append(inv.get(ln_spec.inventory_code, ""))
+
+    for term in terms:
+        hit = False
+        if term in name:
+            score += 4
+            hit = True
+            reasons.append(f"matched dish name '{term}'")
+        if term in desc or term in instr:
+            score += 2
+            hit = True
+            reasons.append(f"matched description '{term}'")
+        for iname in ingredient_names:
+            if iname and term in iname:
+                score += 1
+                hit = True
+                reasons.append(f"uses {iname}")
+                break
+        if not hit:
+            # A partial token match is worth a little — "chicken" should still
+            # surface "Chicken Tikka Kebab" even if the term is a substring.
+            if any(term in n for n in [name, desc, instr, *ingredient_names] if n):
+                score += 0.5
+                reasons.append(f"partial match on '{term}'")
+
+    return score, reasons
+
+
 @router.post("/items", response_model=ItemResponse, status_code=status.HTTP_201_CREATED,
              tags=["items"])
 async def create_item(payload: ItemCreate, identity: CurrentIdentity, db: DbDep):
@@ -300,6 +472,300 @@ async def compute_price(
                            "price": float(addon.price)})
 
     return {"item_id": str(item.id), "unit_price": round(price, 2), "addons": chosen}
+
+
+@router.get("/items/{item_id}/recipe-lines", tags=["recipes"])
+async def item_recipe_lines(
+    item_id: uuid.UUID,
+    identity: CurrentIdentity,
+    db: DbDep,
+    outlet_id: uuid.UUID | None = None,
+):
+    """The item's active bill of materials, as the inventory service consumes it.
+
+    The inventory ``bill.paid`` handler and the manual ``deduct-recipe`` flow
+    fetch lines from this route over HTTP — recipes live in the menu database
+    and must not be foreign-keyed into inventory. Without this route,
+    recipe-driven stock deduction silently returns nothing and sold dishes
+    never shrink stock.
+
+    The active recipe is the item's active recipe (``is_active=True``); if an
+    item has several, the one whose ``variant_id`` matches the requested
+    variant wins, else the most recently updated active recipe is returned.
+    ``outlet_id`` is accepted for forward-compatibility with per-outlet BOM
+    overrides and is currently ignored (recipes are org-wide).
+    """
+    item = await db.scalar(
+        select(MenuItem).where(MenuItem.id == item_id, MenuItem.tenant_id == identity.tenant_id)
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Menu item not found")
+
+    recipes = (await db.execute(
+        select(Recipe)
+        .where(Recipe.menu_item_id == item_id, Recipe.tenant_id == identity.tenant_id,
+               Recipe.is_active.is_(True))
+        .options(selectinload(Recipe.lines))
+        .order_by(Recipe.updated_at.desc())
+    )).scalars().all()
+
+    if not recipes:
+        # No recipe yet: nothing to deduct. This is a valid state (item not
+        # tracked), not an error — inventory treats an empty list as "skip".
+        return {"menu_item_id": str(item_id), "lines": []}
+
+    recipe = recipes[0]
+    lines = [
+        {
+            "inventory_item_id": str(line.inventory_item_id),
+            "qty_per_portion": float(line.qty),
+            "wastage_pct": float(line.wastage_pct or 0),
+            "is_optional": bool(line.is_optional),
+        }
+        for line in recipe.lines
+    ]
+    return {
+        "menu_item_id": str(item_id),
+        "recipe_id": str(recipe.id),
+        "yield_qty": float(recipe.yield_qty or 1),
+        "lines": lines,
+    }
+
+
+# ─── Recipe catalog: search (RAG retrieval) + scaled breakdown ──────────────
+#
+# The catalog is the library of predefined recipes a chef picks from before a
+# dish exists on the menu. Catalog items are ordinary menu items whose code
+# starts with "CAT-" — the seed in ``catalog.py`` creates them on startup.
+# Keeping them as regular menu items (rather than a parallel table) means the
+# existing recipe endpoints, costing and stock-deduction paths all work on a
+# catalog recipe with no special-casing.
+
+
+@router.get("/items/{item_id}/recipe-breakdown",
+            response_model=RecipeBreakdownResponse, tags=["recipes"])
+async def recipe_breakdown(
+    item_id: uuid.UUID,
+    identity: CurrentIdentity,
+    db: DbDep,
+    portions: int = Query(default=1, ge=1, le=1000,
+                          description="How many servings to scale the recipe to."),
+):
+    """The recipe's ingredient breakdown, scaled to N portions.
+
+    This is the page's core read: every ingredient of the dish with the
+    quantity the kitchen must actually pull — the per-portion qty scaled by
+    ``portions``, inflated by that ingredient's wastage allowance.
+
+    **This endpoint does not read inventory.** It returns the bill of
+    materials — ingredient ids, quantities, wastage — and stops there. Live
+    stock and cost live in the inventory service, and the menu service does
+    not read another service's data; that would break the microservice split
+    and would need a cross-service trust path the architecture deliberately
+    does not have.
+
+    The caller (the frontend) joins this against the inventory service's
+    item list, which it already loads for the stockroom, and computes
+    sufficiency and cost. The join key is ``inventory_item_id``, which is
+    present on every line.
+    """
+    item = await db.scalar(
+        select(MenuItem).where(MenuItem.id == item_id,
+                               MenuItem.tenant_id == identity.tenant_id)
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Menu item not found")
+
+    recipe = await db.scalar(
+        select(Recipe)
+        .where(Recipe.menu_item_id == item_id,
+               Recipe.tenant_id == identity.tenant_id,
+               Recipe.is_active.is_(True))
+        .options(selectinload(Recipe.lines))
+        .order_by(Recipe.updated_at.desc())
+    )
+    if recipe is None:
+        raise HTTPException(status_code=404, detail="Item has no active recipe")
+
+    yield_qty = float(recipe.yield_qty or 1) or 1.0
+
+    lines: list[RecipeBreakdownLine] = []
+    for ln in recipe.lines:
+        per_portion = float(ln.qty or 0)
+        wastage = float(ln.wastage_pct or 0)
+        # Required pull for N portions: the recipe's qty is stated for one
+        # yield batch, so divide by the yield to get a per-portion figure,
+        # scale by N, then add the wastage allowance on top.
+        required = per_portion / yield_qty * portions * (1 + wastage / 100.0)
+        lines.append(
+            RecipeBreakdownLine(
+                inventory_item_id=ln.inventory_item_id,
+                name="",
+                code="",
+                unit="",
+                qty_per_portion=round(per_portion / yield_qty, 4),
+                wastage_pct=wastage,
+                required_for_n=round(required, 4),
+                available_stock=0.0,
+                is_sufficient=False,
+                shortfall=0.0,
+                standard_cost=None,
+                line_cost=None,
+            )
+        )
+
+    return RecipeBreakdownResponse(
+        item_id=item.id,
+        name=item.name,
+        yield_qty=yield_qty,
+        portions=portions,
+        total_cost=None,
+        cost_known=False,
+        lines=lines,
+        shortage_lines=[],
+    )
+
+
+# ─── AI recipe search (global + LLM + inventory reconcile + auto-PO) ──────
+#
+# Three endpoints, tag "ai", backed by src/services/menu/recipe_ai.py:
+#   POST /ai-recipe-search    — global realtime recipe search: LLM
+#                               (Gemini -> Claude failover, multimodal) +
+#                               Zomato/Swiggy when enabled + always-available
+#                               catalog, with per-tenant rate limit, in-memory
+#                               cache, and graceful no-key degradation
+#   POST /ai-recipe-reconcile — match a recipe's ingredients against live stock
+#   POST /ai-recipe-reorder   — draft POs for missing lines, purchase
+#                               requests for low lines, idempotent against
+#                               open POs/PRs
+#
+# Reconcile/reorder cross service boundaries over HTTP (inventory cost-lookup
+# and items; purchase vendor-items, vendors, open PO/PR, create PO/PR) using
+# the trusted-identity-header pattern in shared/identity.py.
+
+
+from src.services.menu.recipe_ai import (  # noqa: E402
+    ai_recipe_reconcile_endpoint,
+    ai_recipe_reorder_endpoint,
+    ai_recipe_search_endpoint,
+)
+
+# The menu service owns the recipe BOMs; these three endpoints sit on the
+# menu router so a single "recipe" page doesn't have to hop services for the
+# LLM/catalog search, the live-inventory reconcile, and the auto-PO step.
+
+
+@router.post("/ai-recipe-search", response_model=AiRecipeSearchResponse,
+             tags=["ai"], status_code=status.HTTP_200_OK)
+async def ai_recipe_search(
+    payload: AiRecipeSearchRequest, identity: CurrentIdentity, db: DbDep
+) -> AiRecipeSearchResponse:
+    """Global realtime AI recipe search — see recipe_ai.ai_recipe_search_endpoint."""
+    return await ai_recipe_search_endpoint(payload, identity, db)
+
+
+@router.post("/ai-recipe-reconcile", response_model=AiReconcileResponse,
+             tags=["ai"], status_code=status.HTTP_200_OK)
+async def ai_recipe_reconcile(
+    payload: AiReconcileRequest, identity: CurrentIdentity, db: DbDep
+) -> AiReconcileResponse:
+    """Reconcile a recipe against live inventory — see recipe_ai."""
+    return await ai_recipe_reconcile_endpoint(payload, identity, db)
+
+
+@router.post("/ai-recipe-reorder", response_model=AiReorderResponse,
+             tags=["ai"], status_code=status.HTTP_200_OK)
+async def ai_recipe_reorder(
+    payload: AiReorderRequest, identity: CurrentIdentity, db: DbDep
+) -> AiReorderResponse:
+    """Auto-create draft POs for missing/low lines — see recipe_ai."""
+    return await ai_recipe_reorder_endpoint(payload, identity, db)
+
+
+@router.get("/items/{item_id}/cost", tags=["recipes"])
+async def item_food_cost(
+    item_id: uuid.UUID,
+    identity: CurrentIdentity,
+    db: DbDep,
+):
+    """Computed food cost for the item from its recipe, plus margin.
+
+    This is the number a chef or F&B director actually wants to see: what each
+    dish costs to make (recipe lines x inventory standard cost, scaled to the
+    recipe yield) and what margin that leaves against the selling price. Cost
+    is fetched from the inventory service over HTTP — inventory owns
+    ``standard_cost``; the menu service must not read that column directly.
+
+    If the inventory service is unavailable the cost lines come back with
+    ``standard_cost=null`` and the totals are null rather than zero — a silent
+    zero would read as "this dish is free to make", which is the wrong signal.
+    """
+    item = await db.scalar(
+        select(MenuItem).where(MenuItem.id == item_id, MenuItem.tenant_id == identity.tenant_id)
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Menu item not found")
+
+    body = await item_recipe_lines(item_id, identity, db)
+    lines = body["lines"]
+    yield_qty = float(body.get("yield_qty") or 1) or 1.0
+
+    # Cost per ingredient, by unit. Inventory owns standard_cost; fetch it.
+    import httpx
+    from src.services.shared.registry import base_url, get_descriptor
+
+    inv_descriptor = get_descriptor("inventory")
+    costs: dict[str, float | None] = {}
+    if inv_descriptor is not None and lines:
+        ids = [l["inventory_item_id"] for l in lines]
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    f"{base_url(inv_descriptor)}/items/cost-lookup",
+                    params={"ids": ids},
+                    headers={"X-Identity-Tenant-Id": str(identity.tenant_id)},
+                )
+                if resp.status_code == 200:
+                    for it in resp.json().get("items", []):
+                        if it.get("found"):
+                            costs[it["id"]] = it.get("standard_cost")
+        except Exception:
+            costs = {}
+
+    total_cost = 0.0
+    cost_known = bool(costs)
+    per_line = []
+    for line in lines:
+        iid = line["inventory_item_id"]
+        unit_cost = costs.get(iid)
+        # Qty in the recipe is per the recipe yield; scale to a single unit
+        # of the sold item by dividing by yield_qty (yield_qty is "how many
+        # of this item this recipe makes").
+        portion_cost = (float(line["qty_per_portion"]) / yield_qty * unit_cost) if unit_cost is not None else None
+        per_line.append({
+            "inventory_item_id": iid,
+            "qty_per_portion": line["qty_per_portion"],
+            "standard_cost": unit_cost,
+            "line_cost": round(portion_cost, 4) if portion_cost is not None else None,
+        })
+        if portion_cost is not None:
+            total_cost += portion_cost
+
+    selling_price = float(item.base_price)
+    cost = round(total_cost, 2) if cost_known and lines else None
+    margin = round(selling_price - cost, 2) if cost is not None else None
+    food_cost_pct = round((cost / selling_price * 100), 1) if (cost is not None and selling_price) else None
+
+    return {
+        "menu_item_id": str(item_id),
+        "name": item.name,
+        "selling_price": selling_price,
+        "food_cost": cost,
+        "margin": margin,
+        "food_cost_pct": food_cost_pct,
+        "cost_known": cost_known,
+        "lines": per_line,
+    }
 
 
 # ─── Variants ────────────────────────────────────────────────────────────────
@@ -494,24 +960,105 @@ async def list_recipes(
 async def create_recipe(
     item_id: uuid.UUID, payload: RecipeCreate, identity: CurrentIdentity, db: DbDep
 ):
+    """Create (or replace, if the same recipe name exists) an item's BOM.
+
+    Up-sert on ``(item, name, variant)`` so a chef re-entering the same
+    recipe updates it instead of stacking a duplicate active BOM — which
+    would make the next deduction ambiguous. On create-or-update the new
+    recipe becomes the item's active one (other active recipes for the same
+    variant are deactivated), so there is always exactly one live BOM to
+    deduct stock against.
+    """
     identity.require("manage:menu")
     item = await _require_item(db, identity, item_id)
-    recipe = Recipe(
-        tenant_id=identity.tenant_id,
-        menu_item_id=item.id,
-        name=payload.name,
-        variant_id=payload.variant_id,
-        yield_qty=payload.yield_qty,
-        yield_uom_id=payload.yield_uom_id,
-        instructions=payload.instructions,
-    )
+
+    existing = (await db.execute(
+        select(Recipe).where(
+            Recipe.menu_item_id == item.id,
+            Recipe.tenant_id == identity.tenant_id,
+            Recipe.name == payload.name,
+            Recipe.variant_id == payload.variant_id,
+        ).options(selectinload(Recipe.lines))
+    )).scalars().first()
+
+    if existing is not None:
+        recipe = existing
+        recipe.yield_qty = payload.yield_qty
+        recipe.yield_uom_id = payload.yield_uom_id
+        recipe.instructions = payload.instructions
+        recipe.is_active = True
+        # Full replace of the line set, not an append.
+        recipe.lines = []
+    else:
+        recipe = Recipe(
+            tenant_id=identity.tenant_id,
+            menu_item_id=item.id,
+            name=payload.name,
+            variant_id=payload.variant_id,
+            yield_qty=payload.yield_qty,
+            yield_uom_id=payload.yield_uom_id,
+            instructions=payload.instructions,
+            is_active=True,
+        )
+        db.add(recipe)
+
     for line in payload.lines:
         recipe.lines.append(RecipeLine(tenant_id=identity.tenant_id,
                                        **line.model_dump()))
-    db.add(recipe)
+
+    # Exactly one active recipe per (item, variant): deactivate siblings.
+    siblings = (await db.execute(
+        select(Recipe).where(
+            Recipe.menu_item_id == item.id,
+            Recipe.tenant_id == identity.tenant_id,
+            Recipe.variant_id == payload.variant_id,
+            Recipe.id != recipe.id,
+            Recipe.is_active.is_(True),
+        )
+    )).scalars().all()
+    for s in siblings:
+        s.is_active = False
+
     item.track_inventory = True
     await db.flush()
+    await bus.publish(_ev("menu.item.updated", identity.tenant_id, outlet_id=item.outlet_id,
+                          data={"item_id": str(item.id), "code": item.code}))
     return recipe
+
+
+@router.get("/items/{item_id}/recipe", response_model=RecipeResponse, tags=["recipes"])
+async def active_recipe(
+    item_id: uuid.UUID,
+    identity: CurrentIdentity,
+    db: DbDep,
+    variant_id: uuid.UUID | None = Query(default=None),
+):
+    """The item's single active BOM.
+
+    ``list_recipes`` returns every recipe on the item (history); this returns
+    the one that inventory actually deducts from — the active recipe for the
+    item (and requested variant). This is what a POS screen and the KDS
+    should surface: "this dish costs these ingredients, right now."
+    """
+    recipes = (await db.execute(
+        select(Recipe)
+        .where(
+            Recipe.menu_item_id == item_id,
+            Recipe.tenant_id == identity.tenant_id,
+            Recipe.is_active.is_(True),
+        )
+        .options(selectinload(Recipe.lines))
+        .order_by(Recipe.updated_at.desc())
+    )).scalars().all()
+
+    if not recipes:
+        raise HTTPException(status_code=404, detail="No active recipe for this item")
+    if variant_id is not None:
+        match = next((r for r in recipes if r.variant_id is not None
+                      and str(r.variant_id) == str(variant_id)), None)
+        if match is not None:
+            return match
+    return recipes[0]
 
 
 @router.put("/recipes/{recipe_id}/lines", response_model=RecipeResponse,

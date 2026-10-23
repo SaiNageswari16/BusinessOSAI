@@ -71,6 +71,7 @@ class TenantSummaryResponse(BaseModel):
     plan: str
     contact_email: str | None = None
     active_modules: list[str]
+    module_versions: dict[str, str] = Field(default_factory=dict)
     created_at: datetime
 
 

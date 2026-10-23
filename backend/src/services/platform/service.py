@@ -313,7 +313,13 @@ class PlatformService:
             "role": admin.role,
             "auth_realm": "platform",
             "is_superadmin": True,
-            "permissions": ["platform:*", "*"],
+            # No "*" in this claim. The "*" passes every tenant-side
+            # require() — pos, billing, accounting — because has() checks
+            # membership in the wildcard first. Platform power is scoped to
+            # the platform:* namespace only; tenant-side endpoints must
+            # reject platform-realm tokens, and the gateway enforces that
+            # before proxying.
+            "permissions": ["platform:*"],
         }
         return create_access_token(
             user_id=admin.id,
@@ -365,28 +371,44 @@ class PlatformService:
         admin_email: str,
         config: dict | None = None,
     ) -> TenantModuleState:
+        # ── Alias resolution: plugin ids that name an internal core service
+        #    (e.g. "pos", "kitchen") resolve to the "restaurant" vertical,
+        #    since that is the only plugin that owns those services today.
+        #    This is a compatibility shim, not a general mechanism — the
+        #    alias table grows only when a new vertical genuinely adds a
+        #    service that should be toggleable under that name.
+        _SERVICE_ALIASES: dict[str, str] = {
+            "pos": "restaurant",
+            "kitchen": "restaurant",
+            "menu": "restaurant",
+            "billing": "restaurant",
+            "crm": "customers",
+        }
+        resolved_plugin_id = _SERVICE_ALIASES.get(plugin_id, plugin_id)
+
         # Check manifest
-        p_res = await session.execute(select(PluginManifest).where(PluginManifest.id == plugin_id))
+        p_res = await session.execute(select(PluginManifest).where(PluginManifest.id == resolved_plugin_id))
         manifest = p_res.scalar_one_or_none()
-        if not manifest:
+        if manifest is None:
+            # Fall back to a registry-based synthetic manifest only for real
+            # core service names, so a typo or a made-up plugin id still
+            # fails loudly instead of silently creating a row.
             from src.services.shared.registry import get_descriptor
-            alias = "customers" if plugin_id == "crm" else plugin_id
-            core_desc = get_descriptor(alias)
-            if core_desc:
-                manifest = PluginManifest(
-                    id=plugin_id,
-                    name=core_desc.description,
-                    version="1.0.0",
-                    category="core_addon",
-                    is_system=True,
-                    is_active=True,
-                )
-                session.add(manifest)
-                await session.flush()
-            else:
-                raise ValueError(f"Plugin {plugin_id} does not exist in platform catalog")
+            core_desc = get_descriptor(plugin_id)
+            if core_desc is None or resolved_plugin_id != plugin_id:
+                raise ValueError(f"Plugin '{plugin_id}' does not exist in platform catalog")
+            manifest = PluginManifest(
+                id=resolved_plugin_id,
+                name=core_desc.description,
+                version="1.0.0",
+                category="core_addon",
+                is_system=True,
+                is_active=True,
+            )
+            session.add(manifest)
+            await session.flush()
         if not manifest.is_active:
-            raise ValueError(f"Plugin {plugin_id} is currently disabled globally by kill-switch")
+            raise ValueError(f"Plugin '{plugin_id}' is currently disabled globally by kill-switch")
 
         m_res = await session.execute(
             select(TenantModuleState).where(
@@ -421,7 +443,7 @@ class PlatformService:
             action="module.activated",
             target_type="tenant_module",
             target_id=f"{tenant_id}:{plugin_id}",
-            details={"version": manifest.version, "config": config},
+            details={"resolved_plugin": resolved_plugin_id, "version": manifest.version, "config": config},
         )
         session.add(audit)
         await session.commit()
@@ -442,10 +464,31 @@ class PlatformService:
             )
         )
         state_row = m_res.scalar_one_or_none()
-        if not state_row:
-            raise ValueError(f"Module {plugin_id} is not installed for tenant {tenant_id}")
-        state_row.state = ModuleLifecycleState.SUSPENDED
-        state_row.suspended_at = _utcnow()
+        # No row yet means this tenant was "active by default" for this
+        # module (it was never explicitly onboarded). Suspend must still work
+        # for that case — that is the whole point of the gate: you must be able
+        # to turn off a module the tenant never had a row for. Create the row
+        # in the suspended state rather than refusing.
+        if state_row is None:
+            p_res = await session.execute(
+                select(PluginManifest).where(PluginManifest.id == plugin_id)
+            )
+            manifest = p_res.scalar_one_or_none()
+            state_row = TenantModuleState(
+                tenant_id=tenant_id,
+                plugin_id=plugin_id,
+                state=ModuleLifecycleState.SUSPENDED,
+                activated_version=manifest.version if manifest else "1.0.0",
+                schema_version=manifest.version if manifest else "1.0.0",
+                config={},
+                activated_by=None,
+                activated_at=None,
+                suspended_at=_utcnow(),
+            )
+            session.add(state_row)
+        else:
+            state_row.state = ModuleLifecycleState.SUSPENDED
+            state_row.suspended_at = _utcnow()
 
         audit = PlatformAuditEntry(
             admin_id=admin_id,
@@ -473,10 +516,29 @@ class PlatformService:
             )
         )
         state_row = m_res.scalar_one_or_none()
-        if not state_row:
-            raise ValueError(f"Module {plugin_id} is not installed for tenant {tenant_id}")
-        state_row.state = ModuleLifecycleState.ARCHIVED
-        state_row.archived_at = _utcnow()
+        # Same as suspend: no row yet = "active by default", and archive must
+        # work for that case so a module can be turned off for a tenant that
+        # was never explicitly onboarded.
+        if state_row is None:
+            p_res = await session.execute(
+                select(PluginManifest).where(PluginManifest.id == plugin_id)
+            )
+            manifest = p_res.scalar_one_or_none()
+            state_row = TenantModuleState(
+                tenant_id=tenant_id,
+                plugin_id=plugin_id,
+                state=ModuleLifecycleState.ARCHIVED,
+                activated_version=manifest.version if manifest else "1.0.0",
+                schema_version=manifest.version if manifest else "1.0.0",
+                config={},
+                activated_by=None,
+                activated_at=None,
+                archived_at=_utcnow(),
+            )
+            session.add(state_row)
+        else:
+            state_row.state = ModuleLifecycleState.ARCHIVED
+            state_row.archived_at = _utcnow()
 
         audit = PlatformAuditEntry(
             admin_id=admin_id,

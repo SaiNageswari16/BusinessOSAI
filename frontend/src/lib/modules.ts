@@ -22,6 +22,7 @@ export const ALL_NAV_ITEMS: NavItemDef[] = [
   { to: "/orders", label: "Orders", moduleKey: "pos", requiredPermission: "pos:orders:view" },
   { to: "/kitchen", label: "Kitchen", moduleKey: "restaurant", requiredPermission: "kitchen:kds:view" },
   { to: "/menu", label: "Menu", moduleKey: "restaurant", requiredPermission: "menu:items:view" },
+  { to: "/recipes", label: "Recipes", moduleKey: "restaurant", requiredPermission: "menu:items:view" },
   { to: "/reservations", label: "Reservations", moduleKey: "restaurant", requiredPermission: "pos:tables:manage" },
 
   // ── Shared Add-ons / Verticals ────────────────────────────────────────────

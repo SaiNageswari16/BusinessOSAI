@@ -37,7 +37,8 @@ def resolve_dsn(descriptor: ServiceDescriptor) -> str:
     )
 
 
-def build_service(name: str, routers, on_startup=None, tags: list[dict] | None = None):
+def build_service(name: str, routers, on_startup=None, on_shutdown=None,
+                  tags: list[dict] | None = None):
     """Return ``(app, db)`` for a registered service.
 
     Importing the service's models module is the caller's job — that's what
@@ -52,7 +53,7 @@ def build_service(name: str, routers, on_startup=None, tags: list[dict] | None =
     dsn = resolve_dsn(descriptor)
     db = ServiceDatabase(name, dsn)
     app = create_service_app(descriptor=descriptor, db=db, routers=routers,
-                             on_startup=on_startup, tags=tags)
+                             on_startup=on_startup, on_shutdown=on_shutdown, tags=tags)
     logger.info("Service '%s' wired on port %s -> %s",
                 name, descriptor.port, descriptor.db_name)
     return app, db

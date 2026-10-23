@@ -268,7 +268,7 @@ async def create_kots_from_order_event(
 
 
 async def allocate_kot_number(
-    db: AsyncSession, tenant_id: uuid.UUID, station: KitchenStation
+    db: AsyncSession, tenant_id: uuid.UUID, station_id: uuid.UUID
 ) -> str:
     """Next KOT number for this station, monthly-resetting.
 
@@ -276,10 +276,15 @@ async def allocate_kot_number(
     its own database and cannot read the organization service's series. The
     counter row is locked for the duration of the transaction, so two
     concurrent fires cannot receive the same number.
+
+    ``station_id`` is taken as the UUID value, not the ORM object — callers
+    pass ``station.id``. Coercing through ``str`` first makes the f-strings
+    below safe even when the driver hands back a pgproto UUID subclass.
     """
     now = _now()
-    key = f"kot:{station.id}:{now:%Y-%m}"
-    prefix = f"KOT-{now:%y%m}-{str(station.id)[:4].upper()}-"
+    station_id_str = str(uuid.UUID(str(station_id)))
+    key = f"kot:{station_id_str}:{now:%Y-%m}"
+    prefix = f"KOT-{now:%y%m}-{station_id_str[:4].upper()}-"
 
     counter = (
         await db.execute(

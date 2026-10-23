@@ -110,24 +110,7 @@ def _decode(credentials: HTTPAuthorizationCredentials | None) -> Identity:
         )
 
     try:
-        return Identity(
-            user_id=uuid.UUID(claims["sub"]),
-            tenant_id=uuid.UUID(claims["tenant_id"]),
-            email=claims.get("email", ""),
-            full_name=claims.get("full_name", ""),
-            permissions=set(claims.get("permissions") or []),
-            roles=set(claims.get("roles") or []),
-            is_tenant_owner=bool(claims.get("is_tenant_owner", False)),
-            tenant_slug=claims.get("tenant_slug", ""),
-            active_outlet_id=(
-                uuid.UUID(claims["active_outlet_id"])
-                if claims.get("active_outlet_id")
-                else None
-            ),
-            allowed_outlet_ids={
-                uuid.UUID(o) for o in (claims.get("allowed_outlet_ids") or [])
-            },
-        )
+        return _identity_from_claims(claims)
     except (KeyError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -135,17 +118,168 @@ def _decode(credentials: HTTPAuthorizationCredentials | None) -> Identity:
         )
 
 
+def _identity_from_claims(claims: dict) -> Identity:
+    """Build an Identity from decoded token claims.
+
+    Split from ``_decode`` so callers that hold a *live* ``Request`` can also
+    build an identity from the gateway's forwarded ``X-Identity-*`` headers —
+    the shared pattern for trusted-service-to-service calls.
+    """
+    return Identity(
+        user_id=uuid.UUID(claims["sub"]),
+        tenant_id=uuid.UUID(claims["tenant_id"]),
+        email=claims.get("email", ""),
+        full_name=claims.get("full_name", ""),
+        permissions=set(claims.get("permissions") or []),
+        roles=set(claims.get("roles") or []),
+        is_tenant_owner=bool(claims.get("is_tenant_owner", False)),
+        tenant_slug=claims.get("tenant_slug", ""),
+        active_outlet_id=(
+            uuid.UUID(claims["active_outlet_id"])
+            if claims.get("active_outlet_id")
+            else None
+        ),
+        allowed_outlet_ids={
+            uuid.UUID(o) for o in (claims.get("allowed_outlet_ids") or [])
+        },
+    )
+
+
+def _identity_from_forwarded_headers(request: Request) -> Identity:
+    """Build an Identity from the gateway's forwarded ``X-Identity-*`` headers.
+
+    This is how services call one another: the gateway authenticates once at
+    the edge, strips any inbound identity headers, and re-sets them from the
+    decoded JWT before proxying. A service therefore trusts these headers the
+    same way it trusts its own token: they carry the tenant the request acts
+    for, the user, the permissions, and the outlet scope. No network hop and no
+    shared database. (Same convention ``_forwarded_headers`` in
+    ``gateway/app.py`` writes and the cross-service reads in ``menu/api.py``
+    rely on.)
+
+    ``allowed_outlet_ids`` empty means unrestricted, exactly as with a
+    tenant-wide role token — see ``Identity.can_access_outlet``.
+    """
+    def _uuid_or_none(header: str) -> uuid.UUID | None:
+        value = (request.headers.get(header) or "").strip()
+        if not value:
+            return None
+        try:
+            return uuid.UUID(value)
+        except (ValueError, TypeError):
+            return None
+
+    try:
+        return Identity(
+            user_id=_uuid_or_none("x-identity-user-id") or uuid.UUID(int=0),
+            tenant_id=uuid.UUID(request.headers["x-identity-tenant-id"]),
+            email=request.headers.get("x-identity-email", ""),
+            full_name=request.headers.get("x-identity-full-name", ""),
+            permissions=set(
+                p for p in (request.headers.get("x-identity-permissions") or "").split(",") if p
+            ),
+            roles=set(
+                r for r in (request.headers.get("x-identity-roles") or "").split(",") if r
+            ),
+            is_tenant_owner=(request.headers.get("x-identity-is-owner") or "").lower() == "true",
+            tenant_slug=request.headers.get("x-identity-tenant-slug", ""),
+            active_outlet_id=_uuid_or_none("x-identity-active-outlet"),
+            allowed_outlet_ids={
+                uuid.UUID(o)
+                for o in (request.headers.get("x-identity-allowed-outlets") or "").split(",")
+                if o.strip()
+            },
+        )
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Missing forwarded identity: {exc}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+def dev_fallback_enabled() -> bool:
+    """Whether the unauthenticated dev fallback is on.
+
+    Two conditions, both required: APP_ENV must be "development" AND
+    IDENTITY_DEV_FALLBACK must be explicitly set to "true" in the environment.
+    The second check is deliberate — a developer who clones the repo and
+    runs it without setting the flag gets a hard 401, not a silent owner
+    identity. Default-safe means a forgotten flag is a refusal, not a backdoor.
+    """
+    import os
+    from src.config import get_settings
+
+    settings = get_settings()
+    return (
+        settings.app_env == "development"
+        and os.environ.get("IDENTITY_DEV_FALLBACK", "").lower() == "true"
+    )
+
+
+def _forwarded_identity(request: Request) -> Identity | None:
+    """Identity from the gateway's forwarded ``X-Identity-*`` headers, or None.
+
+    The gateway authenticates once at the edge and re-sets these headers from
+    the decoded JWT, so a service that *does not see a bearer token* but
+    *does see* a forwarded-identity header is being called by another
+    authenticated service (or the gateway itself) — that is the trusted
+    service-to-service pattern used for all cross-service reads. The headers
+    are verified as present (tenant id required); the trust is the gateway's
+    stripping of any inbound ``X-Identity-*`` before proxying, so a client
+    cannot forge them directly.
+    """
+    has_any = "x-identity-tenant-id" in request.headers
+    if not has_any:
+        return None
+    try:
+        return _identity_from_forwarded_headers(request)
+    except Exception:
+        # A partial header set must not authenticate a request.
+        return None
+
+
 async def get_identity(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
 ) -> Identity:
+    # 1. Bearer token — the normal client path.
+    identity: Identity | None = None
     if credentials is not None:
         try:
-            return _decode(credentials)
+            identity = _decode(credentials)
         except Exception:
-            pass
+            identity = None
 
-    # Resolve from X-Tenant-ID header or fallback to flagship restaurant tenant
+    # 2. Trusted service-to-service forwarding — the menu/inventory/purchase
+    #    services call each other over HTTP carrying the request's own
+    #    identity in the X-Identity-* headers the gateway sets. No bearer
+    #    token is sent on that path; the receiving service trusts the headers
+    #    exactly as it would its own decoded claims.
+    if identity is None:
+        forwarded = _forwarded_identity(request)
+        if forwarded is not None:
+            return forwarded
+
+    # 3. Dev fallback — the last resort, gated on APP_ENV + the flag.
+    return await build_dev_fallback_identity(request, force_raise=True)
+
+
+async def build_dev_fallback_identity(request: Request, *, force_raise: bool = False) -> Identity:
+    """Build the dev-fallback Identity, or refuse if the gate is not open.
+
+    Shared by get_identity (every service) and the gateway proxy so the
+    fallback policy lives in exactly one place.
+    """
+    if not dev_fallback_enabled():
+        if force_raise:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return None  # type: ignore[return-value]
+
     tenant_hdr = request.headers.get("x-tenant-id")
     try:
         tenant_id = uuid.UUID(tenant_hdr) if tenant_hdr else uuid.UUID("e9fb216b-6289-43ca-900c-c09eada9840f")

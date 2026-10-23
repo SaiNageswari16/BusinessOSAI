@@ -18,8 +18,10 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status as http_status
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.services.event_bus.bus import Event, bus
 from src.services.purchase import service as svc
@@ -27,6 +29,7 @@ from src.services.purchase.models import (
     GoodsReceiptNote,
     GRNStatus,
     PaymentStatus,
+    VendorItem,
     POStatus,
     PRStatus,
     PurchaseOrder,
@@ -176,14 +179,112 @@ async def _on_stock_low(event: Event) -> None:
 
 # ─── Vendors ────────────────────────────────────────────────────────────────
 
+@router.get("/vendor-items/recommend", tags=["purchase"])
+async def recommend_vendor_item(
+    identity: CurrentIdentity, db: DbDep, inventory_item_id: uuid.UUID,
+):
+    """The vendor most suited to source one inventory item.
+
+    The cheapest active VendorItem price wins (ties broken by the highest
+    suggested qty). Returns the vendor + last price + suggested qty, so a
+    restock flow can fill in ``vendor_id`` / ``unit_price`` / ``ordered_qty``.
+    404 when no vendor carries the item.
+    """
+    identity.require("view:purchase")
+    from src.services.purchase.models import VendorItem
+    row = (await db.execute(
+        select(VendorItem)
+        .where(
+            VendorItem.tenant_id == identity.tenant_id,
+            VendorItem.inventory_item_id == inventory_item_id,
+            VendorItem.is_active.is_(True),
+        )
+        .order_by(VendorItem.last_purchase_price.asc(),
+                  VendorItem.suggested_qty.desc())
+    )).scalars().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="No vendor carries this item")
+    return {
+        "vendor_id": str(row.vendor_id),
+        "last_purchase_price": float(row.last_purchase_price or 0.0),
+        "suggested_qty": float(row.suggested_qty or 0.0),
+        "uom_id": str(row.uom_id) if row.uom_id else None,
+    }
+
+
+@router.get("/vendor-items", tags=["purchase"],
+            summary="Active vendor-item rows for one or more inventory items")
+async def list_vendor_items(
+    identity: CurrentIdentity, db: DbDep,
+    inventory_item_id: uuid.UUID | None = None,
+    inventory_item_ids: str | None = Query(
+        default=None,
+        description="Comma-separated inventory item ids — bulk form used by the menu service's auto-PO flow.",
+    ),
+):
+    """Vendor + price per inventory item (active rows only).
+
+    The AI recipe reorder flow (menu service) needs, for each missing/low
+    ingredient, a vendor that carries it plus the last agreed price. One
+    bulk call over several items replaces a request per ingredient.
+    ``inventory_item_id`` (single) and ``inventory_item_ids`` (bulk,
+    comma-separated) are both accepted; the bulk form wins when both are set.
+    """
+    identity.require("view:purchase")
+    if inventory_item_ids:
+        ids = [s.strip() for s in inventory_item_ids.split(",") if s.strip()]
+        parsed: list[uuid.UUID] = []
+        for v in ids:
+            try:
+                parsed.append(uuid.UUID(v))
+            except (ValueError, TypeError):
+                continue
+        if not parsed:
+            return []
+        stmt = select(VendorItem).where(
+            VendorItem.tenant_id == identity.tenant_id,
+            VendorItem.inventory_item_id.in_(parsed),
+            VendorItem.is_active.is_(True),
+        )
+    elif inventory_item_id is not None:
+        stmt = select(VendorItem).where(
+            VendorItem.tenant_id == identity.tenant_id,
+            VendorItem.inventory_item_id == inventory_item_id,
+            VendorItem.is_active.is_(True),
+        )
+    else:
+        stmt = select(VendorItem).where(
+            VendorItem.tenant_id == identity.tenant_id,
+            VendorItem.is_active.is_(True),
+        )
+    rows = (await db.execute(stmt)).scalars().all()
+    out = []
+    for r in rows:
+        out.append({
+            "id": str(r.id),
+            "vendor_id": str(r.vendor_id),
+            "inventory_item_id": str(r.inventory_item_id),
+            "uom_id": str(r.uom_id) if r.uom_id else None,
+            "last_purchase_price": float(r.last_purchase_price or 0.0),
+            "suggested_qty": float(r.suggested_qty or 0.0),
+        })
+    return out
+
+
 @router.get("/vendors", response_model=list[VendorResponse], tags=["purchase"])
 async def list_vendors(identity: CurrentIdentity, db: DbDep,
-                       active_only: bool = True):
+                       active_only: bool = True,
+                       is_active: bool | None = None,
+                       limit: int = Query(default=0, ge=0, le=500)):
     identity.require("view:purchase")
+    if is_active is not None:
+        active_only = is_active
     stmt = select(Vendor).where(Vendor.tenant_id == identity.tenant_id)
     if active_only:
         stmt = stmt.where(Vendor.is_active.is_(True))
     stmt = stmt.order_by(Vendor.name)
+    if limit:
+        stmt = stmt.limit(limit)
     return list((await db.execute(stmt)).scalars().all())
 
 
@@ -195,6 +296,99 @@ async def create_vendor(payload: VendorCreate, identity: CurrentIdentity, db: Db
     db.add(vendor)
     await db.flush()
     return vendor
+
+
+# ─── Vendor items (a vendor's agreed price + suggested qty for one item) ───
+
+
+class VendorItemCreate(BaseModel):
+    vendor_id: uuid.UUID
+    inventory_item_id: uuid.UUID
+    uom_id: uuid.UUID | None = None
+    last_purchase_price: float = Field(default=0, ge=0)
+    suggested_qty: float = Field(default=0, ge=0)
+    is_active: bool = True
+
+
+class VendorItemPatch(BaseModel):
+    last_purchase_price: float | None = Field(default=None, ge=0)
+    suggested_qty: float | None = Field(default=None, ge=0)
+    is_active: bool | None = None
+
+
+class VendorItemResponse(BaseModel):
+    id: uuid.UUID
+    vendor_id: uuid.UUID
+    inventory_item_id: uuid.UUID
+    uom_id: uuid.UUID | None
+    last_purchase_price: float
+    suggested_qty: float
+    is_active: bool
+
+
+@router.post("/vendor-items", response_model=VendorItemResponse,
+             status_code=http_status.HTTP_201_CREATED,
+             tags=["purchase"],
+             summary="Create (upsert) a vendor's price + suggested qty for an item")
+async def create_vendor_item(payload: VendorItemCreate,
+                             identity: CurrentIdentity, db: DbDep):
+    """The auto-PO flow needs a VendorItem row per ingredient it orders: the
+    vendor's last agreed price and suggested quantity. Upsert on
+    (vendor, item) so re-running a seed or a restock doesn't duplicate the
+    row."""
+    identity.require("manage:purchase")
+    vendor = await svc.load_vendor(db, identity.tenant_id, payload.vendor_id)
+    if vendor is None:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    row = (await db.execute(
+        select(VendorItem).where(
+            VendorItem.tenant_id == identity.tenant_id,
+            VendorItem.vendor_id == payload.vendor_id,
+            VendorItem.inventory_item_id == payload.inventory_item_id,
+        )
+    )).scalars().first()
+    if row is None:
+        row = VendorItem(
+            tenant_id=identity.tenant_id,
+            vendor_id=payload.vendor_id,
+            inventory_item_id=payload.inventory_item_id,
+            uom_id=payload.uom_id,
+        )
+        db.add(row)
+    row.last_purchase_price = payload.last_purchase_price
+    row.suggested_qty = payload.suggested_qty
+    row.is_active = payload.is_active
+    await db.flush()
+    return VendorItemResponse(
+        id=row.id, vendor_id=row.vendor_id,
+        inventory_item_id=row.inventory_item_id, uom_id=row.uom_id,
+        last_purchase_price=float(row.last_purchase_price),
+        suggested_qty=float(row.suggested_qty), is_active=bool(row.is_active),
+    )
+
+
+@router.patch("/vendor-items/{vendor_item_id}", response_model=VendorItemResponse,
+              tags=["purchase"])
+async def patch_vendor_item(vendor_item_id: uuid.UUID, payload: VendorItemPatch,
+                           identity: CurrentIdentity, db: DbDep):
+    """Update a vendor's agreed price / suggested qty for an item."""
+    identity.require("manage:purchase")
+    row = await db.scalar(
+        select(VendorItem).where(
+            VendorItem.id == vendor_item_id,
+            VendorItem.tenant_id == identity.tenant_id,
+        ))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Vendor item not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(row, field, value)
+    await db.flush()
+    return VendorItemResponse(
+        id=row.id, vendor_id=row.vendor_id,
+        inventory_item_id=row.inventory_item_id, uom_id=row.uom_id,
+        last_purchase_price=float(row.last_purchase_price),
+        suggested_qty=float(row.suggested_qty), is_active=bool(row.is_active),
+    )
 
 
 @router.patch("/vendors/{vendor_id}", response_model=VendorResponse, tags=["purchase"])
@@ -236,7 +430,10 @@ async def create_request(payload: PurchaseRequestCreate,
         db, identity.tenant_id, payload.outlet_id, payload.lines,
         requested_by=identity.user_id, notes=payload.notes,
     )
-    return pr
+    # Return the ORM object with its lines eager-loaded: the response serializes
+    # pr.lines, and the service layer's flush-only session no longer guarantees
+    # a usable identity map, so a lazy load here would raise MissingGreenlet.
+    return await svc.load_request(db, identity.tenant_id, pr.id)
 
 
 @router.post("/purchase-requests/{pr_id}/decide",
@@ -310,7 +507,10 @@ async def list_orders(identity: CurrentIdentity, db: DbDep,
     if status_filter:
         stmt = stmt.where(PurchaseOrder.status == status_filter)
     stmt = stmt.order_by(PurchaseOrder.created_at.desc()).limit(limit)
-    return list((await db.execute(stmt)).scalars().all())
+    # Eager-load the lines so the response's lines: field serializes without
+    # a lazy DB hop mid-request (MissingGreenlet in async SQLAlchemy).
+    orders = (await db.execute(stmt.options(selectinload(PurchaseOrder.lines))))
+    return list(orders.scalars().all())
 
 
 @router.post("/purchase-orders", response_model=PurchaseOrderResponse,

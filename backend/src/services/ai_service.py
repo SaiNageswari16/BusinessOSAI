@@ -128,6 +128,238 @@ async def _anthropic(prompt: str) -> str | None:
         return None
 
 
+# ─── Structured-JSON multimodal generation (used by the recipe search) ──────
+#
+# The recipe-search feature needs the LLM to return a *structured recipe*
+# (JSON matching a caller-provided schema), optionally grounded in an image of
+# the dish, with Gemini/Claude failover. ``answer_question`` above stays as the
+# copilot's free-text path; this is a second, JSON-output entry point that
+# reuses the same provider cascade + ``_TIMEOUT``.
+
+
+def _provider_order() -> list[str]:
+    """The configured precedence order, with every provider appended after the
+    configured ones so a single outage is never a total outage."""
+    settings = get_settings()
+    order = [
+        name.strip().lower()
+        for name in str(settings.ai_provider or "gemini").split(",")
+        if name.strip()
+    ]
+    for name in ("gemini", "openai", "anthropic"):
+        if name not in order:
+            order.append(name)
+    return order
+
+
+async def _gemini_structured(
+    system: str, user: str, image_b64: str | None, image_mime: str | None,
+    schema: dict,
+) -> str | None:
+    settings = get_settings()
+    if not settings.gemini_api_key:
+        return None
+    parts = [{"text": user}]
+    if image_b64:
+        parts.append({"inline_data": {"mime_type": image_mime or "image/jpeg", "data": image_b64}})
+    gen_config: dict = {"temperature": 0.2, "maxOutputTokens": settings.ai_max_tokens}
+    if schema:
+        gen_config["responseMimeType"] = "application/json"
+        if "responseSchema" in schema:
+            gen_config["responseSchema"] = schema["responseSchema"]
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            response = await client.post(
+                "https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{settings.ai_model_gemini}:generateContent",
+                params={"key": settings.gemini_api_key},
+                json={
+                    "systemInstruction": {"parts": [{"text": system}]},
+                    "contents": [{"parts": parts}],
+                    "generationConfig": gen_config,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+        return payload["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gemini structured call failed: %s", exc)
+        return None
+
+
+async def _anthropic_structured(
+    system: str, user: str, image_b64: str | None, image_mime: str | None,
+    schema: dict,
+) -> str | None:
+    settings = get_settings()
+    if not settings.anthropic_api_key:
+        return None
+    content: list[dict] = []
+    if image_b64:
+        content.append({
+            "type": "image",
+            "source": {"type": "base64", "media_type": image_mime or "image/jpeg", "data": image_b64},
+        })
+    content.append({"type": "text", "text": user})
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": settings.anthropic_api_key,
+                    "anthropic-version": "2023-06-01",
+                },
+                json={
+                    "model": settings.ai_model_anthropic,
+                    "max_tokens": settings.ai_max_tokens,
+                    "system": system,
+                    "messages": [{"role": "user", "content": content}],
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+        return "".join(block.get("text", "") for block in payload.get("content", [])) or None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Anthropic structured call failed: %s", exc)
+        return None
+
+
+async def _openai_structured(
+    system: str, user: str, image_b64: str | None, image_mime: str | None,
+    schema: dict,
+) -> str | None:
+    settings = get_settings()
+    if not settings.openai_api_key:
+        return None
+    user_content: list[dict] = [{"type": "text", "text": user}]
+    if image_b64:
+        user_content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:{image_mime or 'image/jpeg'};base64,{image_b64}"},
+        })
+    body: dict = {
+        "model": settings.ai_model_openai,
+        "max_tokens": settings.ai_max_tokens,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_content},
+        ],
+    }
+    if schema and "json_schema" in schema:
+        body["response_format"] = {"type": "json_object"}
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {settings.openai_api_key}"},
+                json=body,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        return payload["choices"][0]["message"]["content"]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("OpenAI structured call failed: %s", exc)
+        return None
+
+
+def _structured_extra_user(user: str, schema: dict | None) -> str:
+    """Fold the JSON-output instruction into the user prompt for providers
+    that can't take a response schema (Anthropic, OpenAI). The Gemini path
+    gets structured output natively, so for others the schema rides in the
+    prompt text so the model knows the exact shape to produce."""
+    if schema:
+        hint = _recipe_json_schema_hint()
+        return f"{user}\n\nOutput this exact shape (valid JSON, no prose):\n{hint}"
+    return f"{user}\n\nReturn ONLY valid JSON — no prose, no markdown fences."
+
+
+def _recipe_json_schema_hint() -> dict:
+    """The documented JSON shape LLM recipe callers must ask for."""
+    return {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "description": {"type": ["string", "null"]},
+            "item_type": {"type": "string", "enum": ["veg", "non_veg", "beverage"]},
+            "base_price": {"type": ["number", "null"]},
+            "yield_qty": {"type": "number"},
+            "ingredients": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "qty_per_portion": {"type": "number"},
+                        "unit": {"type": "string"},
+                        "wastage_pct": {"type": "number"},
+                    },
+                    "required": ["name", "qty_per_portion"],
+                },
+            },
+        },
+        "required": ["name", "ingredients"],
+    }
+
+
+async def generate_structured(
+    system: str,
+    user: str,
+    image_b64: str | None = None,
+    image_mime: str | None = None,
+    schema: dict | None = None,
+    provider_pref: str | None = None,
+) -> tuple[str | None, str | None]:
+    """Return ``(raw_json_text, provider_name)`` — the first provider to yield
+    a non-empty result, in the configured precedence order. This is the
+    "if one fails the other catches up" failover: a transient error on one
+    provider is *not* retried here; the caller (recipe module) owns retry,
+    and passes a *repaired* prompt back through this function on the next
+    provider if JSON validation fails. Both None means every configured
+    provider was unreachable/unkeyed.
+
+    ``provider_pref``: 'gemini' | 'openai' | 'anthropic' forces that single
+    provider (used when the client explicitly picks one); None runs the
+    configured cascade."""
+    handlers = {
+        "gemini": _gemini_structured,
+        "openai": _openai_structured,
+        "anthropic": _anthropic_structured,
+    }
+    if provider_pref:
+        order = [provider_pref]
+    else:
+        order = _provider_order()
+    import asyncio as _asyncio
+
+    last_error: str | None = None
+    for name in order:
+        handler = handlers.get(name)
+        if handler is None:
+            continue
+        # Fold the JSON-output instruction into the user prompt for
+        # non-Gemini providers (they have no native structured-output mode
+        # in this raw-HTTP setup); Gemini gets it via responseMimeType.
+        if name == "gemini":
+            arg_user = user
+        else:
+            arg_user = _structured_extra_user(user, schema)
+        # One retry with backoff per provider, so a transient 5xx/429 on a
+        # provider that DOES have a key is not a total outage.
+        text: str | None = None
+        for attempt in range(2):
+            text = await handler(system, arg_user, image_b64, image_mime, schema or {})
+            if text and text.strip():
+                break
+            if attempt == 0:
+                await _asyncio.sleep(0.4)
+        if text and text.strip():
+            return text.strip(), name
+        last_error = f"{name}: no response (unkeyed or provider failed)"
+    if last_error:
+        logger.warning("generate_structured: all providers failed. last=%s", last_error)
+    return None, None
+
+
 def _fallback(message: str, context: dict) -> str:
     """A deterministic answer from the computed figures — no provider needed."""
     sales = context.get("total_sales", 0)

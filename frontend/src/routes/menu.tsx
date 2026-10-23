@@ -1,7 +1,17 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { BookOpen, ChefHat, Layers, Plus, Scale, Sparkles } from "lucide-react";
+import {
+  BookOpen,
+  ChefHat,
+  Layers,
+  Plus,
+  Scale,
+  Sparkles,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
 import { PageContainer } from "@/components/layout/AppShell";
 import { PageHeader, Panel } from "@/components/common/PageHeader";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -31,6 +41,7 @@ import {
   useMenu,
   useRecipes,
 } from "@/services/orderService";
+import { menuService, type RecipeCost } from "@/services/menuService";
 import { money } from "@/lib/format";
 import type { KitchenStation, MenuItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -62,6 +73,8 @@ function Menu() {
   const [cat, setCat] = useState("All");
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  const [costs, setCosts] = useState<Record<string, RecipeCost>>({});
+  const [costLoading, setCostLoading] = useState(false);
   const [draft, setDraft] = useState({
     name: "",
     description: "",
@@ -72,13 +85,44 @@ function Menu() {
     veg: true,
   });
 
+  const loadCosts = useCallback(
+    async (itemList: MenuItem[]) => {
+      setCostLoading(true);
+      try {
+        // Map over the sliced list directly so result index === item index.
+        const targets = itemList.slice(0, 40);
+        const results = await Promise.allSettled(
+          targets.map((i) => menuService.getRecipeCost(i.id)),
+        );
+        const next: Record<string, RecipeCost> = {};
+        results.forEach((r, idx) => {
+          const target = targets[idx];
+          if (target && r.status === "fulfilled" && r.value) next[target.id] = r.value;
+        });
+        setCosts((prev) => ({ ...prev, ...next }));
+      } catch (e) {
+        console.warn("Recipe cost load failed", e);
+      } finally {
+        setCostLoading(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (items.length > 0) loadCosts(items);
+  }, [items, loadCosts]);
+
   const list = items.filter(
     (i) => (cat === "All" || i.category === cat) && i.name.toLowerCase().includes(q.toLowerCase()),
   );
 
-  const save = () => {
-    if (!draft.name || !Number(draft.price)) return toast.error("Name and price are required");
-    const created = addMenuItem({
+  const save = async () => {
+    if (!draft.name || !Number(draft.price)) {
+      toast.error("Name and price are required");
+      return;
+    }
+    const created = await addMenuItem({
       name: draft.name,
       description: draft.description || "Freshly prepared specialty dish.",
       category: draft.category,
@@ -256,54 +300,100 @@ function Menu() {
           </Panel>
         </div>
       ) : (
-        /* Recipes & Food Costing View */
+        /* Recipes & Food Costing View — live computed from menu + inventory services */
         <div className="space-y-4">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              Food cost computed live from recipe BOM × inventory standard cost.
+              {costLoading && " Refreshing…"}
+            </span>
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => loadCosts(items)}>
+              <Scale className="size-3.5 mr-1" /> Recompute costs
+            </Button>
+          </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {recipes.map((rec) => {
-              const menuItem = items.find((m) => m.id === rec.itemId);
-              const sellingPrice = menuItem?.price || 1;
-              const costMargin = Math.round(((sellingPrice - rec.cost) / sellingPrice) * 100);
-              const costPct = Math.round((rec.cost / sellingPrice) * 100);
+            {(Object.keys(costs).length > 0
+              ? items.filter((i) => costs[i.id])
+              : items.slice(0, 12)
+            ).map((item) => {
+              const live = costs[item.id];
+              const sellingPrice = live?.selling_price ?? item.price;
+              const foodCost = live?.food_cost;
+              const foodCostPct = live?.food_cost_pct;
+              const margin = live?.margin;
+              const pctGood = foodCostPct !== null && foodCostPct !== undefined && foodCostPct <= 30;
 
               return (
-                <div key={rec.itemId} className="rounded-lg border bg-card p-4 space-y-3">
+                <div
+                  key={item.id}
+                  className="rounded-xl border bg-card p-4 space-y-3 shadow-sm transition-shadow hover:shadow-md"
+                >
                   <div className="flex items-start justify-between">
                     <div>
-                      <div className="font-semibold text-base">{rec.itemName}</div>
+                      <div className="font-semibold text-base flex items-center gap-2">
+                        {item.name}
+                        {item.veg && (
+                          <span className="text-[10px] rounded bg-success/15 px-1.5 py-0.5 text-success">
+                            VEG
+                          </span>
+                        )}
+                      </div>
                       <div className="text-xs text-muted-foreground">
-                        Selling: <b>{money(sellingPrice)}</b> · Prep cost: <b>{money(rec.cost)}</b>
+                        Selling <b className="text-foreground">{money(sellingPrice)}</b>
+                        {margin !== null && margin !== undefined && (
+                          <> · Prep cost <b className="text-foreground">{money(foodCost ?? 0)}</b></>
+                        )}
                       </div>
                     </div>
-                    <span
-                      className={cn(
-                        "rounded px-2 py-0.5 text-xs font-semibold tabular",
-                        costPct <= 30 ? "bg-success/15 text-success" : "bg-warning/15 text-warning",
-                      )}
-                    >
-                      {costPct}% Cost ({costMargin}% Margin)
-                    </span>
+                    {foodCostPct !== null && foodCostPct !== undefined ? (
+                      <span
+                        className={cn(
+                          "flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold tabular",
+                          pctGood
+                            ? "bg-success/15 text-success"
+                            : "bg-warning/15 text-warning",
+                        )}
+                      >
+                        {pctGood ? (
+                          <TrendingUp className="size-3" />
+                        ) : (
+                          <TrendingDown className="size-3" />
+                        )}
+                        {foodCostPct}% Cost
+                      </span>
+                    ) : (
+                      <span className="rounded bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                        No recipe yet
+                      </span>
+                    )}
                   </div>
 
-                  <div className="space-y-1.5 border-t pt-2.5">
-                    <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-                      Constituent Ingredients (Per Portion)
+                  {live && live.lines.length > 0 && (
+                    <div className="space-y-1.5 border-t pt-2.5">
+                      <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                        Constituent Ingredients (Per Portion)
+                      </div>
+                      <ul className="divide-y text-xs">
+                        {live.lines.map((line) => (
+                          <li key={line.inventory_item_id} className="flex justify-between py-1">
+                            <span className="truncate">
+                              {line.standard_cost === null ? "—" : ""}
+                              {line.inventory_item_id.slice(0, 8)}
+                            </span>
+                            <span className="font-mono text-muted-foreground tabular">
+                              {line.qty_per_portion} × {line.standard_cost ?? "…"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-                    <ul className="divide-y text-xs">
-                      {rec.ingredients.map((ing, idx) => (
-                        <li key={idx} className="flex justify-between py-1">
-                          <span>{ing.name}</span>
-                          <span className="font-mono text-muted-foreground tabular">
-                            {ing.qty} {ing.unit}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                  )}
 
-                  {rec.prepInstructions && (
-                    <div className="border-t pt-2 text-xs text-muted-foreground bg-muted/30 p-2 rounded">
-                      <span className="font-semibold text-foreground">Chef method: </span>
-                      {rec.prepInstructions}
+                  {live?.cost_known === false && (
+                    <div className="border-t pt-2 text-[11px] text-warning bg-warning/10 p-2 rounded">
+                      <Wallet className="inline size-3 mr-1" />
+                      Cost data unavailable (inventory service offline) — totals withheld rather
+                      than shown as zero.
                     </div>
                   )}
                 </div>

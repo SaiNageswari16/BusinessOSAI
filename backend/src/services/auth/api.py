@@ -430,3 +430,18 @@ async def current_tenant(identity: CurrentIdentity, db: DbDep):
     if tenant is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
     return tenant
+
+
+@router.get("/tenants", response_model=list[TenantResponse], tags=["registration"])
+async def list_tenants(db: DbDep):
+    """Platform-scoped tenant listing.
+
+    Intentionally unauthenticated at the route level: this endpoint is called
+    by the platform service over the internal service-to-service path, where
+    the gateway has already verified the caller holds a platform-realm token.
+    Exposing this through the public gateway would list every tenant's basic
+    details to any unauthenticated caller, so the gateway must block this
+    route for tenant-realm callers. The platform service is the only caller.
+    """
+    res = await db.execute(select(Tenant).order_by(Tenant.created_at.desc()))
+    return list(res.scalars().all())

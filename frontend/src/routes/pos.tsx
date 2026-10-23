@@ -336,27 +336,35 @@ function Pos() {
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col lg:h-[calc(100vh-6rem)]">
       {/* POS top bar with quick receipt customizer and cashier info */}
-      <div className="flex flex-wrap items-center gap-2 border-b bg-card px-4 py-2 text-xs">
-        <span className="font-semibold text-slate-900">{settings.name}</span>
-        <span className="text-muted-foreground">· Register #1</span>
-        <span className="text-muted-foreground">· Cashier: Ananya R.</span>
+      <div className="flex flex-wrap items-center gap-3 border-b bg-card px-5 py-2.5 text-xs shadow-sm">
+        <div className="flex items-center gap-2">
+          <div className="flex size-7 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
+            {settings.name.slice(0, 1)}
+          </div>
+          <div className="leading-tight">
+            <div className="text-[13px] font-semibold text-foreground">{settings.name}</div>
+            <div className="text-[10px] text-muted-foreground">
+              Register #1 · Cashier: Ananya R. · UPTIME LIVE
+            </div>
+          </div>
+        </div>
 
         <Button
           variant="outline"
           size="sm"
           onClick={() => setReceiptCustomizerOpen(true)}
-          className="h-7 text-xs gap-1 border-indigo-200 text-indigo-700 hover:bg-indigo-50 ml-2"
+          className="h-7 gap-1.5 rounded-lg border-indigo-200 bg-indigo-50/50 text-[11px] font-medium text-indigo-700 hover:bg-indigo-50"
         >
-          <Sliders className="size-3" /> Thermal Receipt Template (Petpooja / MyBillBook)
+          <Sliders className="size-3.5" /> Receipt Template
         </Button>
 
-        <div className="relative ml-auto w-full sm:w-64">
+        <div className="relative ml-auto w-full sm:w-72">
           <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search menu items…"
-            className="h-8 pl-8 text-xs"
+            placeholder="Search menu items by name, code or category…"
+            className="h-8 rounded-lg pl-8 text-xs"
           />
         </div>
         <Button
@@ -371,27 +379,36 @@ function Pos() {
               toast("Recalled held order");
             }
           }}
+          className="rounded-lg"
         >
-          Held ({held.length})
+          <PauseCircle className="size-3.5 mr-1.5" /> Held ({held.length})
         </Button>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {/* Categories Sidebar */}
-        <aside className="flex shrink-0 gap-1 overflow-x-auto border-b bg-surface p-2 md:w-44 md:flex-col md:border-b-0 md:border-r">
+        <aside className="flex shrink-0 gap-1 overflow-x-auto border-b bg-surface p-2 md:w-48 md:flex-col md:border-b-0 md:border-r md:p-3">
+          <div className="hidden px-1 pb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground md:block">
+            Categories
+          </div>
           {dynamicCategories.map((c) => (
             <button
               key={c}
               onClick={() => setCat(c)}
               className={cn(
-                "whitespace-nowrap rounded-md px-3 py-2 text-left text-sm transition-colors",
+                "flex items-center justify-between gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-left text-[13px] transition-all",
                 c === cat
-                  ? "bg-primary font-medium text-primary-foreground shadow-xs"
+                  ? "bg-primary font-semibold text-primary-foreground shadow-md"
                   : "text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
             >
-              {c}
-              <span className="ml-1 text-[10px] opacity-70">
+              <span>{c}</span>
+              <span
+                className={cn(
+                  "rounded-full px-1.5 text-[10px] tabular",
+                  c === cat ? "bg-primary-foreground/20" : "bg-muted text-muted-foreground",
+                )}
+              >
                 {c === "All" ? menuItems.length : menuItems.filter((m) => m.category === c).length}
               </span>
             </button>
@@ -399,30 +416,40 @@ function Pos() {
         </aside>
 
         {/* Menu Items Grid */}
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <div className="flex-1 overflow-y-auto p-4 lg:p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-foreground">
+              {cat === "All" ? "All Items" : cat}
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                {items.length} available
+              </span>
+            </h2>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
             {items.map((m) => (
               <button
                 key={m.id}
                 onClick={() => onItem(m)}
                 className={cn(
-                  "flex flex-col rounded-xl border bg-card p-3 text-left transition-all hover:border-primary/50 hover:shadow-card",
-                  !m.available && "opacity-50",
+                  "group flex flex-col rounded-xl border bg-card p-3.5 text-left transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-lg",
+                  !m.available && "cursor-not-allowed opacity-50 hover:translate-y-0 hover:shadow-none",
                 )}
               >
                 <div className="flex items-start justify-between gap-1">
-                  <span className="text-sm font-bold text-foreground leading-snug">{m.name}</span>
+                  <span className="text-[13px] font-bold leading-snug text-foreground">{m.name}</span>
                   {m.veg ? (
-                    <Leaf className="size-3.5 shrink-0 text-emerald-600" />
+                    <Leaf className="size-4 shrink-0 text-emerald-600" />
                   ) : (
-                    <span className="size-2 rounded-full bg-rose-500 shrink-0 mt-1" />
+                    <span className="mt-1 size-2 shrink-0 rounded-full bg-rose-500" />
                   )}
                 </div>
-                <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                <div className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">
                   {m.description}
                 </div>
                 <div className="mt-auto flex items-center justify-between pt-3">
-                  <span className="text-sm font-bold text-slate-900 tabular">{money(m.price)}</span>
+                  <span className="text-sm font-extrabold tabular text-slate-900">
+                    {money(m.price)}
+                  </span>
                   <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                     <Clock className="size-3" />
                     {m.available ? `${m.prepMins}m` : "Sold out"}

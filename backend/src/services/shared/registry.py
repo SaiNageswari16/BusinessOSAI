@@ -97,6 +97,10 @@ _register(ServiceDescriptor(
     description="Categories, items, variants, addons, modifiers, combos, pricing rules",
     permissions=("view:menu", "manage:menu", "view:recipes", "manage:recipes"),
     publishes=("menu.item.created", "menu.item.updated", "menu.item.deactivated"),
+    # Gating the menu service would 404 every POS request in a tenant that has
+    # no menu module row — POS and menu are inextricably linked (POS reads the
+    # menu on every order). Only kitchen is gated: a tenant without a kitchen
+    # (e.g. a pure-delivery cloud kitchen) genuinely should not reach KDS.
 ))
 
 _register(ServiceDescriptor(
@@ -109,6 +113,8 @@ _register(ServiceDescriptor(
                "table_session.opened", "table_session.closed"),
     subscribes=("menu.item.updated", "menu.item.deactivated",
                 "table.status.changed", "customer.updated"),
+    kind="plugin",
+    module_key="pos",
 ))
 
 _register(ServiceDescriptor(
@@ -120,6 +126,12 @@ _register(ServiceDescriptor(
     publishes=("kot.fired", "kot.acknowledged", "kot.ready", "kot.cancelled",
                "kot.item.status.changed"),
     subscribes=("order.placed", "order.status.changed"),
+    kind="plugin",
+    module_key="kitchen",
+    # A tenant that has explicitly suspended its kitchen (e.g. a pure retail
+    # or delivery-only branch) should not reach the KDS screens. Gating only
+    # kitchen keeps POS/menu/billing reachable for every tenant.
+    enforce_module_gate=True,
 ))
 
 _register(ServiceDescriptor(
