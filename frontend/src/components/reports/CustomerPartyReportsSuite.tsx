@@ -491,6 +491,17 @@ export function CustomerPartyReportsSuite({
           }
         });
 
+        // Deduplicate party balances if openingBalance was mirrored from billed invoices
+        partyMap.forEach((p) => {
+          const totInv = Number(p.totalInvoiced || 0);
+          const opBal = Number(p.openingBalance || 0);
+          if (totInv > 0 && opBal > 0) {
+            const unbilledOpening = Math.max(0, opBal - totInv);
+            p.closingBalance = (p.closingBalance - opBal) + unbilledOpening;
+            p.openingBalance = unbilledOpening;
+          }
+        });
+
         const list = Array.from(partyMap.values());
         setParties(list);
         if (list.length > 0 && !selectedPartyId && activeReport === "party_statement") {

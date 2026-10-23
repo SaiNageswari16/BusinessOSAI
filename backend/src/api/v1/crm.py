@@ -202,6 +202,12 @@ async def list_customers(
         stored_due = float(getattr(c, "outstanding_balance", 0) or 0)
         opening_due = float(getattr(c, "opening_balance", 0) or 0)
         invoice_due = round(st["due"], 2)
+        # If customer has real invoices that account for opening_balance, it was mirrored from invoices
+        if opening_due > 0 and (st["ltv"] >= opening_due - 0.05 or invoice_due >= opening_due - 0.05):
+            opening_due = 0.0
+            if c.opening_balance != 0:
+                c.opening_balance = 0.0
+                await db.flush()
         # Prioritize stored/adjusted balance if set; otherwise invoice_due + opening_due
         c_dict["outstanding_balance"] = stored_due if (stored_due != 0 or invoice_due == 0) else round(invoice_due + opening_due, 2)
         c_dict["opening_balance"] = opening_due
@@ -1102,19 +1108,10 @@ async def update_customer(
             .values(**invoice_updates)
         )
 
-    if "outstanding_balance" in updates or "opening_balance" in updates:
-        bal_to_sync = float(updates.get("outstanding_balance") or updates.get("opening_balance") or 0.0)
-        if bal_to_sync > 0:
-            customer.outstanding_balance = bal_to_sync
-            if not customer.opening_balance:
-                customer.opening_balance = bal_to_sync
-            await _sync_customer_opening_balance_invoice(
-                db=db,
-                tenant_id=ctx.tenant_id,
-                company_id=customer.company_id or ctx.active_company_id,
-                customer=customer,
-                init_due=bal_to_sync,
-            )
+    if "outstanding_balance" in updates:
+        customer.outstanding_balance = float(updates["outstanding_balance"] or 0.0)
+    if "opening_balance" in updates:
+        customer.opening_balance = float(updates["opening_balance"] or 0.0)
 
     await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="crm", action="customer_updated", entity_type="customer", entity_id=customer.id, new_values=updates, ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
     await db.commit()
