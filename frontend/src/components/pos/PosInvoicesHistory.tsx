@@ -568,9 +568,10 @@ export function PosInvoicesHistory() {
             const raw = localStorage.getItem(key);
             if (raw) {
               const list = JSON.parse(raw);
-              if (Array.isArray(list)) {
-                list.forEach((inv) => {
+                list.forEach((inv: any) => {
                   if (inv && (inv.id || inv.invoice_number)) {
+                    const numStr = String(inv.invoice_number || inv.id || "").toUpperCase().trim();
+                    if (numStr.startsWith("OPN-")) return;
                     const idKey = String(inv.invoice_number || inv.id).toLowerCase().trim();
                     if (!scannedLocalMap.has(idKey)) {
                       scannedLocalMap.set(idKey, inv);
@@ -578,7 +579,6 @@ export function PosInvoicesHistory() {
                     }
                   }
                 });
-              }
             }
           } catch (e) {}
         });
@@ -1137,7 +1137,28 @@ export function PosInvoicesHistory() {
         return 0;
       });
 
+      // Identify all parties that have real sales invoices
+      const partiesWithRealInvoices = new Set<string>();
+      sorted.forEach((inv) => {
+        const num = String(inv.invoice_number || "").toUpperCase().trim();
+        const isOpn = num.startsWith("OPN-") || inv.invoice_type === "opening_balance";
+        if (!isOpn && inv.status !== "cancelled") {
+          const cName = String(inv.customer_name || "").toLowerCase().trim();
+          if (cName && cName !== "walk-in customer") partiesWithRealInvoices.add(cName);
+          if ((inv as any).customer_phone) partiesWithRealInvoices.add(String((inv as any).customer_phone).trim());
+        }
+      });
+
       for (const inv of sorted) {
+        const invNum = String(inv.invoice_number || "").toUpperCase().trim();
+        const isOpn = invNum.startsWith("OPN-") || inv.invoice_type === "opening_balance";
+        const cName = String(inv.customer_name || "").toLowerCase().trim();
+        const cPhone = String((inv as any).customer_phone || "").trim();
+        if (isOpn && (partiesWithRealInvoices.has(cName) || (cPhone && partiesWithRealInvoices.has(cPhone)))) {
+          // OPN invoice duplicates existing real sales invoices for this customer - exclude!
+          continue;
+        }
+
         const key = String(inv.invoice_number || inv.id).toLowerCase().trim();
         const refKey = (inv as any).reference_number ? String((inv as any).reference_number).toLowerCase().trim() : "";
         const recKey = (inv as any).receipt_number ? String((inv as any).receipt_number).toLowerCase().trim() : "";
@@ -1765,6 +1786,10 @@ export function PosInvoicesHistory() {
     const statsMap = new Map<string, { name: string; totalSales: number; invoiceCount: number; points: number }>();
 
     invoices.forEach((inv) => {
+      // Opening balance records are NOT sales rep sales transactions
+      const isOpn = String(inv.invoice_number || "").toUpperCase().trim().startsWith("OPN-") || inv.invoice_type === "opening_balance";
+      if (isOpn) return;
+
       const repName = inv.sales_executive || (inv as any).sales_rep_name || "Admin / Cashier";
       repSet.add(repName);
 

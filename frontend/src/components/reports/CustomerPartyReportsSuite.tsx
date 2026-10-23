@@ -357,6 +357,23 @@ export function CustomerPartyReportsSuite({
         // 3. Fetch all saved invoices from localStorage & backend APIs
         const allInvoicesMap = new Map<string, any>();
 
+        if (sqlInvoicesRes.status === "fulfilled" && sqlInvoicesRes.value) {
+          const sVal: any = sqlInvoicesRes.value;
+          const sqlInvoices = Array.isArray(sVal) ? sVal : sVal.items || sVal.data || [];
+          sqlInvoices.forEach((inv: any) => {
+            const numKey = String(inv.invoice_number || inv.receipt_number || inv.id || "").trim().toUpperCase();
+            if (numKey) {
+              allInvoicesMap.set(numKey, {
+                ...inv,
+                customer_name: inv.customer_name || inv.customer?.name || inv.party_name || "Client",
+                items: inv.lines || inv.items || [],
+                grand_total: Number(inv.total_amount || inv.grand_total || 0),
+                invoice_date: inv.invoice_date || inv.created_at,
+              });
+            }
+          });
+        }
+
         try {
           for (let i = 0; i < localStorage.length; i++) {
             const k = localStorage.key(i);
@@ -367,12 +384,13 @@ export function CustomerPartyReportsSuite({
                   const parsed = JSON.parse(item);
                   if (Array.isArray(parsed)) {
                     parsed.forEach((inv: any) => {
-                      const idKey = String(inv.id || inv.invoice_number || Math.random());
-                      if (!allInvoicesMap.has(idKey)) {
-                        allInvoicesMap.set(idKey, {
+                      const numKey = String(inv.invoice_number || inv.receipt_number || inv.id || "").trim().toUpperCase();
+                      if (numKey && !allInvoicesMap.has(numKey)) {
+                        allInvoicesMap.set(numKey, {
                           ...inv,
                           items: inv.lines || inv.items || [],
                           grand_total: Number(inv.total_amount || inv.grand_total || 0),
+                          invoice_date: inv.invoice_date || inv.created_at,
                         });
                       }
                     });
@@ -382,23 +400,6 @@ export function CustomerPartyReportsSuite({
             }
           }
         } catch (e) {}
-
-        if (sqlInvoicesRes.status === "fulfilled" && sqlInvoicesRes.value) {
-          const sVal: any = sqlInvoicesRes.value;
-          const sqlInvoices = Array.isArray(sVal) ? sVal : sVal.items || sVal.data || [];
-          sqlInvoices.forEach((inv: any) => {
-            const idKey = String(inv.id || inv.invoice_number || Math.random());
-            if (!allInvoicesMap.has(idKey)) {
-              allInvoicesMap.set(idKey, {
-                ...inv,
-                customer_name: inv.customer_name || inv.customer?.name || inv.party_name || "Client",
-                items: inv.lines || inv.items || [],
-                grand_total: Number(inv.total_amount || inv.grand_total || 0),
-                invoice_date: inv.invoice_date || inv.created_at,
-              });
-            }
-          });
-        }
 
         const combinedInvoices = Array.from(allInvoicesMap.values());
         setRawInvoices(combinedInvoices);
@@ -411,7 +412,7 @@ export function CustomerPartyReportsSuite({
           const name = (c.name || c.company_name || c.contact_name || "").trim();
           if (name) {
             const key = name.toLowerCase();
-            const balance = Number(c.balance || c.outstanding_balance || 0);
+            const opBal = Number(c.opening_balance || 0);
             partyMap.set(key, {
               id: c.id || `crm_${key}`,
               name: name,
@@ -420,8 +421,8 @@ export function CustomerPartyReportsSuite({
               email: c.email || "",
               gstin: c.gstin || "",
               address: c.address || c.city || "",
-              closingBalance: balance,
-              openingBalance: Number(c.opening_balance || 0),
+              closingBalance: opBal,
+              openingBalance: opBal,
               type: "Customer",
               creditLimit: Number(c.credit_limit || 0),
               totalInvoiced: 0,
@@ -430,7 +431,7 @@ export function CustomerPartyReportsSuite({
               upcomingDue: 0,
               overdue1_15: 0,
               overdue16_30: 0,
-              overdue30Plus: balance > 0 ? balance : 0,
+              overdue30Plus: 0,
             });
           }
         });
@@ -438,20 +439,34 @@ export function CustomerPartyReportsSuite({
         // Populate parties and calculate aggregations from all invoices
         const now = new Date();
         combinedInvoices.forEach((inv: any) => {
+          const rawStatus = String(inv.status || inv.payment_status || "").toLowerCase();
+          if (rawStatus === "cancelled" || rawStatus === "voided") return;
+
           const name = (inv.customer_name || inv.party_name || inv.customer?.name || inv.billing_to || "").trim();
           if (name && name.toLowerCase() !== "cash" && name.toLowerCase() !== "cash customer") {
             const key = name.toLowerCase();
             const phone = inv.customer_phone || inv.party_phone || inv.customer?.phone || inv.phone || "";
             const gstin = inv.customer_gstin || inv.gstin || inv.customer?.gstin || inv.party_gstin || "";
             const total = Number(inv.grand_total || inv.total_amount || 0);
-            const balance = Number(inv.balance ?? inv.pending_amount ?? (inv.status === "paid" || inv.payment_status === "Paid" ? 0 : total));
-            const paid = total - balance;
+
+            // Check if opening pseudo-invoice
+            const isOpn = String(inv.invoice_number || "").toUpperCase().startsWith("OPN-") || inv.is_opening_balance || inv.invoice_type === "opening_balance";
+
+            const isPaid = rawStatus === "paid" || (Number(inv.amount_received || inv.amount_paid || 0) >= total - 0.05 && total > 0);
+            const balance = isPaid ? 0 : Number(inv.balance ?? inv.balance_due ?? inv.pending_amount ?? (total - Number(inv.amount_received || inv.amount_paid || 0)));
+            const paid = isPaid ? total : Math.min(total, Number(inv.amount_received || inv.amount_paid || 0));
 
             if (partyMap.has(key)) {
               const p = partyMap.get(key)!;
-              p.closingBalance += balance;
-              p.totalInvoiced = (p.totalInvoiced || 0) + total;
-              p.totalPaid = (p.totalPaid || 0) + paid;
+              if (!isOpn) {
+                p.closingBalance += balance;
+                p.totalInvoiced = (p.totalInvoiced || 0) + total;
+                p.totalPaid = (p.totalPaid || 0) + paid;
+                p.overdue30Plus = (p.overdue30Plus || 0) + balance;
+              } else if (p.totalInvoiced === 0 && p.openingBalance === 0) {
+                p.closingBalance += balance;
+                p.overdue30Plus = (p.overdue30Plus || 0) + balance;
+              }
               if (phone && (!p.phone || p.phone === "—")) p.phone = phone;
               if (gstin && !p.gstin) p.gstin = gstin;
             } else {
@@ -461,11 +476,11 @@ export function CustomerPartyReportsSuite({
                 category: inv.customer_type || "Client",
                 phone: phone || "—",
                 gstin: gstin || "URP",
-                closingBalance: balance,
+                closingBalance: isOpn ? 0 : balance,
                 openingBalance: 0,
                 type: "Customer",
-                totalInvoiced: total,
-                totalPaid: paid,
+                totalInvoiced: isOpn ? 0 : total,
+                totalPaid: isOpn ? 0 : paid,
                 dueTomorrow: 0,
                 upcomingDue: 0,
                 overdue1_15: 0,

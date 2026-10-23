@@ -591,6 +591,23 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
         // Fetch all saved invoices from localStorage & backend APIs
         const allInvoicesMap = new Map<string, any>();
         try {
+          const apiRes: any = await invoicesApi.listInvoices({ page_size: 200 }).catch(() => null);
+          const invoiceItems = apiRes?.items || apiRes?.data?.items || apiRes?.data || (Array.isArray(apiRes) ? apiRes : []);
+          if (Array.isArray(invoiceItems)) {
+            invoiceItems.forEach((inv: any) => {
+              const numKey = String(inv.invoice_number || inv.receipt_number || inv.id || "").trim().toUpperCase();
+              if (numKey) {
+                allInvoicesMap.set(numKey, {
+                  ...inv,
+                  items: inv.lines || inv.items || [],
+                  invoice_date: inv.invoice_date || inv.created_at,
+                });
+              }
+            });
+          }
+        } catch (e) {}
+
+        try {
           for (let i = 0; i < localStorage.length; i++) {
             const k = localStorage.key(i);
             if (k && (k.startsWith("pos_saved_invoices") || k.startsWith("pos_offline_invoices"))) {
@@ -600,32 +617,19 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                   const parsed = JSON.parse(item);
                   if (Array.isArray(parsed)) {
                     parsed.forEach((inv: any) => {
-                      const idKey = String(inv.id || inv.invoice_number || Math.random());
-                      if (!allInvoicesMap.has(idKey)) {
-                        allInvoicesMap.set(idKey, inv);
+                      const numKey = String(inv.invoice_number || inv.receipt_number || inv.id || "").trim().toUpperCase();
+                      if (numKey && !allInvoicesMap.has(numKey)) {
+                        allInvoicesMap.set(numKey, {
+                          ...inv,
+                          items: inv.lines || inv.items || [],
+                          invoice_date: inv.invoice_date || inv.created_at,
+                        });
                       }
                     });
                   }
                 } catch (e) {}
               }
             }
-          }
-        } catch (e) {}
-
-        try {
-          const apiRes: any = await invoicesApi.listInvoices({ page_size: 200 }).catch(() => null);
-          const invoiceItems = apiRes?.items || apiRes?.data?.items || apiRes?.data || (Array.isArray(apiRes) ? apiRes : []);
-          if (Array.isArray(invoiceItems)) {
-            invoiceItems.forEach((inv: any) => {
-              const idKey = String(inv.id || inv.invoice_number || Math.random());
-              if (!allInvoicesMap.has(idKey)) {
-                allInvoicesMap.set(idKey, {
-                  ...inv,
-                  items: inv.lines || inv.items || [],
-                  invoice_date: inv.invoice_date || inv.created_at,
-                });
-              }
-            });
           }
         } catch (e) {}
 

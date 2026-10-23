@@ -494,8 +494,23 @@ export function PosPaymentIn() {
           }
         });
 
-        const finalPendingInvoices = Array.from(mergedMap.values())
-          .filter((inv: any) => inv.pending > 0.05)
+        // Check real unpaid invoices
+        const realInvoices = Array.from(mergedMap.values()).filter((inv: any) => {
+          const num = String(inv.id || "").toUpperCase();
+          return !num.startsWith("OPN-") && !inv.isOpeningBalance;
+        });
+
+        // If real invoices exist, remove redundant ghost OPN- invoices from list
+        const filteredPendingList = Array.from(mergedMap.values()).filter((inv: any) => {
+          const num = String(inv.id || "").toUpperCase();
+          const isOpn = num.startsWith("OPN-") || inv.isOpeningBalance;
+          if (isOpn && realInvoices.length > 0) {
+            return false;
+          }
+          return inv.pending > 0.05;
+        });
+
+        const finalPendingInvoices = filteredPendingList
           .sort((a: any, b: any) => {
             const timeA = new Date(a.date || a.created_at || a.invoice_date || 0).getTime();
             const timeB = new Date(b.date || b.created_at || b.invoice_date || 0).getTime();
@@ -505,10 +520,10 @@ export function PosPaymentIn() {
             return String(a.id || "").localeCompare(String(b.id || ""), undefined, { numeric: true });
           });
 
-        // Ensure party's opening / outstanding balance is represented
-        const custOpeningDue = Number(party.outstanding_balance ?? party.opening_balance ?? data?.total_pending_due ?? 0);
-        const currentSum = finalPendingInvoices.reduce((sum, inv) => sum + inv.pending, 0);
-        const unrepresentedDue = Math.max(0, custOpeningDue - currentSum);
+        // Only add an opening balance row if party has an explicit legacy opening balance
+        const explicitOpening = Number(party.opening_balance || 0);
+        const realSum = realInvoices.reduce((sum, inv) => sum + Number(inv.pending || 0), 0);
+        const unrepresentedDue = Math.max(0, explicitOpening - realSum);
         if (unrepresentedDue > 0.05 && !finalPendingInvoices.some((inv: any) => String(inv.id).startsWith("OPN-") || inv.isOpeningBalance)) {
           finalPendingInvoices.unshift({
             id: `OPN-${String(party.id).slice(0, 6).toUpperCase()}`,

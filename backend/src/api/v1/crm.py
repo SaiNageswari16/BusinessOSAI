@@ -102,6 +102,8 @@ async def list_customers(
         inv_conds = [
             Invoice.tenant_id == ctx.tenant_id,
             Invoice.status != "cancelled",
+            Invoice.invoice_type != "opening_balance",
+            ~Invoice.invoice_number.startswith("OPN-"),
         ]
         if ctx.active_company_id:
             if getattr(ctx, "is_primary_company", False):
@@ -152,6 +154,29 @@ async def list_customers(
 
                 if c_id is None or comp_id is None:
                     invoices_to_link.append((i_id, matched_cust_id))
+
+        # Clean up any ghost OPN- invoices if customer already has real invoices in DB
+        ghost_opn_invoices = (await db.execute(
+            select(Invoice).where(
+                Invoice.tenant_id == ctx.tenant_id,
+                or_(Invoice.invoice_type == "opening_balance", Invoice.invoice_number.startswith("OPN-")),
+                Invoice.amount_paid <= 0.05
+            )
+        )).scalars().all()
+        for g_inv in ghost_opn_invoices:
+            if g_inv.customer_id:
+                has_real = await db.scalar(
+                    select(func.count(Invoice.id)).where(
+                        Invoice.tenant_id == ctx.tenant_id,
+                        Invoice.customer_id == g_inv.customer_id,
+                        Invoice.id != g_inv.id,
+                        Invoice.invoice_type != "opening_balance",
+                        ~Invoice.invoice_number.startswith("OPN-"),
+                        Invoice.status.notin_(["cancelled", "voided"])
+                    )
+                )
+                if has_real and has_real > 0:
+                    await db.delete(g_inv)
 
         if invoices_to_link:
             try:
@@ -478,7 +503,7 @@ async def get_customer_ledger(
         })
 
     # Sort all events chronologically (oldest first) to compute running balances accurately
-    base_cust_opening = float(getattr(customer, "outstanding_balance", 0) or getattr(customer, "opening_balance", 0) or 0)
+    base_cust_opening = float(getattr(customer, "opening_balance", 0) or 0)
     has_opn_event = any(e.get("voucher_no", "").startswith("OPN-") or e.get("type") in ["opening_balance"] for e in raw_events)
     if not has_opn_event and base_cust_opening > 0:
         c_dt = customer.created_at if customer.created_at else datetime.now(timezone.utc)
@@ -708,15 +733,15 @@ async def record_customer_payment(
         apply_to_bal = min(rem_payment, cust_bal)
         customer.outstanding_balance = round(max(0.0, cust_bal - apply_to_bal), 2)
         
-        # Look for existing opening balance invoice or create one
+        # Look for existing opening balance invoice if customer has legacy opening balance
         op_inv = await db.scalar(
             select(Invoice).where(
                 Invoice.tenant_id == ctx.tenant_id,
                 Invoice.customer_id == customer.id,
-                Invoice.invoice_type == "opening_balance"
+                or_(Invoice.invoice_type == "opening_balance", Invoice.invoice_number.startswith("OPN-"))
             )
         )
-        if not op_inv:
+        if not op_inv and float(getattr(customer, "opening_balance", 0) or 0) > 0.05:
             op_inv = Invoice(
                 tenant_id=ctx.tenant_id,
                 company_id=customer.company_id or ctx.active_company_id,
@@ -728,30 +753,30 @@ async def record_customer_payment(
                 status="unpaid",
                 invoice_date=date.today(),
                 due_date=date.today(),
-                total_amount=cust_bal,
-                balance_due=cust_bal,
+                total_amount=float(getattr(customer, "opening_balance", 0) or 0),
+                balance_due=float(getattr(customer, "opening_balance", 0) or 0),
                 amount_paid=0.0,
                 notes="Customer Opening Balance",
             )
             db.add(op_inv)
             await db.flush()
 
-        payment = InvoicePayment(
-            tenant_id=ctx.tenant_id,
-            invoice_id=op_inv.id,
-            amount=apply_to_bal,
-            payment_date=pay_date.date() if isinstance(pay_date, datetime) else pay_date,
-            payment_method=payload.payment_method or "UPI",
-            reference_number=payload.reference_number or f"PAY-{datetime.now().strftime('%Y%m%d%H%M%S')}",
-            notes=f"Settlement towards Opening Balance ({payload.notes or ''})",
-        )
-        db.add(payment)
-        created_payments.append(payment)
-        
-        op_inv.amount_paid = round(float(op_inv.amount_paid or 0) + apply_to_bal, 2)
-        op_inv.balance_due = round(max(0.0, float(op_inv.total_amount or 0) - float(op_inv.amount_paid or 0)), 2)
-        op_inv.status = "paid" if op_inv.balance_due <= 0.05 else "partially_paid"
-        
+        if op_inv:
+            payment = InvoicePayment(
+                tenant_id=ctx.tenant_id,
+                invoice_id=op_inv.id,
+                amount=apply_to_bal,
+                payment_date=pay_date.date() if isinstance(pay_date, datetime) else pay_date,
+                payment_method=payload.payment_method or "UPI",
+                reference_number=payload.reference_number or f"PAY-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                notes=f"Settlement towards Opening Balance ({payload.notes or ''})",
+            )
+            db.add(payment)
+            created_payments.append(payment)
+            op_inv.amount_paid = round(float(op_inv.amount_paid or 0) + apply_to_bal, 2)
+            op_inv.balance_due = round(max(0.0, float(op_inv.total_amount or 0) - float(op_inv.amount_paid or 0)), 2)
+            op_inv.status = "paid" if op_inv.balance_due <= 0.05 else "partially_paid"
+
         rem_payment -= apply_to_bal
 
     # If any amount remains or customer has no prior invoices, attach to last invoice or opening invoice as advance
@@ -802,18 +827,45 @@ async def _sync_customer_opening_balance_invoice(
     customer: Customer,
     init_due: float,
 ):
-    if init_due <= 0:
-        return
     from src.models.erp import Invoice, InvoiceLine
     import random
+
+    # Check existing real unpaid invoices for this customer
+    unpaid_real_invoices = (await db.execute(
+        select(Invoice).where(
+            Invoice.tenant_id == tenant_id,
+            Invoice.customer_id == customer.id,
+            Invoice.status.notin_(["paid", "voided", "cancelled"]),
+            Invoice.invoice_type != "opening_balance",
+            ~Invoice.invoice_number.startswith("OPN-")
+        )
+    )).scalars().all()
+    real_inv_due = sum(float(x.balance_due if x.balance_due is not None else (x.total_amount or 0)) for x in unpaid_real_invoices)
 
     op_inv = await db.scalar(
         select(Invoice).where(
             Invoice.tenant_id == tenant_id,
             Invoice.customer_id == customer.id,
-            Invoice.invoice_type == "opening_balance"
+            or_(Invoice.invoice_type == "opening_balance", Invoice.invoice_number.startswith("OPN-"))
         )
     )
+
+    # If the real invoices already cover or exceed init_due, no OPN- invoice is needed!
+    if real_inv_due >= init_due - 0.05:
+        if op_inv and float(op_inv.amount_paid or 0) <= 0.05:
+            # Delete redundant ghost opening balance invoice
+            await db.delete(op_inv)
+            await db.flush()
+        return
+
+    # Only unbilled excess requires an opening balance invoice
+    unbilled_diff = round(init_due - real_inv_due, 2)
+    if unbilled_diff <= 0.05:
+        if op_inv and float(op_inv.amount_paid or 0) <= 0.05:
+            await db.delete(op_inv)
+            await db.flush()
+        return
+
     if not op_inv:
         op_inv_num = f"OPN-{customer.id.hex[:6].upper()}"
         existing_with_num = await db.scalar(
@@ -841,10 +893,10 @@ async def _sync_customer_opening_balance_invoice(
             invoice_date=date.today(),
             due_date=date.today(),
             payment_terms="Immediate",
-            subtotal=init_due,
-            total_amount=init_due,
+            subtotal=unbilled_diff,
+            total_amount=unbilled_diff,
             amount_paid=0.0,
-            balance_due=init_due,
+            balance_due=unbilled_diff,
             notes=f"Opening / Carried-forward outstanding balance recorded for customer {customer.name}",
         )
         db.add(op_inv)
@@ -855,31 +907,31 @@ async def _sync_customer_opening_balance_invoice(
             line_number=1,
             product_name="Opening Outstanding Balance",
             quantity=1.0,
-            unit_price=init_due,
-            taxable_amount=init_due,
+            unit_price=unbilled_diff,
+            taxable_amount=unbilled_diff,
             tax_rate=0.0,
-            line_total=init_due,
+            line_total=unbilled_diff,
         )
         db.add(op_line)
     elif op_inv and float(op_inv.amount_paid or 0) <= 0.05:
-        op_inv.total_amount = init_due
-        op_inv.subtotal = init_due
-        op_inv.balance_due = init_due
+        op_inv.total_amount = unbilled_diff
+        op_inv.subtotal = unbilled_diff
+        op_inv.balance_due = unbilled_diff
         existing_line = await db.scalar(select(InvoiceLine).where(InvoiceLine.invoice_id == op_inv.id))
         if existing_line:
-            existing_line.unit_price = init_due
-            existing_line.taxable_amount = init_due
-            existing_line.line_total = init_due
+            existing_line.unit_price = unbilled_diff
+            existing_line.taxable_amount = unbilled_diff
+            existing_line.line_total = unbilled_diff
         else:
             op_line = InvoiceLine(
                 invoice_id=op_inv.id,
                 line_number=1,
                 product_name="Opening Outstanding Balance",
                 quantity=1.0,
-                unit_price=init_due,
-                taxable_amount=init_due,
+                unit_price=unbilled_diff,
+                taxable_amount=unbilled_diff,
                 tax_rate=0.0,
-                line_total=init_due,
+                line_total=unbilled_diff,
             )
             db.add(op_line)
 
@@ -1094,10 +1146,47 @@ async def update_customer_outstanding_balance(
     old_balance = float(getattr(customer, "outstanding_balance", 0) or 0)
     new_balance = round(float(payload.outstanding_balance), 2)
     customer.outstanding_balance = new_balance
-    if not customer.opening_balance and new_balance > 0:
-        customer.opening_balance = new_balance
 
-    if new_balance > 0:
+    from src.models.erp import Invoice, InvoicePayment
+
+    # Look up all current unpaid invoices for this customer
+    unpaid_stmt = (
+        select(Invoice)
+        .where(
+            Invoice.tenant_id == ctx.tenant_id,
+            Invoice.customer_id == customer.id,
+            Invoice.status.notin_(["paid", "voided", "cancelled"])
+        )
+        .order_by(Invoice.invoice_date.asc(), Invoice.created_at.asc())
+    )
+    all_unpaid = (await db.execute(unpaid_stmt)).scalars().all()
+
+    if new_balance <= 0.01:
+        # User requested to settle / clear balance to 0!
+        customer.outstanding_balance = 0.0
+        customer.opening_balance = 0.0
+        pay_date = date.today()
+        for inv in all_unpaid:
+            if inv.invoice_type == "opening_balance" or str(inv.invoice_number or "").startswith("OPN-"):
+                await db.delete(inv)
+            else:
+                rem_due = float(inv.balance_due if inv.balance_due is not None else (inv.total_amount or 0))
+                if rem_due > 0:
+                    pmt = InvoicePayment(
+                        tenant_id=ctx.tenant_id,
+                        invoice_id=inv.id,
+                        amount=rem_due,
+                        payment_date=pay_date,
+                        payment_method="Cash",
+                        reference_number=f"SETTLE-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                        notes=payload.reason or "Balance settled to 0",
+                    )
+                    db.add(pmt)
+                inv.amount_paid = inv.total_amount
+                inv.balance_due = 0.0
+                inv.status = "paid"
+    else:
+        # Synchronize opening balance only if not already represented by real invoices
         await _sync_customer_opening_balance_invoice(
             db=db,
             tenant_id=ctx.tenant_id,
