@@ -79,8 +79,8 @@ function StandalonePlatformAdminPage() {
             <div className="h-5 w-px bg-border hidden sm:block" />
 
             <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-muted/40 border border-border/50">
-              <div className="size-7 rounded-full gradient-brand text-white font-bold flex items-center justify-center text-xs shadow-xs">
-                {user?.avatar || "V"}
+              <div className="size-7 rounded-full bg-gradient-to-r from-purple-600 via-indigo-600 to-teal-600 text-white font-bold flex items-center justify-center text-xs shadow-xs">
+                {user?.avatar || (user?.name ? user.name.slice(0, 2).toUpperCase() : "V")}
               </div>
               <div className="hidden md:block text-left text-xs">
                 <div className="font-bold text-foreground leading-tight">{user?.name || "Platform Admin"}</div>

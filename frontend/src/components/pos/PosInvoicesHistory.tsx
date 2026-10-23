@@ -2078,7 +2078,7 @@ export function PosInvoicesHistory() {
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => navigate({ to: "/reports", search: { tab: "payment_mode_sales" } as any })}
-            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3.5 h-10 text-xs rounded-xl border border-indigo-200/80 flex items-center gap-2 transition-all cursor-pointer shadow-2xs hover:shadow-xs active:scale-95"
+            className="bg-indigo-50/70 hover:bg-indigo-100/80 text-indigo-700 font-bold px-4 h-10 text-xs rounded-full border border-indigo-200/90 flex items-center gap-2 transition-all cursor-pointer shadow-2xs hover:shadow-xs active:scale-95"
             title="Open Payment Mode Breakdown & Realization Report"
           >
             <CreditCard className="w-4 h-4 text-indigo-600" />
@@ -2088,18 +2088,18 @@ export function PosInvoicesHistory() {
           <button
             onClick={loadInvoices}
             title="Refresh Invoices"
-            className="bg-white hover:bg-slate-50 text-slate-700 font-medium h-10 w-10 rounded-xl shadow-sm border border-slate-200/80 flex items-center justify-center transition-all hover:border-slate-300 active:scale-95 cursor-pointer"
+            className="bg-white hover:bg-slate-50 text-purple-600 font-medium h-10 w-10 rounded-full shadow-sm border border-slate-200/80 flex items-center justify-center transition-all hover:border-slate-300 active:scale-95 cursor-pointer"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-purple-600" : "text-slate-600"}`} />
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-purple-600" : "text-purple-600"}`} />
           </button>
 
           <button
             onClick={() => navigate({ to: "/pos", search: { tab: "sales" } as any })}
-            className="gradient-brand text-white font-bold px-5 h-10 text-sm rounded-xl shadow-md hover:shadow-lg shadow-purple-500/25 flex items-center gap-2 hover:opacity-95 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer border-0 tracking-wide"
+            className="bg-gradient-to-r from-purple-600 via-indigo-600 to-teal-600 hover:from-purple-500 hover:to-teal-500 text-white font-bold px-6 h-10 text-sm rounded-full shadow-md hover:shadow-lg shadow-purple-500/25 flex items-center gap-2 hover:opacity-95 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer border-0 tracking-wide"
           >
             <Plus className="w-4 h-4 stroke-[2.5]" />
             <Receipt className="w-4 h-4" />
-            <span>Sales Invoice</span>
+            <span className="font-bold">Sales Invoice</span>
           </button>
         </div>
       </div>

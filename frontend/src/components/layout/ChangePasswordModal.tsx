@@ -322,7 +322,7 @@ export function ChangePasswordModal({ open, onOpenChange }: ChangePasswordModalP
 
               {targetType === "self" ? (
                 <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
-                  <div className="size-9 rounded-full gradient-brand text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-xs">
+                  <div className="size-9 rounded-full bg-gradient-to-r from-purple-600 via-indigo-600 to-teal-600 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-xs">
                     {user?.avatar || (user?.name ? user.name.slice(0, 2).toUpperCase() : "ME")}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -394,7 +394,7 @@ export function ChangePasswordModal({ open, onOpenChange }: ChangePasswordModalP
             </div>
           ) : (
             <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
-              <div className="size-9 rounded-full gradient-brand text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-xs">
+              <div className="size-9 rounded-full bg-gradient-to-r from-purple-600 via-indigo-600 to-teal-600 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-xs">
                 {user?.avatar || (user?.name ? user.name.slice(0, 2).toUpperCase() : "ME")}
               </div>
               <div className="min-w-0 flex-1">

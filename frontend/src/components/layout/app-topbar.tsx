@@ -1075,7 +1075,7 @@ export function AppTopbar({
             {/* Popover Header */}
             <div className="px-4 py-3 border-b bg-gradient-to-r from-purple-50/80 via-white to-indigo-50/80 dark:from-purple-950/40 dark:to-slate-900/50 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="size-7 rounded-lg gradient-brand text-white flex items-center justify-center shadow-xs">
+                <div className="size-7 rounded-lg bg-gradient-to-r from-purple-600 via-indigo-600 to-teal-600 text-white flex items-center justify-center shadow-xs">
                   <MessageCircle className="size-3.5" />
                 </div>
                 <div>
@@ -1344,7 +1344,7 @@ export function AppTopbar({
                         type="submit"
                         disabled={isSubmittingNotice}
                         size="sm"
-                        className="h-8 px-4 gradient-brand text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer"
+                        className="h-8 px-4 bg-gradient-to-r from-purple-600 via-indigo-600 to-teal-600 hover:from-purple-500 hover:to-teal-500 text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer"
                       >
                         {isSubmittingNotice ? (
                           <>
@@ -1510,7 +1510,7 @@ export function AppTopbar({
                     type="submit"
                     disabled={isAiLoading || !aiAssistantInput.trim()}
                     size="sm"
-                    className="h-8 px-3 rounded-xl gradient-brand text-white text-xs font-semibold shadow-xs cursor-pointer disabled:opacity-50"
+                    className="h-8 px-3 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-teal-600 hover:from-purple-500 hover:to-teal-500 text-white text-xs font-semibold shadow-xs cursor-pointer disabled:opacity-50"
                   >
                     {isAiLoading ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
                   </Button>
@@ -1621,16 +1621,16 @@ export function AppTopbar({
               className="flex items-center justify-center p-0.5 rounded-full hover:ring-2 hover:ring-purple-500/30 transition-all cursor-pointer outline-none focus:ring-2 focus:ring-purple-500/40"
               title={`${user?.name || "User"} (${activeRole?.name || "Super Admin"})`}
             >
-              <div className="size-8 rounded-full gradient-brand text-white font-bold text-xs flex items-center justify-center shadow-xs transition-transform hover:scale-105 active:scale-95">
-                {user?.avatar || "VE"}
+              <div className="size-8 rounded-full bg-gradient-to-r from-purple-600 via-indigo-600 to-teal-600 text-white font-bold text-xs flex items-center justify-center shadow-sm transition-transform hover:scale-105 active:scale-95">
+                {user?.avatar || (user?.name ? user.name.slice(0, 2).toUpperCase() : "VE")}
               </div>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-64 shadow-xl rounded-xl border border-slate-200/80 p-1">
             <div className="px-3 py-2.5 bg-slate-50/80 rounded-lg border border-slate-100 mb-1">
               <div className="flex items-center gap-2.5">
-                <div className="size-9 rounded-full gradient-brand text-white font-bold text-xs flex items-center justify-center shadow-xs shrink-0">
-                  {user?.avatar || "VE"}
+                <div className="size-9 rounded-full bg-gradient-to-r from-purple-600 via-indigo-600 to-teal-600 text-white font-bold text-xs flex items-center justify-center shadow-sm shrink-0">
+                  {user?.avatar || (user?.name ? user.name.slice(0, 2).toUpperCase() : "VE")}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-bold text-slate-800 truncate">{user?.name || "Venkat E."}</div>

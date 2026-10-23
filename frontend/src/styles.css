@@ -166,6 +166,18 @@
   background-image: var(--gradient-brand);
 }
 
+@utility gradient-brand {
+  background: linear-gradient(135deg, #7c3aed 0%, #6366f1 50%, #0d9488 100%);
+  background-image: linear-gradient(135deg, #7c3aed 0%, #6366f1 50%, #0d9488 100%);
+  color: #ffffff;
+}
+
+.gradient-brand {
+  background: linear-gradient(135deg, #7c3aed 0%, #6366f1 50%, #0d9488 100%) !important;
+  background-image: linear-gradient(135deg, #7c3aed 0%, #6366f1 50%, #0d9488 100%) !important;
+  color: #ffffff !important;
+}
+
 @utility bg-gradient-ink {
   background-image: var(--gradient-ink);
 }
