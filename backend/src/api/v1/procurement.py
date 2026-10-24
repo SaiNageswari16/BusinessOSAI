@@ -4199,6 +4199,7 @@ Extract the following JSON structure:
           "hsn_code": "32091090",
           "quantity": 3.0,
           "uom": "Nos",
+          "mrp": 379.0,
           "tax_inclusive_rate": 368.16,
           "tax_exclusive_rate": 312.00,
           "unit_price": 312.00,
@@ -4233,7 +4234,8 @@ CRITICAL RULES:
 1. "unit_price" MUST ALWAYS be the Tax-Exclusive Base Rate (e.g. 312.00, not the tax-inclusive rate 368.16). If the invoice only shows tax-inclusive rate R with tax rate T, calculate: unit_price = R / (1 + T/100).
 2. "tax_exclusive_rate" is the base rate without GST.
 3. "tax_inclusive_rate" is the gross rate including GST.
-4. Extract all line items accurately with HSN codes, UOM, Quantity, and Tax %.
+3b. "mrp" is the product's actual printed MRP / retail shelf price from the MRP column of the invoice. It is NOT the purchase rate or tax-inclusive rate. If the document has no MRP column, set "mrp" to 0 — do NOT substitute the unit price or gross rate.
+4. Extract all line items accurately with HSN codes, UOM, MRP, Quantity, and Tax %.
 5. If the document has MULTIPLE invoices / pages (e.g. Invoice #3002 on Page 1 and Invoice #2983 on Page 2), extract ALL of them into the "invoices" array.
 6. Verify that Taxable Amount + Total Tax Amount == Grand Total.
 7. Extract all available vendor/supplier details: supplier_name, supplier_gstin, supplier_pan, supplier_phone, supplier_email, supplier_address, supplier_city, supplier_state, supplier_pincode.

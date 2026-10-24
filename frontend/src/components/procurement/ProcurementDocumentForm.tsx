@@ -58,6 +58,7 @@ interface ProcurementItem {
   expiry_date?: string;
   mfg_date?: string;
   mrp: number;
+  selling_price?: number;
   quantity: number;
   unit_price: number;
   tax_inclusive_rate?: number;
@@ -450,6 +451,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                       product_id: it.product_id,
                       product_name: it.product_name || prod?.name || "Material Item",
                       hsn_code: prod?.hsn_code || it.hsn_code || "",
+                      uom: (prod as any)?.uom_name || "PCS",
                       mrp: prod?.mrp || prod?.selling_price || 0,
                       quantity: Number(it.quantity) || 1,
                       unit_price: Number(it.unit_price) || prod?.cost_price || 0,
@@ -475,6 +477,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                     product_id: it.product_id,
                     product_name: it.product_name || prod?.name || "Material Item",
                     hsn_code: prod?.hsn_code || it.hsn_code || "",
+                    uom: (prod as any)?.uom_name || "PCS",
                     mrp: prod?.mrp || prod?.selling_price || 0,
                     quantity: acceptedQty,
                     unit_price: prod?.cost_price || prod?.purchase_price || 0,
@@ -500,6 +503,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                 product_id: it.product_id || foundProd?.id,
                 product_name: pName || foundProd?.name || "Purchased Product",
                 hsn_code: it.hsn_code || (foundProd as any)?.hsn_code || "",
+                uom: it.uom || (foundProd as any)?.uom_name || "PCS",
                 mrp: mrpVal,
                 quantity: Number(it.quantity) || 1,
                 unit_price: price,
@@ -510,9 +514,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             }));
           }
         } else {
-          if (supps && supps.length > 0) {
-            setSelectedSupplierId(supps[0].id);
-          }
+          // Do NOT auto-select the first vendor — leave the placeholder so the user picks a vendor
           const prefix = docType === "PR" ? "PR-2026-" : docType === "PO" ? "PO-2026-" : "PINV-2026-";
           const randomSeq = Math.floor(1000 + Math.random() * 9000);
           setDocNumber(`${prefix}${randomSeq}`);
@@ -540,6 +542,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             product_id: it.product_id,
             product_name: it.product_name || prod?.name || "Material Item",
             hsn_code: prod?.hsn_code || it.hsn_code || "",
+            uom: (prod as any)?.uom_name || "PCS",
             mrp: prod?.mrp || prod?.selling_price || 0,
             quantity: Number(it.quantity) || 1,
             unit_price: Number(it.estimated_price) || prod?.cost_price || prod?.selling_price || 0,
@@ -568,6 +571,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               product_id: it.product_id,
               product_name: it.product_name || prod?.name || "Material Item",
               hsn_code: prod?.hsn_code || it.hsn_code || "",
+              uom: (prod as any)?.uom_name || "PCS",
               mrp: prod?.mrp || prod?.selling_price || 0,
               quantity: Number(it.quantity) || 1,
               unit_price: Number(it.unit_price) || prod?.cost_price || 0,
@@ -596,6 +600,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               product_id: it.product_id,
               product_name: it.product_name || prod?.name || "Material Item",
               hsn_code: prod?.hsn_code || it.hsn_code || "",
+              uom: (prod as any)?.uom_name || "PCS",
               mrp: prod?.mrp || prod?.selling_price || 0,
               quantity: Number(it.quantity) || 1,
               unit_price: Number(it.unit_price) || prod?.cost_price || 0,
@@ -638,6 +643,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               product_id: it.product_id,
               product_name: it.product_name || prod?.name || "Material Item",
               hsn_code: prod?.hsn_code || it.hsn_code || "",
+              uom: (prod as any)?.uom_name || "PCS",
               mrp: prod?.mrp || prod?.selling_price || 0,
               quantity: acceptedQty,
               unit_price: prod?.cost_price || prod?.purchase_price || 0,
@@ -891,6 +897,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       if (product) {
         const costPrice = Number((product as any).purchase_price || (product as any).cost_price || product.selling_price || product.price || product.mrp || 0);
         const mrpVal = Number(product.mrp || product.selling_price || costPrice || 0);
+        const prodUom = (product as any).uom_name || "PCS";
 
         // If product already in items, increment qty
         const existingIdx = items.findIndex((it) => it.product_id === product.id);
@@ -907,6 +914,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               product_id: product.id,
               product_name: product.name,
               hsn_code: product.hsn_code || "",
+              uom: prodUom,
               batch_number: (product as any).stock_batch_number || (product as any).batch_number || "",
               mrp: mrpVal,
               quantity: 1,
@@ -1035,6 +1043,9 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         product_name: it.product_name || "Material Item",
         hsn_code: it.hsn_code || "",
         hsn: it.hsn_code || "",
+        uom: it.uom || "",
+        mrp: Number(it.mrp) || 0,
+        selling_price: Number(it.selling_price) || Number(it.mrp) || 0,
         quantity: Number(it.quantity) || 1,
         unit_price: Number(it.unit_price) || 0,
         tax_percent: Number(it.tax_rate) || 0,
@@ -1163,9 +1174,10 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
               const created = await inventoryApi.createProduct({
                 name: (it.product_name || "Procured Item").trim(),
                 hsn_code: it.hsn_code || undefined,
+                uom_name: it.uom || undefined,
                 purchase_price: Number(it.unit_price) || 0,
-                mrp: Number(it.mrp) || Number(it.unit_price) || 0,
-                selling_price: Number(it.mrp) || Number(it.unit_price) || 0,
+                mrp: Number(it.mrp) || 0,
+                selling_price: Number(it.selling_price) || Number(it.mrp) || Number(it.unit_price) || 0,
                 tax_percent: Number(it.tax_rate) || 0,
                 status: "active",
               });
@@ -1441,7 +1453,11 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
         const foundProd = findMatchingInventoryProduct(pName, it.sku, it.barcode, it.hsn_code, products);
         // Default to tax-exclusive base rate so financial totals tally to 100% precision
         const unitPrice = Number(it.unit_price) || Number(it.tax_exclusive_rate) || (foundProd ? Number((foundProd as any).cost_price || (foundProd as any).purchase_price || foundProd.selling_price || 0) : 0);
-        const grossPrice = Number(it.tax_inclusive_rate) || Number(it.rate) || (foundProd ? Number(foundProd.mrp) : 0) || unitPrice;
+        const grossPrice = Number(it.tax_inclusive_rate) || Number(it.rate) || unitPrice;
+        // MRP = the product's actual retail MRP from the OCR/PO, NOT the purchase+GST gross rate.
+        // Selling price defaults to MRP so the user can adjust it to their own retail price.
+        const mrpVal = Number(it.mrp) || Number((foundProd as any)?.mrp) || 0;
+        const sellingVal = mrpVal > 0 ? mrpVal : unitPrice;
         return {
           id: Math.random().toString(36).substring(2, 9),
           product_id: foundProd?.id,
@@ -1449,7 +1465,8 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
           hsn_code: it.hsn_code || foundProd?.hsn_code || "",
           uom: it.uom || (foundProd as any)?.uom_name || "PCS",
           batch_number: it.batch_number || "",
-          mrp: grossPrice,
+          mrp: mrpVal,
+          selling_price: sellingVal,
           quantity: Number(it.quantity) || 1,
           unit_price: unitPrice,
           tax_inclusive_rate: Number(it.tax_inclusive_rate) || grossPrice,
@@ -1473,9 +1490,10 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
       const created = await inventoryApi.createProduct({
         name: item.product_name.trim(),
         hsn_code: item.hsn_code || undefined,
+        uom_name: item.uom || undefined,
         purchase_price: Number(item.unit_price) || 0,
-        mrp: Number(item.mrp) || Number(item.unit_price) || 0,
-        selling_price: Number(item.mrp) || Number(item.unit_price) || 0,
+        mrp: Number(item.mrp) || 0,
+        selling_price: Number(item.selling_price) || Number(item.mrp) || Number(item.unit_price) || 0,
         tax_percent: Number(item.tax_rate) || 0,
         status: "active"
       });
@@ -2272,9 +2290,11 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
                 <th className="px-3 py-3 w-10 text-center">#</th>
                 <th className="px-3 py-3 min-w-[260px]">Items / Services</th>
                 <th className="px-3 py-3 w-24">HSN/SAC</th>
+                <th className="px-3 py-3 w-16">UOM</th>
                 <th className="px-3 py-3 w-24">Batch No</th>
                 <th className="px-3 py-3 w-28">Exp Date</th>
                 <th className="px-3 py-3 w-20 text-right">MRP ({currency.symbol})</th>
+                <th className="px-3 py-3 w-20 text-right">Sell Price ({currency.symbol})</th>
                 <th className="px-3 py-3 w-20 text-right">Qty</th>
                 <th className="px-3 py-3 w-24 text-right">
                   {docType === "PR" ? "Est. Price (₹)" : isTaxInclusive ? "Gross Rate (₹)" : "Price/Item (₹)"}
@@ -2340,6 +2360,13 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
                                   <div className="text-xs font-bold text-slate-900 truncate flex items-center gap-1.5">
                                     <Package className="size-3.5 text-emerald-600 shrink-0" />
                                     <span className="truncate">{item.product_name || linkedProd?.name}</span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5">
+                                    {item.uom && (
+                                      <span className="font-bold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1 rounded">
+                                        UOM: {item.uom}
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="text-[10px] font-semibold text-emerald-700 flex items-center gap-1 mt-0.5">
                                     <CheckCircle className="size-3 text-emerald-600 shrink-0" />
@@ -2524,6 +2551,17 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
                         />
                       </td>
 
+                      {/* UOM */}
+                      <td className="px-3 py-2">
+                        <input
+                          type="text"
+                          placeholder="PCS"
+                          value={item.uom || ""}
+                          onChange={(e) => updateItem(item.id, "uom", e.target.value.toUpperCase())}
+                          className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-xs font-bold text-slate-600 outline-none"
+                        />
+                      </td>
+
                       {/* Batch */}
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1 min-w-[130px]">
@@ -2571,6 +2609,21 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
                           onFocus={(e) => e.target.select()}
                           onChange={(e) => updateItem(item.id, "mrp", e.target.value === "" ? "" : Number(e.target.value))}
                           className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-slate-700 outline-none"
+                        />
+                      </td>
+
+                      {/* Selling Price — defaults to MRP, user-editable */}
+                      <td className="px-3 py-2 text-right">
+                        <input
+                          type="number"
+                          placeholder={item.mrp ? String(item.mrp) : "0"}
+                          value={item.selling_price || ""}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => updateItem(item.id, "selling_price", e.target.value === "" ? "" : Number(e.target.value))}
+                          onBlur={(e) => {
+                            if (!item.selling_price && item.mrp) updateItem(item.id, "selling_price", item.mrp);
+                          }}
+                          className="w-full bg-white border border-emerald-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-emerald-700 outline-none focus:ring-1 focus:ring-emerald-400"
                         />
                       </td>
 

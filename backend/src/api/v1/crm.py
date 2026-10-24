@@ -1002,10 +1002,19 @@ async def create_customer(payload: CustomerCreate, request: Request, ctx: Annota
     if not existing_customer and filtered_data.get("phone"):
         clean_phone = filtered_data["phone"]
         digits = "".join(filter(str.isdigit, clean_phone))
+        # Workspace-scoped duplicate check: same phone already in the active workspace
+        # => reject with 400 "already added" instead of creating or merging a duplicate.
+        workspace_id = ctx.active_company_id
+        ws_filter = (
+            Customer.company_id == workspace_id
+            if workspace_id
+            else Customer.company_id == None
+        )
         if len(digits) >= 10:
             existing_customer = await db.scalar(
                 select(Customer).where(
                     Customer.tenant_id == ctx.tenant_id,
+                    ws_filter,
                     Customer.phone.ilike(f"%{digits[-10:]}%")
                 )
             )
@@ -1013,8 +1022,14 @@ async def create_customer(payload: CustomerCreate, request: Request, ctx: Annota
             existing_customer = await db.scalar(
                 select(Customer).where(
                     Customer.tenant_id == ctx.tenant_id,
+                    ws_filter,
                     Customer.phone == clean_phone
                 )
+            )
+        if existing_customer:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Customer with phone number {clean_phone} is already added in this workspace. Use edit instead of adding again."
             )
 
     # 2. If existing customer found, update their details and addresses instead of failing with 500
@@ -1103,6 +1118,42 @@ async def update_customer(
     customer = await db.scalar(select(Customer).where(Customer.id == customer_id, Customer.tenant_id == ctx.tenant_id))
     if not customer: raise HTTPException(status_code=404, detail="Customer not found")
     updates = payload.model_dump(exclude_unset=True)
+
+    # Workspace-scoped duplicate phone check: reject if another customer in the same
+    # active workspace already owns this phone number.
+    if updates.get("phone"):
+        upd_digits = "".join(filter(str.isdigit, str(updates["phone"])))
+        target_ws = updates.get("company_id", customer.company_id)
+        upd_ws_filter = (
+            Customer.company_id == target_ws
+            if target_ws
+            else Customer.company_id == None
+        )
+        phone_conflict = None
+        if upd_digits and len(upd_digits) >= 10:
+            phone_conflict = await db.scalar(
+                select(Customer.id).where(
+                    Customer.id != customer_id,
+                    Customer.tenant_id == ctx.tenant_id,
+                    upd_ws_filter,
+                    Customer.phone.ilike(f"%{upd_digits[-10:]}%")
+                )
+            )
+        if not phone_conflict and updates["phone"]:
+            phone_conflict = await db.scalar(
+                select(Customer.id).where(
+                    Customer.id != customer_id,
+                    Customer.tenant_id == ctx.tenant_id,
+                    upd_ws_filter,
+                    Customer.phone == updates["phone"]
+                )
+            )
+        if phone_conflict:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Phone number {updates['phone']} is already used by another customer in this workspace."
+            )
+
     for key, value in updates.items():
         if hasattr(customer, key):
             setattr(customer, key, value)

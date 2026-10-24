@@ -357,6 +357,8 @@ class MasterProductImportItem(ProductBase):
     category_name: Optional[str] = None
     sub_category_name: Optional[str] = None
     uom_name: Optional[str] = None
+    # Purchased-side GST type ("Inclusive"/"Exclusive" from the master Excel column)
+    is_purchase_tax_inclusive: Optional[bool] = None
 
     @field_validator("brand_name", "category_name", "sub_category_name", "uom_name", mode="before")
     @classmethod

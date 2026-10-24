@@ -1109,6 +1109,32 @@ async def create_product(
     brand_name = data.pop("brand", None)
     data["status"] = _parse_status(data.get("status") or "active")
 
+    # Sync / Find UOM from a free-text uom_name (e.g. "Box", "KG") so products
+    # created on-the-fly from OCR / procurement carry a real UOM record.
+    uom_name = (data.get("uom_name") or "").strip()
+    if uom_name:
+        uom_res = await db.execute(
+            select(UnitOfMeasure).where(
+                UnitOfMeasure.tenant_id == ctx.tenant_id,
+                func.lower(UnitOfMeasure.name) == uom_name.lower()
+            )
+        )
+        existing_uom = uom_res.scalars().first()
+        if existing_uom:
+            data["uom_id"] = existing_uom.id
+        else:
+            new_uom = UnitOfMeasure(
+                id=uuid.uuid4(),
+                tenant_id=ctx.tenant_id,
+                company_id=ctx.active_company_id,
+                name=uom_name,
+                abbreviation=uom_name[:20],
+                status=EntityStatus.ACTIVE,
+            )
+            db.add(new_uom)
+            await db.flush()
+            data["uom_id"] = new_uom.id
+
     # Sync / Find Brand
     brand_id = data.get("brand_id")
     if brand_name and brand_name.strip():
@@ -1676,6 +1702,13 @@ async def master_import_products(
             min_wholesale_qty=item.min_wholesale_qty or 1,
             tax_percent=item_tax,
             is_tax_inclusive=item.is_tax_inclusive if item.is_tax_inclusive is not None else True,
+            specifications={
+                **(item.specifications or {}),
+                # Persist the purchased-side GST type so the Products table can render
+                # "Inclusive"/"Exclusive" under PURCHASE TAX INCLUSIVE/EXCLUSIVE
+                "purchase_tax_type": "Exclusive" if item.is_purchase_tax_inclusive is False else "Inclusive"
+                if item.is_purchase_tax_inclusive is not None else (item.specifications or {}).get("purchase_tax_type")
+            },
             discount_limit=item.discount_limit or 0.0,
             initial_stock=item.initial_stock or 0,
             reorder_level=item.reorder_level or 0,
@@ -1684,7 +1717,6 @@ async def master_import_products(
             base_name=item.base_name,
             product_base_code=item.product_base_code,
             size_l_kg=item.size_l_kg,
-            specifications=item.specifications,
             status=_parse_status(item.status) if item.status else EntityStatus.ACTIVE
         )
         db.add(new_product)

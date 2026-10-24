@@ -1079,9 +1079,25 @@ export function mapMasterImportRowToProduct(rawRow: Record<string, any>): Record
   }
 
   // 2. Map all master catalog fields
+  //    NOTE: the tax type columns (sales/purchase "Inclusive"/"Exclusive") must be
+  //    parsed from the raw row BEFORE running the setters — a setter may write a
+  //    sibling key that a later column's getter would fall back on and clobber it.
+  const salesTaxTypeRaw = getRawVal("Sales Tax inclusive/Exclusive", [
+    "Sales Tax Type", "sales_tax_type", "sales tax type", "Sales Tax Inclusive/Exclusive", "SALES TAX INCLUSIVE/EXCLUSIVE"
+  ]);
+  const purchaseTaxTypeRaw = getRawVal("PURCHASE Tax inclusive/Exclusive", [
+    "Purchase Tax Type", "purchase_tax_type", "purchase tax type", "PURCHASE TAX INCLUSIVE/EXCLUSIVE"
+  ]);
+  const isPurchaseTaxInclusive = purchaseTaxTypeRaw === undefined
+    ? undefined
+    : String(purchaseTaxTypeRaw).trim().toLowerCase().startsWith("excl") ? false : true;
+  const isSalesTaxInclusive = salesTaxTypeRaw === undefined
+    ? undefined
+    : String(salesTaxTypeRaw).trim().toLowerCase().startsWith("excl") ? false : true;
+
   for (const field of PRODUCT_MASTER_FIELDS) {
     if (field.type === "blank") continue;
-    
+
     const rawVal = getRawVal(field.excelHeader, [
       field.label,
       field.id,
@@ -1112,6 +1128,16 @@ export function mapMasterImportRowToProduct(rawRow: Record<string, any>): Record
         product[field.id] = field.defaultValue;
       }
     }
+  }
+
+  // 2b. Tax Inclusive/Exclusive — write the canonical flags from the RAW column values
+  if (isSalesTaxInclusive !== undefined) {
+    product.is_tax_inclusive = isSalesTaxInclusive;
+    product.specifications.sales_tax_type = isSalesTaxInclusive ? "Inclusive" : "Exclusive";
+  }
+  if (isPurchaseTaxInclusive !== undefined) {
+    product.is_purchase_tax_inclusive = isPurchaseTaxInclusive;
+    product.specifications.purchase_tax_type = isPurchaseTaxInclusive ? "Inclusive" : "Exclusive";
   }
 
   // 3. Clean and sanitize core identifiers

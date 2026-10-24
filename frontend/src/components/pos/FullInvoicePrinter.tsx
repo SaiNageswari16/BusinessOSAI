@@ -95,6 +95,7 @@ export interface FullInvoiceData {
     quantity: number;
     unit_price: number;
     mrp?: number;
+    selling_price?: number;
     discount_type?: 'percent' | 'fixed';
     discount_value?: number;
     tax_rate?: number;
@@ -1970,6 +1971,7 @@ export function FullInvoicePrinter({
                           const unitPrice = isFree ? 0 : Number(item.unit_price || 0);
                           const originalRate = Number(item.unit_price || 0);
                           const mrpPrice = Number(item.mrp || 0);
+                          const sellPrice = Number(item.selling_price || item.mrp || 0);
                           const discVal = isFree ? 0 : Number(item.discount_value || 0);
                           const taxRate = isFree ? 0 : Number(item.tax_rate || 0);
                           const itemSub = isFree ? 0 : qty * unitPrice;
@@ -2001,8 +2003,11 @@ export function FullInvoicePrinter({
                                     {f.showBarcode && (item as any).barcode && `| Barcode: ${(item as any).barcode}`}
                                   </span>
                                 )}
-                                {mrpPrice > unitPrice && !isFree && (
-                                  <span className="text-[9px] text-slate-500">MRP: {currency.symbol}{mrpPrice.toFixed(2)}</span>
+                                {(mrpPrice > 0 || sellPrice > 0) && !isFree && (
+                                  <span className="text-[9px] text-slate-500">
+                                    {mrpPrice > 0 && <span>MRP: {currency.symbol}{mrpPrice.toFixed(2)} </span>}
+                                    {sellPrice > 0 && <span>• Sell: {currency.symbol}{sellPrice.toFixed(2)}</span>}
+                                  </span>
                                 )}
                               </td>
                               {f.showHSN && <td className="py-2 px-3 print:py-1 print:px-2 text-center font-mono text-slate-600 text-[10px]">{item.hsn_code || (item as any).hsn || (item as any).hsn_sac || '—'}</td>}

@@ -214,6 +214,8 @@ export function ProcurementShareModal({
         product_name: it.product_name || it.name || 'Material Item',
         hsn_code: hsnCode,
         hsn: hsnCode,
+        mrp: Number(it.mrp) || 0,
+        selling_price: Number(it.selling_price) || Number(it.mrp) || 0,
         quantity: Number(it.quantity) || 1,
         unit_price: Number(it.unit_price) || 0,
         tax_rate: Number(it.tax_percent) || 0,

@@ -604,6 +604,7 @@ export function VendorBills() {
             <thead className="bg-muted/50 border-b border-border text-muted-foreground text-xs uppercase font-bold tracking-wider">
               <tr>
                 <th className="py-4 px-6">Bill / Invoice Number</th>
+                <th className="py-4 px-6">Vendor / Supplier</th>
                 <th className="py-4 px-6">Linked PO Reference</th>
                 <th className="py-4 px-6">3-Way Match (GRN)</th>
                 <th className="py-4 px-6 text-right font-bold">Invoiced Amount</th>
@@ -616,14 +617,14 @@ export function VendorBills() {
             <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="py-16 text-center text-muted-foreground">
+                  <td colSpan={9} className="py-16 text-center text-muted-foreground">
                     <Loader2 className="w-7 h-7 animate-spin mx-auto mb-3 text-primary" />
                     <p className="font-semibold text-sm">Loading purchase invoices...</p>
                   </td>
                 </tr>
               ) : filteredBills.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-16 text-center text-muted-foreground">
+                  <td colSpan={9} className="py-16 text-center text-muted-foreground">
                     <div className="max-w-md mx-auto space-y-3">
                       <Receipt className="w-10 h-10 mx-auto text-muted-foreground/50" />
                       <h4 className="text-base font-bold text-foreground">No purchase invoices found</h4>
@@ -650,6 +651,14 @@ export function VendorBills() {
                   <tr key={b.id} className="hover:bg-muted/30 transition-colors">
                     <td className="py-4 px-6 font-mono font-bold text-primary">
                       {b.bill_number || b.id.slice(0, 8)}
+                    </td>
+                    <td className="py-4 px-6">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-semibold text-foreground">{b.supplier_name || "Unknown Vendor"}</span>
+                        {b.supplier?.gst_number && (
+                          <span className="text-[10px] text-muted-foreground font-mono">GSTIN: {b.supplier.gst_number}</span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-4 px-6 font-medium text-foreground">
                       {b.po_number || (b.purchase_order_id ? `PO-${b.purchase_order_id.slice(0, 6)}` : "Direct Invoice")}
