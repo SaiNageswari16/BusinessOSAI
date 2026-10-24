@@ -947,7 +947,7 @@ export async function request<T>(
       try {
         const res = await fetch(url, { method, headers });
         if (!res.ok) {
-          if (res.status === 401) {
+          if (res.status === 401 && typeof window !== "undefined" && !window.location.pathname.startsWith("/store")) {
             clearApiCache();
             try {
               const keysToRemove: string[] = [];
@@ -1001,7 +1001,7 @@ export async function request<T>(
   });
 
   if (!res.ok) {
-    if (res.status === 401) {
+    if (res.status === 401 && typeof window !== "undefined" && !window.location.pathname.startsWith("/store")) {
       clearApiCache();
       try {
         const keysToRemove: string[] = [];
@@ -5810,7 +5810,12 @@ export const marketplaceApi = {
   acceptRFQBid: (rfqId: string, bidId: string) => request<any>("PUT", `/marketplace/rfqs/${rfqId}/accept-bid?bid_id=${bidId}`),
 
   getTradeCredits: () => request<any[]>("GET", `/marketplace/trade-credit`),
-  getThemeSettings: () => request<any>("GET", `/marketplace/theme`),
+  getThemeSettings: (params?: { store?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.store) q.set("store", params.store);
+    const qs = q.toString();
+    return request<any>("GET", `/marketplace/theme${qs ? `?${qs}` : ""}`);
+  },
   updateThemeSettings: (data: any) => request<any>("PUT", `/marketplace/theme`, data),
 };
 

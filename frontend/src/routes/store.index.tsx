@@ -10,38 +10,77 @@ import {
   organicCategories as fallbackCategories, organicProducts as fallbackProducts, organicBlogPosts, OrganicProduct
 } from "@/data/mockOrganicData";
 import { OrganicProductCard } from "@/components/storefront/organic/OrganicProductCard";
-import { DynamicStoreHero, DynamicProductCard } from "@/components/storefront/UniversalTemplateRouter";
+import { DynamicStoreHero, DynamicProductCard, DynamicStoreCategories } from "@/components/storefront/UniversalTemplateRouter";
 import { fetchStorefrontProducts, fetchStorefrontCategories, mapStorefrontToOrganic } from "@/lib/storefront-api";
 import { useCurrency } from "@/hooks/use-currency";
 import { useStoreCart } from "@/contexts/StoreCartContext";
+import { useStoreTheme } from "@/contexts/StoreThemeContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
+export function StoreNotFound({ slug }: { slug?: string }) {
+  return (
+    <div className="min-h-[60vh] flex flex-col items-center justify-center px-4 py-20 text-center font-sans">
+      <div className="size-20 rounded-3xl bg-amber-50 border border-amber-200/80 text-amber-600 flex items-center justify-center mb-6 shadow-sm">
+        <Package className="size-10 stroke-[1.75]" />
+      </div>
+      <h1 className="text-3xl font-black text-gray-950 tracking-tight mb-2">
+        Store Not Found
+      </h1>
+      <p className="text-sm text-gray-600 max-w-md leading-relaxed mb-6">
+        {slug
+          ? `The storefront "${slug}" could not be found or is currently unpublished by the merchant.`
+          : "The requested storefront does not exist or has been taken offline."}
+      </p>
+      <Link
+        to="/store"
+        className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-gray-900 hover:bg-black text-white text-xs font-bold transition-all shadow-md cursor-pointer"
+      >
+        <ArrowRight className="size-4 rotate-180" /> Back to Marketplace Home
+      </Link>
+    </div>
+  );
+}
 
 export const Route = createFileRoute("/store/")({
   component: LazyMonkeyStoreHome,
 });
 
 function LazyMonkeyStoreHome() {
+  return <StorefrontHomeContent />;
+}
+
+export function StorefrontHomeContent({ dedicatedSlug }: { dedicatedSlug?: string }) {
   const navigate = useNavigate();
   const { currency } = useCurrency();
   const { addToCart } = useStoreCart();
+  const { theme, branding, storeSlug, isStoreNotFound, getStoreUrl } = useStoreTheme();
+
+  const effectiveSlug = dedicatedSlug || storeSlug || undefined;
 
   const [heroSearchQuery, setHeroSearchQuery] = useState("");
   const [activeCategoryTab, setActiveCategoryTab] = useState("All");
   const [memberEmail, setMemberEmail] = useState("");
 
-  // Fetch live products
+  const effectiveStoreName = branding.storeName?.trim() || theme.name || "BusinessOS Store";
+  const effectiveTagline = branding.tagline?.trim() || theme.tagline || "Hyperlocal Omnichannel Commerce";
+
+  // Fetch live products scoped to store
   const { data: dynamicProductsData, isLoading: isProductsLoading } = useQuery({
-    queryKey: ["storefront-products-home"],
-    queryFn: () => fetchStorefrontProducts(undefined, undefined, undefined, 1, 50),
+    queryKey: ["storefront-products-home", effectiveSlug],
+    queryFn: () => fetchStorefrontProducts(undefined, undefined, undefined, 1, 50, effectiveSlug),
     staleTime: 60000,
   });
 
   const { data: dynamicCategoriesData } = useQuery({
-    queryKey: ["storefront-categories-home"],
-    queryFn: () => fetchStorefrontCategories(),
+    queryKey: ["storefront-categories-home", effectiveSlug],
+    queryFn: () => fetchStorefrontCategories(undefined, effectiveSlug),
     staleTime: 60000,
   });
+
+  if (isStoreNotFound) {
+    return <StoreNotFound slug={effectiveSlug} />;
+  }
 
   // Real inventory products from backend
   const liveItems: OrganicProduct[] = (dynamicProductsData?.items || []).map((p, i) => mapStorefrontToOrganic(p, i));
@@ -90,7 +129,7 @@ function LazyMonkeyStoreHome() {
     if (!heroSearchQuery.trim()) return;
     navigate({
       to: "/store/shop",
-      search: { search: heroSearchQuery.trim() },
+      search: { search: heroSearchQuery.trim(), ...(effectiveSlug ? { store: effectiveSlug } : {}) } as any,
     });
   };
 
@@ -99,8 +138,11 @@ function LazyMonkeyStoreHome() {
     if (!memberEmail || !memberEmail.includes("@")) {
       return toast.error("Please enter a valid email address.");
     }
-    toast.success("Welcome to LazyMonkeyAI! Coupon code LAZY20 has been applied to your account.");
-    navigate({ to: "/store/shop" });
+    toast.success(`Welcome to ${effectiveStoreName}! Coupon code MEMBER20 has been applied.`);
+    navigate({
+      to: "/store/shop",
+      search: effectiveSlug ? ({ store: effectiveSlug } as any) : undefined,
+    });
   };
 
   const handleQuickAdd = (id: string, name: string, price: number, image: string) => {
@@ -114,17 +156,24 @@ function LazyMonkeyStoreHome() {
   };
 
   return (
-    <div className="w-full bg-white font-sans pb-12 overflow-x-hidden">
+    <div
+      className="w-full font-sans pb-12 overflow-x-hidden transition-colors duration-300"
+      style={{ backgroundColor: theme.bgTone }}
+    >
       
-      {/* ════════════════════════════════════════════════════════════════════════
-          ── 1. EXACT REPLICATED HERO SECTION (from Screenshot ss2) ──
-          ════════════════════════════════════════════════════════════════════════ */}
+      {/* ── 1. Dynamic Hero Section ── */}
       <DynamicStoreHero
         fallbackHero={
-          <section className="relative w-full bg-gradient-to-b from-[#FAFDF9] via-[#F6FBF6] to-white border-b border-gray-100/80 py-10 lg:py-16 overflow-hidden">
+          <section className="relative w-full bg-gradient-to-b from-white/60 via-transparent to-transparent border-b border-gray-100/80 py-10 lg:py-16 overflow-hidden">
             {/* Soft background ambient glows */}
-            <div className="absolute -left-20 top-20 size-80 rounded-full bg-[#16A34A]/8 blur-3xl pointer-events-none" />
-            <div className="absolute right-10 top-10 size-96 rounded-full bg-[#22C55E]/10 blur-3xl pointer-events-none" />
+            <div
+              className="absolute -left-20 top-20 size-80 rounded-full blur-3xl pointer-events-none opacity-20"
+              style={{ backgroundColor: theme.primaryColor }}
+            />
+            <div
+              className="absolute right-10 top-10 size-96 rounded-full blur-3xl pointer-events-none opacity-15"
+              style={{ backgroundColor: theme.accentColor }}
+            />
 
             <div className="container mx-auto px-4 sm:px-6">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 xl:gap-14 items-center">
@@ -133,32 +182,40 @@ function LazyMonkeyStoreHome() {
                 <div className="lg:col-span-6 space-y-6 text-left">
                   
                   {/* Badge Pill */}
-                  <div className="inline-flex items-center gap-2 bg-[#ECFDF5] border border-[#A7F3D0] px-3.5 py-1.5 rounded-full shadow-2xs">
-                    <Sparkles className="size-3.5 text-[#16A34A]" />
-                    <span className="text-xs font-bold text-[#16A34A]">
-                      Shop Smarter with LazyMonkeyAI
+                  <div
+                    className="inline-flex items-center gap-2 border px-3.5 py-1.5 rounded-full shadow-2xs"
+                    style={{
+                      backgroundColor: `${theme.primaryColor}12`,
+                      borderColor: `${theme.primaryColor}30`,
+                    }}
+                  >
+                    <Sparkles className="size-3.5" style={{ color: theme.primaryColor }} />
+                    <span className="text-xs font-bold" style={{ color: theme.primaryColor }}>
+                      Shop Smarter with {effectiveStoreName}
                     </span>
                   </div>
 
                   {/* Main Headline */}
                   <h1 className="text-4xl sm:text-5xl lg:text-[54px] font-black text-gray-950 leading-[1.08] tracking-tight font-sans">
                     Everything You Need.<br />
-                    <span className="relative inline-block text-[#16A34A] mt-1">
+                    <span className="relative inline-block mt-1" style={{ color: theme.primaryColor }}>
                       All in One Place.
-                      {/* Subtle organic highlighter brush effect */}
-                      <span className="absolute -bottom-1.5 left-0 w-full h-3 bg-[#16A34A]/15 rounded-full -z-10" />
+                      <span
+                        className="absolute -bottom-1.5 left-0 w-full h-3 rounded-full -z-10 opacity-20"
+                        style={{ backgroundColor: theme.primaryColor }}
+                      />
                     </span>
                   </h1>
 
                   {/* Description paragraph */}
                   <p className="text-sm sm:text-base text-gray-600 max-w-xl leading-relaxed">
-                    Discover a wide range of products across electronics, fashion, home & kitchen, beauty, groceries and everyday essentials — all at great prices, powered by LazyMonkeyAI.
+                    Discover a wide range of curated products across all categories — all at direct supplier prices, powered by {effectiveStoreName}.
                   </p>
 
                   {/* Search Bar Container */}
                   <form
                     onSubmit={handleHeroSearch}
-                    className="flex items-center bg-white border border-gray-200/90 rounded-full p-1.5 pl-4 max-w-xl shadow-md hover:border-[#16A34A]/50 focus-within:border-[#16A34A] focus-within:ring-2 focus-within:ring-[#16A34A]/10 transition-all"
+                    className="flex items-center bg-white border border-gray-200/90 rounded-full p-1.5 pl-4 max-w-xl shadow-md hover:border-gray-300 focus-within:ring-2 focus-within:ring-black/5 transition-all"
                   >
                     <Search className="size-4.5 text-gray-400 shrink-0 mr-2.5" />
                     <input
@@ -170,17 +227,20 @@ function LazyMonkeyStoreHome() {
                     />
                     <button
                       type="submit"
-                      className="bg-[#16A34A] hover:bg-[#15803d] text-white font-bold text-xs sm:text-sm px-6 py-2.5 sm:py-3 rounded-full transition-colors cursor-pointer shadow-sm shrink-0"
+                      className="text-white font-bold text-xs sm:text-sm px-6 py-2.5 sm:py-3 rounded-full transition-opacity hover:opacity-90 cursor-pointer shadow-sm shrink-0"
+                      style={{ backgroundColor: theme.primaryColor }}
                     >
                       Search
                     </button>
                   </form>
 
-                  {/* Action Buttons (Shop Now & Explore Categories) */}
+                  {/* Action Buttons */}
                   <div className="flex flex-wrap items-center gap-3.5 pt-1">
                     <Link
                       to="/store/shop"
-                      className="bg-[#16A34A] hover:bg-[#15803d] text-white font-bold text-sm px-7 py-3.5 rounded-full transition-all shadow-md hover:shadow-lg flex items-center gap-2 group"
+                      search={effectiveSlug ? ({ store: effectiveSlug } as any) : undefined}
+                      className="text-white font-bold text-sm px-7 py-3.5 rounded-full transition-all shadow-md hover:shadow-lg flex items-center gap-2 group"
+                      style={{ backgroundColor: theme.primaryColor }}
                     >
                       <ShoppingCart className="size-4" />
                       <span>Shop Now</span>
@@ -202,7 +262,10 @@ function LazyMonkeyStoreHome() {
                   {/* 4 Feature Trust Badges */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-6 border-t border-gray-100 max-w-xl">
                     <div className="flex items-center gap-2.5">
-                      <div className="size-8 rounded-full bg-[#ECFDF5] text-[#16A34A] flex items-center justify-center shrink-0">
+                      <div
+                        className="size-8 rounded-full flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: `${theme.primaryColor}15`, color: theme.primaryColor }}
+                      >
                         <Truck className="size-4" />
                       </div>
                       <div>
@@ -212,7 +275,10 @@ function LazyMonkeyStoreHome() {
                     </div>
 
                     <div className="flex items-center gap-2.5">
-                      <div className="size-8 rounded-full bg-[#ECFDF5] text-[#16A34A] flex items-center justify-center shrink-0">
+                      <div
+                        className="size-8 rounded-full flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: `${theme.primaryColor}15`, color: theme.primaryColor }}
+                      >
                         <ShieldCheck className="size-4" />
                       </div>
                       <div>
@@ -222,7 +288,10 @@ function LazyMonkeyStoreHome() {
                     </div>
 
                     <div className="flex items-center gap-2.5">
-                      <div className="size-8 rounded-full bg-[#ECFDF5] text-[#16A34A] flex items-center justify-center shrink-0">
+                      <div
+                        className="size-8 rounded-full flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: `${theme.primaryColor}15`, color: theme.primaryColor }}
+                      >
                         <RotateCcw className="size-4" />
                       </div>
                       <div>
@@ -232,7 +301,10 @@ function LazyMonkeyStoreHome() {
                     </div>
 
                     <div className="flex items-center gap-2.5">
-                      <div className="size-8 rounded-full bg-[#ECFDF5] text-[#16A34A] flex items-center justify-center shrink-0">
+                      <div
+                        className="size-8 rounded-full flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: `${theme.primaryColor}15`, color: theme.primaryColor }}
+                      >
                         <LayoutGrid className="size-4" />
                       </div>
                       <div>
@@ -249,7 +321,7 @@ function LazyMonkeyStoreHome() {
                   <div className="relative w-full max-w-[620px] transition-transform duration-500 hover:scale-[1.02]">
                     <img
                       src="/hero-showcase.jpg"
-                      alt="LazyMonkeyAI Everything You Need - All in One Place"
+                      alt={`${effectiveStoreName} - All in One Place`}
                       className="w-full h-auto object-contain drop-shadow-2xl select-none"
                       loading="eager"
                     />
@@ -262,50 +334,16 @@ function LazyMonkeyStoreHome() {
         }
       />
 
-      {/* ── 2. Category Carousel Section ── */}
-      {categoriesList.length > 0 && (
-        <section id="categories-section" className="py-12 border-b border-gray-100">
-          <div className="container mx-auto px-4">
-            <div className="flex items-center justify-between mb-8">
-              <div>
-                <h2 className="text-2xl font-black text-gray-900 tracking-tight font-sans">
-                  Categories & Departments
-                </h2>
-                <p className="text-xs text-gray-500 mt-0.5">Explore our wide selection across tech, fashion, home, and essentials</p>
-              </div>
-              <Link
-                to="/store/shop"
-                className="text-xs font-bold text-[#16A34A] hover:text-[#15803d] flex items-center gap-1 group"
-              >
-                View All <ChevronRight className="size-4 group-hover:translate-x-1 transition-transform" />
-              </Link>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-              {categoriesList.map((cat) => (
-                <div
-                  key={cat.id}
-                  onClick={() => navigate({ to: "/store/shop", search: { category: cat.name } })}
-                  className="group flex flex-col items-center text-center p-4 rounded-2xl bg-white border border-gray-100 hover:border-[#16A34A]/40 hover:shadow-md transition-all cursor-pointer"
-                >
-                  <div className="size-16 sm:size-20 rounded-2xl overflow-hidden bg-gray-50 mb-3 border border-gray-100 group-hover:scale-105 transition-transform duration-300">
-                    <img
-                      src={cat.image}
-                      alt={cat.name}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                    />
-                  </div>
-                  <h3 className="font-bold text-xs text-gray-800 group-hover:text-[#16A34A] transition-colors line-clamp-1">
-                    {cat.name}
-                  </h3>
-                  <span className="text-[10px] text-gray-400 font-medium">{cat.itemCount} items</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
+      {/* ── 2. Dynamic Category Section ── */}
+      <DynamicStoreCategories
+        categories={categoriesList}
+        onSelectCategory={(cat) => {
+          navigate({
+            to: "/store/shop",
+            search: { category: cat.name, ...(effectiveSlug ? { store: effectiveSlug } : {}) } as any,
+          });
+        }}
+      />
 
       {/* ── 3. Best Selling Products Section with Category Tabs ── */}
       <section className="py-12">
@@ -325,11 +363,10 @@ function LazyMonkeyStoreHome() {
                   key={tab}
                   type="button"
                   onClick={() => setActiveCategoryTab(tab)}
+                  style={activeCategoryTab === tab ? { backgroundColor: theme.primaryColor, color: "#fff" } : undefined}
                   className={cn(
                     "px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
-                    activeCategoryTab === tab
-                      ? "bg-[#16A34A] text-white shadow-xs"
-                      : "text-gray-600 hover:text-gray-900 hover:bg-gray-200/60"
+                    activeCategoryTab !== tab && "text-gray-600 hover:text-gray-900 hover:bg-gray-200/60"
                   )}
                 >
                   {tab}
@@ -353,18 +390,24 @@ function LazyMonkeyStoreHome() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Banner 1 */}
             <div
-              onClick={() => navigate({ to: "/store/shop", search: { filter: "sale" } })}
+              onClick={() => navigate({ to: "/store/shop", search: { filter: "sale", ...(effectiveSlug ? { store: effectiveSlug } : {}) } as any })}
               className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-amber-50 to-orange-50/80 p-8 border border-amber-100 shadow-xs cursor-pointer hover:shadow-md transition-all"
             >
               <div className="relative z-10 space-y-3 max-w-[65%]">
-                <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-[#F97316] text-white uppercase tracking-wider">
+                <span
+                  className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold text-white uppercase tracking-wider"
+                  style={{ backgroundColor: theme.accentColor || "#F97316" }}
+                >
                   Weekly Deals
                 </span>
                 <h3 className="text-2xl font-black text-gray-900 font-sans leading-tight">
                   Items on SALE
                 </h3>
                 <p className="text-xs text-gray-600 font-semibold">Discounts up to 40%</p>
-                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#16A34A] group-hover:translate-x-1 transition-transform">
+                <span
+                  className="inline-flex items-center gap-1.5 text-xs font-bold group-hover:translate-x-1 transition-transform"
+                  style={{ color: theme.primaryColor }}
+                >
                   Shop Now <ArrowRight className="size-3.5" />
                 </span>
               </div>
@@ -377,18 +420,24 @@ function LazyMonkeyStoreHome() {
 
             {/* Banner 2 */}
             <div
-              onClick={() => navigate({ to: "/store/shop", search: { filter: "combo" } })}
+              onClick={() => navigate({ to: "/store/shop", search: { filter: "combo", ...(effectiveSlug ? { store: effectiveSlug } : {}) } as any })}
               className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-50 to-teal-50 p-8 border border-emerald-100 shadow-xs cursor-pointer hover:shadow-md transition-all"
             >
               <div className="relative z-10 space-y-3 max-w-[65%]">
-                <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-[#16A34A] text-white uppercase tracking-wider">
+                <span
+                  className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold text-white uppercase tracking-wider"
+                  style={{ backgroundColor: theme.primaryColor }}
+                >
                   Bundle & Save
                 </span>
                 <h3 className="text-2xl font-black text-gray-900 font-sans leading-tight">
                   Combo Offers
                 </h3>
                 <p className="text-xs text-gray-600 font-semibold">Save up to 50% on bundles</p>
-                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#16A34A] group-hover:translate-x-1 transition-transform">
+                <span
+                  className="inline-flex items-center gap-1.5 text-xs font-bold group-hover:translate-x-1 transition-transform"
+                  style={{ color: theme.primaryColor }}
+                >
                   Explore Combos <ArrowRight className="size-3.5" />
                 </span>
               </div>
@@ -401,7 +450,7 @@ function LazyMonkeyStoreHome() {
 
             {/* Banner 3 */}
             <div
-              onClick={() => navigate({ to: "/store/shop", search: { filter: "coupons" } })}
+              onClick={() => navigate({ to: "/store/shop", search: { filter: "coupons", ...(effectiveSlug ? { store: effectiveSlug } : {}) } as any })}
               className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-purple-50 to-indigo-50 p-8 border border-purple-100 shadow-xs cursor-pointer hover:shadow-md transition-all"
             >
               <div className="relative z-10 space-y-3 max-w-[65%]">
@@ -412,7 +461,10 @@ function LazyMonkeyStoreHome() {
                   Special Coupons
                 </h3>
                 <p className="text-xs text-gray-600 font-semibold">Extra 20% on first order</p>
-                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#16A34A] group-hover:translate-x-1 transition-transform">
+                <span
+                  className="inline-flex items-center gap-1.5 text-xs font-bold group-hover:translate-x-1 transition-transform"
+                  style={{ color: theme.primaryColor }}
+                >
                   Claim Voucher <ArrowRight className="size-3.5" />
                 </span>
               </div>
@@ -429,7 +481,10 @@ function LazyMonkeyStoreHome() {
       {/* ── 5. Member Privilege Banner ── */}
       <section className="py-10">
         <div className="container mx-auto px-4">
-          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#16A34A] to-[#15803D] text-white p-8 md:p-14 shadow-lg flex flex-col md:flex-row items-center justify-between gap-8">
+          <div
+            className="relative overflow-hidden rounded-3xl text-white p-8 md:p-14 shadow-lg flex flex-col md:flex-row items-center justify-between gap-8 transition-colors"
+            style={{ background: `linear-gradient(135deg, ${theme.primaryColor}, ${theme.accentColor || theme.primaryColor})` }}
+          >
             <div className="relative z-10 max-w-xl space-y-2 text-center md:text-left">
               <span className="inline-block px-3 py-1 rounded-full text-xs font-black bg-white/20 uppercase tracking-widest text-white">
                 Member Privilege
@@ -437,8 +492,8 @@ function LazyMonkeyStoreHome() {
               <h2 className="text-3xl sm:text-4xl font-black tracking-tight">
                 Get 20% Discount on your first purchase
               </h2>
-              <p className="text-xs sm:text-sm text-emerald-100 leading-relaxed">
-                Join LazyMonkeyAI today to enjoy member flash prices, free express delivery, and instant coin rewards.
+              <p className="text-xs sm:text-sm text-white/90 leading-relaxed">
+                Join {effectiveStoreName} today to enjoy member flash prices, priority express delivery, and instant rewards.
               </p>
             </div>
 

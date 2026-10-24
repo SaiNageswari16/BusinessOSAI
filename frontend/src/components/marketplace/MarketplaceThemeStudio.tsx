@@ -27,6 +27,12 @@ import {
   Save,
   Info,
   CheckCircle,
+  Copy,
+  Globe,
+  Radio,
+  Lock,
+  Unlock,
+  AlertCircle
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -36,6 +42,7 @@ import {
   getActiveStoreBranding,
   saveActiveStoreThemeSettings,
   StoreBrandingConfig,
+  useStoreTheme,
 } from "@/contexts/StoreThemeContext";
 import { marketplaceApi } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -88,13 +95,23 @@ const SECTOR_FEATURES: Record<string, string[]> = {
   ],
 };
 
+const RESERVED_SLUGS = new Set([
+  "api", "admin", "login", "register", "shop", "cart",
+  "checkout", "orders", "account", "settings", "store", "public"
+]);
+
 export function MarketplaceThemeStudio() {
+  const { refreshTheme } = useStoreTheme();
   const [activeThemeId, setActiveThemeId] = useState<string>(() => getActiveStoreThemeId());
   const [selectedThemeId, setSelectedThemeId] = useState<string>(() => getActiveStoreThemeId());
   const [branding, setBranding] = useState<StoreBrandingConfig>(() => getActiveStoreBranding());
+  const [storeSlug, setStoreSlug] = useState<string>("");
+  const [isPublished, setIsPublished] = useState<boolean>(true);
+  const [slugError, setSlugError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"branding" | "colors" | "features">("branding");
   const [previewDevice, setPreviewDevice] = useState<"desktop" | "mobile">("desktop");
   const [isSaving, setIsSaving] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
 
   const selectedTheme = STORE_THEMES[selectedThemeId] || STORE_THEMES[DEFAULT_THEME_ID];
   const activePublishedTheme = STORE_THEMES[activeThemeId] || STORE_THEMES[DEFAULT_THEME_ID];
@@ -108,6 +125,12 @@ export function MarketplaceThemeStudio() {
         if (data.theme_id && STORE_THEMES[data.theme_id]) {
           setActiveThemeId(data.theme_id);
           setSelectedThemeId(data.theme_id);
+        }
+        if (data.store_slug) {
+          setStoreSlug(data.store_slug);
+        }
+        if (data.is_published !== undefined) {
+          setIsPublished(data.is_published);
         }
         if (data.store_name || data.primary_color) {
           setBranding((prev) => ({
@@ -132,9 +155,45 @@ export function MarketplaceThemeStudio() {
   const effectiveTagline = branding.tagline !== undefined ? branding.tagline : selectedTheme.tagline;
   const effectivePrimaryColor = branding.primaryColor || selectedTheme.primaryColor;
   const effectiveAccentColor = branding.accentColor || selectedTheme.accentColor;
+  const effectiveBgTone = branding.bgTone || selectedTheme.bgTone;
   const effectiveAnnouncement = branding.announcementText || "🌿 100% Organically Nurtured Plants • Free Transit Health Guarantee • Same-Day Dispatch";
   const effectivePhone = branding.supportPhone || "+91 98450 12345";
   const effectiveEmail = branding.supportEmail || "support@businessos.store";
+
+  // Slug validation helper
+  const handleSlugChange = (val: string) => {
+    const clean = val.toLowerCase().replace(/[^a-z0-9-]/g, "");
+    setStoreSlug(clean);
+    if (!clean) {
+      setSlugError(null);
+      return;
+    }
+    if (clean.length < 3) {
+      setSlugError("Store slug must be at least 3 characters long.");
+    } else if (clean.length > 60) {
+      setSlugError("Store slug cannot exceed 60 characters.");
+    } else if (clean.startsWith("-") || clean.endsWith("-") || clean.includes("--")) {
+      setSlugError("Slug cannot start or end with a hyphen or contain double hyphens.");
+    } else if (RESERVED_SLUGS.has(clean)) {
+      setSlugError(`"${clean}" is a reserved system keyword.`);
+    } else {
+      setSlugError(null);
+    }
+  };
+
+  // Canonical public storefront URL
+  const canonicalUrl = typeof window !== "undefined"
+    ? `${window.location.origin}/store${storeSlug ? `/${storeSlug}` : ""}`
+    : `/store${storeSlug ? `/${storeSlug}` : ""}`;
+
+  const handleCopyUrl = () => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(canonicalUrl);
+      setCopiedUrl(true);
+      toast.success("Storefront URL copied to clipboard!");
+      setTimeout(() => setCopiedUrl(false), 2000);
+    }
+  };
 
   // When user switches selected template, update defaults if custom fields were clean
   const handleSelectTemplate = (id: string) => {
@@ -154,9 +213,43 @@ export function MarketplaceThemeStudio() {
 
   // Save & Publish to Live Store
   const handleSaveAndPublish = async () => {
+    if (slugError) {
+      toast.error(slugError);
+      return;
+    }
+
     setIsSaving(true);
     try {
-      // 1. Save locally in localStorage
+      const payload: any = {
+        theme_id: selectedThemeId,
+        store_name: effectiveStoreName,
+        tagline: effectiveTagline,
+        sector: selectedTheme.sector,
+        announcement_text: effectiveAnnouncement,
+        support_phone: effectivePhone,
+        support_email: effectiveEmail,
+        primary_color: effectivePrimaryColor,
+        accent_color: effectiveAccentColor,
+        bg_tone: effectiveBgTone,
+        is_published: isPublished,
+      };
+
+      if (storeSlug && storeSlug.trim()) {
+        payload.store_slug = storeSlug.trim().toLowerCase();
+      }
+
+      // 1. Persist to backend API first
+      const res = await marketplaceApi.updateThemeSettings(payload);
+
+      const returnedSlug = res?.theme?.store_slug || storeSlug;
+      if (returnedSlug) {
+        setStoreSlug(returnedSlug);
+      }
+      if (res?.theme?.is_published !== undefined) {
+        setIsPublished(res.theme.is_published);
+      }
+
+      // 2. Only after backend confirms that the save succeeded, update local storage and active theme
       saveActiveStoreThemeSettings(selectedThemeId, {
         storeName: effectiveStoreName,
         tagline: effectiveTagline,
@@ -165,31 +258,24 @@ export function MarketplaceThemeStudio() {
         supportEmail: effectiveEmail,
         primaryColor: effectivePrimaryColor,
         accentColor: effectiveAccentColor,
-        bgTone: selectedTheme.bgTone,
-      });
-
-      // 2. Persist to backend API
-      try {
-        await marketplaceApi.updateThemeSettings({
-          theme_id: selectedThemeId,
-          store_name: effectiveStoreName,
-          tagline: effectiveTagline,
-          announcement_text: effectiveAnnouncement,
-          support_phone: effectivePhone,
-          support_email: effectiveEmail,
-          primary_color: effectivePrimaryColor,
-          accent_color: effectiveAccentColor,
-        });
-      } catch (e) {
-        console.warn("Backend theme save warning:", e);
-      }
+        bgTone: effectiveBgTone,
+      }, returnedSlug);
 
       setActiveThemeId(selectedThemeId);
+      try {
+        await refreshTheme(returnedSlug);
+      } catch {}
+
       toast.success(
-        `Template "${selectedTheme.name}" (${selectedTheme.sector}) is now active on your public store!`
+        `Template "${selectedTheme.name}" (${selectedTheme.sector}) saved & published successfully!`
       );
     } catch (err: any) {
-      toast.error(err.message || "Failed to save theme settings");
+      console.error("Backend theme save error:", err);
+      const errorMsg =
+        err?.detail ||
+        err?.message ||
+        (typeof err === "string" ? err : "Failed to save theme settings to server.");
+      toast.error(typeof errorMsg === "string" ? errorMsg : "Failed to save theme settings to server.");
     } finally {
       setIsSaving(false);
     }
@@ -211,7 +297,7 @@ export function MarketplaceThemeStudio() {
   };
 
   const handleOpenStore = () => {
-    window.open("/store", "_blank");
+    window.open(canonicalUrl, "_blank");
   };
 
   const IconComponent = SECTOR_ICONS[selectedThemeId] || Store;
@@ -265,34 +351,112 @@ export function MarketplaceThemeStudio() {
         </div>
       </div>
 
-      {/* ── Active Status Banner ── */}
-      <div className="p-4 rounded-xl border border-emerald-200/80 bg-gradient-to-r from-emerald-50/70 via-teal-50/40 to-background flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">
-        <div className="flex items-center gap-3">
-          <div className="size-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-md shrink-0">
-            <CheckCircle2 className="size-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-md">
-                Active on Live Store
-              </span>
-              <span className="text-sm font-bold text-foreground">
-                {activePublishedTheme.name} ({activePublishedTheme.sector})
-              </span>
+      {/* ── Canonical Storefront URL & Publishing Status Bar ── */}
+      <div className="p-4 rounded-2xl border border-gray-200 bg-white shadow-xs space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3">
+            <div
+              className={cn(
+                "size-10 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm",
+                isPublished ? "bg-emerald-600" : "bg-amber-500"
+              )}
+            >
+              <Globe className="size-5" />
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Customers visiting <code className="text-emerald-700 font-mono font-semibold">/store</code> are automatically served this sector design and catalog format.
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-wider text-gray-500">
+                  Canonical Storefront URL
+                </span>
+                <span
+                  className={cn(
+                    "text-[10px] font-black uppercase px-2 py-0.5 rounded-full flex items-center gap-1",
+                    isPublished
+                      ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                      : "bg-amber-100 text-amber-800 border border-amber-300"
+                  )}
+                >
+                  <span className={cn("size-1.5 rounded-full", isPublished ? "bg-emerald-600 animate-pulse" : "bg-amber-500")} />
+                  {isPublished ? "Published & Live" : "Draft (Offline/Hidden)"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <code className="text-xs sm:text-sm font-mono font-bold text-gray-900 bg-gray-50 px-2 py-1 rounded-md border border-gray-200 break-all select-all">
+                  {canonicalUrl}
+                </code>
+              </div>
+            </div>
+          </div>
+
+          {/* Action buttons: Copy URL, Open Live, Publish Toggle */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCopyUrl}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-gray-100 hover:bg-gray-200 text-gray-800 transition-colors cursor-pointer shadow-2xs"
+            >
+              {copiedUrl ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
+              <span>{copiedUrl ? "Copied!" : "Copy URL"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenStore}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 transition-colors cursor-pointer shadow-2xs"
+            >
+              <ExternalLink className="size-3.5" />
+              <span>Open Store</span>
+            </button>
+
+            {/* Publication Toggle */}
+            <button
+              type="button"
+              onClick={() => setIsPublished(!isPublished)}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs",
+                isPublished
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                  : "bg-amber-500 hover:bg-amber-600 text-white"
+              )}
+            >
+              {isPublished ? <CheckCircle className="size-3.5" /> : <Lock className="size-3.5" />}
+              <span>{isPublished ? "Store is Public" : "Make Public"}</span>
+            </button>
           </div>
         </div>
 
-        <button
-          onClick={handleOpenStore}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-emerald-200 text-xs font-bold text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer shrink-0 shadow-2xs"
-        >
-          <span>Open /store in new tab</span>
-          <ExternalLink className="size-3" />
-        </button>
+        {/* Store Slug Configuration Row */}
+        <div className="pt-3 border-t border-gray-100 grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+          <div className="md:col-span-4">
+            <label className="block text-xs font-bold text-gray-800 mb-0.5">
+              Dedicated Store URL Slug
+            </label>
+            <p className="text-[11px] text-gray-500">
+              Unique path identifier for your organization (e.g. <code>greenflora</code>, <code>fashionhub</code>).
+            </p>
+          </div>
+
+          <div className="md:col-span-8 flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono text-gray-400 shrink-0">/store/</span>
+              <input
+                type="text"
+                value={storeSlug}
+                onChange={(e) => handleSlugChange(e.target.value)}
+                placeholder="your-custom-slug"
+                className={cn(
+                  "flex-1 px-3 py-1.5 text-xs font-mono font-bold bg-gray-50 border rounded-xl outline-none transition-colors",
+                  slugError ? "border-red-500 bg-red-50/30 text-red-900" : "border-gray-200 focus:border-purple-500 focus:bg-white"
+                )}
+              />
+            </div>
+            {slugError && (
+              <span className="text-[11px] font-semibold text-red-600 flex items-center gap-1">
+                <AlertCircle className="size-3 shrink-0" /> {slugError}
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* ── Template Cards Grid ── */}
@@ -311,7 +475,7 @@ export function MarketplaceThemeStudio() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Object.values(STORE_THEMES).map((t) => {
-            const isPublished = activeThemeId === t.id;
+            const isThemeLive = activeThemeId === t.id;
             const isCurrentlySelected = selectedThemeId === t.id;
             const Icon = SECTOR_ICONS[t.id] || Store;
 
@@ -324,7 +488,7 @@ export function MarketplaceThemeStudio() {
                   isCurrentlySelected
                     ? "border-purple-500 bg-purple-50/20 shadow-md ring-2 ring-purple-500/20"
                     : "border-border/70 bg-card hover:border-purple-300 hover:shadow-xs",
-                  isPublished && !isCurrentlySelected && "border-emerald-400 bg-emerald-50/10"
+                  isThemeLive && !isCurrentlySelected && "border-emerald-400 bg-emerald-50/10"
                 )}
               >
                 {/* Header Strip */}
@@ -347,7 +511,7 @@ export function MarketplaceThemeStudio() {
                       </div>
                     </div>
 
-                    {isPublished ? (
+                    {isThemeLive ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                         <Check className="size-3" /> Live
                       </span>
@@ -559,6 +723,29 @@ export function MarketplaceThemeStudio() {
                   </div>
                 </div>
 
+                <div>
+                  <label className="block font-bold text-foreground mb-1">
+                    Store Canvas Background Tone
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={effectiveBgTone}
+                      onChange={(e) => setBranding({ ...branding, bgTone: e.target.value })}
+                      className="size-9 rounded-lg border border-border cursor-pointer p-0.5 bg-background"
+                    />
+                    <input
+                      type="text"
+                      value={effectiveBgTone}
+                      onChange={(e) => setBranding({ ...branding, bgTone: e.target.value })}
+                      className="w-full font-mono uppercase px-3 py-2 bg-background border border-border/60 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/20 text-xs font-bold"
+                    />
+                  </div>
+                  <span className="text-[10px] text-muted-foreground mt-0.5 block">
+                    Soft tinted canvas background for entire public storefront layout.
+                  </span>
+                </div>
+
                 <div className="p-3 bg-muted/30 rounded-lg border border-border/50">
                   <div className="flex items-center gap-2 text-foreground font-bold">
                     <Type className="size-4 text-purple-600" />
@@ -600,7 +787,7 @@ export function MarketplaceThemeStudio() {
             {/* Bottom Save Action */}
             <div className="pt-3 border-t border-border/40 flex items-center justify-between">
               <span className="text-[11px] text-muted-foreground">
-                Changes will take effect immediately upon saving.
+                Changes persist to backend database and sync across all shopper sessions.
               </span>
               <Button
                 size="sm"
@@ -651,7 +838,7 @@ export function MarketplaceThemeStudio() {
               "mx-auto border border-slate-300 rounded-2xl overflow-hidden shadow-lg transition-all duration-300 bg-white",
               previewDevice === "mobile" ? "max-w-[340px]" : "w-full"
             )}
-            style={{ backgroundColor: selectedTheme.bgTone }}
+            style={{ backgroundColor: effectiveBgTone }}
           >
             {/* Browser top pill */}
             <div className="bg-slate-100 border-b border-slate-200 px-3 py-2 flex items-center gap-2 text-[10px] text-slate-500 font-mono">
@@ -660,7 +847,7 @@ export function MarketplaceThemeStudio() {
                 <div className="size-2 rounded-full bg-amber-400" />
                 <div className="size-2 rounded-full bg-emerald-400" />
               </div>
-              <span className="truncate">https://yourbusiness.store/store</span>
+              <span className="truncate">{canonicalUrl}</span>
             </div>
 
             {/* Mockup Store Announcement Bar */}

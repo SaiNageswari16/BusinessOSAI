@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   Sparkles,
   ArrowRight,
+  LogIn,
   Sun,
   Moon,
   ChevronDown,
@@ -23,8 +24,8 @@ import {
   Utensils,
   Handshake,
 } from "lucide-react";
+import { getAuthUrls } from "@/lib/auth-urls";
 import "./LandingHero.css";
-import { getAuthUrl } from "@/lib/auth-navigation";
 
 const navItems = [
   { name: "Home", href: "#home" },
@@ -33,8 +34,6 @@ const navItems = [
   { name: "Verticals", href: "#industries" },
   { name: "Analytics", href: "#analytics" },
   { name: "Security", href: "#security" },
-  { name: "Pricing", href: "#pricing" },
-  { name: "FAQ", href: "#faq" },
   { name: "About", href: "#about" },
   { name: "Contact", href: "#contact" },
 ];
@@ -152,34 +151,13 @@ export function LandingHero() {
   const [dark, setDark] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [navVisible, setNavVisible] = useState(true);
   const [activeSection, setActiveSection] = useState("Home");
-  const [authUrl, setAuthUrl] = useState("/login");
-  const lastScrollY = useRef(0);
-
-  useEffect(() => {
-    setAuthUrl(getAuthUrl("/login"));
-  }, []);
+  const authUrls = getAuthUrls();
 
   useEffect(() => {
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
       setScrolled(currentScrollY > 15);
-
-      // Smart navbar hide on scroll down, reveal on scroll up
-      if (currentScrollY > 120) {
-        if (currentScrollY > lastScrollY.current + 8) {
-          // Scrolling down -> hide navbar so it never covers section titles
-          setNavVisible(false);
-        } else if (currentScrollY < lastScrollY.current - 6) {
-          // Scrolling up -> reveal navbar
-          setNavVisible(true);
-        }
-      } else {
-        // At or near top of page -> always show navbar
-        setNavVisible(true);
-      }
-      lastScrollY.current = currentScrollY;
 
       // Scrollspy active section
       const sections = navItems.map((item) => ({
@@ -199,19 +177,10 @@ export function LandingHero() {
       }
     };
 
-    // Reveal navbar when cursor hovers near top 50px of window
-    const handleMouseMove = (e: MouseEvent) => {
-      if (e.clientY < 50) {
-        setNavVisible(true);
-      }
-    };
-
     window.addEventListener("scroll", handleScroll, { passive: true });
-    window.addEventListener("mousemove", handleMouseMove, { passive: true });
     handleScroll();
     return () => {
       window.removeEventListener("scroll", handleScroll);
-      window.removeEventListener("mousemove", handleMouseMove);
     };
   }, []);
 
@@ -225,9 +194,7 @@ export function LandingHero() {
 
       {/* Sticky Floating Capsule Glass Navbar (hoisted to section root to escape shell stacking context) */}
       <header
-        className={`glass-navbar ${scrolled ? "is-scrolled" : ""} ${
-          navVisible || menuOpen ? "nav-visible" : "nav-hidden"
-        }`}
+        className={`glass-navbar ${scrolled ? "is-scrolled" : ""}`}
       >
         <a href="#home" className="hero-brand" aria-label="IOTRONICS Home">
           <img
@@ -252,10 +219,42 @@ export function LandingHero() {
               )}
             </a>
           ))}
+          <div className="mobile-nav-auth-group">
+            <a
+              href={authUrls.signIn}
+              className="nav-signin"
+              onClick={() => setMenuOpen(false)}
+            >
+              <LogIn size={15} />
+              <span>Sign In / Login</span>
+            </a>
+            <a
+              href={authUrls.signUp}
+              className="nav-demo"
+              onClick={() => setMenuOpen(false)}
+            >
+              <Sparkles size={15} />
+              <span>Sign Up</span>
+              <ArrowRight size={15} />
+            </a>
+          </div>
         </nav>
 
         <div className="hero-nav-actions">
-          <a href={authUrl} className="nav-demo">
+          <a
+            href={authUrls.signIn}
+            className="nav-signin"
+            title="Sign In to your existing account"
+          >
+            <LogIn size={14} />
+            <span>Sign In / Login</span>
+          </a>
+
+          <a
+            href={authUrls.signUp}
+            className="nav-demo"
+            title="Sign Up - Create a new account"
+          >
             <Sparkles size={14} />
             <span>Sign Up</span>
             <ArrowRight size={14} />

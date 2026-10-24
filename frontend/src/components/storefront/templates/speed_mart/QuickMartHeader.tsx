@@ -28,8 +28,8 @@ interface QuickMartHeaderProps {
 
 export function QuickMartHeader({ onOpenCart, onOpenMenu }: QuickMartHeaderProps) {
   const navigate = useNavigate();
-  const { theme, branding } = useStoreTheme();
-  const { totalItems = 0, cartCount = 0, total = 0 } = useStoreCart();
+  const { theme, branding, getStoreUrl } = useStoreTheme();
+  const { totalItems = 0, cartCount = 0, cartTotal = 0 } = useStoreCart();
   const { totalWishlistItems = 0, wishlistItems = [] } = useWishlist();
   const { user } = useStoreUser();
   const { formatCurrency } = useCurrency();
@@ -41,7 +41,7 @@ export function QuickMartHeader({ onOpenCart, onOpenMenu }: QuickMartHeaderProps
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      navigate({ to: "/store/shop", search: { search: searchQuery.trim() } as any });
+      navigate({ to: getStoreUrl("/shop") as any, search: { search: searchQuery.trim() } as any });
     }
   };
 
@@ -101,7 +101,7 @@ export function QuickMartHeader({ onOpenCart, onOpenMenu }: QuickMartHeaderProps
 
           {/* Logo & Delivery Location */}
           <div className="flex items-center gap-4 shrink-0">
-            <Link to="/store" className="flex items-center gap-2.5 group">
+            <Link to={getStoreUrl("") as any} className="flex items-center gap-2.5 group">
               <div
                 className="size-9 sm:size-10 rounded-xl flex items-center justify-center text-white shadow-md group-hover:scale-105 transition-transform"
                 style={{ backgroundColor: primaryColor }}
@@ -176,7 +176,7 @@ export function QuickMartHeader({ onOpenCart, onOpenMenu }: QuickMartHeaderProps
               className="hidden sm:flex items-center gap-1.5 p-2 rounded-xl text-slate-700 hover:bg-purple-50 hover:text-purple-700 transition-colors cursor-pointer text-xs font-semibold"
             >
               <User className="size-4" />
-              <span>{user ? user.first_name || "Account" : "Sign In"}</span>
+              <span>{user ? user.firstName || user.name || "Account" : "Sign In"}</span>
             </Link>
 
             <Link
@@ -214,7 +214,7 @@ export function QuickMartHeader({ onOpenCart, onOpenMenu }: QuickMartHeaderProps
                   {safeTotalItems > 0 ? `${safeTotalItems} items` : "My Cart"}
                 </div>
                 <div className="text-xs font-extrabold text-white">
-                  {safeTotalItems > 0 ? formatCurrency(total) : "Empty"}
+                  {safeTotalItems > 0 ? formatCurrency(cartTotal) : "Empty"}
                 </div>
               </div>
             </button>

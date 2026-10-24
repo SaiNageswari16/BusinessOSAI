@@ -677,6 +677,112 @@ async def migrate():
             except Exception as e:
                 logger.info(f"Migration note for HRMS update: {e}")
 
+    # ── Marketplace Theme Settings Table & Safe JSON Migration ──
+    theme_table_ddl = """
+    CREATE TABLE IF NOT EXISTS marketplace_theme_settings (
+        id UUID PRIMARY KEY,
+        tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        theme_id VARCHAR(100) NOT NULL DEFAULT 'speed_mart',
+        store_name VARCHAR(255) NOT NULL DEFAULT 'ExpressMart',
+        tagline TEXT,
+        sector VARCHAR(100) DEFAULT 'Quick Commerce',
+        announcement_text TEXT,
+        support_phone VARCHAR(50),
+        support_email VARCHAR(255),
+        primary_color VARCHAR(50) NOT NULL DEFAULT '#7C3AED',
+        accent_color VARCHAR(50) NOT NULL DEFAULT '#F59E0B',
+        bg_tone VARCHAR(50) NOT NULL DEFAULT '#FDF4FF',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+        CONSTRAINT uq_marketplace_theme_settings_tenant UNIQUE (tenant_id)
+    );
+    """
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text(theme_table_ddl))
+            logger.info("Ensured 'marketplace_theme_settings' table exists.")
+        except Exception as e:
+            logger.info(f"Theme table DDL note: {e}")
+
+    # Inspect old JSON theme file for safe migration to database
+    from pathlib import Path
+    import json
+    import uuid
+    import shutil
+
+    json_theme_path = Path(__file__).resolve().parent / "data" / "storefront_theme_settings.json"
+    if json_theme_path.exists():
+        try:
+            with open(json_theme_path, "r", encoding="utf-8") as f:
+                legacy_theme = json.load(f)
+
+            if isinstance(legacy_theme, dict) and legacy_theme.get("theme_id"):
+                async with engine.begin() as conn:
+                    existing_count = (await conn.execute(text("SELECT COUNT(*) FROM marketplace_theme_settings"))).scalar() or 0
+                    if existing_count == 0:
+                        tenants_res = await conn.execute(text("SELECT id FROM tenants ORDER BY created_at ASC LIMIT 1"))
+                        first_tenant = tenants_res.scalar()
+                        if first_tenant:
+                            await conn.execute(
+                                text("""
+                                    INSERT INTO marketplace_theme_settings (
+                                        id, tenant_id, theme_id, store_name, tagline, sector,
+                                        announcement_text, support_phone, support_email,
+                                        primary_color, accent_color, bg_tone, created_at, updated_at
+                                    ) VALUES (
+                                        :id, :tenant_id, :theme_id, :store_name, :tagline, :sector,
+                                        :announcement_text, :support_phone, :support_email,
+                                        :primary_color, :accent_color, :bg_tone, NOW(), NOW()
+                                    ) ON CONFLICT (tenant_id) DO NOTHING
+                                """),
+                                {
+                                    "id": uuid.uuid4(),
+                                    "tenant_id": first_tenant,
+                                    "theme_id": legacy_theme.get("theme_id", "speed_mart"),
+                                    "store_name": legacy_theme.get("store_name", "ExpressMart"),
+                                    "tagline": legacy_theme.get("tagline", ""),
+                                    "sector": legacy_theme.get("sector", "Quick Commerce"),
+                                    "announcement_text": legacy_theme.get("announcement_text", ""),
+                                    "support_phone": legacy_theme.get("support_phone", ""),
+                                    "support_email": legacy_theme.get("support_email", ""),
+                                    "primary_color": legacy_theme.get("primary_color", "#7C3AED"),
+                                    "accent_color": legacy_theme.get("accent_color", "#F59E0B"),
+                                    "bg_tone": legacy_theme.get("bg_tone", "#FDF4FF"),
+                                }
+                            )
+                            logger.info("Safely migrated legacy JSON theme configuration to database.")
+
+            bak_path = json_theme_path.with_suffix(".json.bak")
+            if not bak_path.exists():
+                shutil.copy2(json_theme_path, bak_path)
+                logger.info("Preserved legacy theme configuration file backup.")
+        except Exception as e:
+            logger.info(f"Safe legacy theme migration notice: {e}")
+
+    # ── Marketplace Orders Idempotency and Payment Columns ──
+    order_cols = [
+        ("idempotency_key", "VARCHAR(100)"),
+        ("gateway_order_id", "VARCHAR(100)"),
+        ("gateway_payment_id", "VARCHAR(100)"),
+    ]
+    for col_name, col_type in order_cols:
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(f"ALTER TABLE marketplace_orders ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+                logger.info(f"Successfully added '{col_name}' column to 'marketplace_orders' table.")
+            except Exception as e:
+                logger.info(f"marketplace_orders column {col_name} note: {e}")
+
+    # ── Marketplace Theme Settings Published Column ──
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text("ALTER TABLE marketplace_theme_settings ADD COLUMN IF NOT EXISTS is_published BOOLEAN DEFAULT TRUE"))
+            logger.info("Successfully added 'is_published' column to 'marketplace_theme_settings' table.")
+        except Exception as e:
+            logger.info(f"marketplace_theme_settings is_published column note: {e}")
+
 if __name__ == "__main__":
     asyncio.run(migrate())
+
+
 

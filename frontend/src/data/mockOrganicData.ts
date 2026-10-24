@@ -12,6 +12,7 @@ export interface OrganicProduct {
   description: string;
   badge?: string;
   inStock: boolean;
+  stock?: number;
   featured?: boolean;
   popular?: boolean;
   brand?: string;

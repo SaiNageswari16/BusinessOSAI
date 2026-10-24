@@ -82,11 +82,58 @@ export function getActiveStorefrontTenantId(): string | null {
   return null;
 }
 
+const KNOWN_STORE_SUBROUTES = new Set([
+  "",
+  "about",
+  "account",
+  "addresses",
+  "blog",
+  "cart",
+  "checkout",
+  "collection",
+  "contact",
+  "orders",
+  "pages",
+  "product",
+  "register",
+  "search",
+  "security",
+  "shop",
+  "styles",
+  "thank-you",
+  "wallet",
+  "wishlist",
+]);
+
+export function getStoreSlugFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const pathname = window.location.pathname;
+    if (pathname.startsWith("/store/")) {
+      const parts = pathname.slice("/store/".length).split("/").filter(Boolean);
+      if (parts.length > 0) {
+        const candidate = parts[0].toLowerCase().trim();
+        if (!KNOWN_STORE_SUBROUTES.has(candidate)) {
+          return candidate;
+        }
+      }
+    }
+    const params = new URLSearchParams(window.location.search);
+    return params.get("store")?.trim().toLowerCase() || params.get("tenant")?.trim().toLowerCase() || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Fetch active product categories for the active tenant.
+ * Fetch active product categories for the active tenant or store.
  */
-export const fetchStorefrontCategories = async (tenantId?: string): Promise<StorefrontCategory[]> => {
+export const fetchStorefrontCategories = async (tenantId?: string, storeSlug?: string): Promise<StorefrontCategory[]> => {
   const url = new URL(`${API_BASE_URL}/categories`);
+  const effectiveStore = storeSlug || getStoreSlugFromUrl();
+  if (effectiveStore) {
+    url.searchParams.set("store", effectiveStore);
+  }
   const headers: HeadersInit = {};
   if (tenantId) headers['X-Tenant-Id'] = tenantId;
 
@@ -99,7 +146,7 @@ export const fetchStorefrontCategories = async (tenantId?: string): Promise<Stor
 };
 
 /**
- * Fetch products from the inventory catalog.
+ * Fetch products from the inventory catalog scoped to the requested store or active tenant.
  * Pass categoryId/category name to filter by category, or search for a keyword.
  */
 export const fetchStorefrontProducts = async (
@@ -108,8 +155,13 @@ export const fetchStorefrontProducts = async (
   tenantId?: string,
   page = 1,
   pageSize = 100,
+  storeSlug?: string,
 ): Promise<{ items: StorefrontProduct[]; total: number; page: number; page_size: number }> => {
   const url = new URL(`${API_BASE_URL}/products`);
+  const effectiveStore = storeSlug || getStoreSlugFromUrl();
+  if (effectiveStore) {
+    url.searchParams.set("store", effectiveStore);
+  }
   if (categoryId && categoryId !== "All") {
     url.searchParams.append('category', categoryId);
   }
@@ -196,8 +248,14 @@ export const removeFromWishlist = async (productId: string): Promise<any> => {
   if (!response.ok) throw new Error('Failed to remove from wishlist');
   return response.json();
 };
-export const fetchStorefrontProductById = async (productId: string): Promise<StorefrontProduct> => {
-  const response = await fetch(`${API_BASE_URL}/products/${productId}`);
+
+export const fetchStorefrontProductById = async (productId: string, storeSlug?: string): Promise<StorefrontProduct> => {
+  const url = new URL(`${API_BASE_URL}/products/${productId}`);
+  const effectiveStore = storeSlug || getStoreSlugFromUrl();
+  if (effectiveStore) {
+    url.searchParams.set("store", effectiveStore);
+  }
+  const response = await fetch(url.toString());
   if (!response.ok) {
     throw new Error(`Failed to fetch product: ${response.status}`);
   }
@@ -220,9 +278,11 @@ export const createStorefrontOrder = async (orderData: {
   const rootBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
   const marketplaceBase = `${rootBase}/marketplace`;
   const tid = getActiveStorefrontTenantId();
+  const storeSlug = getStoreSlugFromUrl();
   
   const payload = {
     ...orderData,
+    store: storeSlug || undefined,
     tenant_id: tid,
     channel: "Online Storefront",
     source: "Storefront Online",
@@ -241,9 +301,11 @@ export const createStorefrontOrder = async (orderData: {
   throw new Error(errorBody.detail || "Failed to place order and reserve stock.");
 };
 
-export const fetchStorefrontUserOrders = async (customerEmail?: string, customerId?: string): Promise<any[]> => {
+export const fetchStorefrontUserOrders = async (customerEmail?: string, customerId?: string, storeSlug?: string): Promise<any[]> => {
   const rootBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
   const url = new URL(`${rootBase}/marketplace/orders`);
+  const effectiveStore = storeSlug || getStoreSlugFromUrl();
+  if (effectiveStore) url.searchParams.append('store', effectiveStore);
   if (customerEmail) url.searchParams.append('customer_email', customerEmail);
   if (customerId) url.searchParams.append('customer_id', customerId);
   const res = await fetch(url.toString());
@@ -251,9 +313,12 @@ export const fetchStorefrontUserOrders = async (customerEmail?: string, customer
   return res.json();
 };
 
-export const fetchStorefrontOrderById = async (orderId: string): Promise<any> => {
+export const fetchStorefrontOrderById = async (orderId: string, storeSlug?: string): Promise<any> => {
   const rootBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
-  const res = await fetch(`${rootBase}/marketplace/orders/${orderId}`);
+  const url = new URL(`${rootBase}/marketplace/orders/${orderId}`);
+  const effectiveStore = storeSlug || getStoreSlugFromUrl();
+  if (effectiveStore) url.searchParams.append('store', effectiveStore);
+  const res = await fetch(url.toString());
   if (!res.ok) throw new Error(`Failed to fetch order: ${res.status}`);
   return res.json();
 };

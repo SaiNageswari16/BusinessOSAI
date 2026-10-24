@@ -12,6 +12,7 @@ import {
 import { DynamicProductCard } from "@/components/storefront/UniversalTemplateRouter";
 import { fetchStorefrontProductById, fetchStorefrontProducts, mapStorefrontToOrganic } from "@/lib/storefront-api";
 import { useStoreCart } from "@/contexts/StoreCartContext";
+import { useStoreTheme } from "@/contexts/StoreThemeContext";
 import { useCurrency } from "@/hooks/use-currency";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -25,22 +26,23 @@ function SingleProductPage() {
   const navigate = useNavigate();
   const { currency } = useCurrency();
   const { addToCart, wishlistItems, toggleWishlist } = useStoreCart();
+  const { theme, branding, storeSlug, getStoreUrl } = useStoreTheme();
 
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState<"desc" | "nutrition" | "shipping" | "reviews">("desc");
   const [isAdded, setIsAdded] = useState(false);
 
-  // Fetch product from backend
+  // Fetch product from backend scoped to active store
   const { data: apiProduct, isLoading, isError } = useQuery({
-    queryKey: ["storefront-single-product", id],
-    queryFn: () => fetchStorefrontProductById(id),
+    queryKey: ["storefront-single-product", id, storeSlug],
+    queryFn: () => fetchStorefrontProductById(id, storeSlug || undefined),
     retry: 1,
   });
 
-  // Fetch related products
+  // Fetch related products scoped to active store
   const { data: relatedApiProducts } = useQuery({
-    queryKey: ["storefront-related-products"],
-    queryFn: () => fetchStorefrontProducts(undefined, undefined, undefined, 1, 8),
+    queryKey: ["storefront-related-products", storeSlug],
+    queryFn: () => fetchStorefrontProducts(undefined, undefined, undefined, 1, 8, storeSlug || undefined),
     staleTime: 60000,
   });
 
@@ -95,12 +97,12 @@ function SingleProductPage() {
       },
       quantity
     );
-    navigate({ to: "/store/checkout" });
+    navigate({ to: getStoreUrl("/checkout") as any });
   };
 
   if (isLoading) {
     return (
-      <div className="bg-white min-h-screen py-20 font-organic-body">
+      <div className="bg-white min-h-screen py-20 font-sans">
         <div className="container mx-auto px-4 max-w-5xl animate-pulse space-y-8">
           <div className="h-6 bg-gray-100 rounded w-1/4" />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
@@ -119,18 +121,19 @@ function SingleProductPage() {
 
   if (!product) {
     return (
-      <div className="bg-white min-h-screen py-20 font-organic-body text-center">
+      <div className="bg-white min-h-screen py-20 font-sans text-center">
         <div className="container mx-auto px-4 max-w-md space-y-4">
           <div className="size-16 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
             <Package className="size-8" />
           </div>
-          <h2 className="text-2xl font-black text-gray-900 font-organic-heading">Product Not Found</h2>
+          <h2 className="text-2xl font-black text-gray-900">Product Not Found</h2>
           <p className="text-xs text-gray-500">
             This inventory item is either out of stock or does not exist in the active catalog.
           </p>
           <Link
-            to="/store/shop"
-            className="inline-flex items-center gap-2 bg-[#6BB252] text-white text-xs font-bold px-6 py-3 rounded-full hover:bg-[#5ba342] transition-colors"
+            to={getStoreUrl("/shop") as any}
+            className="inline-flex items-center gap-2 text-white text-xs font-bold px-6 py-3 rounded-full transition-colors shadow-sm cursor-pointer"
+            style={{ backgroundColor: theme.primaryColor }}
           >
             <ArrowRight className="size-4 rotate-180" /> Back to Store Shop
           </Link>
@@ -140,22 +143,24 @@ function SingleProductPage() {
   }
 
   return (
-    <div className="bg-white min-h-screen pb-20 font-organic-body">
+    <div className="bg-white min-h-screen pb-20 font-sans">
       {/* ── Breadcrumb ── */}
-      <div className="bg-[#FAF8EF] py-6 mb-8 border-b border-gray-100">
+      <div className="py-5 mb-8 border-b border-gray-100" style={{ backgroundColor: theme.bgTone || "#FAF8F5" }}>
         <div className="container mx-auto px-4">
           <div className="text-xs text-gray-500 flex flex-wrap items-center gap-2">
-            <Link to="/store" className="hover:text-[#6BB252] flex items-center transition-colors">
+            <Link to={getStoreUrl("") as any} className="hover:text-gray-900 flex items-center transition-colors">
               <Home className="size-3.5 mr-1" /> Home
             </Link>
             <span>/</span>
-            <Link to="/store/shop" className="hover:text-[#6BB252] transition-colors">
+            <Link to={getStoreUrl("/shop") as any} className="hover:text-gray-900 transition-colors">
               Shop
             </Link>
             <span>/</span>
             <span className="text-gray-400">{product.category}</span>
             <span>/</span>
-            <span className="text-[#6BB252] font-bold truncate max-w-xs">{product.name}</span>
+            <span className="font-bold truncate max-w-xs" style={{ color: theme.primaryColor }}>
+              {product.name}
+            </span>
           </div>
         </div>
       </div>
@@ -165,9 +170,15 @@ function SingleProductPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
           {/* Left: Product Media Gallery */}
           <div className="lg:col-span-6 space-y-4">
-            <div className="relative aspect-square rounded-3xl bg-[#FAF8EF] border border-gray-100 p-8 flex items-center justify-center overflow-hidden group">
+            <div
+              className="relative aspect-square rounded-3xl border border-gray-100 p-8 flex items-center justify-center overflow-hidden group shadow-2xs"
+              style={{ backgroundColor: theme.bgTone || "#FAF8F5" }}
+            >
               {product.discountBadge && (
-                <span className="absolute top-5 left-5 bg-[#F95F09] text-white text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider shadow-xs">
+                <span
+                  className="absolute top-5 left-5 text-white text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider shadow-xs"
+                  style={{ backgroundColor: theme.accentColor || "#EA580C" }}
+                >
                   {product.discountBadge}
                 </span>
               )}
@@ -183,7 +194,8 @@ function SingleProductPage() {
               {[product.image, product.image, product.image, product.image].map((img, i) => (
                 <div
                   key={i}
-                  className="aspect-square rounded-xl bg-[#FAF8EF] border border-gray-200/80 p-2 flex items-center justify-center cursor-pointer hover:border-[#6BB252]"
+                  className="aspect-square rounded-xl border border-gray-200/80 p-2 flex items-center justify-center cursor-pointer transition-colors"
+                  style={{ backgroundColor: theme.bgTone || "#FAF8F5" }}
                 >
                   <img src={img} alt="Thumbnail" className="max-h-full max-w-full object-contain" />
                 </div>
@@ -195,11 +207,17 @@ function SingleProductPage() {
           <div className="lg:col-span-6 space-y-6">
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-extrabold uppercase tracking-widest text-[#6BB252] bg-[#f0f7ed] px-2.5 py-0.5 rounded-md">
+                <span
+                  className="text-xs font-extrabold uppercase tracking-widest px-2.5 py-0.5 rounded-md"
+                  style={{
+                    backgroundColor: `${theme.primaryColor}15`,
+                    color: theme.primaryColor,
+                  }}
+                >
                   {product.category}
                 </span>
                 {product.brand && (
-                  <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md">
+                  <span className="text-xs font-bold text-gray-700 bg-gray-100 px-2.5 py-0.5 rounded-md">
                     Brand: {product.brand}
                   </span>
                 )}
@@ -213,7 +231,7 @@ function SingleProductPage() {
                 </span>
               </div>
 
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-gray-900 font-organic-heading leading-tight">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-gray-900 leading-tight">
                 {product.name}
               </h1>
 
@@ -237,16 +255,22 @@ function SingleProductPage() {
                   <span className="text-xs text-gray-400">({product.reviewsCount} verified reviews)</span>
                 </div>
 
-                <div className="flex items-center gap-1.5 text-xs text-gray-600 bg-[#FAF8EF] px-3 py-1 rounded-full border border-gray-200/80">
-                  <Store className="size-3.5 text-[#6BB252]" />
+                <div
+                  className="flex items-center gap-1.5 text-xs text-gray-600 px-3 py-1 rounded-full border border-gray-200/80"
+                  style={{ backgroundColor: theme.bgTone || "#FAF8F5" }}
+                >
+                  <Store className="size-3.5" style={{ color: theme.primaryColor }} />
                   <span className="text-gray-500">Sold by:</span>
-                  <span className="font-bold text-gray-900">{product.sellerName || "Verified Store"}</span>
+                  <span className="font-bold text-gray-900">{product.sellerName || branding.storeName || theme.name || "Verified Store"}</span>
                 </div>
               </div>
             </div>
 
             {/* Pricing Section */}
-            <div className="p-4 rounded-2xl bg-[#FAF8EF] border border-gray-200/60 flex items-baseline gap-3">
+            <div
+              className="p-4 rounded-2xl border border-gray-200/60 flex items-baseline gap-3"
+              style={{ backgroundColor: theme.bgTone || "#FAF8F5" }}
+            >
               <span className="text-3xl font-black text-gray-900">
                 {currency.symbol}{product.price.toFixed(2)}
               </span>
@@ -293,11 +317,10 @@ function SingleProductPage() {
                 <button
                   type="button"
                   onClick={handleAddToCart}
+                  style={!isAdded ? { backgroundColor: theme.primaryColor } : undefined}
                   className={cn(
-                    "flex-1 min-w-[160px] py-3 px-6 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md",
-                    isAdded
-                      ? "bg-emerald-600 text-white"
-                      : "bg-[#6BB252] hover:bg-[#5ba342] text-white hover:shadow-lg"
+                    "flex-1 min-w-[160px] py-3 px-6 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md text-white",
+                    isAdded ? "bg-emerald-600" : "hover:brightness-95 hover:shadow-lg"
                   )}
                 >
                   {isAdded ? (
@@ -337,7 +360,7 @@ function SingleProductPage() {
               <button
                 type="button"
                 onClick={handleBuyNow}
-                className="w-full py-3 px-6 bg-[#222222] hover:bg-black text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+                className="w-full py-3 px-6 bg-gray-950 hover:bg-black text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
               >
                 Instant Buy Now <ArrowRight className="size-4" />
               </button>
@@ -345,20 +368,20 @@ function SingleProductPage() {
 
             {/* Guarantee Pills */}
             <div className="grid grid-cols-3 gap-3 pt-4 border-t border-gray-100 text-center">
-              <div className="p-2.5 rounded-xl bg-[#FAF8EF] border border-gray-100">
-                <Truck className="size-4 text-[#6BB252] mx-auto mb-1" />
+              <div className="p-2.5 rounded-xl border border-gray-100" style={{ backgroundColor: theme.bgTone || "#FAF8F5" }}>
+                <Truck className="size-4 mx-auto mb-1" style={{ color: theme.primaryColor }} />
                 <span className="block text-[10px] font-bold text-gray-800">Free Shipping</span>
-                <span className="block text-[9px] text-gray-400">On orders $50+</span>
+                <span className="block text-[9px] text-gray-400">On eligible orders</span>
               </div>
-              <div className="p-2.5 rounded-xl bg-[#FAF8EF] border border-gray-100">
-                <ShieldCheck className="size-4 text-[#6BB252] mx-auto mb-1" />
-                <span className="block text-[10px] font-bold text-gray-800">100% Organic</span>
-                <span className="block text-[9px] text-gray-400">Pesticide free</span>
+              <div className="p-2.5 rounded-xl border border-gray-100" style={{ backgroundColor: theme.bgTone || "#FAF8F5" }}>
+                <ShieldCheck className="size-4 mx-auto mb-1" style={{ color: theme.primaryColor }} />
+                <span className="block text-[10px] font-bold text-gray-800">Certified Quality</span>
+                <span className="block text-[9px] text-gray-400">Authentic & Inspected</span>
               </div>
-              <div className="p-2.5 rounded-xl bg-[#FAF8EF] border border-gray-100">
-                <RefreshCcw className="size-4 text-[#6BB252] mx-auto mb-1" />
-                <span className="block text-[10px] font-bold text-gray-800">Fresh Guarantee</span>
-                <span className="block text-[9px] text-gray-400">Easy replacement</span>
+              <div className="p-2.5 rounded-xl border border-gray-100" style={{ backgroundColor: theme.bgTone || "#FAF8F5" }}>
+                <RefreshCcw className="size-4 mx-auto mb-1" style={{ color: theme.primaryColor }} />
+                <span className="block text-[10px] font-bold text-gray-800">Guarantee</span>
+                <span className="block text-[9px] text-gray-400">Hassle-free support</span>
               </div>
             </div>
           </div>
@@ -369,17 +392,18 @@ function SingleProductPage() {
           <div className="flex border-b border-gray-200 gap-6">
             {[
               { id: "desc", label: "Description" },
-              { id: "nutrition", label: "Nutritional Information" },
+              { id: "nutrition", label: "Specifications" },
               { id: "shipping", label: "Shipping & Delivery" },
               { id: "reviews", label: `Reviews (${product.reviewsCount})` },
             ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
+                style={activeTab === tab.id ? { borderColor: theme.primaryColor, color: theme.primaryColor } : undefined}
                 className={cn(
                   "pb-3 text-xs sm:text-sm font-bold transition-colors cursor-pointer border-b-2 -mb-[2px]",
                   activeTab === tab.id
-                    ? "border-[#6BB252] text-[#6BB252]"
+                    ? ""
                     : "border-transparent text-gray-500 hover:text-black"
                 )}
               >
@@ -393,35 +417,34 @@ function SingleProductPage() {
               <div className="space-y-3">
                 <p>{product.description}</p>
                 <p>
-                  Sourced sustainably from regional organic farms, guaranteeing that no chemical pesticides,
-                  herbicides, or synthetic additives were utilized throughout the cultivation cycle.
+                  Sourced sustainably with verified manufacturer guarantees, ensuring full compliance
+                  with retail standards and high customer satisfaction.
                 </p>
               </div>
             )}
 
             {activeTab === "nutrition" && (
               <div className="space-y-2">
-                <h4 className="font-bold text-gray-900">Per 100g Serving:</h4>
+                <h4 className="font-bold text-gray-900">Technical Specifications:</h4>
                 <ul className="list-disc pl-5 space-y-1 text-xs text-gray-600">
-                  <li>Calories: 140 kcal</li>
-                  <li>Dietary Fiber: 4.5g</li>
-                  <li>Total Protein: 6.2g</li>
-                  <li>Total Carbohydrates: 22.0g (zero refined sugars)</li>
-                  <li>Sodium: 15mg</li>
+                  <li>SKU: {product.sku || "N/A"}</li>
+                  <li>Category: {product.category}</li>
+                  <li>Brand: {product.brand || "Verified Vendor"}</li>
+                  <li>Stock Available: {product.stock !== undefined ? `${product.stock} units` : (product.inStock ? "In Stock" : "Out of Stock")}</li>
                 </ul>
               </div>
             )}
 
             {activeTab === "shipping" && (
               <div className="space-y-2">
-                <p>Orders placed before 2:00 PM are delivered same-day in insulated temperature-controlled cold boxes.</p>
-                <p>Doorstep delivery is 100% free on grocery orders over $50.</p>
+                <p>Orders are dispatched same-day with end-to-end milestone tracking and digital OTP delivery verification.</p>
+                <p>Doorstep delivery is fast, safe, and covered by our merchant guarantee.</p>
               </div>
             )}
 
             {activeTab === "reviews" && (
               <div className="space-y-4">
-                <div className="p-4 rounded-xl bg-[#FAF8EF] border border-gray-100">
+                <div className="p-4 rounded-xl border border-gray-100" style={{ backgroundColor: theme.bgTone || "#FAF8F5" }}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-bold text-xs text-gray-900">Sarah Jenkins</span>
                     <span className="text-[10px] text-gray-400">Verified Buyer • 2 days ago</span>
@@ -432,7 +455,7 @@ function SingleProductPage() {
                     ))}
                   </div>
                   <p className="text-xs text-gray-600">
-                    Exceptionally fresh and arrived chilled at my doorstep in under 2 hours! Highly recommended.
+                    Arrived promptly and in pristine condition! Exceeded my expectations.
                   </p>
                 </div>
               </div>
@@ -444,14 +467,15 @@ function SingleProductPage() {
         <div className="mt-16 border-t border-gray-100 pt-10">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h2 className="text-2xl font-black text-gray-900 font-organic-heading">
-                Related Organic Products
+              <h2 className="text-2xl font-black text-gray-900">
+                Related Products
               </h2>
               <p className="text-xs text-gray-500 mt-0.5">Customers who viewed this item also loved</p>
             </div>
             <Link
-              to="/store/shop"
-              className="text-xs font-bold text-[#6BB252] hover:text-[#5ba342] flex items-center gap-1"
+              to={getStoreUrl("/shop") as any}
+              className="text-xs font-bold flex items-center gap-1 transition-colors"
+              style={{ color: theme.primaryColor }}
             >
               View All <ArrowRight className="size-3.5" />
             </Link>

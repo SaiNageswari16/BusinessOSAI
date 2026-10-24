@@ -28,7 +28,7 @@ interface NurseryHeaderProps {
 
 export function NurseryHeader({ onOpenCart, onOpenMenu }: NurseryHeaderProps) {
   const navigate = useNavigate();
-  const { theme, branding } = useStoreTheme();
+  const { theme, branding, getStoreUrl } = useStoreTheme();
   const { totalItems = 0, cartCount = 0 } = useStoreCart();
   const { totalWishlistItems = 0, wishlistItems = [] } = useWishlist();
   const safeTotalItems = totalItems || cartCount || 0;
@@ -39,7 +39,7 @@ export function NurseryHeader({ onOpenCart, onOpenMenu }: NurseryHeaderProps) {
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      navigate({ to: "/store/shop", search: { q: searchQuery.trim() } as any });
+      navigate({ to: getStoreUrl("/shop") as any, search: { q: searchQuery.trim() } as any });
     }
   };
 
@@ -78,7 +78,7 @@ export function NurseryHeader({ onOpenCart, onOpenMenu }: NurseryHeaderProps) {
         </button>
 
         {/* Brand Logo */}
-        <Link to="/store" className="flex items-center gap-2.5 text-decoration-none group">
+        <Link to={getStoreUrl("") as any} className="flex items-center gap-2.5 text-decoration-none group">
           <div
             className="size-10 rounded-2xl text-white flex items-center justify-center shadow-md transition-transform group-hover:scale-105"
             style={{ backgroundColor: theme.primaryColor }}

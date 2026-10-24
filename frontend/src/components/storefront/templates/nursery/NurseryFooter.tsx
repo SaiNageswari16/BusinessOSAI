@@ -4,7 +4,7 @@ import { Sprout, PhoneCall, Mail, MapPin, ShieldCheck, Heart, Leaf, Sun, Droplet
 import { useStoreTheme } from "@/contexts/StoreThemeContext";
 
 export function NurseryFooter() {
-  const { theme, branding } = useStoreTheme();
+  const { theme, branding, getStoreUrl } = useStoreTheme();
   return (
     <footer
       className="w-full text-[#E8F3EE] pt-14 pb-8 border-t border-[#153D31] font-sans"
@@ -108,10 +108,10 @@ export function NurseryFooter() {
           <div className="space-y-3">
             <h5 className="font-bold text-white uppercase tracking-wider text-[11px]">Care & Orders</h5>
             <ul className="space-y-2 text-[#A7F3D0]">
-              <li><Link to="/store/orders" className="hover:text-white transition-colors">Track Plant Order</Link></li>
-              <li><Link to="/store" className="hover:text-white transition-colors">7-Day Guarantee Claim</Link></li>
-              <li><Link to="/store" className="hover:text-white transition-colors">Plant Care Guides</Link></li>
-              <li><Link to="/store" className="hover:text-white transition-colors">Nursery Franchise</Link></li>
+              <li><Link to={getStoreUrl("/orders") as any} className="hover:text-white transition-colors">Track Plant Order</Link></li>
+              <li><Link to={getStoreUrl("") as any} className="hover:text-white transition-colors">7-Day Guarantee Claim</Link></li>
+              <li><Link to={getStoreUrl("") as any} className="hover:text-white transition-colors">Plant Care Guides</Link></li>
+              <li><Link to={getStoreUrl("") as any} className="hover:text-white transition-colors">Nursery Franchise</Link></li>
             </ul>
           </div>
         </div>
