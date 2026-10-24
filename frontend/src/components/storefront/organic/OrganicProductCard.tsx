@@ -3,6 +3,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Star, Heart, ShoppingCart, Check, Plus, Minus, ShieldCheck } from "lucide-react";
 import { OrganicProduct } from "@/data/mockOrganicData";
 import { useStoreCart } from "@/contexts/StoreCartContext";
+import { useStoreTheme } from "@/contexts/StoreThemeContext";
 import { useCurrency } from "@/hooks/use-currency";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,7 @@ interface Props {
 export function OrganicProductCard({ product, className }: Props) {
   const navigate = useNavigate();
   const { addToCart, wishlistItems, toggleWishlist } = useStoreCart();
+  const { theme, getStoreUrl } = useStoreTheme();
   const { currency } = useCurrency();
   const [quantity, setQuantity] = useState(1);
   const [isAdded, setIsAdded] = useState(false);
@@ -53,20 +55,33 @@ export function OrganicProductCard({ product, className }: Props) {
 
   return (
     <div
-      onClick={() => navigate({ to: `/store/product/${product.id}` })}
+      onClick={() => navigate({ to: getStoreUrl(`/product/${product.id}`) as any })}
       className={cn(
-        "group relative bg-white border border-gray-100 rounded-2xl p-4 flex flex-col justify-between transition-all duration-300 hover:shadow-xl hover:border-[#16A34A]/40 hover:-translate-y-1 cursor-pointer",
+        "group relative bg-white border border-gray-100 rounded-2xl p-4 flex flex-col justify-between transition-all duration-300 hover:shadow-xl hover:-translate-y-1 cursor-pointer",
         className
       )}
+      style={{
+        borderColor: undefined,
+      }}
     >
       {/* Top badges: Discount & Wishlist */}
       <div className="flex items-center justify-between z-10">
         {product.discountBadge ? (
-          <span className="bg-[#16A34A] text-white text-[10px] font-extrabold px-2.5 py-0.5 rounded-full shadow-xs tracking-wider uppercase">
+          <span
+            className="text-white text-[10px] font-extrabold px-2.5 py-0.5 rounded-full shadow-xs tracking-wider uppercase"
+            style={{ backgroundColor: theme.accentColor || theme.primaryColor || "#16A34A" }}
+          >
             {product.discountBadge}
           </span>
         ) : (
-          <span className="bg-[#ECFDF5] text-[#16A34A] text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-[#A7F3D0]">
+          <span
+            className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border"
+            style={{
+              backgroundColor: `${theme.primaryColor || "#16A34A"}15`,
+              color: theme.primaryColor || "#16A34A",
+              borderColor: `${theme.primaryColor || "#16A34A"}30`,
+            }}
+          >
             Verified
           </span>
         )}
@@ -106,7 +121,9 @@ export function OrganicProductCard({ product, className }: Props) {
           {product.sku && <span className="font-mono text-[9px] text-gray-500 bg-gray-100 px-1 rounded">{product.sku}</span>}
         </div>
 
-        <h3 className="font-bold text-xs sm:text-sm text-gray-900 line-clamp-2 leading-snug group-hover:text-[#16A34A] transition-colors">
+        <h3
+          className="font-bold text-xs sm:text-sm text-gray-900 line-clamp-2 leading-snug transition-colors group-hover:opacity-85"
+        >
           {product.name}
         </h3>
 
@@ -169,11 +186,12 @@ export function OrganicProductCard({ product, className }: Props) {
           <button
             type="button"
             onClick={handleAddToCart}
+            style={!isAdded ? { backgroundColor: theme.primaryColor || "#16A34A" } : undefined}
             className={cn(
-              "flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs",
+              "flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs text-white",
               isAdded
-                ? "bg-emerald-700 text-white"
-                : "bg-[#16A34A] hover:bg-[#15803d] text-white hover:shadow-md"
+                ? "bg-emerald-700"
+                : "hover:brightness-95 hover:shadow-md"
             )}
           >
             {isAdded ? (

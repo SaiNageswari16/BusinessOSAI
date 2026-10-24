@@ -1,11 +1,12 @@
 import uuid
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import (
     Column, String, Text, Boolean, Integer, Float, DateTime,
-    ForeignKey, Enum, JSON, Numeric
+    ForeignKey, Enum, JSON, Numeric, UniqueConstraint
 )
-from sqlalchemy.orm import relationship
-from src.database.base import Base
+from sqlalchemy.orm import relationship, Mapped, mapped_column
+from src.database.base import Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin
 
 class MarketplaceVendor(Base):
     __tablename__ = "marketplace_vendors"
@@ -38,6 +39,7 @@ class MarketplaceProduct(Base):
     __tablename__ = "marketplace_products"
 
     id = Column(String(50), primary_key=True, default=lambda: f"MP-{uuid.uuid4().hex[:6].upper()}")
+    tenant_id = Column(String(50), nullable=True, index=True)
     vendor_id = Column(String(50), ForeignKey("marketplace_vendors.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
     category = Column(String(100), nullable=False)
@@ -80,6 +82,9 @@ class MarketplaceOrder(Base):
     channel = Column(String(50), default="Online Storefront")
     expected_delivery = Column(String(100), nullable=True)
     notes = Column(Text, nullable=True)
+    idempotency_key = Column(String(100), nullable=True, index=True)
+    gateway_order_id = Column(String(100), nullable=True, index=True)
+    gateway_payment_id = Column(String(100), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -109,6 +114,7 @@ class MarketplacePayout(Base):
     __tablename__ = "marketplace_payouts"
 
     id = Column(String(50), primary_key=True, default=lambda: f"PAY-{uuid.uuid4().hex[:6].upper()}")
+    tenant_id = Column(String(50), nullable=True, index=True)
     vendor_id = Column(String(50), ForeignKey("marketplace_vendors.id"), nullable=False)
     amount = Column(Float, nullable=False)
     status = Column(String(50), default="Cleared")  # Cleared, Processing, Failed
@@ -122,6 +128,7 @@ class MarketplacePromotion(Base):
     __tablename__ = "marketplace_promotions"
 
     id = Column(String(50), primary_key=True, default=lambda: f"PROMO-{uuid.uuid4().hex[:6].upper()}")
+    tenant_id = Column(String(50), nullable=True, index=True)
     code = Column(String(50), unique=True, nullable=False)
     discount_type = Column(String(50), default="percentage")  # percentage, fixed, free_shipping
     discount_value = Column(Float, nullable=False)
@@ -132,3 +139,25 @@ class MarketplacePromotion(Base):
     status = Column(String(50), default="Active")
     expiry_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class MarketplaceThemeSettings(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
+    __tablename__ = "marketplace_theme_settings"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", name="uq_marketplace_theme_settings_tenant"),
+    )
+
+    theme_id: Mapped[str] = mapped_column(String(100), nullable=False, default="speed_mart")
+    store_name: Mapped[str] = mapped_column(String(255), nullable=False, default="ExpressMart")
+    tagline: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    sector: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, default="Quick Commerce")
+    announcement_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    support_phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    support_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    primary_color: Mapped[str] = mapped_column(String(50), nullable=False, default="#7C3AED")
+    accent_color: Mapped[str] = mapped_column(String(50), nullable=False, default="#F59E0B")
+    bg_tone: Mapped[str] = mapped_column(String(50), nullable=False, default="#FDF4FF")
+    is_published: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    tenant = relationship("Tenant", foreign_keys="[MarketplaceThemeSettings.tenant_id]")
+

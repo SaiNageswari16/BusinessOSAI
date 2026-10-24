@@ -35,6 +35,7 @@ import { Route as StoreBlogRouteImport } from './routes/store.blog'
 import { Route as StoreAddressesRouteImport } from './routes/store.addresses'
 import { Route as StoreAccountRouteImport } from './routes/store.account'
 import { Route as StoreAboutRouteImport } from './routes/store.about'
+import { Route as StoreStoreSlugRouteImport } from './routes/store.$storeSlug'
 import { Route as ProductsProductIdRouteImport } from './routes/products.$productId'
 import { Route as AppWarehouseRouteImport } from './routes/_app.warehouse'
 import { Route as AppSocialRouteImport } from './routes/_app.social'
@@ -184,6 +185,11 @@ const StoreAboutRoute = StoreAboutRouteImport.update({
   path: '/about',
   getParentRoute: () => StoreRoute,
 } as any)
+const StoreStoreSlugRoute = StoreStoreSlugRouteImport.update({
+  id: '/$storeSlug',
+  path: '/$storeSlug',
+  getParentRoute: () => StoreRoute,
+} as any)
 const ProductsProductIdRoute = ProductsProductIdRouteImport.update({
   id: '/products/$productId',
   path: '/products/$productId',
@@ -303,6 +309,7 @@ export interface FileRoutesByFullPath {
   '/social': typeof AppSocialRoute
   '/warehouse': typeof AppWarehouseRoute
   '/products/$productId': typeof ProductsProductIdRoute
+  '/store/$storeSlug': typeof StoreStoreSlugRoute
   '/store/about': typeof StoreAboutRoute
   '/store/account': typeof StoreAccountRoute
   '/store/addresses': typeof StoreAddressesRoute
@@ -348,6 +355,7 @@ export interface FileRoutesByTo {
   '/social': typeof AppSocialRoute
   '/warehouse': typeof AppWarehouseRoute
   '/products/$productId': typeof ProductsProductIdRoute
+  '/store/$storeSlug': typeof StoreStoreSlugRoute
   '/store/about': typeof StoreAboutRoute
   '/store/account': typeof StoreAccountRoute
   '/store/addresses': typeof StoreAddressesRoute
@@ -396,6 +404,7 @@ export interface FileRoutesById {
   '/_app/social': typeof AppSocialRoute
   '/_app/warehouse': typeof AppWarehouseRoute
   '/products/$productId': typeof ProductsProductIdRoute
+  '/store/$storeSlug': typeof StoreStoreSlugRoute
   '/store/about': typeof StoreAboutRoute
   '/store/account': typeof StoreAccountRoute
   '/store/addresses': typeof StoreAddressesRoute
@@ -444,6 +453,7 @@ export interface FileRouteTypes {
     | '/social'
     | '/warehouse'
     | '/products/$productId'
+    | '/store/$storeSlug'
     | '/store/about'
     | '/store/account'
     | '/store/addresses'
@@ -489,6 +499,7 @@ export interface FileRouteTypes {
     | '/social'
     | '/warehouse'
     | '/products/$productId'
+    | '/store/$storeSlug'
     | '/store/about'
     | '/store/account'
     | '/store/addresses'
@@ -536,6 +547,7 @@ export interface FileRouteTypes {
     | '/_app/social'
     | '/_app/warehouse'
     | '/products/$productId'
+    | '/store/$storeSlug'
     | '/store/about'
     | '/store/account'
     | '/store/addresses'
@@ -757,6 +769,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StoreAboutRouteImport
       parentRoute: typeof StoreRoute
     }
+    '/store/$storeSlug': {
+      id: '/store/$storeSlug'
+      path: '/$storeSlug'
+      fullPath: '/store/$storeSlug'
+      preLoaderRoute: typeof StoreStoreSlugRouteImport
+      parentRoute: typeof StoreRoute
+    }
     '/products/$productId': {
       id: '/products/$productId'
       path: '/products/$productId'
@@ -932,6 +951,7 @@ const AppRouteChildren: AppRouteChildren = {
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 interface StoreRouteChildren {
+  StoreStoreSlugRoute: typeof StoreStoreSlugRoute
   StoreAboutRoute: typeof StoreAboutRoute
   StoreAccountRoute: typeof StoreAccountRoute
   StoreAddressesRoute: typeof StoreAddressesRoute
@@ -955,6 +975,7 @@ interface StoreRouteChildren {
 }
 
 const StoreRouteChildren: StoreRouteChildren = {
+  StoreStoreSlugRoute: StoreStoreSlugRoute,
   StoreAboutRoute: StoreAboutRoute,
   StoreAccountRoute: StoreAccountRoute,
   StoreAddressesRoute: StoreAddressesRoute,

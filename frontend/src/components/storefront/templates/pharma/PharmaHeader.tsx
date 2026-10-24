@@ -18,6 +18,7 @@ import {
   Truck
 } from "lucide-react";
 import { toast } from "sonner";
+import { useStoreTheme } from "@/contexts/StoreThemeContext";
 
 interface PharmaHeaderProps {
   onOpenCart: () => void;
@@ -26,6 +27,7 @@ interface PharmaHeaderProps {
 
 export function PharmaHeader({ onOpenCart, onOpenMenu }: PharmaHeaderProps) {
   const navigate = useNavigate();
+  const { theme, branding, getStoreUrl } = useStoreTheme();
   const { totalItems = 0, cartCount = 0 } = useStoreCart();
   const { totalWishlistItems = 0, wishlistItems = [] } = useWishlist();
   const safeTotalItems = totalItems || cartCount || 0;
@@ -35,7 +37,7 @@ export function PharmaHeader({ onOpenCart, onOpenMenu }: PharmaHeaderProps) {
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      navigate({ to: "/store/shop", search: { q: searchQuery.trim() } as any });
+      navigate({ to: getStoreUrl("/shop") as any, search: { q: searchQuery.trim() } as any });
     }
   };
 
@@ -51,18 +53,21 @@ export function PharmaHeader({ onOpenCart, onOpenMenu }: PharmaHeaderProps) {
   return (
     <header className="w-full bg-white border-b border-sky-100 text-slate-800 font-sans sticky top-0 z-40 transition-colors shadow-2xs">
       {/* ── Top Clinical Compliance Strip ── */}
-      <div className="bg-[#0284C7] text-white px-4 py-1.5 text-xs font-semibold flex items-center justify-between">
+      <div
+        className="text-white px-4 py-1.5 text-xs font-semibold flex items-center justify-between transition-colors shadow-2xs"
+        style={{ backgroundColor: theme.primaryColor || "#0284C7" }}
+      >
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-3.5 h-3.5 text-sky-200" />
-            <span>100% Genuine Certified Medicines &bull; Licensed Pharmacist Supervised &bull; Free Express Delivery over ₹499</span>
+            <span>{branding.announcementText || "100% Genuine Certified Medicines • Licensed Pharmacist Supervised • Free Express Delivery over ₹499"}</span>
           </div>
           <div className="hidden md:flex items-center gap-4 text-[11px] text-sky-100">
             <span className="flex items-center gap-1">
               <Activity className="w-3 h-3 text-emerald-300" /> Doctor Tele-Consult Available
             </span>
             <span className="flex items-center gap-1 font-bold text-white">
-              <PhoneCall className="w-3 h-3" /> Pharmacy Helpline: 1800-425-9999
+              <PhoneCall className="w-3 h-3" /> Helpline: {branding.supportPhone || "1800-425-9999"}
             </span>
           </div>
         </div>
@@ -80,19 +85,22 @@ export function PharmaHeader({ onOpenCart, onOpenMenu }: PharmaHeaderProps) {
         </button>
 
         {/* Brand Logo */}
-        <Link to="/store" className="flex items-center gap-2.5 text-decoration-none group">
-          <div className="size-10 rounded-2xl bg-gradient-to-br from-[#0284C7] to-[#0D9488] text-white flex items-center justify-center shadow-md shadow-sky-500/20 group-hover:scale-105 transition-transform">
+        <Link to={getStoreUrl("") as any} className="flex items-center gap-2.5 text-decoration-none group">
+          <div
+            className="size-10 rounded-2xl text-white flex items-center justify-center shadow-md transition-transform group-hover:scale-105"
+            style={{ backgroundColor: theme.primaryColor || "#0284C7" }}
+          >
             <Pill className="w-6 h-6 text-white" />
           </div>
           <div>
             <div className="text-xl font-black tracking-tight text-slate-900 leading-none flex items-center gap-1.5">
-              <span>MedPlus</span>
+              <span>{theme.name || "MedPlus"}</span>
               <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.2 rounded-md bg-sky-50 text-sky-700 border border-sky-200">
-                Pharma & Rx
+                {theme.sector ? theme.sector.split("&")[0].trim() : "Pharma & Rx"}
               </span>
             </div>
             <p className="text-[10px] text-slate-500 font-medium tracking-wide mt-0.5">
-              Licensed Pharmacy & Certified Healthcare
+              {theme.tagline || "Licensed Pharmacy & Certified Healthcare"}
             </p>
           </div>
         </Link>
@@ -107,12 +115,13 @@ export function PharmaHeader({ onOpenCart, onOpenMenu }: PharmaHeaderProps) {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search medicines by brand name, generic salt, or health category..."
-            className="w-full h-11 pl-10 pr-24 rounded-full bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0284C7] focus:border-transparent shadow-xs transition-all"
+            className="w-full h-11 pl-10 pr-24 rounded-full bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent shadow-xs transition-all"
           />
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <button
             type="submit"
-            className="absolute right-1 top-1 bottom-1 px-4 rounded-full bg-[#0284C7] text-white text-xs font-bold hover:bg-[#0369A1] transition-colors cursor-pointer"
+            className="absolute right-1 top-1 bottom-1 px-4 rounded-full text-white text-xs font-bold transition-opacity hover:opacity-90 cursor-pointer"
+            style={{ backgroundColor: theme.primaryColor || "#0284C7" }}
           >
             Find
           </button>

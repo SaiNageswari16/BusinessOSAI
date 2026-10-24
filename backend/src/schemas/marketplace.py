@@ -103,3 +103,51 @@ class TradeCreditUpdate(BaseModel):
     payment_terms: str  # "Net 30", "Net 60", "Net 90", "PDC 45"
     status: str = "Active"
 
+
+class StoreThemeUpdate(BaseModel):
+    theme_id: Optional[str] = None
+    store_name: Optional[str] = None
+    tagline: Optional[str] = None
+    sector: Optional[str] = None
+    announcement_text: Optional[str] = None
+    support_phone: Optional[str] = None
+    support_email: Optional[str] = None
+    primary_color: Optional[str] = None
+    accent_color: Optional[str] = None
+    bg_tone: Optional[str] = None
+    store_slug: Optional[str] = None
+    is_published: Optional[bool] = None
+
+
+class StoreThemeResponse(BaseModel):
+    theme_id: str
+    store_name: str
+    tagline: Optional[str] = None
+    sector: Optional[str] = None
+    announcement_text: Optional[str] = None
+    support_phone: Optional[str] = None
+    support_email: Optional[str] = None
+    primary_color: str
+    accent_color: str
+    bg_tone: str
+    store_slug: Optional[str] = None
+    is_published: bool = True
+    updated_at: Optional[str] = None
+
+
+class OrderPaymentConfirmRequest(BaseModel):
+    payment_id: str
+    gateway: Optional[str] = "razorpay"
+    gateway_order_id: Optional[str] = None
+    signature: Optional[str] = None
+    amount: Optional[float] = None
+
+
+class OrderPaymentFailRequest(BaseModel):
+    reason: Optional[str] = "Payment declined"
+    gateway: Optional[str] = "razorpay"
+    gateway_payment_id: Optional[str] = None
+    auto_cancel: bool = False
+
+
+

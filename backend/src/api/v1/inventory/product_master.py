@@ -1924,42 +1924,78 @@ DEFAULT_STORE_CATEGORIES = [
 ]
 
 
+async def _resolve_public_store_tenant_id(
+    db: AsyncSession,
+    store: Optional[str] = None,
+    x_tenant_id: Optional[str] = None
+) -> Optional[uuid.UUID]:
+    """Resolves trusted tenant_id from store slug, store UUID, or X-Tenant-Id header.
+    If an unknown store is passed, explicitly raises 404 to prevent tenant fallback."""
+    from src.models import Tenant
+
+    if store and store.strip():
+        clean_store = store.strip()
+        # 1. UUID check
+        try:
+            val_uuid = uuid.UUID(clean_store)
+            t_id = await db.scalar(select(Tenant.id).where(Tenant.id == val_uuid))
+            if t_id:
+                return t_id
+        except (ValueError, TypeError):
+            pass
+
+        # 2. Slug check (case-insensitive)
+        t_id = await db.scalar(
+            select(Tenant.id).where(func.lower(Tenant.slug) == clean_store.lower())
+        )
+        if t_id:
+            from src.models.marketplace import MarketplaceThemeSettings
+            is_pub = await db.scalar(
+                select(MarketplaceThemeSettings.is_published).where(
+                    MarketplaceThemeSettings.tenant_id == t_id
+                )
+            )
+            if is_pub is False:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Store '{clean_store}' is currently unpublished"
+                )
+            return t_id
+
+        # Unknown store: explicitly reject with 404
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Store '{clean_store}' not found"
+        )
+
+    if x_tenant_id and str(x_tenant_id).strip():
+        try:
+            tid = uuid.UUID(str(x_tenant_id).strip())
+            t_exists = await db.scalar(select(Tenant.id).where(Tenant.id == tid))
+            if t_exists:
+                return tid
+        except (ValueError, TypeError):
+            pass
+
+    return None
+
+
 @router.get("/public/categories", response_model=PaginatedResponse[ProductCategoryResponse], tags=["Storefront Public"])
 async def list_public_categories(
     db: Annotated[AsyncSession, Depends(get_db)],
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    store: Optional[str] = Query(None, description="Public store slug or tenant ID"),
     x_tenant_id: Optional[str] = Header(None),
 ):
-    """Returns distinct active product categories with real counts and imagery."""
-    # 1. Check if DB has categories; if fewer than 3, auto-bootstrap clean store categories
-    cat_count = await db.scalar(select(func.count()).select_from(ProductCategory))
-    if not cat_count or cat_count < 3:
-        from src.models import Tenant
-        tenant_uuid = await db.scalar(select(Tenant.id).limit(1))
-        if tenant_uuid:
-            for dcat in DEFAULT_STORE_CATEGORIES:
-                existing = await db.scalar(select(ProductCategory).where(ProductCategory.name.ilike(dcat["name"])))
-                if not existing:
-                    new_c = ProductCategory(
-                        tenant_id=tenant_uuid,
-                        name=dcat["name"],
-                        category_code=dcat["category_code"],
-                        description=dcat["description"],
-                        image_url=dcat["image_url"],
-                        status=EntityStatus.ACTIVE,
-                    )
-                    db.add(new_c)
-            await db.commit()
+    """Returns distinct active product categories with real counts and imagery, scoped by store/tenant."""
+    resolved_tenant_id = await _resolve_public_store_tenant_id(db, store, x_tenant_id)
 
     query = select(ProductCategory).where(
         ProductCategory.status == EntityStatus.ACTIVE
     )
-    if isinstance(x_tenant_id, str) and x_tenant_id.strip():
-        try:
-            query = query.where(ProductCategory.tenant_id == uuid.UUID(x_tenant_id.strip()))
-        except ValueError:
-            pass
+    if resolved_tenant_id:
+        query = query.where(ProductCategory.tenant_id == resolved_tenant_id)
 
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(
@@ -1967,18 +2003,17 @@ async def list_public_categories(
     )
     cats = result.scalars().all()
 
-    # Enrich categories with image fallback and real item counts
+    # Enrich categories with image fallback and real item counts scoped to resolved_tenant_id
     enriched_cats = []
     for idx, c in enumerate(cats):
-        # Count products in this category
-        p_count = await db.scalar(
-            select(func.count()).select_from(Product).where(
-                Product.category_id == c.id,
-                Product.status == EntityStatus.ACTIVE
-            )
-        ) or 0
+        count_stmt = select(func.count()).select_from(Product).where(
+            Product.category_id == c.id,
+            Product.status == EntityStatus.ACTIVE
+        )
+        if resolved_tenant_id:
+            count_stmt = count_stmt.where(Product.tenant_id == resolved_tenant_id)
+        p_count = await db.scalar(count_stmt) or 0
 
-        # Assign image if missing
         fallback_img = DEFAULT_STORE_CATEGORIES[idx % len(DEFAULT_STORE_CATEGORIES)]["image_url"]
         img = c.image_url or fallback_img
 
@@ -1989,7 +2024,7 @@ async def list_public_categories(
             category_code=c.category_code,
             description=c.description,
             image_url=img,
-            item_count=max(p_count, 1),
+            item_count=max(p_count, 1) if p_count > 0 else 0,
             status="active",
             created_at=c.created_at,
             updated_at=c.updated_at
@@ -2007,13 +2042,13 @@ async def list_public_products(
     category_id: str | None = None,
     category: str | None = None,
     search: str | None = None,
+    store: Optional[str] = Query(None, description="Public store slug or tenant ID"),
     x_tenant_id: Optional[str] = Header(None),
 ):
-    """Returns products from ALL tenants for the marketplace storefront.
-    Optionally filtered to one tenant via X-Tenant-Id header.
-    This enables the Amazon-style marketplace where every tenant's inventory
-    is visible to shoppers."""
+    """Returns products scoped to the requested store organization, or all active public products."""
     from src.models import Tenant
+
+    resolved_tenant_id = await _resolve_public_store_tenant_id(db, store, x_tenant_id)
 
     query = select(Product).options(
         selectinload(Product.category),
@@ -2024,12 +2059,8 @@ async def list_public_products(
         Product.status == EntityStatus.ACTIVE
     )
 
-    # Filter to specific tenant if requested
-    if isinstance(x_tenant_id, str) and x_tenant_id.strip():
-        try:
-            query = query.where(Product.tenant_id == uuid.UUID(x_tenant_id.strip()))
-        except ValueError:
-            pass
+    if resolved_tenant_id:
+        query = query.where(Product.tenant_id == resolved_tenant_id)
 
     # Filter by category_id or category name/slug
     cat_filter = category_id or category
@@ -2038,7 +2069,6 @@ async def list_public_products(
             cat_uuid = uuid.UUID(cat_filter.strip())
             query = query.where(Product.category_id == cat_uuid)
         except ValueError:
-            # Match by category name or category code or product category relation
             query = query.join(Product.category).where(
                 or_(
                     ProductCategory.name.ilike(f"%{cat_filter.strip()}%"),
@@ -2113,11 +2143,14 @@ async def list_public_products(
 async def get_public_product_by_id(
     product_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
+    store: Optional[str] = Query(None, description="Public store slug or tenant ID"),
+    x_tenant_id: Optional[str] = Header(None),
 ):
-    """Fetches a single public product by ID for the product detail page.
-    Checks ERP Products (Product), Master Catalog (MasterCatalogProduct), and Marketplace Products."""
+    """Fetches a single public product by ID, strictly verifying ownership if a store context is given."""
     from src.models import Tenant
-    from src.models.marketplace import MarketplaceProduct
+    from src.models.marketplace import MarketplaceProduct, MarketplaceVendor
+
+    resolved_tenant_id = await _resolve_public_store_tenant_id(db, store, x_tenant_id)
 
     # 1. Try local ERP Product by UUID
     try:
@@ -2128,6 +2161,10 @@ async def get_public_product_by_id(
             selectinload(Product.images),
             selectinload(Product.variants)
         ).where(Product.id == pid, Product.status == EntityStatus.ACTIVE)
+
+        if resolved_tenant_id:
+            p_query = p_query.where(Product.tenant_id == resolved_tenant_id)
+
         res = await db.execute(p_query)
         p = res.scalar_one_or_none()
         if p:
@@ -2173,7 +2210,10 @@ async def get_public_product_by_id(
     # 2. Try Master Catalog Product
     try:
         m_id = uuid.UUID(product_id)
-        m_res = await db.execute(select(MasterCatalogProduct).where(MasterCatalogProduct.id == m_id))
+        m_stmt = select(MasterCatalogProduct).where(MasterCatalogProduct.id == m_id)
+        if resolved_tenant_id:
+            m_stmt = m_stmt.where(MasterCatalogProduct.tenant_id == resolved_tenant_id)
+        m_res = await db.execute(m_stmt)
         m = m_res.scalar_one_or_none()
         if m:
             mrp_val = float(m.mrp or 0)
@@ -2207,7 +2247,18 @@ async def get_public_product_by_id(
         pass
 
     # 3. Try MarketplaceProduct (by string id e.g. MP-1001)
-    mp_res = await db.execute(select(MarketplaceProduct).options(selectinload(MarketplaceProduct.vendor)).where(MarketplaceProduct.id == product_id))
+    mp_stmt = (
+        select(MarketplaceProduct)
+        .outerjoin(MarketplaceVendor, MarketplaceProduct.vendor_id == MarketplaceVendor.id)
+        .options(selectinload(MarketplaceProduct.vendor))
+        .where(MarketplaceProduct.id == product_id)
+    )
+    if resolved_tenant_id:
+        mp_stmt = mp_stmt.where(
+            (MarketplaceProduct.tenant_id == str(resolved_tenant_id)) |
+            (MarketplaceVendor.tenant_id == str(resolved_tenant_id))
+        )
+    mp_res = await db.execute(mp_stmt)
     mp = mp_res.scalar_one_or_none()
     if mp:
         return PublicProductResponse(

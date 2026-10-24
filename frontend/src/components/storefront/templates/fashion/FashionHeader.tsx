@@ -11,6 +11,7 @@ import {
   Sparkles,
   ChevronDown
 } from "lucide-react";
+import { useStoreTheme } from "@/contexts/StoreThemeContext";
 
 interface FashionHeaderProps {
   onOpenCart: () => void;
@@ -19,6 +20,7 @@ interface FashionHeaderProps {
 
 export function FashionHeader({ onOpenCart, onOpenMenu }: FashionHeaderProps) {
   const navigate = useNavigate();
+  const { theme, branding, getStoreUrl } = useStoreTheme();
   const { totalItems = 0, cartCount = 0 } = useStoreCart();
   const { totalWishlistItems = 0, wishlistItems = [] } = useWishlist();
   const safeTotalItems = totalItems || cartCount || 0;
@@ -29,7 +31,7 @@ export function FashionHeader({ onOpenCart, onOpenMenu }: FashionHeaderProps) {
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      navigate({ to: "/store/shop", search: { q: searchQuery.trim() } as any });
+      navigate({ to: getStoreUrl("/shop") as any, search: { q: searchQuery.trim() } as any });
       setSearchOpen(false);
     }
   };
@@ -37,8 +39,11 @@ export function FashionHeader({ onOpenCart, onOpenMenu }: FashionHeaderProps) {
   return (
     <header className="w-full bg-white text-zinc-900 border-b border-zinc-200/80 sticky top-0 z-40 font-sans shadow-2xs">
       {/* ── Top Announcement Bar ── */}
-      <div className="bg-zinc-950 text-white text-[11px] font-medium tracking-widest uppercase text-center py-2 px-4">
-        <span>Complimentary Express Courier on Orders Above ₹1,999 &bull; 14-Day Boutique Exchanges</span>
+      <div
+        className="text-white text-[11px] font-medium tracking-widest uppercase text-center py-2 px-4 transition-colors shadow-2xs"
+        style={{ backgroundColor: theme.primaryColor || "#18181B" }}
+      >
+        <span>{branding.announcementText || "Complimentary Express Courier on Orders Above ₹1,999 • 14-Day Boutique Exchanges"}</span>
       </div>
 
       {/* ── Main Editorial Header ── */}
@@ -47,6 +52,7 @@ export function FashionHeader({ onOpenCart, onOpenMenu }: FashionHeaderProps) {
         <button
           onClick={onOpenMenu}
           className="lg:hidden p-1.5 text-zinc-900 hover:bg-zinc-100 rounded-lg cursor-pointer"
+          aria-label="Open mobile menu"
         >
           <Menu className="w-5 h-5" />
         </button>
@@ -65,18 +71,22 @@ export function FashionHeader({ onOpenCart, onOpenMenu }: FashionHeaderProps) {
           <Link to="/store/shop" search={{ category: "Accessories" } as any} className="hover:text-black transition-colors">
             Jewelry & Bags
           </Link>
-          <Link to="/store/shop" className="text-rose-600 font-bold hover:text-rose-700 transition-colors">
+          <Link
+            to="/store/shop"
+            style={{ color: theme.accentColor || "#E11D48" }}
+            className="font-bold transition-opacity hover:opacity-80"
+          >
             End of Season Sale
           </Link>
         </nav>
 
         {/* Centered Editorial Brand Title */}
-        <Link to="/store" className="text-center group">
+        <Link to={getStoreUrl("") as any} className="text-center group">
           <div className="text-2xl sm:text-3xl font-black tracking-[0.2em] uppercase font-serif text-zinc-950 leading-none">
-            VOGUE & CO.
+            {theme.name || "VOGUE & CO."}
           </div>
           <div className="text-[9px] uppercase tracking-[0.3em] text-zinc-400 font-sans mt-0.5">
-            Atelier &bull; High Fashion
+            {theme.tagline || "Atelier • High Fashion"}
           </div>
         </Link>
 

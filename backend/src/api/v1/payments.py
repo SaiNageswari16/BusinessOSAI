@@ -1,14 +1,18 @@
+import json
 import logging
 import uuid
 from typing import Any, Dict, List, Optional, Union
 from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request, Response, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import CurrentUserContext, get_current_user_context, get_optional_user_context
+from src.config.settings import settings
 from src.database.session import get_db
 from src.models import Company, PaymentGatewayConfig, User
+from src.models.erp import Invoice
+from src.models.marketplace import MarketplaceOrder
 from src.services.pinelabs_service import PineLabsService
 from src.services.razorpay_service import RazorpayService
 
@@ -665,11 +669,135 @@ async def razorpay_webhook(
     x_razorpay_signature: Optional[str] = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Receives automated webhooks from Razorpay for order.paid and payment.captured."""
+    """Receives automated webhooks from Razorpay for order.paid, payment.captured, payment.failed."""
     body_bytes = await request.body()
-    # Razorpay Webhook is acknowledged
-    logger.info("Received Razorpay webhook event with signature: %s", x_razorpay_signature)
-    return {"status": "ok", "received": True}
+    try:
+        body_text = body_bytes.decode("utf-8")
+        event_data = json.loads(body_text) if body_text else {}
+    except Exception as exc:
+        logger.error("Failed to decode Razorpay webhook payload: %s", exc)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
+
+    # 1. Signature Verification using RazorpayService
+    webhook_secret = settings.razorpay_webhook_secret
+    if webhook_secret:
+        svc = RazorpayService(webhook_secret=webhook_secret)
+        if not x_razorpay_signature or not svc.verify_webhook(body_bytes, x_razorpay_signature):
+            logger.warning("Rejected Razorpay webhook with invalid signature")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid webhook signature")
+
+    event_type = event_data.get("event")
+    payload = event_data.get("payload", {})
+    payment_entity = payload.get("payment", {}).get("entity", {})
+    order_entity = payload.get("order", {}).get("entity", {})
+
+    payment_id = payment_entity.get("id")
+    gateway_order_id = payment_entity.get("order_id") or order_entity.get("id")
+    notes = payment_entity.get("notes") or order_entity.get("notes") or {}
+    order_id_hint = notes.get("order_id") or order_entity.get("receipt")
+
+    # Avoid logging sensitive tokens or card details; only log high-level event and IDs
+    logger.info("Processing Razorpay webhook event: %s for order: %s, payment: %s", event_type, gateway_order_id, payment_id)
+
+    # 2. Locate Marketplace Order with prioritized exact match
+    order = None
+    if order_id_hint:
+        order = await db.scalar(
+            select(MarketplaceOrder).where(MarketplaceOrder.id == str(order_id_hint)).with_for_update()
+        )
+    if not order and gateway_order_id:
+        order = await db.scalar(
+            select(MarketplaceOrder).where(MarketplaceOrder.gateway_order_id == gateway_order_id).with_for_update()
+        )
+    if not order and payment_id:
+        order = await db.scalar(
+            select(MarketplaceOrder).where(MarketplaceOrder.gateway_payment_id == payment_id).with_for_update()
+        )
+
+    if not order:
+        logger.info("Webhook received for untracked or non-marketplace entity (order: %s, payment: %s)", gateway_order_id, payment_id)
+        return {"status": "ok", "received": True, "action": "ignored_no_matching_order"}
+
+    # 3. Handle Payment Captured / Order Paid
+    if event_type in ("payment.captured", "order.paid"):
+        # Idempotent callback handling: already paid
+        if order.payment_status == "Paid":
+            logger.info("Idempotent duplicate webhook for already paid order %s", order.id)
+            return {
+                "status": "ok",
+                "received": True,
+                "action": "already_paid",
+                "order_id": order.id,
+                "already_processed": True
+            }
+
+        # Safe handling: payment captured AFTER order was cancelled
+        if order.order_status == "Cancelled":
+            order.payment_status = "Refund Pending"
+            if payment_id:
+                order.gateway_payment_id = payment_id
+            order.notes = f"{order.notes or ''}\n[WEBHOOK] Payment {payment_id} captured after order cancellation. Stock was NOT re-reserved; refund required."
+            await db.commit()
+            logger.warning("Payment %s captured for cancelled order %s; marked for refund without stock reservation", payment_id, order.id)
+            return {
+                "status": "ok",
+                "received": True,
+                "action": "marked_for_refund",
+                "order_id": order.id,
+                "payment_status": "Refund Pending",
+                "refund_required": True
+            }
+
+        # Successful payment transition
+        order.payment_status = "Paid"
+        if payment_id:
+            order.gateway_payment_id = payment_id
+        if gateway_order_id and not order.gateway_order_id:
+            order.gateway_order_id = gateway_order_id
+        if order.order_status in ("Pending", "Pending Payment"):
+            order.order_status = "Processing"
+
+        # Update corresponding tax invoice if present
+        if order.invoice_number or order.invoice_id:
+            inv_stmt = select(Invoice).where(
+                or_(
+                    Invoice.order_number == order.id,
+                    Invoice.invoice_number == order.invoice_number
+                )
+            ).with_for_update()
+            inv = await db.scalar(inv_stmt)
+            if inv:
+                inv.status = "paid"
+                inv.amount_paid = order.total_amount
+                inv.balance_due = 0.0
+
+        await db.commit()
+        logger.info("Order %s successfully updated to Paid via webhook", order.id)
+        return {
+            "status": "ok",
+            "received": True,
+            "action": "payment_confirmed",
+            "order_id": order.id,
+            "payment_status": "Paid"
+        }
+
+    # 4. Handle Payment Failed
+    elif event_type == "payment.failed":
+        if order.payment_status != "Paid" and order.order_status not in ("Shipped", "Delivered"):
+            order.payment_status = "Failed"
+            err_desc = payment_entity.get("error_description") or "Payment authorization declined"
+            order.notes = f"{order.notes or ''}\n[WEBHOOK_PAYMENT_FAILURE] {err_desc}"
+            await db.commit()
+            logger.info("Order %s marked payment Failed via webhook", order.id)
+            return {
+                "status": "ok",
+                "received": True,
+                "action": "payment_failed",
+                "order_id": order.id,
+                "payment_status": "Failed"
+            }
+
+    return {"status": "ok", "received": True, "action": "event_unhandled"}
 
 
 # ─── 3. Pine Labs Handheld EDC Card Terminal Endpoints ───────────────

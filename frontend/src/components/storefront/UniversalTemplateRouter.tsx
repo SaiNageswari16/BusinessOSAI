@@ -32,6 +32,18 @@ import { FashionHero } from "./templates/fashion/FashionHero";
 import { MegaHero } from "./templates/mega_market/MegaHero";
 import { QuickMartHero } from "./templates/speed_mart/QuickMartHero";
 
+// Categories Sections
+import { NurseryCategories } from "./templates/nursery/NurseryCategories";
+import { PharmaCategories } from "./templates/pharma/PharmaCategories";
+import { FashionCategories } from "./templates/fashion/FashionCategories";
+import { QuickMartCategories } from "./templates/speed_mart/QuickMartCategories";
+import { MegaCategories } from "./templates/mega_market/MegaCategories";
+import {
+  OrganicCategories,
+  type StoreCategoryItem,
+  type DynamicStoreCategoriesProps,
+} from "./organic/OrganicCategories";
+
 // ── 1. Dynamic Header ────────────────────────────────────────────────────────
 interface DynamicStoreHeaderProps {
   onOpenCart: () => void;
@@ -125,3 +137,95 @@ export function DynamicStoreHero({ fallbackHero }: DynamicStoreHeroProps) {
       return <>{fallbackHero}</>;
   }
 }
+
+// ── 5. Dynamic Categories Section ───────────────────────────────────────────
+export function DynamicStoreCategories({
+  categories,
+  onSelectCategory,
+  className,
+  title,
+  subtitle,
+  isLoading,
+}: DynamicStoreCategoriesProps) {
+  const { themeId } = useStoreTheme();
+
+  switch (themeId) {
+    case "speed_mart":
+      return (
+        <QuickMartCategories
+          categories={categories}
+          onSelectCategory={onSelectCategory}
+          className={className}
+          title={title}
+          subtitle={subtitle}
+          isLoading={isLoading}
+        />
+      );
+    case "mega_market":
+      return (
+        <MegaCategories
+          categories={categories}
+          onSelectCategory={onSelectCategory}
+          className={className}
+          title={title}
+          subtitle={subtitle}
+          isLoading={isLoading}
+        />
+      );
+    case "nursery_botanics":
+      return (
+        <NurseryCategories
+          categories={categories}
+          onSelectCategory={onSelectCategory}
+          className={className}
+          title={title}
+          subtitle={subtitle}
+          isLoading={isLoading}
+        />
+      );
+    case "pharma_medical":
+      return (
+        <PharmaCategories
+          categories={categories}
+          onSelectCategory={onSelectCategory}
+          className={className}
+          title={title}
+          subtitle={subtitle}
+          isLoading={isLoading}
+        />
+      );
+    case "fashion_boutique":
+      return (
+        <FashionCategories
+          categories={categories}
+          onSelectCategory={onSelectCategory}
+          className={className}
+          title={title}
+          subtitle={subtitle}
+          isLoading={isLoading}
+        />
+      );
+    case "modern_fresh":
+    default:
+      return (
+        <OrganicCategories
+          categories={categories}
+          onSelectCategory={onSelectCategory}
+          className={className}
+          title={title}
+          subtitle={subtitle}
+          isLoading={isLoading}
+        />
+      );
+  }
+}
+
+export type { StoreCategoryItem, DynamicStoreCategoriesProps };
+export {
+  OrganicCategories,
+  NurseryCategories,
+  PharmaCategories,
+  FashionCategories,
+  QuickMartCategories,
+  MegaCategories,
+};

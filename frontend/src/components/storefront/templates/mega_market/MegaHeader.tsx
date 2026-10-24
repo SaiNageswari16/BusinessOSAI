@@ -27,8 +27,8 @@ interface MegaHeaderProps {
 
 export function MegaHeader({ onOpenCart, onOpenMenu }: MegaHeaderProps) {
   const navigate = useNavigate();
-  const { theme, branding } = useStoreTheme();
-  const { totalItems = 0, cartCount = 0, total = 0 } = useStoreCart();
+  const { theme, branding, getStoreUrl } = useStoreTheme();
+  const { totalItems = 0, cartCount = 0, cartTotal = 0 } = useStoreCart();
   const { totalWishlistItems = 0, wishlistItems = [] } = useWishlist();
   const { user } = useStoreUser();
   const { formatCurrency } = useCurrency();
@@ -40,7 +40,7 @@ export function MegaHeader({ onOpenCart, onOpenMenu }: MegaHeaderProps) {
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      navigate({ to: "/store/shop", search: { search: searchQuery.trim() } as any });
+      navigate({ to: getStoreUrl("/shop") as any, search: { search: searchQuery.trim() } as any });
     }
   };
 
@@ -91,7 +91,7 @@ export function MegaHeader({ onOpenCart, onOpenMenu }: MegaHeaderProps) {
           </button>
 
           {/* Mega Brand Logo */}
-          <Link to="/store" className="flex items-center gap-2.5 shrink-0">
+          <Link to={getStoreUrl("") as any} className="flex items-center gap-2.5 shrink-0">
             <div
               className="size-10 rounded-xl flex items-center justify-center text-white shadow-md"
               style={{ backgroundColor: accentColor }}
@@ -141,7 +141,7 @@ export function MegaHeader({ onOpenCart, onOpenMenu }: MegaHeaderProps) {
               className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-slate-300 hover:bg-slate-800 text-xs font-semibold"
             >
               <User className="size-4 text-blue-400" />
-              <span>{user ? user.first_name || "Account" : "Sign In"}</span>
+              <span>{user ? user.firstName || user.name || "Account" : "Sign In"}</span>
             </Link>
 
             <Link
@@ -173,7 +173,7 @@ export function MegaHeader({ onOpenCart, onOpenMenu }: MegaHeaderProps) {
               <div className="text-left hidden xs:block leading-tight">
                 <div className="text-[10px] text-blue-100 uppercase font-bold">Cart</div>
                 <div className="text-xs font-bold text-white">
-                  {safeTotalItems > 0 ? formatCurrency(total) : "₹0"}
+                  {safeTotalItems > 0 ? formatCurrency(cartTotal) : "₹0"}
                 </div>
               </div>
             </button>

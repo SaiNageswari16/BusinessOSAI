@@ -68,14 +68,14 @@
 }
 
 .organic-qty-btn:hover {
-  background-color: #2563eb;
+  background-color: var(--store-theme-primary, #16a34a);
   color: #ffffff;
-  border-color: #2563eb;
+  border-color: var(--store-theme-primary, #16a34a);
 }
 
 /* Add to cart button */
 .btn-organic-cart {
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  background-color: var(--store-theme-primary, var(--organic-primary, #16a34a));
   color: #ffffff;
   font-weight: 700;
   font-size: 12.5px;
@@ -85,14 +85,34 @@
   align-items: center;
   gap: 6px;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
   cursor: pointer;
 }
 
 .btn-organic-cart:hover {
-  background: linear-gradient(135deg, #1d4ed8, #1e40af);
-  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+  filter: brightness(0.92);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
   transform: translateY(-1px);
+}
+
+/* Dynamic theme utility classes */
+.store-theme-primary-bg {
+  background-color: var(--store-theme-primary, var(--organic-primary, #16a34a)) !important;
+}
+.store-theme-primary-text {
+  color: var(--store-theme-primary, var(--organic-primary, #16a34a)) !important;
+}
+.store-theme-primary-border {
+  border-color: var(--store-theme-primary, var(--organic-primary, #16a34a)) !important;
+}
+.store-theme-accent-bg {
+  background-color: var(--store-theme-accent, var(--organic-accent, #22c55e)) !important;
+}
+.store-theme-accent-text {
+  color: var(--store-theme-accent, var(--organic-accent, #22c55e)) !important;
+}
+.store-theme-bg-tone {
+  background-color: var(--store-theme-bg, var(--organic-cream, #f9fafb)) !important;
 }
 
 /* Commercial Card styling */
