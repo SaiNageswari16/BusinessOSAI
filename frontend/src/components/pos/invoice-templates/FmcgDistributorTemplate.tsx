@@ -56,7 +56,7 @@ export function FmcgDistributorTemplate({
     invoice.doc_type === "estimate" ||
     invoice.invoice_type === "ESTIMATE_NON_GST" ||
     String(invoice.invoice_number || "").toUpperCase().startsWith("EST-");
-  const docTitle = invoice.header_title || (isEstimate ? "TAX ESTIMATE / ESTIMATE" : isQuotation ? "TAX QUOTATION / ESTIMATE" : (template.headerTitle || "TAX INVOICE"));
+  const docTitle = invoice.header_title || (isEstimate ? "TAX ESTIMATE / ESTIMATE" : isQuotation ? "TAX QUOTATION / ESTIMATE" : (invoice.documentTitle || "TAX INVOICE"));
   const docNumLabel = isEstimate ? "Estimate No. : " : isQuotation ? "Quote No. : " : "Invoice No. : ";
   const docDateLabel = isEstimate ? "Estimate Date: " : isQuotation ? "Quote Date: " : "Invoice Date: ";
 
@@ -182,7 +182,7 @@ export function FmcgDistributorTemplate({
                 const mrp = Number(it.mrp || rate * 1.15);
                 const disc = Number(it.discount_value || 0);
                 const isIncl = it.is_tax_inclusive === true || (it as any).is_inclusive === true || invoice.is_tax_inclusive === true;
-                const taxRate = Number(it.tax_rate || 18);
+                const taxRate = it.tax_rate !== undefined && it.tax_rate !== null ? Number(it.tax_rate) : 0;
                 const halfTax = taxRate / 2;
 
                 let taxableAmt = 0;

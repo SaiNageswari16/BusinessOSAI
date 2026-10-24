@@ -87,6 +87,7 @@ import { InvoiceQuickSettingsModal, InvoiceSettings, loadStoredInvoiceSettings, 
 import { WordInvoiceStudioModal } from "./WordInvoiceStudioModal";
 import { computeGstBreakdown, checkIsInterstate, extractGstState } from "@/lib/gst-utils";
 import { lookupGstinDetails } from "@/lib/gst-helper";
+import { syncLocalStorageCustomerInvoices } from "@/lib/safe-storage";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
 import { useI18n } from "@/contexts/i18n-context";
 import { CustomerLedgerModal } from "../crm/CustomerLedgerModal";
@@ -2734,22 +2735,27 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           }))
           .filter((inv: any) => inv.balance_due > 0.05);
 
-        const mergedMap = new Map<string, any>();
-        backendUnpaid.forEach((inv: any) => {
-          const key = inv.invoice_number || inv.id;
-          if (key) mergedMap.set(key, inv);
-        });
-        localUnpaidForCust.forEach((inv: any) => {
-          const key = inv.invoice_number || inv.id;
-          if (key && !mergedMap.has(key)) {
-            mergedMap.set(key, inv);
-          }
-        });
+        const customerBaseDue = Number(summary?.total_pending_due ?? (cust as any)?.outstanding_balance ?? 0);
+        let finalUnpaid = backendUnpaid;
 
-        const finalUnpaid = Array.from(mergedMap.values()).filter((inv: any) => Number(inv.balance_due) > 0.05);
-        const invoicePending = finalUnpaid.reduce((sum, inv) => sum + Number(inv.balance_due || 0), 0);
-        const customerBaseDue = Number(summary?.total_pending_due ?? (cust as any)?.outstanding_balance ?? (cust as any)?.opening_balance ?? 0);
-        const totalPending = Math.max(invoicePending, customerBaseDue);
+        if (customerBaseDue <= 0.01) {
+          finalUnpaid = [];
+        } else {
+          const mergedMap = new Map<string, any>();
+          backendUnpaid.forEach((inv: any) => {
+            const key = inv.invoice_number || inv.id;
+            if (key) mergedMap.set(key, inv);
+          });
+          localUnpaidForCust.forEach((inv: any) => {
+            const key = inv.invoice_number || inv.id;
+            if (key && !mergedMap.has(key)) {
+              mergedMap.set(key, inv);
+            }
+          });
+          finalUnpaid = Array.from(mergedMap.values()).filter((inv: any) => Number(inv.balance_due) > 0.05);
+        }
+
+        const totalPending = customerBaseDue <= 0.01 ? 0 : customerBaseDue;
 
         setCustomerSummary({
           total_invoices: summary?.total_invoices || localInvoices.length,
@@ -2794,8 +2800,18 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     setIsSavingPosAdjust(true);
     try {
       await crmCustomersApi.updateOutstandingBalance(activeCustomerObj.id, parsed, posAdjustReason || undefined);
+      syncLocalStorageCustomerInvoices(
+        activeCustomerObj.id,
+        (activeCustomerObj as any).name,
+        (activeCustomerObj as any).phone,
+        parsed
+      );
       toast.success(`Outstanding balance updated to ${currency.symbol}${parsed.toLocaleString(undefined, { minimumFractionDigits: 2 })}`);
-      setCustomerSummary((prev: any) => prev ? { ...prev, total_pending_due: parsed } : {
+      setCustomerSummary((prev: any) => prev ? {
+        ...prev,
+        total_pending_due: parsed,
+        unpaid_invoices: parsed <= 0.01 ? [] : (prev.unpaid_invoices || [])
+      } : {
         total_invoices: 0,
         total_spent: 0,
         total_pending_due: parsed,
@@ -2804,6 +2820,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       });
       (activeCustomerObj as any).outstanding_balance = parsed;
       setShowAdjustBalanceModal(false);
+      window.dispatchEvent(new Event("pos_invoices_updated"));
+      window.dispatchEvent(new Event("storage"));
     } catch (err: any) {
       toast.error(err.message || "Failed to update outstanding balance");
     } finally {

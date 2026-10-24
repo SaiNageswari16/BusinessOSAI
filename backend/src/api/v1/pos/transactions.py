@@ -778,8 +778,18 @@ async def send_pos_receipt(
             detail="No recipient WhatsApp phone number provided. Please enter a customer mobile number."
         )
 
+    # 0. Immediate validation: Check if WhatsApp automation is enabled
+    from src.services.whatsapp_invoice_sender import check_whatsapp_dispatch_allowed, get_active_org_whatsapp_session
+    allowed, disallow_reason = await check_whatsapp_dispatch_allowed(
+        db, ctx.tenant_id, resolved_company_id, trigger="auto_send_pos"
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=disallow_reason
+        )
+
     # 1. Immediate validation: Check that organization has an active WhatsApp session
-    from src.services.whatsapp_invoice_sender import get_active_org_whatsapp_session
     session_id = await get_active_org_whatsapp_session(
         db=db,
         tenant_id=ctx.tenant_id,

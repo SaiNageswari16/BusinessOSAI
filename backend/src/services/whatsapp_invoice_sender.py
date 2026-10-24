@@ -200,26 +200,65 @@ async def _send_via_gateway(
             return resp2.json()
 
 
+async def check_whatsapp_dispatch_allowed(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    company_id: uuid.UUID | None = None,
+    trigger: str | None = None,
+) -> tuple[bool, str]:
+    """
+    Authoritative validator for WhatsApp automated dispatches.
+    Validates tenant-level master toggle, tenant-level granular automation rules,
+    and company-level master toggle & granular rules.
+    """
+    if not tenant_id:
+        return False, "Organization ID is missing."
+
+    tenant = await db.get(Tenant, tenant_id)
+    if not tenant:
+        return False, "Organization record not found."
+
+    tenant_settings = tenant.settings if isinstance(tenant.settings, dict) else {}
+    if tenant_settings.get("whatsapp_enabled") is False:
+        return False, "WhatsApp Automation & Dispatch Engine is paused/turned OFF for this organization."
+
+    if trigger and isinstance(tenant_settings.get("whatsapp_settings"), dict):
+        if tenant_settings["whatsapp_settings"].get(trigger) is False:
+            return False, f"Automated WhatsApp dispatch for '{trigger}' is turned OFF in organization settings."
+
+    comp = None
+    if company_id:
+        comp = await db.get(Company, company_id)
+    if not comp:
+        comp = await db.scalar(
+            select(Company)
+            .where(Company.tenant_id == tenant_id)
+            .order_by(Company.created_at.asc())
+            .limit(1)
+        )
+
+    if comp:
+        if getattr(comp, "whatsapp_enabled", True) is False:
+            return False, f"WhatsApp automated dispatches are turned OFF for company '{comp.name}'."
+        comp_settings = getattr(comp, "whatsapp_settings", {}) or {}
+        if isinstance(comp_settings, dict) and trigger and comp_settings.get(trigger) is False:
+            return False, f"Automated WhatsApp dispatch for '{trigger}' is turned OFF for company '{comp.name}'."
+
+    return True, ""
+
+
 async def send_invoice_whatsapp(
     db: AsyncSession,
     invoice: Invoice,
     recipient_phone: str | None = None,
 ) -> dict:
     """Send *invoice* as a PDF to the customer's WhatsApp number."""
-    # 0. Check Company WhatsApp communication toggle
-    comp_id = getattr(invoice, "company_id", None)
-    if comp_id:
-        comp = await db.get(Company, comp_id)
-        if comp:
-            if getattr(comp, "whatsapp_enabled", True) is False:
-                raise InvoiceSendError(
-                    f"WhatsApp communication is turned OFF for company '{comp.name}' in Integrations -> WhatsApp settings."
-                )
-            wa_settings = getattr(comp, "whatsapp_settings", {}) or {}
-            if isinstance(wa_settings, dict) and wa_settings.get("auto_send_invoices") is False:
-                raise InvoiceSendError(
-                    "Automated invoice dispatch via WhatsApp is turned OFF in Integrations -> WhatsApp settings."
-                )
+    # 0. Check Organization & Company WhatsApp communication toggles
+    allowed, disallow_reason = await check_whatsapp_dispatch_allowed(
+        db, invoice.tenant_id, invoice.company_id, trigger="auto_send_invoices"
+    )
+    if not allowed:
+        raise InvoiceSendError(disallow_reason)
 
     # 1. Resolve recipient
     phone = (recipient_phone or getattr(invoice, "customer_phone", None) or "").strip()
@@ -412,29 +451,11 @@ async def send_pos_receipt_whatsapp(
     receipt_pdf_base64: str,
 ) -> dict:
     """Send the POS terminal's rendered thermal receipt via the organization's WhatsApp session."""
-    tenant = await db.get(Tenant, tenant_id)
-    if not tenant:
-        raise InvoiceSendError("Organization not found for POS receipt delivery.")
-    tenant_settings = tenant.settings if isinstance(tenant.settings, dict) else {}
-
-    # Check tenant master toggle
-    if tenant_settings.get("whatsapp_enabled") is False:
-        raise InvoiceSendError("WhatsApp communication is turned OFF for this organization.")
-
-    company = None
-    if company_id:
-        company = await db.get(Company, company_id)
-    if not company and tenant_id:
-        company = await db.scalar(
-            select(Company).where(Company.tenant_id == tenant_id).order_by(Company.created_at.asc()).limit(1)
-        )
-
-    if company:
-        if getattr(company, "whatsapp_enabled", True) is False:
-            raise InvoiceSendError("WhatsApp communication is turned OFF for this company.")
-        settings = getattr(company, "whatsapp_settings", {}) or {}
-        if isinstance(settings, dict) and settings.get("auto_send_pos") is False:
-            raise InvoiceSendError("Automatic POS receipt delivery is turned OFF in WhatsApp settings.")
+    allowed, disallow_reason = await check_whatsapp_dispatch_allowed(
+        db, tenant_id, company_id, trigger="auto_send_pos"
+    )
+    if not allowed:
+        raise InvoiceSendError(disallow_reason)
 
     clean_phone = re.sub(r"[^0-9]", "", recipient_phone)
     if len(clean_phone) == 10:
@@ -888,19 +909,11 @@ async def send_payment_receipt_whatsapp(
     payment_method: str,
 ) -> dict:
     """Send a payment receipt (text-only) to the customer's WhatsApp number."""
-    comp_id = getattr(invoice, "company_id", None)
-    if comp_id:
-        comp = await db.get(Company, comp_id)
-        if comp:
-            if getattr(comp, "whatsapp_enabled", True) is False:
-                raise InvoiceSendError(
-                    f"WhatsApp communication is turned OFF for company '{comp.name}' in Integrations -> WhatsApp settings."
-                )
-            wa_settings = getattr(comp, "whatsapp_settings", {}) or {}
-            if isinstance(wa_settings, dict) and wa_settings.get("auto_send_payments") is False:
-                raise InvoiceSendError(
-                    f"Automated payment receipt dispatch via WhatsApp is turned OFF in Integrations -> WhatsApp settings."
-                )
+    allowed, disallow_reason = await check_whatsapp_dispatch_allowed(
+        db, invoice.tenant_id, invoice.company_id, trigger="auto_send_payments"
+    )
+    if not allowed:
+        raise InvoiceSendError(disallow_reason)
 
     phone = (getattr(invoice, "customer_phone", None) or "").strip()
     if not phone:
@@ -965,18 +978,11 @@ async def send_settlement_receipt_whatsapp(
     company_id: uuid.UUID | None = None,
 ) -> dict:
     """Send a consolidated payment settlement receipt breakdown to the customer's WhatsApp number."""
-    if company_id:
-        comp = await db.get(Company, company_id)
-        if comp:
-            if getattr(comp, "whatsapp_enabled", True) is False:
-                raise InvoiceSendError(
-                    f"WhatsApp communication is turned OFF for company '{comp.name}' in Integrations -> WhatsApp settings."
-                )
-            wa_settings = getattr(comp, "whatsapp_settings", {}) or {}
-            if isinstance(wa_settings, dict) and wa_settings.get("auto_send_payments") is False:
-                raise InvoiceSendError(
-                    f"Automated payment receipt dispatch via WhatsApp is turned OFF in Integrations -> WhatsApp settings."
-                )
+    allowed, disallow_reason = await check_whatsapp_dispatch_allowed(
+        db, tenant_id, company_id, trigger="auto_send_payments"
+    )
+    if not allowed:
+        raise InvoiceSendError(disallow_reason)
 
     phone = (recipient_phone or "").strip()
     if not phone:

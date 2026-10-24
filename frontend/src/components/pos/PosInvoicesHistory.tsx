@@ -56,7 +56,7 @@ import { getActiveBillingGst, getOrgPaymentQrSettings, getActiveReceiptTemplate 
 import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
 import { printThermalReceiptInvoice, generateThermalReceiptHtml, thermalReceiptHtmlToPdfBase64 } from "@/lib/print-helper";
 import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
-import { FullInvoicePrinter } from "./FullInvoicePrinter";
+import { FullInvoicePrinter, InvoiceErrorBoundary } from "./FullInvoicePrinter";
 import { ThermalReceiptPreviewModal } from "./ThermalReceiptPreviewModal";
 import { useWhatsAppStatus } from "@/hooks/use-whatsapp-status";
 import { EWayBillModal } from "./EWayBillModal";
@@ -1952,6 +1952,9 @@ export function PosInvoicesHistory() {
 
       const isCancelled = isCancelledInv(inv);
       const isReturned = isReturnedInv(inv);
+      const isPaidStatus = String(inv.payment_status || inv.status || "").toLowerCase() === "paid";
+      const received = Math.min(amount, Number(inv.amount_received || inv.amount_paid || 0));
+      const remainingDue = isPaidStatus ? 0 : Math.max(0, amount - received);
 
       // Check authoritative payments array from DB if available
       const payments = Array.isArray(inv.payments) && inv.payments.length > 0 ? inv.payments : null;
@@ -1975,8 +1978,10 @@ export function PosInvoicesHistory() {
             bankTotal += amount;
             bankCount += 1;
           } else if (cat === "credit") {
-            creditTotal += amount;
-            creditCount += 1;
+            if (remainingDue > 0.05) {
+              creditTotal += remainingDue;
+              creditCount += 1;
+            }
           } else {
             cashTotal += amount;
             cashCount += 1;
@@ -2008,8 +2013,10 @@ export function PosInvoicesHistory() {
               bankTotal += pAmt;
               hasBank = true;
             } else if (cat === "credit") {
-              creditTotal += pAmt;
-              hasCredit = true;
+              if (remainingDue > 0.05) {
+                creditTotal += Math.min(pAmt, remainingDue);
+                hasCredit = true;
+              }
             } else {
               cashTotal += pAmt;
               hasCash = true;
@@ -2039,8 +2046,14 @@ export function PosInvoicesHistory() {
           bankTotal += amount;
           bankCount += 1;
         } else if (cat === "credit") {
-          creditTotal += amount;
-          creditCount += 1;
+          if (remainingDue > 0.05) {
+            creditTotal += remainingDue;
+            creditCount += 1;
+          }
+          if (received > 0.05) {
+            cashTotal += received;
+            cashCount += 1;
+          }
         } else {
           cashTotal += amount;
           cashCount += 1;
@@ -3516,12 +3529,14 @@ export function PosInvoicesHistory() {
       )}
 
       {/* Full A4 Printable Invoice Modal */}
-      <FullInvoicePrinter
-        invoice={fullInvoiceModalData}
-        isOpen={isFullInvoiceOpen}
-        onClose={() => setIsFullInvoiceOpen(false)}
-        autoPrint={autoPrintFullInvoice}
-      />
+      <InvoiceErrorBoundary onReset={() => setIsFullInvoiceOpen(false)}>
+        <FullInvoicePrinter
+          invoice={fullInvoiceModalData}
+          isOpen={isFullInvoiceOpen}
+          onClose={() => setIsFullInvoiceOpen(false)}
+          autoPrint={autoPrintFullInvoice}
+        />
+      </InvoiceErrorBoundary>
 
       {/* In-App Thermal POS Receipt Preview & Print Modal */}
       <ThermalReceiptPreviewModal

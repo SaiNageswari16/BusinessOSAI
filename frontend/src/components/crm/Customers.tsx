@@ -33,6 +33,7 @@ import { BulkImportCustomersModal } from "./BulkImportCustomersModal";
 import { CustomerLedgerModal } from "./CustomerLedgerModal";
 import { PaginationControl } from "@/components/ui/PaginationControl";
 import { useTenant } from "@/contexts/tenant-context";
+import { syncLocalStorageCustomerInvoices } from "@/lib/safe-storage";
 
 const CUSTOMER_TYPES = [
   "Retail",
@@ -475,12 +476,17 @@ export function Customers() {
         gender: form.gender || null,
         preferred_language: form.preferred_language || null,
         credit_limit: Number(form.credit_limit) || 0,
-        outstanding_balance: Number(form.outstanding_balance) || Number(form.opening_balance) || 0,
-        opening_balance: Number(form.opening_balance) || Number(form.outstanding_balance) || 0,
+        outstanding_balance: form.outstanding_balance !== undefined && form.outstanding_balance !== "" && !isNaN(Number(form.outstanding_balance))
+          ? Number(form.outstanding_balance)
+          : (form.opening_balance !== undefined && form.opening_balance !== "" && !isNaN(Number(form.opening_balance)) ? Number(form.opening_balance) : 0),
+        opening_balance: form.opening_balance !== undefined && form.opening_balance !== "" && !isNaN(Number(form.opening_balance))
+          ? Number(form.opening_balance)
+          : 0,
       };
 
       if (editingId) {
         const updated = await crmCustomersApi.update(editingId, payload);
+        syncLocalStorageCustomerInvoices(editingId, updated.name, updated.phone, updated.outstanding_balance);
         setCustomers((curr) => curr.map((c) => (c.id === editingId ? updated : c)));
         if (selectedCustomer?.id === editingId) setSelectedCustomer(updated);
         toast.success("Customer updated successfully");
@@ -538,6 +544,12 @@ export function Customers() {
         num,
         adjustBalanceReason || undefined
       );
+      syncLocalStorageCustomerInvoices(
+        adjustBalanceCustomer.id,
+        adjustBalanceCustomer.name,
+        adjustBalanceCustomer.phone,
+        num
+      );
       setCustomers((curr) =>
         curr.map((c) => (c.id === adjustBalanceCustomer.id ? { ...c, outstanding_balance: num } : c))
       );
@@ -546,6 +558,9 @@ export function Customers() {
       }
       toast.success(`Outstanding balance updated to ${currency.symbol}${num.toLocaleString()} for ${adjustBalanceCustomer.name}`);
       setAdjustBalanceCustomer(null);
+      void load();
+      window.dispatchEvent(new Event("pos_invoices_updated"));
+      window.dispatchEvent(new Event("storage"));
     } catch (err: any) {
       toast.error(err?.message || "Failed to update outstanding balance");
     } finally {

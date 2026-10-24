@@ -213,7 +213,26 @@ async def list_invoices(
     search: str | None = None,
     company_id: str | None = Query(default=None),
 ):
-    query = select(Invoice).where(Invoice.tenant_id == ctx.tenant_id)
+    # Permanently purge any ghost OPN- / opening_balance pseudo-invoices from database
+    try:
+        await db.execute(
+            delete(Invoice).where(
+                Invoice.tenant_id == ctx.tenant_id,
+                or_(
+                    Invoice.invoice_number.ilike("OPN-%"),
+                    Invoice.invoice_type == "opening_balance"
+                )
+            )
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+
+    query = select(Invoice).where(
+        Invoice.tenant_id == ctx.tenant_id,
+        ~Invoice.invoice_number.ilike("OPN-%"),
+        Invoice.invoice_type != "opening_balance"
+    )
     target_cid = None
     if company_id:
         try:
@@ -281,8 +300,7 @@ async def get_customer_invoice_summary(
     )
     invoices = res.scalars().all()
 
-    # Clean up and ignore redundant ghost OPN- invoices if customer already has real invoices
-    real_invoices = [inv for inv in invoices if not str(inv.invoice_number or "").startswith("OPN-") and inv.invoice_type != "opening_balance" and str(inv.status or "").lower() not in ("cancelled", "voided")]
+    # Clean up and purge any ghost OPN- invoices from ar_invoices
     valid_invoices = []
     ghosts_to_delete = []
     for inv in invoices:
@@ -290,8 +308,7 @@ async def get_customer_invoice_summary(
         if raw_status in ("cancelled", "voided"):
             continue
         is_opn = str(inv.invoice_number or "").startswith("OPN-") or inv.invoice_type == "opening_balance"
-        if is_opn and len(real_invoices) > 0 and float(inv.amount_paid or 0) <= 0.05:
-            # Redundant ghost OPN- invoice duplicating real invoices!
+        if is_opn:
             ghosts_to_delete.append(inv)
             continue
         valid_invoices.append(inv)
@@ -358,24 +375,11 @@ async def get_customer_invoice_summary(
 
         if cust_obj:
             stored_bal = float(getattr(cust_obj, "outstanding_balance", 0) or 0)
-            opening_bal = float(getattr(cust_obj, "opening_balance", 0) or 0)
-            inv_sum = sum(float(x.get("balance_due", 0)) for x in unpaid_invoices if not x.get("is_opening_balance"))
-
-            # Only add a virtual opening entry if customer has real opening balance that is unbilled
-            if opening_bal > 0 and (opening_bal - inv_sum) > 0.05:
-                diff = round(opening_bal - inv_sum, 2)
-                has_opn_inv = any(str(x.get("invoice_number", "")).startswith("OPN-") or x.get("is_opening_balance") for x in unpaid_invoices)
-                if not has_opn_inv:
-                    unpaid_invoices.insert(0, {
-                        "id": f"opening_{cust_obj.id}",
-                        "invoice_number": f"OPN-{str(cust_obj.id)[:6].upper()}",
-                        "invoice_date": (cust_obj.created_at.date() if cust_obj.created_at else date.today()).isoformat(),
-                        "total_amount": diff,
-                        "balance_due": diff,
-                        "status": "unpaid",
-                        "is_opening_balance": True,
-                    })
-            total_pending_due = sum(float(x.get("balance_due", 0)) for x in unpaid_invoices)
+            if stored_bal <= 0.01:
+                total_pending_due = 0.0
+                unpaid_invoices = []
+            else:
+                total_pending_due = stored_bal
     except Exception as e:
         logger.warning(f"Error checking customer opening balance in summary: {e}")
 
@@ -1387,15 +1391,20 @@ async def create_invoice(
     )
     await db.commit()
 
-    # Auto-send invoice PDF via WhatsApp for all new invoices with a customer phone
-    phone = await _resolve_invoice_phone(db, invoice)
-    if phone:
-        background_tasks.add_task(
-            _bg_send_invoice_whatsapp,
-            invoice.id,
-            ctx.tenant_id,
-            phone,
-        )
+    # Auto-send invoice PDF via WhatsApp for all new invoices with a customer phone (only if automation is enabled)
+    from src.services.whatsapp_invoice_sender import check_whatsapp_dispatch_allowed
+    wa_allowed, _ = await check_whatsapp_dispatch_allowed(
+        db, ctx.tenant_id, invoice.company_id or ctx.active_company_id, trigger="auto_send_invoices"
+    )
+    if wa_allowed:
+        phone = await _resolve_invoice_phone(db, invoice)
+        if phone:
+            background_tasks.add_task(
+                _bg_send_invoice_whatsapp,
+                invoice.id,
+                ctx.tenant_id,
+                phone,
+            )
 
     # Real-time Low Stock & Reorder Alert evaluation
     if affected_product_ids:
@@ -2007,15 +2016,20 @@ async def approve_invoice(
     )
     await db.commit()
 
-    # Auto-send invoice via WhatsApp when approved (draft -> sent)
-    phone = await _resolve_invoice_phone(db, invoice)
-    if phone:
-        background_tasks.add_task(
-            _bg_send_invoice_whatsapp,
-            invoice.id,
-            ctx.tenant_id,
-            phone,
-        )
+    # Auto-send invoice via WhatsApp when approved (draft -> sent) only if automation is enabled
+    from src.services.whatsapp_invoice_sender import check_whatsapp_dispatch_allowed
+    wa_allowed, _ = await check_whatsapp_dispatch_allowed(
+        db, ctx.tenant_id, invoice.company_id or ctx.active_company_id, trigger="auto_send_invoices"
+    )
+    if wa_allowed:
+        phone = await _resolve_invoice_phone(db, invoice)
+        if phone:
+            background_tasks.add_task(
+                _bg_send_invoice_whatsapp,
+                invoice.id,
+                ctx.tenant_id,
+                phone,
+            )
 
     return {"status": "approved", "invoice_number": invoice.invoice_number}
 

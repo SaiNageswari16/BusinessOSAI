@@ -175,17 +175,75 @@ export function PaymentReminderHub() {
   }, []);
 
   const handleRunBatch = async () => {
+    if (!policy.is_enabled) {
+      toast.warning("Automated Payment Reminders are currently paused/stopped. Please enable the 'Automated Scheduler & Credit Policy' toggle first to run automated dispatches.");
+      return;
+    }
     setEvaluating(true);
     try {
       const result = await paymentRemindersApi.evaluateBatch();
-      toast.success(
-        `Reminder Engine Executed: Evaluated ${result.invoices_evaluated} invoices, dispatched ${result.reminders_sent} notifications (${result.penalties_applied} penalties updated).`
-      );
+      if (result.status === "disabled") {
+        toast.warning(result.message || "Automated payment reminders are paused for this organization.");
+      } else {
+        toast.success(
+          `Reminder Engine Executed: Evaluated ${result.invoices_evaluated} invoices, dispatched ${result.reminders_sent} notifications (${result.penalties_applied} penalties updated).`
+        );
+      }
       await loadData();
     } catch (err: any) {
       toast.error(err.message || "Failed running reminder evaluation");
     } finally {
       setEvaluating(false);
+    }
+  };
+
+  const handleToggleScheduler = async (enabled: boolean) => {
+    const updated = { ...policy, is_enabled: enabled };
+    setPolicy(updated);
+    try {
+      await paymentRemindersApi.updatePolicy(updated);
+      toast.success(
+        enabled
+          ? "Automated Payment Reminders & Scheduler Activated"
+          : "Automated Payment Reminders Stopped & Paused (No automated messages will be sent)"
+      );
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update scheduler status");
+      void loadData();
+    }
+  };
+
+  const handleTogglePenalty = async (enabled: boolean) => {
+    const updated = { ...policy, penalty_enabled: enabled };
+    setPolicy(updated);
+    try {
+      await paymentRemindersApi.updatePolicy(updated);
+      toast.success(
+        enabled
+          ? "Late Payment Penalties & Surcharges Activated"
+          : "Late Payment Penalties & Surcharges Paused"
+      );
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update penalty status");
+      void loadData();
+    }
+  };
+
+  const handleToggleChannel = async (channelKey: "email" | "whatsapp" | "sms", enabled: boolean) => {
+    const newChannels = { ...policy.channels, [channelKey]: enabled };
+    const updated = { ...policy, channels: newChannels };
+    setPolicy(updated);
+    try {
+      await paymentRemindersApi.updatePolicy(updated);
+      const labels: Record<string, string> = { email: "Email", whatsapp: "WhatsApp", sms: "SMS" };
+      toast.success(
+        enabled
+          ? `${labels[channelKey]} reminder channel enabled`
+          : `${labels[channelKey]} reminder channel disabled`
+      );
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update channel");
+      void loadData();
     }
   };
 
@@ -235,13 +293,24 @@ export function PaymentReminderHub() {
       {/* Header & KPI Dashboard */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-purple-950 p-6 rounded-2xl text-white shadow-xl">
         <div>
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
               <BellRing className="size-4 animate-bounce" />
             </span>
             <span className="text-xs font-bold uppercase tracking-wider text-indigo-300">
               Accounts Receivable Automation
             </span>
+            {policy.is_enabled ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Automated Reminders Active
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                <AlertTriangle className="size-3 text-amber-400" />
+                Scheduler Stopped / Dispatches Paused
+              </span>
+            )}
           </div>
           <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">{t("Payment Reminders & Late Penalty Engine", "Payment Reminders & Late Penalty Engine")}</h1>
           <p className="text-xs text-indigo-200/80 mt-1 max-w-2xl">
@@ -398,21 +467,38 @@ export function PaymentReminderHub() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
-                {summary.invoices.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="py-12 text-center text-muted-foreground">
-                      No pending or overdue receivables found. All accounts are settled!
-                    </td>
-                  </tr>
-                ) : (
-                  summary.invoices.map((inv) => {
+                {(() => {
+                  const visibleInvoices = summary.invoices.filter((inv) => {
+                    const num = (inv.invoice_number || "").toUpperCase();
+                    return !num.startsWith("CN-") && !num.startsWith("RET-") && !num.startsWith("PI-") && !num.startsWith("EST-");
+                  });
+
+                  if (visibleInvoices.length === 0) {
+                    return (
+                      <tr>
+                        <td colSpan={9} className="py-12 text-center text-muted-foreground">
+                          No pending or overdue receivables found. All accounts are settled!
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  return visibleInvoices.map((inv) => {
                     const isOverdue = inv.days_diff > 0;
                     const isDueToday = inv.days_diff === 0;
+                    const isDebitNote = (inv.invoice_number || "").toUpperCase().startsWith("DN-");
 
                     return (
                       <tr key={inv.id} className="hover:bg-muted/20 transition-colors">
                         <td className="py-3 px-4 font-bold text-foreground">
-                          {inv.invoice_number}
+                          <div className="flex items-center gap-1.5">
+                            <span>{inv.invoice_number}</span>
+                            {isDebitNote && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                Debit Note
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-4">
                           <div className="font-semibold text-foreground">{inv.customer_name}</div>
@@ -474,8 +560,8 @@ export function PaymentReminderHub() {
                         </td>
                       </tr>
                     );
-                  })
-                )}
+                  });
+                })()}
               </tbody>
             </table>
           </div>
@@ -497,7 +583,7 @@ export function PaymentReminderHub() {
                   <input
                     type="checkbox"
                     checked={policy.is_enabled}
-                    onChange={(e) => setPolicy({ ...policy, is_enabled: e.target.checked })}
+                    onChange={(e) => handleToggleScheduler(e.target.checked)}
                     className="sr-only peer"
                   />
                   <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-indigo-600"></div>
@@ -591,7 +677,7 @@ export function PaymentReminderHub() {
                   <input
                     type="checkbox"
                     checked={policy.penalty_enabled}
-                    onChange={(e) => setPolicy({ ...policy, penalty_enabled: e.target.checked })}
+                    onChange={(e) => handleTogglePenalty(e.target.checked)}
                     className="sr-only peer"
                   />
                   <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-amber-600"></div>
@@ -782,9 +868,7 @@ export function PaymentReminderHub() {
                   <input
                     type="checkbox"
                     checked={policy.channels?.email ?? true}
-                    onChange={(e) =>
-                      setPolicy({ ...policy, channels: { ...policy.channels, email: e.target.checked } })
-                    }
+                    onChange={(e) => handleToggleChannel("email", e.target.checked)}
                     className="size-4 text-primary rounded"
                   />
                 </label>
@@ -802,9 +886,7 @@ export function PaymentReminderHub() {
                   <input
                     type="checkbox"
                     checked={policy.channels?.whatsapp ?? true}
-                    onChange={(e) =>
-                      setPolicy({ ...policy, channels: { ...policy.channels, whatsapp: e.target.checked } })
-                    }
+                    onChange={(e) => handleToggleChannel("whatsapp", e.target.checked)}
                     className="size-4 text-primary rounded"
                   />
                 </label>
@@ -822,9 +904,7 @@ export function PaymentReminderHub() {
                   <input
                     type="checkbox"
                     checked={policy.channels?.sms ?? true}
-                    onChange={(e) =>
-                      setPolicy({ ...policy, channels: { ...policy.channels, sms: e.target.checked } })
-                    }
+                    onChange={(e) => handleToggleChannel("sms", e.target.checked)}
                     className="size-4 text-primary rounded"
                   />
                 </label>

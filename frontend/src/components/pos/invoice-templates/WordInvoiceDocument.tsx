@@ -569,8 +569,11 @@ export function WordInvoiceDocument({
   const resolvedBankText = dynamicBank || (activeGst?.bank_name ? `Bank: ${activeGst.bank_name} | A/C: ${activeGst.bank_account_number || ""} | IFSC: ${activeGst.bank_ifsc || ""}` : "");
 
   // Dynamic Custom Field Value Resolver from Invoice metadata
-  const resolveCustomFieldValue = (f: { id: string; label: string; value: string }) => {
-    const norm = (f.label || "").toLowerCase();
+  const resolveCustomFieldValue = (f?: { id?: string; label?: string; name?: string; value?: string }) => {
+    if (!f) return "";
+    const norm = String(f.label || f.name || "").toLowerCase();
+    const fId = String(f.id || "").toLowerCase();
+    const fLabel = norm;
     const invAny = invoice as any;
     let invMeta = invAny.metadata || invAny.custom_fields || invAny.invoice_custom_fields || {};
     if (typeof invMeta === "string") {
@@ -579,56 +582,81 @@ export function WordInvoiceDocument({
 
     if (Array.isArray(invMeta)) {
       const found = invMeta.find((item: any) =>
-        (item.id && String(item.id).toLowerCase() === f.id.toLowerCase()) ||
-        (item.name && String(item.name).toLowerCase() === f.label.toLowerCase()) ||
-        (item.label && String(item.label).toLowerCase() === f.label.toLowerCase()) ||
-        (item.field_name && String(item.field_name).toLowerCase() === f.label.toLowerCase())
+        (item?.id && String(item.id).toLowerCase() === fId) ||
+        (item?.name && String(item.name).toLowerCase() === fLabel) ||
+        (item?.label && String(item.label).toLowerCase() === fLabel) ||
+        (item?.field_name && String(item.field_name).toLowerCase() === fLabel)
       );
-      if (found && found.value !== undefined && found.value !== "") return String(found.value);
+      if (found && found.value !== undefined && found.value !== null && found.value !== "") {
+        return typeof found.value === 'object' ? JSON.stringify(found.value) : String(found.value);
+      }
     } else if (typeof invMeta === "object" && invMeta !== null) {
-      if (invMeta[f.id] !== undefined && invMeta[f.id] !== "") return String(invMeta[f.id]);
-      if (invMeta[f.label] !== undefined && invMeta[f.label] !== "") return String(invMeta[f.label]);
-      const key = Object.keys(invMeta).find((k) => k.toLowerCase() === f.id.toLowerCase() || k.toLowerCase() === f.label.toLowerCase());
-      if (key && invMeta[key] !== undefined && invMeta[key] !== "") return String(invMeta[key]);
+      if (f.id && invMeta[f.id] !== undefined && invMeta[f.id] !== null && invMeta[f.id] !== "") {
+        return typeof invMeta[f.id] === 'object' ? JSON.stringify(invMeta[f.id]) : String(invMeta[f.id]);
+      }
+      if (f.label && invMeta[f.label] !== undefined && invMeta[f.label] !== null && invMeta[f.label] !== "") {
+        return typeof invMeta[f.label] === 'object' ? JSON.stringify(invMeta[f.label]) : String(invMeta[f.label]);
+      }
+      const key = Object.keys(invMeta).find((k) => {
+        const kLower = k.toLowerCase();
+        return (fId && kLower === fId) || (fLabel && kLower === fLabel);
+      });
+      if (key && invMeta[key] !== undefined && invMeta[key] !== null && invMeta[key] !== "") {
+        return typeof invMeta[key] === 'object' ? JSON.stringify(invMeta[key]) : String(invMeta[key]);
+      }
     }
 
-    const sampleVal = isPureMockPreview ? (f.value || "") : "";
+    const sampleVal = isPureMockPreview ? String(f.value || "") : "";
+
+    const formatVal = (v: any) => {
+      if (v === undefined || v === null) return "";
+      return typeof v === 'object' ? JSON.stringify(v) : String(v);
+    };
 
     if (norm.includes("po num") || norm.includes("po ref") || norm.includes("order no")) {
-      return invAny.po_number || invAny.po_reference || invAny.purchase_order_number || (typeof invMeta === "object" && (invMeta.po_number || invMeta.po_reference)) || sampleVal;
+      const v = invAny.po_number || invAny.po_reference || invAny.purchase_order_number || (typeof invMeta === "object" && (invMeta.po_number || invMeta.po_reference)) || sampleVal;
+      return formatVal(v);
     }
     if (norm.includes("po date")) {
       return invAny.po_date ? formatDisplayDate(invAny.po_date) : sampleVal;
     }
     if (norm.includes("vehic")) {
-      return invAny.vehicle_number || invAny.vehicle_no || (typeof invMeta === "object" && (invMeta.vehicle_number || invMeta.vehicle_no)) || sampleVal;
+      const v = invAny.vehicle_number || invAny.vehicle_no || (typeof invMeta === "object" && (invMeta.vehicle_number || invMeta.vehicle_no)) || sampleVal;
+      return formatVal(v);
     }
     if (norm.includes("eway") || norm.includes("e-way")) {
-      return invAny.eway_bill_number || invAny.eway_bill_no || (typeof invMeta === "object" && (invMeta.eway_bill_number || invMeta.eway_bill_no)) || sampleVal;
+      const v = invAny.eway_bill_number || invAny.eway_bill_no || (typeof invMeta === "object" && (invMeta.eway_bill_number || invMeta.eway_bill_no)) || sampleVal;
+      return formatVal(v);
     }
     if (norm.includes("challan no") || norm.includes("dc no")) {
-      return invAny.challan_number || invAny.delivery_challan || (typeof invMeta === "object" && (invMeta.challan_number || invMeta.delivery_challan)) || sampleVal;
+      const v = invAny.challan_number || invAny.delivery_challan || (typeof invMeta === "object" && (invMeta.challan_number || invMeta.delivery_challan)) || sampleVal;
+      return formatVal(v);
     }
     if (norm.includes("challan date")) {
       return invAny.challan_date ? formatDisplayDate(invAny.challan_date) : sampleVal;
     }
     if (norm.includes("dispatch") || norm.includes("transporter")) {
-      return invAny.dispatch_through || invAny.transporter_name || (typeof invMeta === "object" && (invMeta.dispatch_through || invMeta.transporter_name)) || sampleVal;
+      const v = invAny.dispatch_through || invAny.transporter_name || (typeof invMeta === "object" && (invMeta.dispatch_through || invMeta.transporter_name)) || sampleVal;
+      return formatVal(v);
     }
     if (norm.includes("lr") || norm.includes("gr")) {
-      return invAny.lr_number || invAny.gr_number || (typeof invMeta === "object" && (invMeta.lr_number || invMeta.gr_number)) || sampleVal;
+      const v = invAny.lr_number || invAny.gr_number || (typeof invMeta === "object" && (invMeta.lr_number || invMeta.gr_number)) || sampleVal;
+      return formatVal(v);
     }
     if (norm.includes("driver")) {
       return [invAny.driver_name, invAny.driver_phone].filter(Boolean).join(" - ") || sampleVal;
     }
     if (norm.includes("sales exec")) {
-      return invAny.sales_executive || invAny.sales_rep_name || (typeof invMeta === "object" && invMeta.sales_executive) || sampleVal;
+      const v = invAny.sales_executive || invAny.sales_rep_name || (typeof invMeta === "object" && invMeta.sales_executive) || sampleVal;
+      return formatVal(v);
     }
     if (norm.includes("terms of deliv")) {
-      return invAny.terms_of_delivery || (typeof invMeta === "object" && invMeta.terms_of_delivery) || sampleVal;
+      const v = invAny.terms_of_delivery || (typeof invMeta === "object" && invMeta.terms_of_delivery) || sampleVal;
+      return formatVal(v);
     }
     if (norm.includes("pay") && norm.includes("terms")) {
-      return invAny.payment_terms || (typeof invMeta === "object" && invMeta.payment_terms) || sampleVal;
+      const v = invAny.payment_terms || (typeof invMeta === "object" && invMeta.payment_terms) || sampleVal;
+      return formatVal(v);
     }
     return sampleVal;
   };
@@ -1026,7 +1054,7 @@ export function WordInvoiceDocument({
           // ── 2. INVOICE REFERENCES STRIP (PO, E-Way, Vehicle, Challan, Custom Meta - DEDUPLICATED) ──
           if (section.id === "invoice_meta") {
             const isStandardRef = (lbl: string) => {
-              const norm = (lbl || "").toLowerCase();
+              const norm = String(lbl || "").toLowerCase();
               return (
                 norm.includes("po ref") ||
                 norm.includes("po num") ||
@@ -1039,10 +1067,10 @@ export function WordInvoiceDocument({
               );
             };
 
-            const poField = config.customFields.find((f) => f.enabled && (f.label.toLowerCase().includes("po") || f.id.includes("po")));
-            const vehField = config.customFields.find((f) => f.enabled && (f.label.toLowerCase().includes("veh") || f.id.includes("veh")));
-            const ewayField = config.customFields.find((f) => f.enabled && (f.label.toLowerCase().includes("eway") || f.id.includes("eway")));
-            const challanField = config.customFields.find((f) => f.enabled && (f.label.toLowerCase().includes("challan") || f.id.includes("challan")));
+            const poField = (config?.customFields || []).find((f) => f && f.enabled && (String(f.label || (f as any).name || "").toLowerCase().includes("po") || String(f.id || "").toLowerCase().includes("po")));
+            const vehField = (config?.customFields || []).find((f) => f && f.enabled && (String(f.label || (f as any).name || "").toLowerCase().includes("veh") || String(f.id || "").toLowerCase().includes("veh")));
+            const ewayField = (config?.customFields || []).find((f) => f && f.enabled && (String(f.label || (f as any).name || "").toLowerCase().includes("eway") || String(f.id || "").toLowerCase().includes("eway")));
+            const challanField = (config?.customFields || []).find((f) => f && f.enabled && (String(f.label || (f as any).name || "").toLowerCase().includes("challan") || String(f.id || "").toLowerCase().includes("challan")));
 
             const invCust = ((invoice as any)?.custom_fields && typeof (invoice as any)?.custom_fields === "object" ? (invoice as any).custom_fields : {}) || {};
             const invMeta = ((invoice as any)?.metadata && typeof (invoice as any)?.metadata === "object" ? (invoice as any).metadata : {}) || {};
@@ -1054,9 +1082,9 @@ export function WordInvoiceDocument({
 
             // Custom metadata fields with standard references filtered out, and ONLY fields that actually have a resolved value!
             const metaCustomFields = (config?.customFields || [])
-              .filter((f) => f.enabled && (f.section === "meta" || !f.section) && !isStandardRef(f.label))
-              .map((f) => ({ ...f, resolvedVal: resolveCustomFieldValue(f) || (isPureMockPreview ? f.value : "") || "" }))
-              .filter((f) => Boolean(f.resolvedVal && f.resolvedVal.trim() !== ""));
+              .filter((f) => f && f.enabled && (f.section === "meta" || !f.section) && !isStandardRef(f.label || (f as any).name || f.id || ""))
+              .map((f) => ({ ...f, label: f.label || (f as any).name || f.id || "Field", resolvedVal: resolveCustomFieldValue(f) || (isPureMockPreview ? String(f.value || "") : "") || "" }))
+              .filter((f) => Boolean(f.resolvedVal && String(f.resolvedVal).trim() !== ""));
 
             // Also include any invoice-level custom_fields / metadata not already covered
             const invAny = invoice as any;
@@ -1067,13 +1095,14 @@ export function WordInvoiceDocument({
             if (typeof rawInvMeta === "object" && rawInvMeta !== null && !Array.isArray(rawInvMeta)) {
               Object.entries(rawInvMeta).forEach(([k, v]) => {
                 if (!v || typeof v === "object" || isStandardRef(k)) return;
+                const kLower = String(k || "").toLowerCase();
                 const existing = metaCustomFields.find(
-                  (m) => m.label.toLowerCase() === k.toLowerCase() || m.id.toLowerCase() === k.toLowerCase()
+                  (m) => String(m?.label || (m as any)?.name || "").toLowerCase() === kLower || String(m?.id || "").toLowerCase() === kLower
                 );
                 if (!existing && String(v).trim()) {
                   metaCustomFields.push({
                     id: `meta_inv_${k}`,
-                    label: k.replace(/_/g, " ").toUpperCase(),
+                    label: String(k).replace(/_/g, " ").toUpperCase(),
                     value: String(v),
                     enabled: true,
                     section: "meta",
@@ -1144,10 +1173,10 @@ export function WordInvoiceDocument({
                   {metaCustomFields.map((f) => (
                     <div key={f.id} className="space-y-0.5">
                       <span className="text-slate-400 font-bold text-[8.5px] uppercase tracking-wider block truncate">
-                        {f.label}
+                        {String(f.label || (f as any).name || '')}
                       </span>
                       <strong className="font-mono font-bold text-slate-900 text-[11px] block truncate">
-                        {f.resolvedVal}
+                        {typeof f.resolvedVal === 'object' ? JSON.stringify(f.resolvedVal) : String(f.resolvedVal ?? "")}
                       </strong>
                     </div>
                   ))}
@@ -1392,7 +1421,7 @@ export function WordInvoiceDocument({
                               className="py-3 px-2 text-slate-700 font-medium"
                               style={{ textAlign: col.align }}
                             >
-                              {(item as any)[col.fieldKey] || "—"}
+                              {typeof (item as any)[col.fieldKey] === 'object' ? JSON.stringify((item as any)[col.fieldKey]) : String((item as any)[col.fieldKey] || "—")}
                             </td>
                           );
                         })}
@@ -1683,7 +1712,7 @@ export function WordInvoiceDocument({
                       {balanceDue > 0.01 && (invoice.due_date || (invoice as any).payment_due_date) && (
                         <div className="flex justify-between items-center text-[9px] text-rose-600 font-medium">
                           <span>Payment Due By:</span>
-                          <span>{new Date(invoice.due_date || (invoice as any).payment_due_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span>
+                          <span>{formatDisplayDate(invoice.due_date || (invoice as any).payment_due_date)}</span>
                         </div>
                       )}
 

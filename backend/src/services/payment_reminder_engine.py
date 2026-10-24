@@ -31,11 +31,11 @@ _raw_gateway_url = os.getenv("WHATSAPP_GATEWAY_URL", "http://127.0.0.1:8005")
 GATEWAY_URL = _raw_gateway_url.replace("localhost", "127.0.0.1")
 
 
-DEFAULT_EMAIL_SUBJECT = "Payment Reminder: Invoice {invoice_number} is {due_status} - {company_name}"
+DEFAULT_EMAIL_SUBJECT = "Payment Reminder: {Doc_label} {invoice_number} is {due_status} - {company_name}"
 DEFAULT_EMAIL_BODY = (
     "Dear {customer_name},\n\n"
-    "This is a reminder regarding your invoice {invoice_number} for {company_name}.\n\n"
-    "• Invoice Date: {invoice_date}\n"
+    "This is a reminder regarding your {doc_label} {invoice_number} for {company_name}.\n\n"
+    "• {Doc_label} Date: {invoice_date}\n"
     "• Due Date: {due_date}\n"
     "• Principal Amount Due: {currency_symbol}{balance_due}\n"
     "• Late Penalty Fee: {currency_symbol}{penalty_amount}\n"
@@ -48,7 +48,7 @@ DEFAULT_EMAIL_BODY = (
 DEFAULT_WHATSAPP = (
     "🔔 *Payment Reminder — {company_name}*\n\n"
     "Hello *{customer_name}*,\n"
-    "Your invoice *#{invoice_number}* is *{due_status}*.\n\n"
+    "Your {doc_label} *#{invoice_number}* is *{due_status}*.\n\n"
     "📅 *Due Date:* {due_date}\n"
     "💰 *Amount Due:* {currency_symbol}{balance_due}\n"
     "⚠️ *Late Fee:* {currency_symbol}{penalty_amount}\n"
@@ -56,7 +56,7 @@ DEFAULT_WHATSAPP = (
     "⚡ *Pay Online Instantly:* {payment_link}\n\n"
     "Please complete your payment at the earliest. For queries, reply to this message."
 )
-DEFAULT_SMS = "Reminder from {company_name}: Inv #{invoice_number} of {currency_symbol}{total_payable} is {due_status}. Pay now: {payment_link}"
+DEFAULT_SMS = "Reminder from {company_name}: {Doc_label} #{invoice_number} of {currency_symbol}{total_payable} is {due_status}. Pay now: {payment_link}"
 
 
 async def get_or_create_policy(
@@ -173,6 +173,41 @@ async def dispatch_multi_channel_reminder(
     now_utc = datetime.now(timezone.utc)
     today = date.today()
 
+    # Safety checks: Strictly reject Credit Notes, Returns, Proformas, and Estimates
+    raw_type = (invoice.invoice_type or "").lower().strip()
+    inv_num_upper = (invoice.invoice_number or "").upper().strip()
+    is_credit_note = (
+        raw_type in ("credit_note", "sales_return", "return")
+        or inv_num_upper.startswith(("CN-", "RET-", "SRET-", "CRN-"))
+    )
+    if is_credit_note:
+        logger.warning(
+            "Payment reminder aborted: document %s is a Credit Note / Sales Return (credit notes represent credit/refunds owed to customers, not receivables)",
+            invoice.invoice_number,
+        )
+        return {
+            "invoice_number": invoice.invoice_number,
+            "status": "skipped",
+            "reason": "Credit notes are customer credits/refunds and cannot receive payment reminders",
+        }
+
+    is_non_receivable = raw_type in ("proforma", "estimate") or inv_num_upper.startswith(("PI-", "EST-"))
+    if is_non_receivable:
+        logger.warning(
+            "Payment reminder aborted: document %s is a non-binding quotation/proforma (%s)",
+            invoice.invoice_number,
+            raw_type,
+        )
+        return {
+            "invoice_number": invoice.invoice_number,
+            "status": "skipped",
+            "reason": "Proformas and estimates cannot receive payment reminders",
+        }
+
+    is_dn = raw_type == "debit_note" or inv_num_upper.startswith("DN-")
+    doc_label = "Debit Note" if is_dn else "invoice"
+    Doc_label = "Debit Note" if is_dn else "Invoice"
+
     # Determine Company / Currency info
     company_name = "BusinessOS"
     currency_symbol = "₹"
@@ -279,6 +314,8 @@ async def dispatch_multi_channel_reminder(
     # Build context dictionary for templates
     context = {
         "customer_name": target_name or "Valued Customer",
+        "doc_label": doc_label,
+        "Doc_label": Doc_label,
         "invoice_number": invoice.invoice_number,
         "invoice_date": invoice.invoice_date.strftime("%d %b %Y") if invoice.invoice_date else "",
         "due_date": invoice.due_date.strftime("%d %b %Y") if invoice.due_date else "",
@@ -292,17 +329,24 @@ async def dispatch_multi_channel_reminder(
         "payment_link": payment_link,
     }
 
-    # Render channel payloads
+    # Render channel payloads and ensure doc_label is reflected even if template was hardcoded with "invoice"
     email_subject = _render_template(policy.email_subject_template, context)
     email_body = _render_template(policy.email_body_template, context)
+    if is_dn:
+        email_subject = email_subject.replace("Invoice ", "Debit Note ").replace("invoice ", "Debit Note ")
+        email_body = email_body.replace("invoice ", "Debit Note ").replace("Invoice ", "Debit Note ")
     if custom_note:
         email_body += f"\n\nNote from Finance Team: {custom_note}"
 
     whatsapp_body = _render_template(policy.whatsapp_template, context)
+    if is_dn:
+        whatsapp_body = whatsapp_body.replace("Your invoice ", "Your Debit Note ").replace("your invoice ", "your Debit Note ")
     if custom_note:
         whatsapp_body += f"\n\n💬 *Note:* {custom_note}"
 
     sms_body = _render_template(policy.sms_template, context)
+    if is_dn:
+        sms_body = sms_body.replace("Inv #", "Debit Note #").replace("inv #", "Debit Note #")
 
     channel_cfg = policy.channels or {"email": True, "whatsapp": True, "sms": True}
     dispatched_results = {}
@@ -398,51 +442,61 @@ async def dispatch_multi_channel_reminder(
         clean_phone = "".join(filter(str.isdigit, target_phone))
         wa_status = "SENT"
         err_msg = None
-        try:
-            # Query tenant settings to find sessions belonging ONLY to this organization
-            tenant = await db.scalar(select(Tenant).where(Tenant.id == invoice.tenant_id))
-            allowed_sessions = []
-            if tenant and tenant.settings and isinstance(tenant.settings, dict):
-                allowed_sessions = tenant.settings.get("whatsapp_web_sessions") or []
 
-            # Check connected sessions in gateway
-            async with httpx.AsyncClient(timeout=10.0) as http:
-                sess_resp = await http.get(f"{GATEWAY_URL}/sessions")
-                target_session_id = None
-                if sess_resp.status_code == 200:
-                    live_sessions = sess_resp.json()
-                    # Strict multi-tenancy: Only use session owned by this specific tenant
-                    for sid in allowed_sessions:
-                        info = live_sessions.get(sid)
-                        if isinstance(info, dict) and info.get("status") in ("CONNECTED", "AUTHENTICATED"):
-                            target_session_id = sid
-                            break
+        from src.services.whatsapp_invoice_sender import check_whatsapp_dispatch_allowed
+        wa_allowed, wa_disallow_reason = await check_whatsapp_dispatch_allowed(
+            db, invoice.tenant_id, invoice.company_id, trigger="auto_send_invoices"
+        )
+        if not wa_allowed:
+            wa_status = "SKIPPED (WhatsApp Automation Disabled)"
+            err_msg = wa_disallow_reason
+            logger.info("Payment reminder WhatsApp skipped for invoice %s: %s", invoice.invoice_number, wa_disallow_reason)
+        else:
+            try:
+                # Query tenant settings to find sessions belonging ONLY to this organization
+                tenant = await db.scalar(select(Tenant).where(Tenant.id == invoice.tenant_id))
+                allowed_sessions = []
+                if tenant and tenant.settings and isinstance(tenant.settings, dict):
+                    allowed_sessions = tenant.settings.get("whatsapp_web_sessions") or []
 
-                    if not target_session_id:
-                        # Check if session ID contains the tenant ID prefix
-                        for sid, info in live_sessions.items():
-                            if str(invoice.tenant_id) in sid and isinstance(info, dict) and info.get("status") in ("CONNECTED", "AUTHENTICATED"):
+                # Check connected sessions in gateway
+                async with httpx.AsyncClient(timeout=10.0) as http:
+                    sess_resp = await http.get(f"{GATEWAY_URL}/sessions")
+                    target_session_id = None
+                    if sess_resp.status_code == 200:
+                        live_sessions = sess_resp.json()
+                        # Strict multi-tenancy: Only use session owned by this specific tenant
+                        for sid in allowed_sessions:
+                            info = live_sessions.get(sid)
+                            if isinstance(info, dict) and info.get("status") in ("CONNECTED", "AUTHENTICATED"):
                                 target_session_id = sid
                                 break
 
-                if target_session_id:
-                    post_resp = await http.post(
-                        f"{GATEWAY_URL}/sessions/{target_session_id}/chats/{clean_phone}/send",
-                        json={"message": whatsapp_body},
-                    )
-                    if post_resp.status_code == 200:
-                        wa_status = "SENT"
-                        logger.info("WhatsApp reminder successfully dispatched to %s via session %s", clean_phone, target_session_id)
+                        if not target_session_id:
+                            # Check if session ID contains the tenant ID prefix
+                            for sid, info in live_sessions.items():
+                                if str(invoice.tenant_id) in sid and isinstance(info, dict) and info.get("status") in ("CONNECTED", "AUTHENTICATED"):
+                                    target_session_id = sid
+                                    break
+
+                    if target_session_id:
+                        post_resp = await http.post(
+                            f"{GATEWAY_URL}/sessions/{target_session_id}/chats/{clean_phone}/send",
+                            json={"message": whatsapp_body},
+                        )
+                        if post_resp.status_code == 200:
+                            wa_status = "SENT"
+                            logger.info("WhatsApp reminder successfully dispatched to %s via session %s", clean_phone, target_session_id)
+                        else:
+                            wa_status = "FAILED"
+                            err_msg = f"Gateway returned {post_resp.status_code}: {post_resp.text}"
                     else:
-                        wa_status = "FAILED"
-                        err_msg = f"Gateway returned {post_resp.status_code}: {post_resp.text}"
-                else:
-                    wa_status = "FAILED (WhatsApp Not Connected)"
-                    err_msg = "No connected WhatsApp session found for this organization. Please scan QR in CRM -> Communication."
-        except Exception as exc:
-            logger.error("WhatsApp reminder dispatch error: %s", exc)
-            wa_status = "FAILED"
-            err_msg = str(exc)
+                        wa_status = "FAILED (WhatsApp Not Connected)"
+                        err_msg = "No connected WhatsApp session found for this organization. Please scan QR in CRM -> Communication."
+            except Exception as exc:
+                logger.error("WhatsApp reminder dispatch error: %s", exc)
+                wa_status = "FAILED"
+                err_msg = str(exc)
 
         log_wa = PaymentReminderLog(
             tenant_id=invoice.tenant_id,
@@ -575,9 +629,31 @@ async def evaluate_and_send_reminders(
         .where(
             func.lower(Invoice.status).notin_(["paid", "cancelled", "void"]),
             Invoice.balance_due > 0,
+            func.lower(func.coalesce(Invoice.invoice_type, "tax_invoice")).notin_(
+                ["credit_note", "sales_return", "return", "proforma", "estimate"]
+            ),
+            ~func.upper(Invoice.invoice_number).like("CN-%"),
+            ~func.upper(Invoice.invoice_number).like("RET-%"),
+            ~func.upper(Invoice.invoice_number).like("SRET-%"),
+            ~func.upper(Invoice.invoice_number).like("CRN-%"),
+            ~func.upper(Invoice.invoice_number).like("PI-%"),
+            ~func.upper(Invoice.invoice_number).like("EST-%"),
         )
     )
     if tenant_id:
+        if not force_invoice_id:
+            policy = await get_or_create_policy(db, tenant_id, company_id)
+            if not policy.is_enabled:
+                logger.info("Payment reminder evaluation skipped: automated reminders are disabled for tenant %s", tenant_id)
+                return {
+                    "status": "disabled",
+                    "invoices_evaluated": 0,
+                    "reminders_sent": 0,
+                    "penalties_applied": 0,
+                    "message": "Automated payment reminders and scheduler are currently turned OFF for this organization.",
+                    "timestamp": now_utc.isoformat(),
+                    "dispatched": [],
+                }
         query = query.where(Invoice.tenant_id == tenant_id)
     elif not force_invoice_id:
         # Strict multi-tenancy: Only evaluate invoices for tenants who have explicitly enabled payment reminders

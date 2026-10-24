@@ -207,28 +207,35 @@ async def check_and_notify_low_stock(
 
     # 2. WhatsApp Alert
     if cfg.get("low_stock_whatsapp", True) and cfg.get("manager_whatsapp"):
-        recipient = cfg["manager_whatsapp"]
-        lines = [
-            "⚠️ *BusinessOS Inventory — Low Stock Alert*",
-            f"📅 *Time:* {datetime.now(timezone.utc).strftime('%d %b %Y, %I:%M %p')}",
-            "",
-            "The following item(s) have fallen below minimum reorder thresholds:",
-        ]
-        for idx, item in enumerate(triggered[:5], 1):
-            status = "🔴 *Out of Stock*" if item["is_zero"] else "🟡 *Low Stock*"
-            lines.append(f"{idx}. *{item['name']}* (SKU: {item['sku']})")
-            lines.append(f"   • Remaining: *{item['current_stock']} units* (Min Reorder: {item['reorder_level']}) [{status}]")
-        
-        if len(triggered) > 5:
-            lines.append(f"\n...and {len(triggered) - 5} more items.")
+        from src.services.whatsapp_invoice_sender import check_whatsapp_dispatch_allowed
+        wa_allowed, wa_reason = await check_whatsapp_dispatch_allowed(
+            db, tenant_id, company_id, trigger="auto_send_inventory_alerts"
+        )
+        if wa_allowed:
+            recipient = cfg["manager_whatsapp"]
+            lines = [
+                "⚠️ *BusinessOS Inventory — Low Stock Alert*",
+                f"📅 *Time:* {datetime.now(timezone.utc).strftime('%d %b %Y, %I:%M %p')}",
+                "",
+                "The following item(s) have fallen below minimum reorder thresholds:",
+            ]
+            for idx, item in enumerate(triggered[:5], 1):
+                status = "🔴 *Out of Stock*" if item["is_zero"] else "🟡 *Low Stock*"
+                lines.append(f"{idx}. *{item['name']}* (SKU: {item['sku']})")
+                lines.append(f"   • Remaining: *{item['current_stock']} units* (Min Reorder: {item['reorder_level']}) [{status}]")
+            
+            if len(triggered) > 5:
+                lines.append(f"\n...and {len(triggered) - 5} more items.")
 
-        lines.extend([
-            "",
-            "👉 *Action Required:* Please review procurement or issue a Purchase Order.",
-        ])
+            lines.extend([
+                "",
+                "👉 *Action Required:* Please review procurement or issue a Purchase Order.",
+            ])
 
-        wa_msg = "\n".join(lines)
-        await send_whatsapp_alert_text(recipient, wa_msg, db=db, tenant_id=tenant_id)
+            wa_msg = "\n".join(lines)
+            await send_whatsapp_alert_text(recipient, wa_msg, db=db, tenant_id=tenant_id)
+        else:
+            logger.info("[Inventory Alert] WhatsApp alert skipped: %s", wa_reason)
 
     return triggered
 

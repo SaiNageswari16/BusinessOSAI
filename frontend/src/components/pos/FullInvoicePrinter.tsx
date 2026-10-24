@@ -139,6 +139,71 @@ const STATE_GST_CODES: Record<string, string> = {
   "36": "Telangana", "37": "Andhra Pradesh", "38": "Ladakh"
 };
 
+interface InvoiceErrorBoundaryProps {
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+  onReset?: () => void;
+}
+
+interface InvoiceErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+}
+
+export class InvoiceErrorBoundary extends React.Component<InvoiceErrorBoundaryProps, InvoiceErrorBoundaryState> {
+  constructor(props: InvoiceErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): InvoiceErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("Invoice Preview Template Error caught by InvoiceErrorBoundary:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      if (this.props.fallback) {
+        return this.props.fallback;
+      }
+      return (
+        <div className="p-8 text-center bg-white rounded-2xl border border-rose-200 max-w-lg mx-auto my-12 shadow-xl space-y-4">
+          <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto text-xl font-bold">
+            !
+          </div>
+          <h3 className="text-base font-bold text-slate-900">Invoice Layout Notice</h3>
+          <p className="text-xs text-slate-600 leading-relaxed">
+            The active preview encountered an unformatted field in this invoice. You can reset to the standard document layout or print directly.
+          </p>
+          <div className="flex items-center justify-center gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                this.setState({ hasError: false });
+                if (this.props.onReset) this.props.onReset();
+              }}
+              className="px-4 py-2 text-xs font-bold bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-all cursor-pointer"
+            >
+              Reset to Standard Layout
+            </button>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="px-4 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-500 transition-all cursor-pointer"
+            >
+              Print Invoice Directly
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function FullInvoicePrinter({
   isOpen,
   onClose,
@@ -1431,8 +1496,9 @@ export function FullInvoicePrinter({
                 borderTop: !isWordTemplate && !isCustomReplica && (isStylish || isCultureUp || isCultureGod || isJain || isMaharashtra || isGanesh || isHinduGod || isShubhLabh || isRoyalGold) ? `6px solid ${primaryColor}` : undefined,
               }}
             >
-              {/* ThemeStore Cultural & Auspicious Header Banners */}
-              {!isWordTemplate && isJain && (
+              <InvoiceErrorBoundary onReset={() => setSelectedTemplateId('tpl-word-default')}>
+                {/* ThemeStore Cultural & Auspicious Header Banners */}
+                {!isWordTemplate && isJain && (
                 <div className="text-center text-[10px] font-bold tracking-widest text-amber-800 bg-amber-100/70 py-1 rounded border border-amber-300/80 mb-2 shadow-2xs">
                   ॥ ॐ नमो जिनानाम् ॥ अहिंसा परमो धर्मः ॥
                 </div>
@@ -1742,7 +1808,7 @@ export function FullInvoicePrinter({
                             <div>
                               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Place of Supply</span>
                               <p className="text-[10px] font-bold text-slate-800 mt-0.5">
-                                {isInterState ? `${customerState.name} (${customerState.code}) - Inter-State` : `${sellerState.name} (${sellerState.code}) - Intra-State`}
+                                {isInterState ? `${customerState?.name || 'State'} (${customerState?.code || ''}) - Inter-State` : `${sellerState?.name || 'State'} (${sellerState?.code || ''}) - Intra-State`}
                               </p>
                             </div>
                           </div>
@@ -1755,27 +1821,32 @@ export function FullInvoicePrinter({
 
                           if (Array.isArray(invoice.invoice_custom_fields)) {
                             invoice.invoice_custom_fields.forEach((cf: any) => {
-                              if (cf && cf.name && cf.enabled !== false) {
+                              if (cf && (cf.name || cf.key || cf.label) && cf.enabled !== false) {
+                                const fieldKey = String(cf.name || cf.key || cf.label);
+                                const rawVal = cf.value !== undefined ? cf.value : (invoice[fieldKey] || invoice[cf.id] || "—");
                                 resolvedCustomFields.push({
-                                  name: cf.name,
-                                  value: cf.value || invoice[cf.name] || invoice[cf.id] || "—"
+                                  name: fieldKey,
+                                  value: typeof rawVal === 'object' ? JSON.stringify(rawVal) : String(rawVal ?? "—")
                                 });
                               }
                             });
                           } else if (invoice.custom_fields && typeof invoice.custom_fields === 'object') {
                             if (Array.isArray(invoice.custom_fields)) {
                               invoice.custom_fields.forEach((cf: any) => {
-                                if (cf && (cf.name || cf.key)) {
+                                if (cf && (cf.name || cf.key || cf.label)) {
+                                  const name = String(cf.name || cf.key || cf.label);
+                                  const rawVal = cf.value !== undefined ? cf.value : "—";
                                   resolvedCustomFields.push({
-                                    name: cf.name || cf.key,
-                                    value: cf.value || "—"
+                                    name,
+                                    value: typeof rawVal === 'object' ? JSON.stringify(rawVal) : String(rawVal ?? "—")
                                   });
                                 }
                               });
                             } else {
                               Object.entries(invoice.custom_fields).forEach(([key, val]) => {
                                 if (val !== undefined && val !== null && String(val).trim() !== '') {
-                                  resolvedCustomFields.push({ name: key, value: String(val) });
+                                  const displayVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
+                                  resolvedCustomFields.push({ name: String(key), value: displayVal });
                                 }
                               });
                             }
@@ -1783,16 +1854,18 @@ export function FullInvoicePrinter({
 
                           if (storedSettings?.invoiceCustomFields && Array.isArray(storedSettings.invoiceCustomFields)) {
                             storedSettings.invoiceCustomFields.forEach((f) => {
-                              if (f.enabled && f.name && f.name.trim() !== "") {
+                              if (f && f.enabled && f.name && String(f.name).trim() !== "") {
+                                const fName = String(f.name).trim();
                                 const already = resolvedCustomFields.find(
-                                  (x) => x.name.trim().toLowerCase() === f.name.trim().toLowerCase()
+                                  (x) => String(x.name || "").trim().toLowerCase() === fName.toLowerCase()
                                 );
                                 if (!already) {
                                   const customFieldsDict = (invoice.custom_fields && typeof invoice.custom_fields === "object" && !Array.isArray(invoice.custom_fields))
                                     ? (invoice.custom_fields as Record<string, any>)
                                     : null;
-                                  const val = invoice[f.name] || invoice[f.id] || (customFieldsDict ? (customFieldsDict[f.name] || customFieldsDict[f.id]) : undefined) || f.value || "—";
-                                  resolvedCustomFields.push({ name: f.name, value: String(val) });
+                                  const val = invoice[f.name] || (f.id ? invoice[f.id] : undefined) || (customFieldsDict ? (customFieldsDict[f.name] || (f.id ? customFieldsDict[f.id] : undefined)) : undefined) || f.value || "—";
+                                  const displayVal = typeof val === 'object' ? JSON.stringify(val) : String(val ?? "—");
+                                  resolvedCustomFields.push({ name: fName, value: displayVal });
                                 }
                               }
                             });
@@ -1859,8 +1932,10 @@ export function FullInvoicePrinter({
                               )}
                               {resolvedCustomFields.map((cf, idx) => (
                                 <div key={idx} className="space-y-0.5">
-                                  <span className="text-[8.5px] font-bold text-indigo-500 uppercase tracking-wider block truncate" title={cf.name}>{cf.name}</span>
-                                  <span className="font-bold text-slate-800 text-[11px] block truncate" title={cf.value}>{cf.value}</span>
+                                  <span className="text-[8.5px] font-bold text-indigo-500 uppercase tracking-wider block truncate" title={String(cf.name || '')}>{String(cf.name || '')}</span>
+                                  <span className="font-bold text-slate-800 text-[11px] block truncate" title={typeof cf.value === 'object' ? JSON.stringify(cf.value) : String(cf.value ?? '')}>
+                                    {typeof cf.value === 'object' ? JSON.stringify(cf.value) : String(cf.value ?? '')}
+                                  </span>
                                 </div>
                               ))}
                             </div>
@@ -2028,7 +2103,7 @@ export function FullInvoicePrinter({
                           </span>
                         </span>
                         <span className="text-[9px] text-slate-600 font-medium">
-                          Supply: {isInterState ? `${customerState.name} (${customerState.code})` : `${sellerState.name} (${sellerState.code})`}
+                          Supply: {isInterState ? `${customerState?.name || 'State'} (${customerState?.code || ''})` : `${sellerState?.name || 'State'} (${sellerState?.code || ''})`}
                         </span>
                       </div>
                       <table className="w-full border-collapse text-[10.5px]">
@@ -2366,6 +2441,7 @@ export function FullInvoicePrinter({
                   })()}
                 </>
               )}
+              </InvoiceErrorBoundary>
             </div>
           </div>
 

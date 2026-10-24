@@ -225,7 +225,7 @@ export function AgriSeedsTemplate({
                       )}
                     </td>
                     <td className="py-1 px-1 text-right border-r border-black">{rate.toFixed(2)}</td>
-                    {f.showTaxSplit !== false && <td className="py-1 px-1 text-right border-r border-black">{it.tax_rate || 18}%</td>}
+                    {f.showTaxSplit !== false && <td className="py-1 px-1 text-right border-r border-black">{Number(it.tax_rate ?? 0)}%</td>}
                     <td className="py-1 px-2 text-right font-bold">{lineAmount.toFixed(2)}</td>
                   </tr>
                 );

@@ -116,3 +116,89 @@ export function safeRemoveItem(key: string): void {
     localStorage.removeItem(key);
   } catch {}
 }
+
+/**
+ * Synchronizes customer balance adjustments across all localStorage POS invoice caches
+ * so that settled/adjusted customer invoices are updated and ghost OPN- invoices are purged.
+ */
+export function syncLocalStorageCustomerInvoices(
+  customerId?: string | null,
+  customerName?: string | null,
+  customerPhone?: string | null,
+  newBalance: number = 0
+): void {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try {
+    const cleanPhone = customerPhone ? customerPhone.replace(/\D/g, "") : "";
+    const cleanName = (customerName || "").trim().toLowerCase();
+    const cId = customerId ? String(customerId).toLowerCase() : "";
+
+    const keysToUpdate: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith("pos_saved_invoices") || k.startsWith("pos_offline_invoices"))) {
+        keysToUpdate.push(k);
+      }
+    }
+
+    for (const key of keysToUpdate) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      try {
+        const list = JSON.parse(raw);
+        if (!Array.isArray(list)) continue;
+
+        let changed = false;
+        const filteredList: any[] = [];
+
+        for (const inv of list) {
+          const invNum = String(inv.invoice_number || "").toUpperCase();
+          const isOpn = invNum.startsWith("OPN-") || inv.is_opening_balance || inv.invoice_type === "opening_balance";
+
+          // Match customer
+          const invCustId = String(inv.customer_id || "").toLowerCase();
+          const invCustName = String(inv.customer_name || inv.party_name || "").trim().toLowerCase();
+          const invCustPhone = String(inv.customer_phone || inv.phone || "").replace(/\D/g, "");
+
+          const isMatch =
+            (cId && invCustId === cId) ||
+            (cleanPhone && cleanPhone.length >= 10 && invCustPhone.endsWith(cleanPhone.slice(-10))) ||
+            (cleanName && cleanName.length >= 2 && (invCustName === cleanName || invCustName.includes(cleanName)));
+
+          if (isMatch && isOpn) {
+            // Delete ghost OPN- invoice
+            changed = true;
+            continue;
+          }
+
+          if (isMatch) {
+            if (newBalance <= 0.01) {
+              const gTot = Number(inv.grand_total || inv.total_amount || 0);
+              inv.amount_received = gTot;
+              inv.amount_paid = gTot;
+              inv.balance_due = 0;
+              inv.balance = 0;
+              inv.payment_status = "Paid";
+              inv.status = "paid";
+              changed = true;
+            }
+          }
+
+          filteredList.push(inv);
+        }
+
+        if (changed) {
+          safeSetItem(key, JSON.stringify(filteredList));
+        }
+      } catch (e) {
+        // ignore parse error
+      }
+    }
+
+    window.dispatchEvent(new Event("pos_invoices_updated"));
+    window.dispatchEvent(new Event("storage"));
+  } catch (err) {
+    console.warn("Could not sync customer invoices in storage:", err);
+  }
+}
+

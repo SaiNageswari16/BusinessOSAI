@@ -52,7 +52,7 @@ export function ParleDistributorTemplate({
   items.forEach((item) => {
     const qty = Number(item.quantity || 1);
     const rate = Number(item.unit_price || 0);
-    const taxRate = Number(item.tax_rate || 18);
+    const taxRate = item.tax_rate !== undefined && item.tax_rate !== null ? Number(item.tax_rate) : 0;
     const discVal = Number(item.discount_value || 0);
     const isIncl = item.is_tax_inclusive === true || (item as any).is_inclusive === true || invoice.is_tax_inclusive === true;
     const grossAmt = qty * rate;
@@ -105,7 +105,7 @@ export function ParleDistributorTemplate({
     invoice.doc_type === "estimate" ||
     invoice.invoice_type === "ESTIMATE_NON_GST" ||
     String(invoice.invoice_number || "").toUpperCase().startsWith("EST-");
-  const docTitle = invoice.header_title || (isEstimate ? "TAX ESTIMATE / ESTIMATE" : isQuotation ? "TAX QUOTATION / ESTIMATE" : (template.headerTitle || "GST TAX INVOICE"));
+  const docTitle = invoice.header_title || (isEstimate ? "TAX ESTIMATE / ESTIMATE" : isQuotation ? "TAX QUOTATION / ESTIMATE" : (invoice.documentTitle || "GST TAX INVOICE"));
   const docStripTitle = isEstimate ? "TAX ESTIMATE" : isQuotation ? "TAX QUOTATION" : t("GST INVOICE", "GST INVOICE");
   const docNumLabel = isEstimate ? "Estimate No. : " : isQuotation ? "Quote No. : " : "Invoice No. : ";
   const docDateLabel = isEstimate ? "Estimate Date : " : isQuotation ? "Quote Date : " : "Date : ";
@@ -231,7 +231,7 @@ export function ParleDistributorTemplate({
                 const mrp = Number(it.mrp || rate * 1.15);
                 const disc = Number(it.discount_value || 0);
                 const isIncl = it.is_tax_inclusive === true || (it as any).is_inclusive === true || invoice.is_tax_inclusive === true;
-                const taxRate = Number(it.tax_rate || 18);
+                const taxRate = it.tax_rate !== undefined && it.tax_rate !== null ? Number(it.tax_rate) : 0;
                 const halfTax = taxRate / 2;
 
                 let taxable = 0;

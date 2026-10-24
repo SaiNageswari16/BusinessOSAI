@@ -101,9 +101,37 @@ async def update_policy(
     if payload.sms_template is not None:
         policy.sms_template = payload.sms_template
 
+    # Synchronize is_enabled, penalty_enabled, and channels across ALL policies under this tenant
+    # so turning off or on takes effect universally across companies and unassigned invoices
+    all_policies = (await db.scalars(
+        select(PaymentReminderPolicy).where(PaymentReminderPolicy.tenant_id == ctx.tenant_id)
+    )).all()
+    for p in all_policies:
+        p.is_enabled = payload.is_enabled
+        p.penalty_enabled = payload.penalty_enabled
+        p.channels = payload.channels
+
+    # Also update/create tenant-wide policy fallback if active_company_id is set
+    if ctx.active_company_id:
+        fallback_policy = await db.scalar(
+            select(PaymentReminderPolicy).where(
+                PaymentReminderPolicy.tenant_id == ctx.tenant_id,
+                PaymentReminderPolicy.company_id.is_(None),
+            )
+        )
+        if fallback_policy:
+            fallback_policy.is_enabled = payload.is_enabled
+            fallback_policy.penalty_enabled = payload.penalty_enabled
+            fallback_policy.channels = payload.channels
+
     await db.commit()
     await db.refresh(policy)
-    return {"message": "Payment reminder policy updated successfully"}
+    return {
+        "message": "Payment reminder policy updated successfully",
+        "is_enabled": policy.is_enabled,
+        "penalty_enabled": policy.penalty_enabled,
+        "channels": policy.channels,
+    }
 
 
 @router.post("/evaluate-batch")
@@ -138,6 +166,19 @@ async def send_single_invoice_reminder(
     )
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
+
+    raw_type = (invoice.invoice_type or "").lower().strip()
+    inv_num_upper = (invoice.invoice_number or "").upper().strip()
+    if raw_type in ("credit_note", "sales_return", "return") or inv_num_upper.startswith(("CN-", "RET-", "SRET-", "CRN-")):
+        raise HTTPException(
+            status_code=400,
+            detail="Payment reminders cannot be sent for Credit Notes or Sales Returns. Credit notes represent credit or refunds owed to customers.",
+        )
+    if raw_type in ("proforma", "estimate") or inv_num_upper.startswith(("PI-", "EST-")):
+        raise HTTPException(
+            status_code=400,
+            detail="Payment reminders cannot be sent for Proforma Invoices or Estimates.",
+        )
 
     policy = await get_or_create_policy(db, ctx.tenant_id, invoice.company_id)
     today = date.today()
@@ -216,6 +257,15 @@ async def get_reminder_summary(
         Invoice.tenant_id == ctx.tenant_id,
         func.lower(Invoice.status).notin_(["paid", "cancelled", "void"]),
         Invoice.balance_due > 0,
+        func.lower(func.coalesce(Invoice.invoice_type, "tax_invoice")).notin_(
+            ["credit_note", "sales_return", "return", "proforma", "estimate"]
+        ),
+        ~func.upper(Invoice.invoice_number).like("CN-%"),
+        ~func.upper(Invoice.invoice_number).like("RET-%"),
+        ~func.upper(Invoice.invoice_number).like("SRET-%"),
+        ~func.upper(Invoice.invoice_number).like("CRN-%"),
+        ~func.upper(Invoice.invoice_number).like("PI-%"),
+        ~func.upper(Invoice.invoice_number).like("EST-%"),
     )
     if ctx.active_company_id:
         invoices_stmt = invoices_stmt.where(

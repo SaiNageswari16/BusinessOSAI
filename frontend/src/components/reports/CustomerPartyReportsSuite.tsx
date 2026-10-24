@@ -42,6 +42,7 @@ import { formatDisplayDate, formatDisplayDateTime, getTodayDateString, parseSafe
 import * as XLSX from "xlsx";
 
 import { inventoryApi, posApi, crmCustomersApi, invoicesApi } from "@/lib/api-client";
+import { syncLocalStorageCustomerInvoices } from "@/lib/safe-storage";
 import { Button } from "@/components/ui/button";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
 
@@ -328,6 +329,9 @@ export function CustomerPartyReportsSuite({
     async function fetchRealDatabaseData() {
       setLoading(true);
       try {
+        // 0. Clean up any ghost OPN- invoices from localStorage caches
+        syncLocalStorageCustomerInvoices();
+
         // 1. Fetch live CRM customers, live products, POS and live SQL Invoices
         const [crmRes, invRes, posRes, sqlInvoicesRes] = await Promise.allSettled([
           crmCustomersApi.list(1, 200),
@@ -362,6 +366,8 @@ export function CustomerPartyReportsSuite({
           const sqlInvoices = Array.isArray(sVal) ? sVal : sVal.items || sVal.data || [];
           sqlInvoices.forEach((inv: any) => {
             const numKey = String(inv.invoice_number || inv.receipt_number || inv.id || "").trim().toUpperCase();
+            const isOpn = numKey.startsWith("OPN-") || inv.is_opening_balance || inv.invoice_type === "opening_balance";
+            if (isOpn) return;
             if (numKey) {
               allInvoicesMap.set(numKey, {
                 ...inv,
@@ -385,6 +391,8 @@ export function CustomerPartyReportsSuite({
                   if (Array.isArray(parsed)) {
                     parsed.forEach((inv: any) => {
                       const numKey = String(inv.invoice_number || inv.receipt_number || inv.id || "").trim().toUpperCase();
+                      const isOpn = numKey.startsWith("OPN-") || inv.is_opening_balance || inv.invoice_type === "opening_balance";
+                      if (isOpn) return;
                       if (numKey && !allInvoicesMap.has(numKey)) {
                         allInvoicesMap.set(numKey, {
                           ...inv,
@@ -451,6 +459,10 @@ export function CustomerPartyReportsSuite({
 
             // Check if opening pseudo-invoice
             const isOpn = String(inv.invoice_number || "").toUpperCase().startsWith("OPN-") || inv.is_opening_balance || inv.invoice_type === "opening_balance";
+            if (isOpn) {
+              // Ignore opening ghost invoices completely
+              return;
+            }
 
             const isPaid = rawStatus === "paid" || (Number(inv.amount_received || inv.amount_paid || 0) >= total - 0.05 && total > 0);
             const balance = isPaid ? 0 : Number(inv.balance ?? inv.balance_due ?? inv.pending_amount ?? (total - Number(inv.amount_received || inv.amount_paid || 0)));
@@ -458,15 +470,10 @@ export function CustomerPartyReportsSuite({
 
             if (partyMap.has(key)) {
               const p = partyMap.get(key)!;
-              if (!isOpn) {
-                p.closingBalance += balance;
-                p.totalInvoiced = (p.totalInvoiced || 0) + total;
-                p.totalPaid = (p.totalPaid || 0) + paid;
-                p.overdue30Plus = (p.overdue30Plus || 0) + balance;
-              } else if (p.totalInvoiced === 0 && p.openingBalance === 0) {
-                p.closingBalance += balance;
-                p.overdue30Plus = (p.overdue30Plus || 0) + balance;
-              }
+              p.closingBalance += balance;
+              p.totalInvoiced = (p.totalInvoiced || 0) + total;
+              p.totalPaid = (p.totalPaid || 0) + paid;
+              p.overdue30Plus = (p.overdue30Plus || 0) + balance;
               if (phone && (!p.phone || p.phone === "—")) p.phone = phone;
               if (gstin && !p.gstin) p.gstin = gstin;
             } else {
@@ -476,11 +483,11 @@ export function CustomerPartyReportsSuite({
                 category: inv.customer_type || "Client",
                 phone: phone || "—",
                 gstin: gstin || "URP",
-                closingBalance: isOpn ? 0 : balance,
+                closingBalance: balance,
                 openingBalance: 0,
                 type: "Customer",
-                totalInvoiced: isOpn ? 0 : total,
-                totalPaid: isOpn ? 0 : paid,
+                totalInvoiced: total,
+                totalPaid: paid,
                 dueTomorrow: 0,
                 upcomingDue: 0,
                 overdue1_15: 0,
@@ -499,6 +506,25 @@ export function CustomerPartyReportsSuite({
             const unbilledOpening = Math.max(0, opBal - totInv);
             p.closingBalance = (p.closingBalance - opBal) + unbilledOpening;
             p.openingBalance = unbilledOpening;
+          }
+        });
+
+        // Authoritative reconciliation: If customer record in CRM has balance explicitly settled to 0
+        dbCustomers.forEach((c: any) => {
+          const name = (c.name || c.company_name || c.contact_name || "").trim().toLowerCase();
+          if (name && partyMap.has(name)) {
+            const p = partyMap.get(name)!;
+            if (c.outstanding_balance !== undefined && c.outstanding_balance !== null) {
+              const explicitBal = Number(c.outstanding_balance);
+              if (explicitBal <= 0.01) {
+                p.closingBalance = 0;
+                p.overdue30Plus = 0;
+                p.overdue1_15 = 0;
+                p.overdue16_30 = 0;
+                p.upcomingDue = 0;
+                p.dueTomorrow = 0;
+              }
+            }
           }
         });
 
@@ -583,10 +609,18 @@ export function CustomerPartyReportsSuite({
     let runningBalance = opBal;
 
     const pName = activeParty.name.toLowerCase();
-    const matchedInvoices = rawInvoices.filter((inv: any) => {
-      const name = (inv.party_name || inv.customer_name || "").toLowerCase();
-      return name === pName && isDateInFilter(inv.created_at || inv.date);
-    });
+    const matchedInvoices = rawInvoices
+      .filter((inv: any) => {
+        const isOpn = String(inv.invoice_number || "").toUpperCase().startsWith("OPN-") || inv.is_opening_balance || inv.invoice_type === "opening_balance";
+        if (isOpn) return false;
+        const name = (inv.party_name || inv.customer_name || "").toLowerCase();
+        return name === pName && isDateInFilter(inv.created_at || inv.date);
+      })
+      .sort((a: any, b: any) => {
+        const ta = parseSafeDateTimestamp(a.created_at || a.date) || 0;
+        const tb = parseSafeDateTimestamp(b.created_at || b.date) || 0;
+        return ta - tb;
+      });
 
     const rows: any[] = [];
 

@@ -18,6 +18,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { lookupGstinDetails } from "@/lib/gst-helper";
 import { PaginationControl } from "@/components/ui/PaginationControl";
+import { syncLocalStorageCustomerInvoices } from "@/lib/safe-storage";
 
 export function PosCustomers() {
   const { t } = useI18n();
@@ -157,9 +158,17 @@ export function PosCustomers() {
     setIsAdjusting(true);
     try {
       await crmCustomersApi.updateOutstandingBalance(adjustCustomer.id, parsed, adjustReason || undefined);
+      syncLocalStorageCustomerInvoices(
+        adjustCustomer.id,
+        adjustCustomer.name,
+        adjustCustomer.phone,
+        parsed
+      );
       toast.success(`Updated outstanding balance for ${adjustCustomer.name} to ${currency.symbol}${parsed.toLocaleString(undefined, { minimumFractionDigits: 2 })}`);
       setAdjustCustomer(null);
       loadCustomers();
+      window.dispatchEvent(new Event("pos_invoices_updated"));
+      window.dispatchEvent(new Event("storage"));
     } catch (err: any) {
       toast.error(err.message || "Failed to update outstanding balance");
     } finally {

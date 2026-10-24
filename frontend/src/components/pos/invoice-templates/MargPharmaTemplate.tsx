@@ -225,7 +225,7 @@ export function MargPharmaTemplate({
                 const mrp = Number(item.mrp || rate * 1.1);
                 const disc = Number(item.discount_value || 0);
                 const isIncl = item.is_tax_inclusive === true || (item as any).is_inclusive === true || invoice.is_tax_inclusive === true;
-                const taxRate = Number(item.tax_rate || 18);
+                const taxRate = item.tax_rate !== undefined && item.tax_rate !== null ? Number(item.tax_rate) : 0;
                 const halfTax = taxRate / 2;
 
                 let taxable = 0;

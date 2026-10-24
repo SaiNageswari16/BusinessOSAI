@@ -429,20 +429,12 @@ async def send_quotation_whatsapp(
     recipient_phone: str | None = None,
 ) -> dict:
     """Dispatch the exact saved Quotation PDF directly to the customer's WhatsApp."""
-    from src.models import Company
-    comp_id = getattr(quote, "company_id", None)
-    if comp_id:
-        comp = await db.get(Company, comp_id)
-        if comp:
-            if getattr(comp, "whatsapp_enabled", True) is False:
-                raise QuotationSendError(
-                    f"WhatsApp communication is turned OFF for company '{comp.name}' in Integrations -> WhatsApp settings."
-                )
-            wa_settings = getattr(comp, "whatsapp_settings", {}) or {}
-            if isinstance(wa_settings, dict) and wa_settings.get("auto_send_quotations") is False:
-                raise QuotationSendError(
-                    f"Automated quotation dispatch via WhatsApp is turned OFF in Integrations -> WhatsApp settings."
-                )
+    from src.services.whatsapp_invoice_sender import check_whatsapp_dispatch_allowed
+    allowed, disallow_reason = await check_whatsapp_dispatch_allowed(
+        db, quote.tenant_id, getattr(quote, "company_id", None), trigger="auto_send_quotations"
+    )
+    if not allowed:
+        raise QuotationSendError(disallow_reason)
 
     items_data = quote.items if isinstance(quote.items, dict) else {}
     phone = (recipient_phone or items_data.get("customer_phone") or "").strip()
