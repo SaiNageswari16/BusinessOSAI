@@ -522,6 +522,21 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
   const [hideOutOfStockBatches, setHideOutOfStockBatches] = useState<boolean>(false);
   const [isFavourite, setIsFavourite] = useState<boolean>(false);
   const [showExcelDropdown, setShowExcelDropdown] = useState<boolean>(false);
+  const excelDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (excelDropdownRef.current && !excelDropdownRef.current.contains(event.target as Node)) {
+        setShowExcelDropdown(false);
+      }
+    };
+    if (showExcelDropdown) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showExcelDropdown]);
 
   const [liveProducts, setLiveProducts] = useState<any[]>([]);
   const [liveBatches, setLiveBatches] = useState<any[]>([]);
@@ -2032,13 +2047,52 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
 
               {/* Action Buttons: Excel / CSV, Print PDF */}
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleExport("xlsx")}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Excel / CSV</span>
-                </button>
+                {/* Dropdown for Excel / CSV */}
+                <div className="relative" ref={excelDropdownRef}>
+                  <button
+                    onClick={() => setShowExcelDropdown(!showExcelDropdown)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Excel / CSV</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                  </button>
+
+                  {showExcelDropdown && (
+                    <div className="absolute right-0 mt-1.5 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+                      <button
+                        onClick={() => {
+                          handleExport("xlsx");
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3.5 py-2.5 hover:bg-emerald-50 flex items-center gap-2.5 text-slate-700 font-medium transition-colors cursor-pointer"
+                      >
+                        <div className="p-1 rounded-md bg-emerald-100/70 text-emerald-700 shrink-0">
+                          <FileSpreadsheet className="size-4" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-800">Download Excel</span>
+                          <span className="text-[10px] text-slate-400">Microsoft Excel (.xlsx)</span>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleExport("csv");
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3.5 py-2.5 hover:bg-blue-50 flex items-center gap-2.5 text-slate-700 font-medium transition-colors cursor-pointer border-t border-slate-100"
+                      >
+                        <div className="p-1 rounded-md bg-blue-100/70 text-blue-700 shrink-0">
+                          <FileText className="size-4" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-800">Download CSV</span>
+                          <span className="text-[10px] text-slate-400">Comma Separated Values (.csv)</span>
+                        </div>
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 <button
                   onClick={handlePrint}
@@ -2422,13 +2476,52 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
 
               {/* Actions: Excel, Print PDF */}
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleExport("xlsx")}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Excel / CSV</span>
-                </button>
+                {/* Dropdown for Excel / CSV */}
+                <div className="relative" ref={excelDropdownRef}>
+                  <button
+                    onClick={() => setShowExcelDropdown(!showExcelDropdown)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Excel / CSV</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                  </button>
+
+                  {showExcelDropdown && (
+                    <div className="absolute right-0 mt-1.5 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+                      <button
+                        onClick={() => {
+                          handleExport("xlsx");
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3.5 py-2.5 hover:bg-emerald-50 flex items-center gap-2.5 text-slate-700 font-medium transition-colors cursor-pointer"
+                      >
+                        <div className="p-1 rounded-md bg-emerald-100/70 text-emerald-700 shrink-0">
+                          <FileSpreadsheet className="size-4" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-800">Download Excel</span>
+                          <span className="text-[10px] text-slate-400">Microsoft Excel (.xlsx)</span>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleExport("csv");
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3.5 py-2.5 hover:bg-blue-50 flex items-center gap-2.5 text-slate-700 font-medium transition-colors cursor-pointer border-t border-slate-100"
+                      >
+                        <div className="p-1 rounded-md bg-blue-100/70 text-blue-700 shrink-0">
+                          <FileText className="size-4" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-800">Download CSV</span>
+                          <span className="text-[10px] text-slate-400">Comma Separated Values (.csv)</span>
+                        </div>
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 <button
                   onClick={handlePrint}

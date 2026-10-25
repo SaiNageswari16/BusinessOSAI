@@ -2396,8 +2396,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           itemModified = true;
         }
 
-        // Apply inventory discount if current discount is 0 or unassigned, or inventory has defined discount
-        if (invDisc.discount_value > 0 && (Number(newItem.discount_value || 0) === 0 || newItem.discount_value !== invDisc.discount_value)) {
+        // Apply inventory discount ONLY if item discount has not been initialized at all (never overwrite user edits)
+        if (invDisc.discount_value > 0 && newItem.discount_value === undefined) {
           newItem.discount_value = invDisc.discount_value;
           newItem.discount_type = invDisc.discount_type;
           itemModified = true;
@@ -3235,10 +3235,18 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   };
 
   const updateItem = (id: string, field: keyof InvoiceItem, value: any) => {
-    setItems(
-      items.map((item) => {
+    setItems((prevItems) =>
+      prevItems.map((item) => {
         if (item.id === id) {
           const updated = { ...item, [field]: value };
+          if (field === "discount_value") {
+            const numVal = Math.max(0, Number(value) || 0);
+            updated.discount_value = numVal;
+            if (numVal > 0) {
+              updated._prev_discount_val = numVal;
+              updated._prev_discount_type = updated.discount_type;
+            }
+          }
           if (field === "custom_note") {
             updated.custom_note = value;
             updated.description = value;
@@ -3384,20 +3392,20 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               }
 
               if (newType === "amount") {
-                // Switching from % to Amount (₹): fetch product defined flat discount or calculate directly from unit price
-                if (prodFixed > 0) {
-                  updated.discount_value = prodFixed;
-                } else if (currentVal > 0 && price > 0) {
+                // Switching from % to Amount (₹): convert current percentage to rupee amount!
+                if (currentVal > 0 && price > 0) {
                   updated.discount_value = Number(((price * currentVal) / 100).toFixed(2));
+                } else if (prodFixed > 0) {
+                  updated.discount_value = prodFixed;
                 } else {
                   updated.discount_value = 0;
                 }
               } else {
-                // Switching from Amount (₹) to %: fetch product defined % discount or calculate directly from discount amount
-                if (prodPercent > 0) {
+                // Switching from Amount (₹) to %: convert current rupee amount to percentage!
+                if (currentVal > 0 && price > 0) {
+                  updated.discount_value = Math.min(100, Number(((currentVal / price) * 100).toFixed(2)));
+                } else if (prodPercent > 0) {
                   updated.discount_value = prodPercent;
-                } else if (currentVal > 0 && price > 0) {
-                  updated.discount_value = Number(((currentVal / price) * 100).toFixed(2));
                 } else {
                   updated.discount_value = 0;
                 }
@@ -3428,6 +3436,22 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         }
         return item;
       }),
+    );
+  };
+
+  const updateItemMultiple = (id: string, updates: Partial<InvoiceItem>) => {
+    setItems((prevItems) =>
+      prevItems.map((item) => {
+        if (item.id === id) {
+          const updated = { ...item, ...updates };
+          if (updates.discount_value !== undefined && Number(updates.discount_value) > 0) {
+            updated._prev_discount_val = Number(updates.discount_value);
+            updated._prev_discount_type = updated.discount_type;
+          }
+          return updated;
+        }
+        return item;
+      })
     );
   };
 
@@ -3474,9 +3498,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const taxRate = Number(item.tax_rate) || 0;
 
     const lineGross = qty * price;
-    const dAmt = item.discount_type === "percent"
-      ? lineGross * (Number(item.discount_value || 0) / 100)
-      : Math.min(Number(item.discount_value || 0), lineGross);
+    const dAmt = (item.discount_type === "amount" || item.discount_type === "fixed")
+      ? Math.min(Number(item.discount_value || 0), lineGross)
+      : lineGross * (Math.min(100, Number(item.discount_value || 0)) / 100);
 
     const effectiveGross = Math.max(0, lineGross - dAmt);
     let lineTaxable = 0;
@@ -6792,9 +6816,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                     const rawLineGross = qty * price;
 
                     // Discount on this line
-                    const lineDisc = (item.discount_type === "percent" || item.discount_type === "%")
-                      ? rawLineGross * (discVal / 100)
-                      : Math.min(discVal, rawLineGross);
+                    const lineDisc = (item.discount_type === "amount" || item.discount_type === "fixed")
+                      ? Math.min(discVal, rawLineGross)
+                      : rawLineGross * (Math.min(100, discVal) / 100);
 
                     // Net Line Total (what the customer actually pays for this line after discount)
                     const effectiveGross = isFree ? 0 : Math.max(0, rawLineGross - lineDisc);
@@ -7238,15 +7262,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                     <input
                                       type="number"
                                       min="0"
+                                      max={item.discount_type === "amount" || item.discount_type === "fixed" ? undefined : 100}
                                       step="any"
                                       value={item.discount_value || ""}
                                       onFocus={(e) => e.target.select()}
                                       onChange={(e) => {
-                                        const val = e.target.value === "" ? "" : Number(e.target.value);
+                                        const raw = e.target.value;
+                                        const val = raw === "" ? 0 : Math.max(0, Number(raw) || 0);
                                         updateItem(item.id, "discount_value", val);
-                                        if (val !== "") {
-                                          updateItem(item.id, "_prev_discount_val" as any, val);
-                                        }
                                       }}
                                       className={cn(
                                         "w-full bg-slate-50 border rounded-lg px-2 py-1.5 text-left outline-none text-xs font-bold transition-all",
@@ -7263,9 +7286,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        updateItem(item.id, "_prev_discount_val" as any, item.discount_value);
-                                        updateItem(item.id, "_prev_discount_type" as any, item.discount_type);
-                                        updateItem(item.id, "discount_value", 0);
+                                        updateItemMultiple(item.id, {
+                                          _prev_discount_val: item.discount_value,
+                                          _prev_discount_type: item.discount_type,
+                                          discount_value: 0,
+                                        });
                                       }}
                                       className="px-1.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-[9px] font-black cursor-pointer shadow-2xs transition-all shrink-0"
                                       title="Shut off / Disable discount for this item"
@@ -7276,8 +7301,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        updateItem(item.id, "discount_type", invDisc.discount_type);
-                                        updateItem(item.id, "discount_value", invDisc.discount_value);
+                                        updateItemMultiple(item.id, {
+                                          discount_type: invDisc.discount_type,
+                                          discount_value: invDisc.discount_value,
+                                        });
                                       }}
                                       className="px-1.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg text-[9px] font-black cursor-pointer shadow-2xs transition-all shrink-0 animate-pulse"
                                       title={`Turn ON inventory discount (${invDisc.discount_type === "amount" ? currency.symbol : ""}${invDisc.discount_value}${invDisc.discount_type === "percent" ? "%" : ""})`}
@@ -7288,8 +7315,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        updateItem(item.id, "discount_type", item._prev_discount_type || "percent");
-                                        updateItem(item.id, "discount_value", item._prev_discount_val);
+                                        updateItemMultiple(item.id, {
+                                          discount_type: item._prev_discount_type || "percent",
+                                          discount_value: item._prev_discount_val || 0,
+                                        });
                                       }}
                                       className="px-1.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[9px] font-black cursor-pointer shadow-2xs transition-all shrink-0"
                                       title="Restore previous discount"
@@ -7304,7 +7333,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                   <div className="flex items-center justify-between text-[8.5px] px-0.5">
                                     {isDiscountActive ? (
                                       <span className="text-emerald-700 font-bold flex items-center gap-0.5">
-                                        <span>🏷️</span> Under {invDisc.discount_type === "amount" ? currency.symbol : ""}{invDisc.discount_value}{invDisc.discount_type === "percent" ? "%" : ""} Disc
+                                        <span>🏷️</span> Under {item.discount_type === "amount" || item.discount_type === "fixed" ? currency.symbol : ""}{item.discount_value}{item.discount_type === "percent" || item.discount_type === "%" ? "%" : ""} Disc
                                       </span>
                                     ) : (
                                       <span className="text-amber-700 font-bold flex items-center gap-0.5">
@@ -7315,8 +7344,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                       <button
                                         type="button"
                                         onClick={() => {
-                                          updateItem(item.id, "discount_type", invDisc.discount_type);
-                                          updateItem(item.id, "discount_value", invDisc.discount_value);
+                                          updateItemMultiple(item.id, {
+                                            discount_type: invDisc.discount_type,
+                                            discount_value: invDisc.discount_value,
+                                          });
                                         }}
                                         className="text-[8px] font-extrabold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
                                       >

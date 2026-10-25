@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { inventoryApi } from "@/lib/api-client";
 import { formatDisplayDate, formatDisplayDateTime, getTodayDateString } from "@/lib/utils";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
+import * as XLSX from "xlsx";
 import {
   TrendingUp,
   ShoppingCart,
@@ -329,6 +330,24 @@ export function ReportsHub() {
   const [loading, setLoading] = useState<boolean>(false);
   const [reportData, setReportData] = useState<any>(null);
 
+  // Export Dropdown State (Excel / CSV)
+  const [showExportDropdown, setShowExportDropdown] = useState<boolean>(false);
+  const exportDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(event.target as Node)) {
+        setShowExportDropdown(false);
+      }
+    };
+    if (showExportDropdown) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showExportDropdown]);
+
   // Expandable Nested Drilldown State
   const [expandedInvoices, setExpandedInvoices] = useState<Record<string, boolean>>({});
   const [expandedCustomers, setExpandedCustomers] = useState<Record<string, boolean>>({});
@@ -399,8 +418,8 @@ export function ReportsHub() {
     setActiveReport(item);
   };
 
-  // ── CSV Export with Company Header, Customer Details & Nested Products ───────
-  const handleExportCSV = () => {
+  // ── Excel (.xlsx) & CSV (.csv) Export with Company Header, Customer Details & Nested Products ───
+  const handleExportReport = (format: "xlsx" | "csv" = "xlsx") => {
     if (!reportData?.tableData || reportData.tableData.length === 0) {
       toast.error("No data available to export.");
       return;
@@ -408,101 +427,182 @@ export function ReportsHub() {
 
     const isCustomer360Statement = activeReport?.id === "customer_statement";
     const cols = reportData.tableColumns || [];
-    
-    // 1. Company & Report metadata block at top of CSV
-    const metaHeader = [
-      `"COMPANY NAME:","${companyName.replace(/"/g, '""')}"`,
-      `"REPORT TITLE:","${(activeReport?.title || "Report").replace(/"/g, '""')}"`,
-      `"PERIOD:","${(reportData.dateRangeLabel || "All Time").replace(/"/g, '""')}"`,
-      `"GENERATED ON:","${formatDisplayDateTime(new Date()).replace(/"/g, '""')}"`,
-      companyGstin ? `"GSTIN:","${companyGstin.replace(/"/g, '""')}"` : `""`,
-      companyAddress ? `"ADDRESS:","${companyAddress.replace(/"/g, '""')}"` : `""`,
-      `""`, // blank line separator
-    ].filter(Boolean).join("\n");
+    const baseFileName = `${companyName.replace(/\s+/g, "_")}_${activeReport?.id || "report"}_report_${new Date().toISOString().slice(0, 10)}`;
 
-    // 2. Customer Profile block ONLY if viewing Customer 360 Statement
-    let customerBlock = "";
-    if (isCustomer360Statement && reportData.customerDetails) {
-      const cd = reportData.customerDetails;
-      customerBlock = [
-        `"CUSTOMER 360 STATEMENT DETAILS"`,
-        `"Customer Name:","${(cd.name || "").replace(/"/g, '""')}"`,
-        `"Contact Phone:","${(cd.phone || "").replace(/"/g, '""')}"`,
-        `"GSTIN:","${(cd.gstin || "Unregistered").replace(/"/g, '""')}"`,
-        `"Billing Address:","${(cd.address || "").replace(/"/g, '""')}"`,
-        `"Total Invoices:","${cd.total_invoices || 0} Bills"`,
-        `"Gross Billed:","${String(cd.total_billed || "").replace(/^[₹Rs\.\s]+/, "")}"`,
-        `"Settled / Paid:","${String(cd.total_paid || "").replace(/^[₹Rs\.\s]+/, "")}"`,
-        `"Pending Balance:","${String(cd.pending_balance || "").replace(/^[₹Rs\.\s]+/, "")}"`,
-        `"Settlement Status:","${cd.pending_invoices_count > 0 ? `${cd.pending_invoices_count} Pending Invoices` : 'All Settled'}"`,
-        `""`,
-      ].join("\n") + "\n";
-    }
+    if (format === "xlsx") {
+      const rows: any[][] = [];
 
-    // 3. Column Headers
-    const headers = cols.map((c: any) => `"${c.header.replace(/"/g, '""')}"`).join(",");
+      // 1. Company & Report metadata block
+      rows.push(["COMPANY NAME:", companyName]);
+      rows.push(["REPORT TITLE:", activeReport?.title || "Report"]);
+      rows.push(["PERIOD:", reportData.dateRangeLabel || "All Time"]);
+      rows.push(["GENERATED ON:", formatDisplayDateTime(new Date())]);
+      if (companyGstin) rows.push(["GSTIN:", companyGstin]);
+      if (companyAddress) rows.push(["ADDRESS:", companyAddress]);
+      rows.push([]); // blank line separator
 
-    // 4. Rows (Itemized Product Sub-Lines ONLY for Customer 360 Statement)
-    const rowsList: string[] = [];
-    reportData.tableData.forEach((row: any, rIdx: number) => {
-      // Main row (Invoice / Customer / Summary line)
-      const mainRowStr = cols.map((c: any) => {
-        let val = row[c.key] ?? "";
-        const strVal = String(val).trim();
-        if (strVal.startsWith("₹") || strVal.startsWith("Rs.")) {
-          val = strVal.replace(/^[₹Rs\.\s]+/, "").replace(/,/g, "");
-        }
-        return `"${String(val).replace(/"/g, '""')}"`;
-      }).join(",");
-      rowsList.push(mainRowStr);
-
-      // Nested items under this invoice ONLY in Customer 360 Statement
-      if (isCustomer360Statement && Array.isArray(row.items) && row.items.length > 0) {
-        rowsList.push(`"","  ↳ ITEM #","PRODUCT / ITEM NAME","SKU / CODE","QUANTITY","UNIT PRICE (₹)","TAX (₹)","LINE TOTAL (₹)"`);
-        row.items.forEach((it: any, itIdx: number) => {
-          const pName = it.name || it.product_name || `Product Item #${itIdx + 1}`;
-          const pSku = it.sku || it.product_sku || "—";
-          const pQty = it.qty ?? it.quantity ?? 1;
-          const pPrice = typeof it.price === "number" ? it.price : String(it.price || 0).replace(/^[₹Rs\.\s]+/, "").replace(/,/g, "");
-          const pTax = typeof it.tax === "number" ? it.tax : String(it.tax || 0).replace(/^[₹Rs\.\s]+/, "").replace(/,/g, "");
-          const pTotal = typeof it.total === "number" ? it.total : String(it.total || 0).replace(/^[₹Rs\.\s]+/, "").replace(/,/g, "");
-
-          rowsList.push([
-            `""`,
-            `"  ↳ Item ${itIdx + 1}"`,
-            `"${pName.replace(/"/g, '""')}"`,
-            `"${pSku.replace(/"/g, '""')}"`,
-            `"${pQty}"`,
-            `"${pPrice}"`,
-            `"${pTax}"`,
-            `"${pTotal}"`,
-          ].join(","));
-        });
-        rowsList.push(`""`); // Blank line separator after items
+      // 2. Customer Profile block ONLY if viewing Customer 360 Statement
+      if (isCustomer360Statement && reportData.customerDetails) {
+        const cd = reportData.customerDetails;
+        rows.push(["CUSTOMER 360 STATEMENT DETAILS"]);
+        rows.push(["Customer Name:", cd.name || ""]);
+        rows.push(["Contact Phone:", cd.phone || ""]);
+        rows.push(["GSTIN:", cd.gstin || "Unregistered"]);
+        rows.push(["Billing Address:", cd.address || ""]);
+        rows.push(["Total Invoices:", `${cd.total_invoices || 0} Bills`]);
+        rows.push(["Gross Billed:", String(cd.total_billed || "").replace(/^[₹Rs\.\s]+/, "")]);
+        rows.push(["Settled / Paid:", String(cd.total_paid || "").replace(/^[₹Rs\.\s]+/, "")]);
+        rows.push(["Pending Balance:", String(cd.pending_balance || "").replace(/^[₹Rs\.\s]+/, "")]);
+        rows.push(["Settlement Status:", cd.pending_invoices_count > 0 ? `${cd.pending_invoices_count} Pending Invoices` : "All Settled"]);
+        rows.push([]);
       }
-    });
 
-    // 5. Summary Totals Footer
-    let summaryBlock = "";
-    if (reportData.summaryTotals && Object.keys(reportData.summaryTotals).length > 0) {
-      summaryBlock = "\n\n" + Object.entries(reportData.summaryTotals)
-        .map(([k, v]: [string, any]) => `"${k.replace(/_/g, " ").toUpperCase()}:","${String(v).replace(/^[₹Rs\.\s]+/, "").replace(/"/g, '""')}"`)
-        .join("\n");
+      // 3. Column Headers
+      rows.push(cols.map((c: any) => c.header));
+
+      // 4. Data Rows (with numeric parsing for amounts)
+      reportData.tableData.forEach((row: any) => {
+        const mainRow = cols.map((c: any) => {
+          let val = row[c.key] ?? "";
+          const strVal = String(val).trim();
+          if (strVal.startsWith("₹") || strVal.startsWith("Rs.")) {
+            const clean = strVal.replace(/^[₹Rs\.\s]+/, "").replace(/,/g, "");
+            const num = parseFloat(clean);
+            return !isNaN(num) ? num : clean;
+          }
+          return val;
+        });
+        rows.push(mainRow);
+
+        // Nested items under this invoice ONLY in Customer 360 Statement
+        if (isCustomer360Statement && Array.isArray(row.items) && row.items.length > 0) {
+          rows.push(["", "  ↳ ITEM #", "PRODUCT / ITEM NAME", "SKU / CODE", "QUANTITY", "UNIT PRICE (₹)", "TAX (₹)", "LINE TOTAL (₹)"]);
+          row.items.forEach((it: any, itIdx: number) => {
+            const pName = it.name || it.product_name || `Product Item #${itIdx + 1}`;
+            const pSku = it.sku || it.product_sku || "—";
+            const pQty = it.qty ?? it.quantity ?? 1;
+            const pPrice = typeof it.price === "number" ? it.price : parseFloat(String(it.price || 0).replace(/^[₹Rs\.\s]+/, "").replace(/,/g, "")) || 0;
+            const pTax = typeof it.tax === "number" ? it.tax : parseFloat(String(it.tax || 0).replace(/^[₹Rs\.\s]+/, "").replace(/,/g, "")) || 0;
+            const pTotal = typeof it.total === "number" ? it.total : parseFloat(String(it.total || 0).replace(/^[₹Rs\.\s]+/, "").replace(/,/g, "")) || 0;
+
+            rows.push(["", `  ↳ Item ${itIdx + 1}`, pName, pSku, pQty, pPrice, pTax, pTotal]);
+          });
+          rows.push([]);
+        }
+      });
+
+      // 5. Summary Totals Footer
+      if (reportData.summaryTotals && Object.keys(reportData.summaryTotals).length > 0) {
+        rows.push([]);
+        Object.entries(reportData.summaryTotals).forEach(([k, v]: [string, any]) => {
+          const cleanVal = String(v).replace(/^[₹Rs\.\s]+/, "");
+          const numVal = parseFloat(cleanVal.replace(/,/g, ""));
+          rows.push([`${k.replace(/_/g, " ").toUpperCase()}:`, !isNaN(numVal) ? numVal : cleanVal]);
+        });
+      }
+
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      const sheetName = (activeReport?.title || "Report").slice(0, 31).replace(/[\\/?*\[\]:]/g, "");
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      XLSX.writeFile(wb, `${baseFileName}.xlsx`);
+      toast.success(`Exported ${activeReport?.title || "Report"} as Excel (.xlsx)!`);
+    } else {
+      // 1. Company & Report metadata block at top of CSV
+      const metaHeader = [
+        `"COMPANY NAME:","${companyName.replace(/"/g, '""')}"`,
+        `"REPORT TITLE:","${(activeReport?.title || "Report").replace(/"/g, '""')}"`,
+        `"PERIOD:","${(reportData.dateRangeLabel || "All Time").replace(/"/g, '""')}"`,
+        `"GENERATED ON:","${formatDisplayDateTime(new Date()).replace(/"/g, '""')}"`,
+        companyGstin ? `"GSTIN:","${companyGstin.replace(/"/g, '""')}"` : `""`,
+        companyAddress ? `"ADDRESS:","${companyAddress.replace(/"/g, '""')}"` : `""`,
+        `""`, // blank line separator
+      ].filter(Boolean).join("\n");
+
+      // 2. Customer Profile block ONLY if viewing Customer 360 Statement
+      let customerBlock = "";
+      if (isCustomer360Statement && reportData.customerDetails) {
+        const cd = reportData.customerDetails;
+        customerBlock = [
+          `"CUSTOMER 360 STATEMENT DETAILS"`,
+          `"Customer Name:","${(cd.name || "").replace(/"/g, '""')}"`,
+          `"Contact Phone:","${(cd.phone || "").replace(/"/g, '""')}"`,
+          `"GSTIN:","${(cd.gstin || "Unregistered").replace(/"/g, '""')}"`,
+          `"Billing Address:","${(cd.address || "").replace(/"/g, '""')}"`,
+          `"Total Invoices:","${cd.total_invoices || 0} Bills"`,
+          `"Gross Billed:","${String(cd.total_billed || "").replace(/^[₹Rs\.\s]+/, "")}"`,
+          `"Settled / Paid:","${String(cd.total_paid || "").replace(/^[₹Rs\.\s]+/, "")}"`,
+          `"Pending Balance:","${String(cd.pending_balance || "").replace(/^[₹Rs\.\s]+/, "")}"`,
+          `"Settlement Status:","${cd.pending_invoices_count > 0 ? `${cd.pending_invoices_count} Pending Invoices` : 'All Settled'}"`,
+          `""`,
+        ].join("\n") + "\n";
+      }
+
+      // 3. Column Headers
+      const headers = cols.map((c: any) => `"${c.header.replace(/"/g, '""')}"`).join(",");
+
+      // 4. Rows (Itemized Product Sub-Lines ONLY for Customer 360 Statement)
+      const rowsList: string[] = [];
+      reportData.tableData.forEach((row: any) => {
+        // Main row (Invoice / Customer / Summary line)
+        const mainRowStr = cols.map((c: any) => {
+          let val = row[c.key] ?? "";
+          const strVal = String(val).trim();
+          if (strVal.startsWith("₹") || strVal.startsWith("Rs.")) {
+            val = strVal.replace(/^[₹Rs\.\s]+/, "").replace(/,/g, "");
+          }
+          return `"${String(val).replace(/"/g, '""')}"`;
+        }).join(",");
+        rowsList.push(mainRowStr);
+
+        // Nested items under this invoice ONLY in Customer 360 Statement
+        if (isCustomer360Statement && Array.isArray(row.items) && row.items.length > 0) {
+          rowsList.push(`"","  ↳ ITEM #","PRODUCT / ITEM NAME","SKU / CODE","QUANTITY","UNIT PRICE (₹)","TAX (₹)","LINE TOTAL (₹)"`);
+          row.items.forEach((it: any, itIdx: number) => {
+            const pName = it.name || it.product_name || `Product Item #${itIdx + 1}`;
+            const pSku = it.sku || it.product_sku || "—";
+            const pQty = it.qty ?? it.quantity ?? 1;
+            const pPrice = typeof it.price === "number" ? it.price : String(it.price || 0).replace(/^[₹Rs\.\s]+/, "").replace(/,/g, "");
+            const pTax = typeof it.tax === "number" ? it.tax : String(it.tax || 0).replace(/^[₹Rs\.\s]+/, "").replace(/,/g, "");
+            const pTotal = typeof it.total === "number" ? it.total : String(it.total || 0).replace(/^[₹Rs\.\s]+/, "").replace(/,/g, "");
+
+            rowsList.push([
+              `""`,
+              `"  ↳ Item ${itIdx + 1}"`,
+              `"${pName.replace(/"/g, '""')}"`,
+              `"${pSku.replace(/"/g, '""')}"`,
+              `"${pQty}"`,
+              `"${pPrice}"`,
+              `"${pTax}"`,
+              `"${pTotal}"`,
+            ].join(","));
+          });
+          rowsList.push(`""`); // Blank line separator after items
+        }
+      });
+
+      // 5. Summary Totals Footer
+      let summaryBlock = "";
+      if (reportData.summaryTotals && Object.keys(reportData.summaryTotals).length > 0) {
+        summaryBlock = "\n\n" + Object.entries(reportData.summaryTotals)
+          .map(([k, v]: [string, any]) => `"${k.replace(/_/g, " ").toUpperCase()}:","${String(v).replace(/^[₹Rs\.\s]+/, "").replace(/"/g, '""')}"`)
+          .join("\n");
+      }
+
+      const fullCsv = metaHeader + "\n" + customerBlock + headers + "\n" + rowsList.join("\n") + summaryBlock;
+
+      // Use UTF-8 BOM (\uFEFF) so Excel on Windows natively recognizes UTF-8 without artifacts
+      const blob = new Blob(["\uFEFF" + fullCsv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `${baseFileName}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success(`Exported ${activeReport?.title || "Report"} as CSV (.csv)!`);
     }
-
-    const fullCsv = metaHeader + "\n" + customerBlock + headers + "\n" + rowsList.join("\n") + summaryBlock;
-
-    // Use UTF-8 BOM (\uFEFF) so Excel on Windows natively recognizes UTF-8 without â,¹ character artifacts
-    const blob = new Blob(["\uFEFF" + fullCsv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `${companyName.replace(/\s+/g, "_")}_${activeReport?.id || "report"}_report_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    toast.success(`Exported ${activeReport?.title || "Report"} for ${companyName} to CSV (including itemized products)`);
   };
 
   // ── PDF Print with Official Corporate Header & Nested Itemized Products ─────
@@ -1011,15 +1111,54 @@ export function ReportsHub() {
 
             {/* Actions: CSV, Print, Refresh */}
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleExportCSV}
-                className="h-8 gap-1.5 text-xs font-semibold rounded-xl border-slate-200 hover:bg-slate-100"
-              >
-                <Download className="size-3.5 text-emerald-600" />
-                <span>Excel / CSV</span>
-              </Button>
+              {/* Dropdown for Excel / CSV */}
+              <div className="relative" ref={exportDropdownRef}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowExportDropdown(!showExportDropdown)}
+                  className="h-8 gap-1.5 text-xs font-semibold rounded-xl border-slate-200 hover:bg-slate-100 cursor-pointer"
+                >
+                  <Download className="size-3.5 text-emerald-600" />
+                  <span>Excel / CSV</span>
+                  <ChevronDown className="size-3 text-slate-400" />
+                </Button>
+
+                {showExportDropdown && (
+                  <div className="absolute right-0 mt-1.5 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+                    <button
+                      onClick={() => {
+                        handleExportReport("xlsx");
+                        setShowExportDropdown(false);
+                      }}
+                      className="w-full text-left px-3.5 py-2.5 hover:bg-emerald-50 flex items-center gap-2.5 text-slate-700 font-medium transition-colors cursor-pointer"
+                    >
+                      <div className="p-1 rounded-md bg-emerald-100/70 text-emerald-700 shrink-0">
+                        <FileSpreadsheet className="size-4" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-slate-800">Download Excel</span>
+                        <span className="text-[10px] text-slate-400">Microsoft Excel (.xlsx)</span>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleExportReport("csv");
+                        setShowExportDropdown(false);
+                      }}
+                      className="w-full text-left px-3.5 py-2.5 hover:bg-blue-50 flex items-center gap-2.5 text-slate-700 font-medium transition-colors cursor-pointer border-t border-slate-100"
+                    >
+                      <div className="p-1 rounded-md bg-blue-100/70 text-blue-700 shrink-0">
+                        <FileText className="size-4" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-slate-800">Download CSV</span>
+                        <span className="text-[10px] text-slate-400">Comma Separated Values (.csv)</span>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
 
               <Button
                 variant="outline"
