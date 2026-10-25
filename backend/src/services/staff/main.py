@@ -14,10 +14,11 @@ from src.services.shared.registry import get_descriptor
 from src.services.shared.service_factory import build_service
 from src.services.event_bus.dedupe import install_service_ledger
 from src.services.staff import models  # noqa: F401 - registers tables first
-from src.services.staff.api import router as staff_router
+from src.services.staff.api import router as staff_router, hrms_api_router
 
 TAGS = [
     {"name": "staff", "description": "Employees, rosters, attendance, tips, feedback"},
+    {"name": "hrms", "description": "Complete Enterprise HRMS Studios & Workflows"},
 ]
 
 async def _on_startup(app) -> None:
@@ -29,6 +30,10 @@ app, db = build_service(
     on_startup=_on_startup,
     tags=TAGS,
 )
+
+# Mount canonical HRMS API directly at /api/v1 so that calls to /api/v1/hrms/* and /api/v1/erp/* resolve seamlessly
+app.include_router(hrms_api_router, prefix="/api/v1")
+
 
 
 if __name__ == "__main__":

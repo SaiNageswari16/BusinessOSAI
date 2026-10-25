@@ -1,0 +1,641 @@
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { useCurrency } from "@/hooks/use-currency";
+import { clearApiCache } from "@/lib/api-client";
+
+const API_BASE_URL = (import.meta.env["VITE_API_BASE_URL"] as string) ?? "http://localhost:8000/api/v1";
+
+export interface AuthRole {
+  id: string;
+  name: string;
+  is_default: boolean;
+  description?: string;
+  permissions?: string[];
+  enabled_modules?: string[] | null;
+  enabled_tabs?: string[] | null;
+}
+
+export interface AppUser {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string;
+  status: "Active" | "Inactive";
+  tenantId: string | null;
+  tenantSlug: string | null;
+  tenantName?: string | null;
+  isTenantOwner: boolean;
+  isPlatformAdmin: boolean;
+  companyId?: string | null;
+  companyName?: string | null;
+  branchId?: string | null;
+  canSwitchWorkspaces?: boolean;
+  permissions: string[];
+  roles: AuthRole[];
+  assignedRoles: string[];
+  defaultRole: string;
+  activeRoleId: string | null;
+  mustChangePassword: boolean;
+  enabledModules?: string[];
+}
+
+
+
+interface LoginPayload {
+  email: string;
+  password: string;
+  tenant_slug?: string;
+}
+
+interface RegisterPayload {
+  tenant_name: string;
+  tenant_slug?: string;
+  admin_name: string;
+  admin_email: string;
+  admin_password: string;
+  company_name: string;
+}
+
+interface ChangePasswordPayload {
+  current_password?: string;
+  new_password: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  refresh_token?: string;
+  token_type?: string;
+  expires_in?: number;
+  must_change_password?: boolean;
+  requires_role_selection?: boolean;
+  requires_verification?: boolean;
+  verification_email?: string;
+  masked_phone?: string;
+  tenant_slug?: string;
+  active_role_id?: string;
+  assigned_roles?: AuthRole[];
+}
+
+export interface VerifyFirstTimePayload {
+  email: string;
+  verification_code: string;
+  tenant_slug?: string;
+  new_password?: string;
+}
+
+export interface ResendCodePayload {
+  email: string;
+  tenant_slug?: string;
+}
+
+interface StoredAuth {
+  user: AppUser;
+  accessToken: string;
+  refreshToken?: string;
+}
+
+export interface LockoutInfo {
+  isLocked: boolean;
+  message?: string;
+  lockedUntil: string | null;
+  remainingSeconds: number;
+  maxAttempts: number;
+}
+
+export class AuthLockoutError extends Error {
+  lockout: LockoutInfo;
+
+  constructor(message: string, lockout: LockoutInfo) {
+    super(message);
+    this.name = "AuthLockoutError";
+    this.lockout = lockout;
+    Object.setPrototypeOf(this, AuthLockoutError.prototype);
+  }
+}
+
+interface AuthCtx {
+  user: AppUser | null;
+  accessToken: string | null;
+  isAuthed: boolean;
+  authReady: boolean;
+  login: (payload: LoginPayload) => Promise<{ user: AppUser; token: TokenResponse }>;
+  checkLockout: (email: string, tenantSlug?: string) => Promise<LockoutInfo | null>;
+  verifyFirstTimeCode: (payload: VerifyFirstTimePayload) => Promise<{ user: AppUser; token: TokenResponse }>;
+  resendVerificationCode: (payload: ResendCodePayload) => Promise<{ message: string }>;
+  register: (payload: RegisterPayload) => Promise<{ user: AppUser; token: TokenResponse }>;
+  selectRole: (roleId: string) => Promise<{ user: AppUser; token: TokenResponse }>;
+  changePassword: (payload: ChangePasswordPayload) => Promise<{ user: AppUser; token: TokenResponse }>;
+  applySession: (user: AppUser, accessToken: string, refreshToken?: string) => void;
+  loginWithToken: (tokenData: TokenResponse) => Promise<{ user: AppUser; token: TokenResponse }>;
+  refreshUser: () => Promise<void>;
+  logout: () => void;
+}
+
+const Ctx = createContext<AuthCtx | null>(null);
+
+async function parseErrorWithData(response: Response): Promise<{ message: string; data?: any }> {
+  let message = "Authentication request failed";
+  let data: any = null;
+  try {
+    const json = await response.json();
+    data = json;
+    if (typeof json.detail === "string") {
+      message = json.detail;
+    } else if (Array.isArray(json.detail)) {
+      message = json.detail.map((item: { msg?: string }) => item.msg).join(", ");
+    } else if (json.detail && typeof json.detail === "object") {
+      const detailObj = json.detail as { message?: string; msg?: string };
+      if (detailObj.message) message = detailObj.message;
+      else if (detailObj.msg) message = detailObj.msg;
+      else message = JSON.stringify(json.detail);
+    } else if (json.message) {
+      message = json.message;
+    }
+  } catch {
+    /* ignore */
+  }
+  return { message, data };
+}
+
+async function parseError(response: Response): Promise<string> {
+  const { message } = await parseErrorWithData(response);
+  return message;
+}
+
+function buildAvatar(fullName: string): string {
+  return fullName
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function mapUser(json: Record<string, unknown>): AppUser {
+  const u = json as Record<string, any>;
+  const roles = (u["roles"] as AuthRole[] | undefined) ?? [];
+  return {
+    id: String(u["id"]),
+    tenantId: u["tenant_id"] ? String(u["tenant_id"]) : null,
+    tenantSlug: u["tenant_slug"] ? String(u["tenant_slug"]) : null,
+    tenantName: u["tenant_name"] ? String(u["tenant_name"]) : null,
+    name: String(u["full_name"] ?? ""),
+    email: String(u["email"] ?? ""),
+    avatar: String(u["avatar_initials"] || buildAvatar(String(u["full_name"] ?? u["email"] ?? ""))),
+    status: u["status"] === "active" ? "Active" : "Inactive",
+    isTenantOwner: Boolean(u["is_tenant_owner"]),
+    isPlatformAdmin: Boolean(u["is_platform_admin"]),
+    companyId: u["company_id"] ? String(u["company_id"]) : null,
+    companyName: u["company_name"] ? String(u["company_name"]) : null,
+    branchId: u["branch_id"] ? String(u["branch_id"]) : null,
+    canSwitchWorkspaces: u["can_switch_workspaces"] !== undefined ? Boolean(u["can_switch_workspaces"]) : Boolean(u["is_platform_admin"] || u["is_tenant_owner"]),
+    permissions: (u["permissions"] as string[] | undefined) ?? [],
+    roles,
+    assignedRoles: roles.map((role) => role.id),
+    defaultRole: roles.find((role) => role.is_default)?.id ?? roles[0]?.id ?? "",
+    activeRoleId: u["active_role_id"] ? String(u["active_role_id"]) : null,
+    mustChangePassword: Boolean(u["must_change_password"]),
+    enabledModules: (u["enabled_modules"] as string[] | undefined) ?? [],
+  };
+}
+
+
+
+function getInitialStoredAuth(): StoredAuth | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = localStorage.getItem("bos-auth");
+    if (!stored) return null;
+    const parsed: StoredAuth = JSON.parse(stored);
+    if (!parsed?.accessToken || !parsed?.user) return null;
+
+    // Only drop if definitely expired by more than 24h to allow clock skew across regions/timezones;
+    // backend /auth/me will authoritatively validate token validity on first request
+    try {
+      const parts = parsed.accessToken.split(".");
+      if (parts[1]) {
+        const payload = JSON.parse(atob(parts[1]));
+        // 24 hour grace buffer for client device clock skew
+        if (payload.exp && (payload.exp * 1000 + 24 * 60 * 60 * 1000) < Date.now()) {
+          localStorage.removeItem("bos-auth");
+          localStorage.removeItem("bos-active-role");
+          return null;
+        }
+      }
+    } catch {
+      // Ignore parse errors
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const { currency, formatCurrency } = useCurrency();
+  const initialAuth = getInitialStoredAuth();
+
+  const [user, setUser] = useState<AppUser | null>(() => initialAuth?.user ?? null);
+  const [accessToken, setAccessToken] = useState<string | null>(() => initialAuth?.accessToken ?? null);
+  const [refreshToken, setRefreshToken] = useState<string | null>(() => initialAuth?.refreshToken ?? null);
+  const [authReady, setAuthReady] = useState(() => initialAuth !== null);
+
+  const persistAuth = (nextUser: AppUser, nextAccessToken: string, nextRefreshToken?: string | null) => {
+    const stored: StoredAuth = { user: nextUser, accessToken: nextAccessToken, refreshToken: nextRefreshToken || undefined };
+    localStorage.setItem("bos-auth", JSON.stringify(stored));
+  };
+
+  const applySession = (nextUser: AppUser, nextAccessToken: string, nextRefreshToken?: string | null) => {
+    // If switching user or tenant, wipe stale workspace and in-memory caches
+    if (user?.id !== nextUser.id || user?.tenantId !== nextUser.tenantId) {
+      clearApiCache();
+      try {
+        sessionStorage.clear();
+        localStorage.removeItem("bos-tenant");
+        localStorage.removeItem("bos-branch");
+        localStorage.removeItem("bos_active_company");
+        localStorage.removeItem("bos-active-role");
+      } catch {}
+    }
+    setUser(nextUser);
+    setAccessToken(nextAccessToken);
+    setRefreshToken(nextRefreshToken || null);
+    persistAuth(nextUser, nextAccessToken, nextRefreshToken);
+    try {
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new CustomEvent("bos-auth-changed", { detail: nextUser }));
+    } catch {}
+  };
+
+  const clearAuthQueryParams = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("access_token");
+    url.searchParams.delete("refresh_token");
+    url.searchParams.delete("expires_in");
+    window.history.replaceState({}, "", url.pathname + url.search);
+  };
+
+  const fetchUser = async (token: string): Promise<AppUser> => {
+    const response = await fetch(`${API_BASE_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error(await parseError(response));
+    return mapUser(await response.json());
+  };
+
+  const hydrateFromTokens = async (tokenData: TokenResponse) => {
+    const currentUser = await fetchUser(tokenData.access_token);
+    // Merge must_change_password from token (more up to date than /me during password change)
+    const merged: AppUser = {
+      ...currentUser,
+      mustChangePassword: tokenData.must_change_password ?? currentUser.mustChangePassword,
+    };
+    applySession(merged, tokenData.access_token, tokenData.refresh_token);
+    return { user: merged, token: tokenData };
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauthAccessToken = params.get("access_token");
+    const oauthRefreshToken = params.get("refresh_token");
+
+    const validateSessionInBackground = async () => {
+      const currentToken = accessToken || initialAuth?.accessToken;
+      if (!currentToken) {
+        setAuthReady(true);
+        return;
+      }
+
+      try {
+        const currentUser = await fetchUser(currentToken);
+        setUser(currentUser);
+        persistAuth(currentUser, currentToken, refreshToken || initialAuth?.refreshToken);
+      } catch (err: any) {
+        // If the backend specifically rejected the token as unauthorized (401), clear auth
+        if (err?.message?.includes("Could not validate credentials") || err?.message?.includes("Invalid token") || err?.message?.includes("401")) {
+          localStorage.removeItem("bos-auth");
+          localStorage.removeItem("bos-active-role");
+          setUser(null);
+          setAccessToken(null);
+          setRefreshToken(null);
+        }
+      } finally {
+        setAuthReady(true);
+      }
+    };
+
+    if (oauthAccessToken && oauthRefreshToken) {
+      void hydrateFromTokens({
+        access_token: oauthAccessToken,
+        refresh_token: oauthRefreshToken,
+        token_type: "bearer",
+        expires_in: 0,
+      })
+        .catch(() => localStorage.removeItem("bos-auth"))
+        .finally(() => {
+          clearAuthQueryParams();
+          setAuthReady(true);
+        });
+      return;
+    }
+
+    void validateSessionInBackground();
+  }, []);
+
+  const refreshUser = async () => {
+    if (!accessToken) return;
+    try {
+      const refreshed = await fetchUser(accessToken);
+      setUser(refreshed);
+      persistAuth(refreshed, accessToken, refreshToken);
+    } catch (e) {
+      console.warn("Failed to refresh user auth state:", e);
+    }
+  };
+
+  useEffect(() => {
+    const handleModulesChanged = () => {
+      void refreshUser();
+    };
+    window.addEventListener("bos-modules-changed", handleModulesChanged);
+    window.addEventListener("bos-tenant-changed", handleModulesChanged);
+    return () => {
+      window.removeEventListener("bos-modules-changed", handleModulesChanged);
+      window.removeEventListener("bos-tenant-changed", handleModulesChanged);
+    };
+  }, [accessToken, refreshToken]);
+
+  const checkLockout = async (email: string, tenantSlug?: string): Promise<LockoutInfo | null> => {
+    if (!email || !email.includes("@")) return null;
+    try {
+      const params = new URLSearchParams({ email: email.trim().toLowerCase() });
+      if (tenantSlug) params.append("tenant_slug", tenantSlug.trim());
+      const res = await fetch(`${API_BASE_URL}/auth/check-lockout?${params.toString()}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data.is_locked) {
+        return {
+          isLocked: true,
+          message: data.message,
+          lockedUntil: data.locked_until,
+          remainingSeconds: Number(data.remaining_seconds) || 0,
+          maxAttempts: Number(data.max_attempts) || 5,
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  const login = async (payload: LoginPayload) => {
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const { message, data } = await parseErrorWithData(response);
+      const detailObj = data?.detail;
+      const isLocked =
+        response.status === 423 ||
+        detailObj?.code === "ACCOUNT_LOCKED" ||
+        data?.code === "ACCOUNT_LOCKED";
+
+      if (isLocked) {
+        const lockoutData = (detailObj && typeof detailObj === "object") ? detailObj : data;
+        throw new AuthLockoutError(
+          lockoutData?.message || message || "Account temporarily locked due to failed login attempts.",
+          {
+            isLocked: true,
+            message: lockoutData?.message || message,
+            lockedUntil: lockoutData?.locked_until || null,
+            remainingSeconds: Number(lockoutData?.remaining_seconds) || 900,
+            maxAttempts: Number(lockoutData?.max_attempts) || 5,
+          }
+        );
+      }
+      throw new Error(message);
+    }
+    const tokenData: TokenResponse = await response.json();
+    if (tokenData.requires_verification) {
+      return { user: null as unknown as AppUser, token: tokenData };
+    }
+    return hydrateFromTokens(tokenData);
+  };
+
+  const verifyFirstTimeCode = async (payload: VerifyFirstTimePayload) => {
+    const response = await fetch(`${API_BASE_URL}/auth/verify-first-time-code`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(await parseError(response));
+    const tokenData: TokenResponse = await response.json();
+    return hydrateFromTokens(tokenData);
+  };
+
+  const resendVerificationCode = async (payload: ResendCodePayload) => {
+    const response = await fetch(`${API_BASE_URL}/auth/resend-verification-code`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(await parseError(response));
+    return response.json();
+  };
+
+  const register = async (payload: RegisterPayload) => {
+    const response = await fetch(`${API_BASE_URL}/auth/register-tenant`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(await parseError(response));
+    return hydrateFromTokens(await response.json());
+  };
+
+  const selectRole = async (roleId: string) => {
+    if (!accessToken) throw new Error("Not authenticated");
+    const response = await fetch(`${API_BASE_URL}/auth/select-role`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ role_id: roleId }),
+    });
+    if (!response.ok) throw new Error(await parseError(response));
+    const tokenData: TokenResponse = await response.json();
+    const currentUser = await fetchUser(tokenData.access_token);
+    applySession(currentUser, tokenData.access_token, tokenData.refresh_token);
+    localStorage.setItem("bos-active-role", roleId);
+    return { user: currentUser, token: tokenData };
+  };
+
+  const changePassword = async (payload: ChangePasswordPayload) => {
+    if (!accessToken) throw new Error("Not authenticated");
+    const response = await fetch(`${API_BASE_URL}/auth/change-password`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        current_password: payload.current_password || "",
+        new_password: payload.new_password,
+      }),
+    });
+    if (!response.ok) throw new Error(await parseError(response));
+    const tokenData: TokenResponse = await response.json();
+    return hydrateFromTokens(tokenData);
+  };
+
+  const logout = () => {
+    const currentRefresh = refreshToken;
+    const currentAccess = accessToken;
+
+    if (currentRefresh) {
+      try {
+        fetch(`${API_BASE_URL}/auth/logout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(currentAccess ? { Authorization: `Bearer ${currentAccess}` } : {}),
+          },
+          body: JSON.stringify({ refresh_token: currentRefresh }),
+        }).catch(() => {});
+      } catch {}
+    }
+
+    setUser(null);
+    setAccessToken(null);
+    setRefreshToken(null);
+    clearApiCache();
+    
+    // Purge all application keys to prevent any cross-account or cross-tenant collision
+    try {
+      const keysToRemove: string[] = [];
+      const preservedKeys = new Set(["bos-theme", "bos-lang"]);
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && !preservedKeys.has(key)) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+      sessionStorage.clear();
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new CustomEvent("bos-tenant-changed", { detail: null }));
+    } catch {
+      try {
+        localStorage.clear();
+        sessionStorage.clear();
+      } catch {}
+    }
+
+    // Force hard redirect to /login to ensure all state, queries and sockets are cleanly reset
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+  };
+
+  // Auto-refresh the access token periodically so the session never expires as
+  // long as the user is logged in. No inactivity logout — sessions persist
+  // until the user clicks "Log out" themselves.
+  useEffect(() => {
+    if (!user || !refreshToken) return;
+
+    const refreshSession = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        if (!response.ok) {
+          // Refresh token rejected — leave the current session alone, do NOT
+          // log the user out. The user can decide to log out themselves.
+          return;
+        }
+        const tokenData: TokenResponse = await response.json();
+        try {
+          const refreshedUser = await fetchUser(tokenData.access_token);
+          applySession(refreshedUser, tokenData.access_token, tokenData.refresh_token);
+        } catch {
+          // /me failed — still keep the new tokens so the session survives
+          setAccessToken(tokenData.access_token);
+          setRefreshToken(tokenData.refresh_token || null);
+          persistAuth(user, tokenData.access_token, tokenData.refresh_token);
+        }
+      } catch {
+        /* network hiccup — keep the existing session */
+      }
+    };
+
+    // Refresh every 14 minutes so a long-lived tab always has a fresh token
+    const interval = setInterval(refreshSession, 14 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [user, refreshToken]);
+
+  return (
+    <Ctx.Provider
+      value={{
+        user,
+        accessToken,
+        isAuthed: !!user,
+        authReady,
+        login,
+        checkLockout,
+        verifyFirstTimeCode,
+        resendVerificationCode,
+        register,
+        selectRole,
+        changePassword,
+        applySession,
+        loginWithToken: hydrateFromTokens,
+        refreshUser,
+        logout,
+      }}
+    >
+      {children}
+    </Ctx.Provider>
+  );
+}
+
+const DEFAULT_AUTH_CTX: AuthCtx = {
+  user: null,
+  accessToken: null,
+  refreshToken: null,
+  authReady: true,
+  login: async () => { throw new Error("AuthProvider not available"); },
+  checkLockout: async () => null,
+  verifyFirstTimeCode: async () => { throw new Error("AuthProvider not available"); },
+  resendVerificationCode: async () => ({ message: "" }),
+  register: async () => { throw new Error("AuthProvider not available"); },
+  selectRole: async () => { throw new Error("AuthProvider not available"); },
+  changePassword: async () => { throw new Error("AuthProvider not available"); },
+  applySession: () => {},
+  loginWithToken: async () => { throw new Error("AuthProvider not available"); },
+  refreshUser: async () => {},
+  logout: () => {},
+};
+
+export function useAuth() {
+  const c = useContext(Ctx);
+  if (!c) {
+    return DEFAULT_AUTH_CTX;
+  }
+  return c;
+}
+
+export function resolvePostAuthRoute(user: AppUser, token?: TokenResponse): "/change-password" | "/role-select" | "/dashboard" {
+  if (user.mustChangePassword || token?.must_change_password) return "/change-password";
+  if (token?.requires_role_selection || (user.roles.length > 1 && !token?.active_role_id && !user.activeRoleId)) {
+    return "/role-select";
+  }
+  return "/dashboard";
+}
+
+export function canAssignSuperAdmin(user: AppUser | null): boolean {
+  return user?.isTenantOwner ?? false;
+}

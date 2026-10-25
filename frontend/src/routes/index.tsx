@@ -171,6 +171,8 @@ export const INTEGRATED_PORTALS: BusinessPortal[] = [
   },
 ];
 
+const defaultPortal = INTEGRATED_PORTALS[0]!;
+
 export function UnifiedGatewayPage() {
   const [selectedRoleIndex, setSelectedRoleIndex] = useState(0);
   const [rotationOffset, setRotationOffset] = useState(0);
@@ -184,7 +186,7 @@ export function UnifiedGatewayPage() {
   const [rememberMe, setRememberMe] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const activePortal = INTEGRATED_PORTALS[selectedRoleIndex];
+  const activePortal: BusinessPortal = INTEGRATED_PORTALS[selectedRoleIndex] ?? defaultPortal;
   const { login: authLogin } = useAuth();
   const navigate = useNavigate();
 

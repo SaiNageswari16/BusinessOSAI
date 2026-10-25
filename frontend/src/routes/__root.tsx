@@ -15,6 +15,9 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AppShell } from "@/components/layout/AppShell";
 import { Toaster } from "@/components/ui/sonner";
+import { AuthProvider } from "@/contexts/auth-context";
+import { TenantProvider } from "@/contexts/tenant-context";
+import { I18nProvider } from "@/contexts/i18n-context";
 
 function NotFoundComponent() {
   return (
@@ -126,14 +129,20 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {isPlatform || isPortal ? (
-        <Outlet />
-      ) : (
-        <AppShell>
-          <Outlet />
-        </AppShell>
-      )}
-      <Toaster position="bottom-right" />
+      <AuthProvider>
+        <TenantProvider>
+          <I18nProvider>
+            {isPlatform || isPortal ? (
+              <Outlet />
+            ) : (
+              <AppShell>
+                <Outlet />
+              </AppShell>
+            )}
+            <Toaster position="bottom-right" />
+          </I18nProvider>
+        </TenantProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

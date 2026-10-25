@@ -15,6 +15,7 @@ import { Route as CrmRouteImport } from './routes/crm'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as GymRouteImport } from './routes/gym'
 import { Route as HotelRouteImport } from './routes/hotel'
+import { Route as HrmsRouteImport } from './routes/hrms'
 import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as KitchenRouteImport } from './routes/kitchen'
 import { Route as LoginRouteImport } from './routes/login'
@@ -34,6 +35,8 @@ import { Route as PlatformIndexRouteImport } from './routes/platform/index'
 import { Route as PlatformModulesRouteImport } from './routes/platform/modules'
 import { Route as PlatformPermissionsRouteImport } from './routes/platform/permissions'
 import { Route as PlatformTenantsRouteImport } from './routes/platform/tenants'
+import { Route as VaultOffersFilenameRouteImport } from './routes/vault.offers.$filename'
+import { Route as VaultPayslipsFilenameRouteImport } from './routes/vault.payslips.$filename'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -63,6 +66,11 @@ const GymRoute = GymRouteImport.update({
 const HotelRoute = HotelRouteImport.update({
   id: '/hotel',
   path: '/hotel',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HrmsRoute = HrmsRouteImport.update({
+  id: '/hrms',
+  path: '/hrms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InventoryRoute = InventoryRouteImport.update({
@@ -160,6 +168,16 @@ const PlatformTenantsRoute = PlatformTenantsRouteImport.update({
   path: '/tenants',
   getParentRoute: () => PlatformRoute,
 } as any)
+const VaultOffersFilenameRoute = VaultOffersFilenameRouteImport.update({
+  id: '/vault/offers/$filename',
+  path: '/vault/offers/$filename',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VaultPayslipsFilenameRoute = VaultPayslipsFilenameRouteImport.update({
+  id: '/vault/payslips/$filename',
+  path: '/vault/payslips/$filename',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -168,6 +186,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/gym': typeof GymRoute
   '/hotel': typeof HotelRoute
+  '/hrms': typeof HrmsRoute
   '/inventory': typeof InventoryRoute
   '/kitchen': typeof KitchenRoute
   '/login': typeof LoginRoute
@@ -187,6 +206,8 @@ export interface FileRoutesByFullPath {
   '/platform/permissions': typeof PlatformPermissionsRoute
   '/platform/tenants': typeof PlatformTenantsRoute
   '/platform/': typeof PlatformIndexRoute
+  '/vault/offers/$filename': typeof VaultOffersFilenameRoute
+  '/vault/payslips/$filename': typeof VaultPayslipsFilenameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -195,6 +216,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/gym': typeof GymRoute
   '/hotel': typeof HotelRoute
+  '/hrms': typeof HrmsRoute
   '/inventory': typeof InventoryRoute
   '/kitchen': typeof KitchenRoute
   '/login': typeof LoginRoute
@@ -213,6 +235,8 @@ export interface FileRoutesByTo {
   '/platform/permissions': typeof PlatformPermissionsRoute
   '/platform/tenants': typeof PlatformTenantsRoute
   '/platform': typeof PlatformIndexRoute
+  '/vault/offers/$filename': typeof VaultOffersFilenameRoute
+  '/vault/payslips/$filename': typeof VaultPayslipsFilenameRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -222,6 +246,7 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/gym': typeof GymRoute
   '/hotel': typeof HotelRoute
+  '/hrms': typeof HrmsRoute
   '/inventory': typeof InventoryRoute
   '/kitchen': typeof KitchenRoute
   '/login': typeof LoginRoute
@@ -241,6 +266,8 @@ export interface FileRoutesById {
   '/platform/permissions': typeof PlatformPermissionsRoute
   '/platform/tenants': typeof PlatformTenantsRoute
   '/platform/': typeof PlatformIndexRoute
+  '/vault/offers/$filename': typeof VaultOffersFilenameRoute
+  '/vault/payslips/$filename': typeof VaultPayslipsFilenameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -251,6 +278,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/gym'
     | '/hotel'
+    | '/hrms'
     | '/inventory'
     | '/kitchen'
     | '/login'
@@ -270,6 +298,8 @@ export interface FileRouteTypes {
     | '/platform/permissions'
     | '/platform/tenants'
     | '/platform/'
+    | '/vault/offers/$filename'
+    | '/vault/payslips/$filename'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -278,6 +308,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/gym'
     | '/hotel'
+    | '/hrms'
     | '/inventory'
     | '/kitchen'
     | '/login'
@@ -296,6 +327,8 @@ export interface FileRouteTypes {
     | '/platform/permissions'
     | '/platform/tenants'
     | '/platform'
+    | '/vault/offers/$filename'
+    | '/vault/payslips/$filename'
   id:
     | '__root__'
     | '/'
@@ -304,6 +337,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/gym'
     | '/hotel'
+    | '/hrms'
     | '/inventory'
     | '/kitchen'
     | '/login'
@@ -323,6 +357,8 @@ export interface FileRouteTypes {
     | '/platform/permissions'
     | '/platform/tenants'
     | '/platform/'
+    | '/vault/offers/$filename'
+    | '/vault/payslips/$filename'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -332,6 +368,7 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   GymRoute: typeof GymRoute
   HotelRoute: typeof HotelRoute
+  HrmsRoute: typeof HrmsRoute
   InventoryRoute: typeof InventoryRoute
   KitchenRoute: typeof KitchenRoute
   LoginRoute: typeof LoginRoute
@@ -347,6 +384,8 @@ export interface RootRouteChildren {
   SalonRoute: typeof SalonRoute
   SettingsRoute: typeof SettingsRoute
   StaffRoute: typeof StaffRoute
+  VaultOffersFilenameRoute: typeof VaultOffersFilenameRoute
+  VaultPayslipsFilenameRoute: typeof VaultPayslipsFilenameRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -391,6 +430,13 @@ declare module '@tanstack/react-router' {
       path: '/hotel'
       fullPath: '/hotel'
       preLoaderRoute: typeof HotelRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/hrms': {
+      id: '/hrms'
+      path: '/hrms'
+      fullPath: '/hrms'
+      preLoaderRoute: typeof HrmsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/inventory': {
@@ -526,6 +572,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlatformTenantsRouteImport
       parentRoute: typeof PlatformRoute
     }
+    '/vault/offers/$filename': {
+      id: '/vault/offers/$filename'
+      path: '/vault/offers/$filename'
+      fullPath: '/vault/offers/$filename'
+      preLoaderRoute: typeof VaultOffersFilenameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/vault/payslips/$filename': {
+      id: '/vault/payslips/$filename'
+      path: '/vault/payslips/$filename'
+      fullPath: '/vault/payslips/$filename'
+      preLoaderRoute: typeof VaultPayslipsFilenameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -554,6 +614,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   GymRoute: GymRoute,
   HotelRoute: HotelRoute,
+  HrmsRoute: HrmsRoute,
   InventoryRoute: InventoryRoute,
   KitchenRoute: KitchenRoute,
   LoginRoute: LoginRoute,
@@ -569,6 +630,8 @@ const rootRouteChildren: RootRouteChildren = {
   SalonRoute: SalonRoute,
   SettingsRoute: SettingsRoute,
   StaffRoute: StaffRoute,
+  VaultOffersFilenameRoute: VaultOffersFilenameRoute,
+  VaultPayslipsFilenameRoute: VaultPayslipsFilenameRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

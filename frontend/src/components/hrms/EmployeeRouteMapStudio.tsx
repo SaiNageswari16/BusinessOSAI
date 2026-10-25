@@ -1,0 +1,1620 @@
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { useI18n } from "@/contexts/i18n-context";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  MapPin, Play, Pause, RotateCcw, FastForward, Navigation, Calendar, User,
+  Clock, Gauge, Battery, Activity, Compass, Layers, Radio, Sparkles,
+  ChevronRight, ArrowRight, ShieldCheck, Search, Filter, Info, Download,
+  Car, Footprints, AlertCircle, RefreshCw, CheckCircle2, Eye, EyeOff, Map as MapIcon,
+  Key, Settings, Globe, Trash2, Check, X, ExternalLink, HelpCircle
+} from "lucide-react";
+let L: any = null;
+import { Card } from "../ui/card";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { toast } from "sonner";
+import {
+  travelRoutesApi,
+  employeesApi,
+  systemSettingsApi,
+  Employee,
+  EmployeeRouteHistoryResponse,
+  LiveFieldStaffItem,
+  LocationTrailPoint,
+  RouteStopItem
+} from "../../lib/api-client";
+
+// Custom Leaflet Icons builder
+const createCustomIcon = (iconHtml: string, size = 36, className = "") => {
+  if (!L) return undefined;
+  return L.divIcon({
+    html: iconHtml,
+    className: `custom-leaflet-marker ${className}`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
+  });
+};
+
+const formatDuration = (mins?: number | null) => {
+  if (!mins || mins <= 0) return "0m";
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+};
+
+const formatTimestamp = (ts?: string | null) => {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? "—" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+};
+
+export function EmployeeRouteMapStudio() {
+  const { t } = useI18n();
+  const [leafletReady, setLeafletReady] = useState(false);
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<any | null>(null);
+  const routePolylineRef = useRef<any | null>(null);
+  const playbackMarkerRef = useRef<any | null>(null);
+  const markersLayerGroupRef = useRef<any | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    import("leaflet").then((mod) => {
+      L = mod.default || mod;
+      import("leaflet/dist/leaflet.css");
+      setLeafletReady(true);
+    });
+  }, []);
+
+  // Mode: "journey" (individual employee playback) | "live_radar" (all on-duty staff live)
+  const [viewMode, setViewMode] = useState<"journey" | "live_radar">("journey");
+
+  // Selection states
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>("");
+  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split("T")[0] ?? "");
+  const [empSearch, setEmpSearch] = useState<string>("");
+
+  // Route History Data
+  const [routeData, setRouteData] = useState<EmployeeRouteHistoryResponse | null>(null);
+  const [loadingRoute, setLoadingRoute] = useState(false);
+
+  // Live Radar Data
+  const [liveStaff, setLiveStaff] = useState<LiveFieldStaffItem[]>([]);
+  const [loadingLive, setLoadingLive] = useState(false);
+
+  // Playback Animation States
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackIndex, setPlaybackIndex] = useState<number>(0);
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1); // 1x, 2x, 5x, 10x
+  const animationTimerRef = useRef<any>(null);
+
+  // Google Maps API Key & Management
+  const [googleApiKey, setGoogleApiKey] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return (
+        localStorage.getItem("bos_google_maps_api_key") ||
+        (import.meta.env["VITE_GOOGLE_MAPS_API_KEY"] as string) ||
+        ""
+      );
+    }
+    return (import.meta.env["VITE_GOOGLE_MAPS_API_KEY"] as string) || "";
+  });
+  const [keySource, setKeySource] = useState<"platform_env" | "org_custom" | "none">("none");
+  const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
+  const [inputApiKey, setInputApiKey] = useState("");
+  const [showKeyText, setShowKeyText] = useState(false);
+  const [savingKey, setSavingKey] = useState(false);
+  const [simulating, setSimulating] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
+
+  // Map tile style
+  type MapStyleType =
+    | "google_roadmap"
+    | "google_satellite"
+    | "google_hybrid"
+    | "google_terrain"
+    | "google_traffic"
+    | "standard"
+    | "dark"
+    | "satellite";
+
+  const [mapStyle, setMapStyle] = useState<MapStyleType>(() => {
+    if (typeof window !== "undefined" && (localStorage.getItem("bos_google_maps_api_key") || import.meta.env["VITE_GOOGLE_MAPS_API_KEY"])) {
+      return "google_roadmap";
+    }
+    return "standard";
+  });
+
+  const getTileConfig = (style: MapStyleType, key?: string) => {
+    const effectiveKey = key !== undefined ? key : googleApiKey;
+    const keyParam = effectiveKey ? `&key=${effectiveKey}` : "";
+
+    if (style === "google_roadmap") {
+      return {
+        url: `https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}${keyParam}`,
+        maxZoom: 21,
+        subdomains: ["0", "1", "2", "3"],
+        attribution: "© Google Maps",
+      };
+    }
+    if (style === "google_satellite") {
+      return {
+        url: `https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}${keyParam}`,
+        maxZoom: 21,
+        subdomains: ["0", "1", "2", "3"],
+        attribution: "© Google Satellite",
+      };
+    }
+    if (style === "google_hybrid") {
+      return {
+        url: `https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}${keyParam}`,
+        maxZoom: 21,
+        subdomains: ["0", "1", "2", "3"],
+        attribution: "© Google Hybrid",
+      };
+    }
+    if (style === "google_terrain") {
+      return {
+        url: `https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}${keyParam}`,
+        maxZoom: 21,
+        subdomains: ["0", "1", "2", "3"],
+        attribution: "© Google Terrain",
+      };
+    }
+    if (style === "google_traffic") {
+      return {
+        url: `https://mt{s}.google.com/vt/lyrs=m,traffic&x={x}&y={y}&z={z}${keyParam}`,
+        maxZoom: 21,
+        subdomains: ["0", "1", "2", "3"],
+        attribution: "© Google Maps Traffic",
+      };
+    }
+    if (style === "dark") {
+      return {
+        url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+        maxZoom: 19,
+        subdomains: "abc",
+        attribution: "© Esri Canvas Dark",
+      };
+    }
+    if (style === "satellite") {
+      return {
+        url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        maxZoom: 19,
+        subdomains: "abc",
+        attribution: "© Esri World Imagery",
+      };
+    }
+    return {
+      url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      maxZoom: 19,
+      subdomains: "abc",
+      attribution: "© OpenStreetMap contributors",
+    };
+  };
+
+  // Load employee directory (Fixed: No invalid hook call!)
+  useEffect(() => {
+    async function loadEmployees() {
+      setLoadingEmployees(true);
+      try {
+        const res: any = await employeesApi.list(1, 200);
+        const list: Employee[] = Array.isArray(res) ? res : res?.items || [];
+        setEmployees(list);
+        if (list.length > 0 && list[0]) {
+          setSelectedEmployeeId((prev) => (prev ? prev : list[0]?.id ?? ""));
+        }
+      } catch (err) {
+        console.error("Failed to load employees list:", err);
+        toast.error("Failed to load employees list");
+      } finally {
+        setLoadingEmployees(false);
+      }
+    }
+    loadEmployees();
+  }, []);
+
+  // Fetch Google Maps Key (Hybrid: Checks Tenant DB setting first, falls back to platform .env)
+  useEffect(() => {
+    async function loadSystemMapKey() {
+      try {
+        const cfg = await travelRoutesApi.getConfig();
+        if (cfg.google_maps_api_key) {
+          setGoogleApiKey(cfg.google_maps_api_key);
+          setKeySource(cfg.is_custom_org_key ? "org_custom" : "platform_env");
+          if (typeof window !== "undefined" && cfg.is_custom_org_key) {
+            localStorage.setItem("bos_google_maps_api_key", cfg.google_maps_api_key);
+          }
+          setMapStyle((prev) => (prev === "standard" ? "google_roadmap" : prev));
+          return;
+        }
+      } catch (err) {
+        console.warn("Could not fetch route config endpoint:", err);
+      }
+
+      // Secondary fallback: check VITE_GOOGLE_MAPS_API_KEY in frontend env
+      const viteKey = (import.meta.env["VITE_GOOGLE_MAPS_API_KEY"] as string) || "";
+      if (viteKey) {
+        setGoogleApiKey(viteKey);
+        setKeySource("platform_env");
+        setMapStyle((prev) => (prev === "standard" ? "google_roadmap" : prev));
+      }
+    }
+    loadSystemMapKey();
+  }, []);
+
+  // Dynamically inject Google Maps JS SDK for geocoding
+  useEffect(() => {
+    if (!googleApiKey || typeof window === "undefined") return;
+    const existing = document.getElementById("google-maps-js-sdk");
+    if (!existing) {
+      const script = document.createElement("script");
+      script.id = "google-maps-js-sdk";
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&libraries=places,geometry`;
+      script.async = true;
+      document.head.appendChild(script);
+    }
+  }, [googleApiKey]);
+
+  // Save Google Maps Key handler
+  const handleSaveGoogleKey = async (newKey: string) => {
+    setSavingKey(true);
+    try {
+      const trimmed = newKey.trim();
+      if (typeof window !== "undefined") {
+        if (trimmed) {
+          localStorage.setItem("bos_google_maps_api_key", trimmed);
+        } else {
+          localStorage.removeItem("bos_google_maps_api_key");
+        }
+      }
+      try {
+        await systemSettingsApi.upsert("google_maps_api_key", {
+          value: trimmed || null,
+          category: "maps",
+          description: "Google Maps API Key for Attendance GPS Tracking and Geocoding",
+        });
+      } catch (saveErr) {
+        console.warn("Backend settings save fallback:", saveErr);
+      }
+
+      if (trimmed) {
+        setGoogleApiKey(trimmed);
+        setKeySource("org_custom");
+        toast.success("Organization custom Google Maps API Key saved!");
+        setMapStyle("google_roadmap");
+      } else {
+        // Check if platform env key exists
+        const viteKey = (import.meta.env["VITE_GOOGLE_MAPS_API_KEY"] as string) || "";
+        if (viteKey) {
+          setGoogleApiKey(viteKey);
+          setKeySource("platform_env");
+          toast.info("Reverted to global platform key from .env");
+          setMapStyle("google_roadmap");
+        } else {
+          setGoogleApiKey("");
+          setKeySource("none");
+          toast.info("Using OpenStreetMap fallback.");
+          setMapStyle("standard");
+        }
+      }
+      setIsGoogleModalOpen(false);
+    } catch (e: any) {
+      toast.error("Failed to save API key: " + e.message);
+    } finally {
+      setSavingKey(false);
+    }
+  };
+
+  // Simulate realistic Demo Roadmap
+  const handleSimulateDemoRoute = async () => {
+    if (!selectedEmployeeId) {
+      toast.error("Please select an employee first");
+      return;
+    }
+    setSimulating(true);
+    try {
+      const res = await travelRoutesApi.simulateRoute({
+        employee_id: selectedEmployeeId,
+        date: selectedDate,
+        date_str: selectedDate,
+      });
+      toast.success(res.message || "Simulated 22-point daily roadmap with stops!");
+      await fetchRouteHistory();
+    } catch (err: any) {
+      toast.error("Simulation failed: " + (err.message || "Unknown error"));
+    } finally {
+      setSimulating(false);
+    }
+  };
+
+  // Clear day's route trail
+  const handleClearRoute = async () => {
+    if (!selectedEmployeeId) return;
+    if (!confirm(`Are you sure you want to clear the GPS route trail for this employee on ${selectedDate}?`)) return;
+    setClearing(true);
+    try {
+      await travelRoutesApi.clearRoute(selectedEmployeeId, selectedDate);
+      toast.success("Route trail cleared for " + selectedDate);
+      await fetchRouteHistory();
+    } catch (err: any) {
+      toast.error("Failed to clear route: " + (err.message || "Unknown error"));
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  // Initialize Leaflet Map
+  useEffect(() => {
+    if (!leafletReady || !L || !mapContainerRef.current || mapInstanceRef.current) return;
+
+    const initialMap = L.map(mapContainerRef.current, {
+      zoomControl: false,
+      attributionControl: false,
+    }).setView([17.3850, 78.4867], 13); // Default center
+
+    const cfg = getTileConfig(mapStyle, googleApiKey);
+    L.tileLayer(cfg.url, {
+      maxZoom: cfg.maxZoom,
+      subdomains: cfg.subdomains,
+      attribution: cfg.attribution,
+    }).addTo(initialMap);
+
+    L.control.zoom({ position: "bottomright" }).addTo(initialMap);
+
+    markersLayerGroupRef.current = L.layerGroup().addTo(initialMap);
+    mapInstanceRef.current = initialMap;
+
+    return () => {
+      initialMap.remove();
+      mapInstanceRef.current = null;
+    };
+  }, [leafletReady]);
+
+  // Update map tile theme when style or Google Key changes
+  useEffect(() => {
+    if (!leafletReady || !L || !mapInstanceRef.current) return;
+    mapInstanceRef.current.eachLayer((layer: any) => {
+      if (layer._url || (L && layer instanceof L.TileLayer)) {
+        mapInstanceRef.current?.removeLayer(layer);
+      }
+    });
+    const cfg = getTileConfig(mapStyle, googleApiKey);
+    L.tileLayer(cfg.url, {
+      maxZoom: cfg.maxZoom,
+      subdomains: cfg.subdomains,
+      attribution: cfg.attribution,
+    }).addTo(mapInstanceRef.current);
+  }, [leafletReady, mapStyle, googleApiKey]);
+
+  // Safe normalized points and stops
+  const currentPoints = useMemo(() => {
+    return routeData?.points || (routeData as any)?.trail_points || [];
+  }, [routeData]);
+
+  const currentStops = useMemo(() => {
+    return routeData?.stops || [];
+  }, [routeData]);
+
+  // Fetch Route Data when employee or date changes
+  const fetchRouteHistory = async () => {
+    if (!selectedEmployeeId) return;
+    setLoadingRoute(true);
+    setIsPlaying(false);
+    setPlaybackIndex(0);
+    try {
+      const rawData: any = await travelRoutesApi.getRouteHistory(selectedEmployeeId, selectedDate);
+      const points: LocationTrailPoint[] = rawData?.points || rawData?.trail_points || [];
+      const stops: RouteStopItem[] = (rawData?.stops || []).map((st: any, idx: number) => ({
+        latitude: st.latitude,
+        longitude: st.longitude,
+        location_name: st.location_name || `Halt #${idx + 1}`,
+        arrival_time: st.arrived_at || st.arrival_time || "",
+        departure_time: st.departed_at || st.departure_time || "",
+        duration_minutes: st.duration_minutes || 0,
+        stop_index: st.stop_index ?? (idx + 1),
+      }));
+
+      const normalized: EmployeeRouteHistoryResponse = {
+        ...rawData,
+        employee_id: rawData?.employee_id || selectedEmployeeId,
+        employee_name: rawData?.employee_name || "Employee",
+        date: rawData?.date || selectedDate,
+        points,
+        stops,
+        clock_in: rawData?.check_in_time || rawData?.clock_in,
+        clock_out: rawData?.check_out_time || rawData?.clock_out,
+        start_point: points.length > 0 ? points[0] : null,
+        end_point: points.length > 0 ? points[points.length - 1] : null,
+        total_distance_km: rawData?.total_distance_km ?? 0,
+        moving_duration_minutes: rawData?.moving_duration_minutes ?? Math.round((rawData?.moving_time_hours || 0) * 60),
+        idle_duration_minutes: rawData?.idle_duration_minutes ?? Math.round((rawData?.idle_time_hours || 0) * 60),
+        avg_speed_kmh: rawData?.avg_speed_kmh ?? 0,
+        max_speed_kmh: rawData?.top_speed_kmh ?? rawData?.max_speed_kmh ?? 0,
+        total_points: points.length,
+      };
+      setRouteData(normalized);
+    } catch (err: any) {
+      console.error("Failed to load route history:", err);
+      toast.error("Failed to fetch route history: " + (err.message || "Unknown error"));
+    } finally {
+      setLoadingRoute(false);
+    }
+  };
+
+  useEffect(() => {
+    if (viewMode === "journey" && selectedEmployeeId) {
+      fetchRouteHistory();
+    }
+  }, [selectedEmployeeId, selectedDate, viewMode]);
+
+  // Fetch Live Field Staff Radar
+  const fetchLiveRadar = async () => {
+    setLoadingLive(true);
+    try {
+      const res: any = await travelRoutesApi.getLiveFieldStaff();
+      const rawList: any[] = Array.isArray(res) ? res : (res?.staff || []);
+      const normalizedList: LiveFieldStaffItem[] = rawList.map((st) => ({
+        employee_id: st.employee_id,
+        employee_name: st.employee_name || "Employee",
+        employee_code: st.employee_code,
+        department: st.department,
+        designation: st.designation,
+        avatar_url: st.avatar_url,
+        phone: st.phone,
+        attendance_id: st.attendance_id,
+        clock_in: st.check_in_time || st.clock_in,
+        last_ping_at: st.last_ping_time || st.last_ping_at,
+        last_latitude: st.last_latitude ?? st.current_latitude,
+        last_longitude: st.last_longitude ?? st.current_longitude,
+        last_location_name: st.last_location_name || st.current_location_name || "Field Location",
+        battery_level: st.battery_level,
+        speed: st.speed ?? st.current_speed_kmh ?? 0,
+        total_distance_km: st.total_distance_km ?? st.shift_distance_km ?? 0,
+        is_online: st.is_online ?? true,
+        minutes_since_ping: st.minutes_since_ping ?? 0,
+        device_health_status: st.device_health_status || "Active",
+        disconnect_reason: st.disconnect_reason,
+      }));
+      setLiveStaff(normalizedList);
+    } catch (err) {
+      console.error("Failed to load live staff radar:", err);
+    } finally {
+      setLoadingLive(false);
+    }
+  };
+
+  useEffect(() => {
+    if (viewMode === "live_radar") {
+      fetchLiveRadar();
+      const interval = setInterval(fetchLiveRadar, 20000); // 20s auto-refresh
+      return () => clearInterval(interval);
+    }
+    return undefined;
+  }, [viewMode]);
+
+  // Render Route on Map when Route Data changes
+  useEffect(() => {
+    if (!leafletReady || !L) return;
+    const map = mapInstanceRef.current;
+    const markersGroup = markersLayerGroupRef.current;
+    if (!map || !markersGroup) return;
+
+    // Clear previous vector layers and markers
+    markersGroup.clearLayers();
+    if (routePolylineRef.current) {
+      map.removeLayer(routePolylineRef.current);
+      routePolylineRef.current = null;
+    }
+    if (playbackMarkerRef.current) {
+      map.removeLayer(playbackMarkerRef.current);
+      playbackMarkerRef.current = null;
+    }
+
+    if (viewMode === "journey" && currentPoints.length > 0) {
+      const latLngs: [number, number][] = currentPoints.map((p: any) => [p.latitude, p.longitude]);
+
+      // 1. Draw polyline
+      const polyline = L.polyline(latLngs, {
+        color: "#6366f1",
+        weight: 5,
+        opacity: 0.85,
+        lineCap: "round",
+        lineJoin: "round",
+      }).addTo(map);
+      routePolylineRef.current = polyline;
+
+      // 2. Add Start Marker (Green Flag / Clock-In)
+      const startPoint = currentPoints[0];
+      const startIcon = createCustomIcon(
+        `<div class="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500 text-white shadow-lg border-2 border-white ring-2 ring-emerald-400/50 animate-bounce">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>
+        </div>`,
+        32
+      );
+      const startMarker = L.marker([startPoint.latitude, startPoint.longitude], { icon: startIcon }).addTo(markersGroup);
+      startMarker.bindPopup(`
+        <div class="p-2 space-y-1 font-sans text-xs">
+          <p class="font-bold text-emerald-600 uppercase tracking-wide">📍 Shift Start Point</p>
+          <p class="font-medium text-slate-800">${startPoint.location_name || "Clock-in Location"}</p>
+          <p class="text-slate-500">⏰ ${formatTimestamp(startPoint.recorded_at)}</p>
+          <p class="text-[10px] text-slate-400">Coords: ${startPoint.latitude.toFixed(5)}, ${startPoint.longitude.toFixed(5)}</p>
+        </div>
+      `);
+
+      // 3. Add End / Latest Marker with Sudden Disconnect / Blackout Detection
+      const endPoint = currentPoints[currentPoints.length - 1];
+      const isShiftEnded = !!routeData?.clock_out;
+      const isDeviceBlackout = !!routeData?.is_device_offline && !isShiftEnded;
+      const isBatteryExhausted = (routeData?.last_battery_level ?? 100) <= 5;
+
+      const endIcon = createCustomIcon(
+        isDeviceBlackout
+          ? `<div class="relative flex items-center justify-center w-9 h-9 rounded-full ${isBatteryExhausted ? "bg-amber-600 ring-amber-400" : "bg-red-600 ring-red-400"} text-white shadow-2xl border-2 border-white ring-4 animate-bounce">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+            </div>`
+          : isShiftEnded
+          ? `<div class="flex items-center justify-center w-8 h-8 rounded-full bg-rose-500 ring-rose-400/50 text-white shadow-lg border-2 border-white ring-2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>`
+          : `<div class="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 ring-blue-400/50 text-white shadow-lg border-2 border-white ring-2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>`,
+        36
+      );
+      const endMarker = L.marker([endPoint.latitude, endPoint.longitude], { icon: endIcon }).addTo(markersGroup);
+      endMarker.bindPopup(`
+        <div class="p-2 space-y-1.5 font-sans text-xs min-w-[220px]">
+          <div class="flex items-center justify-between gap-1 border-b pb-1">
+            <p class="font-bold ${isDeviceBlackout ? "text-red-600" : isShiftEnded ? "text-rose-600" : "text-blue-600"} uppercase tracking-wide">
+              ${isDeviceBlackout ? "⚠️ Signal Lost / Switched Off" : isShiftEnded ? "🏁 Shift End Point" : "📍 Current Location (Active)"}
+            </p>
+            ${routeData?.last_battery_level !== undefined && routeData?.last_battery_level !== null ? `<span class="px-1.5 py-0.5 rounded font-bold text-[10px] ${routeData.last_battery_level <= 15 ? "bg-red-100 text-red-800" : "bg-emerald-100 text-emerald-800"}">🔋 ${routeData.last_battery_level}%</span>` : ""}
+          </div>
+          <p class="font-medium text-slate-800">${endPoint.location_name || "Location"}</p>
+          <p class="text-slate-500">⏰ Disconnect/Last Ping: <strong class="text-slate-800">${formatTimestamp(endPoint.recorded_at)}</strong></p>
+          <p class="text-[11px] text-slate-400">Coords: ${endPoint.latitude.toFixed(5)}, ${endPoint.longitude.toFixed(5)}</p>
+          ${isDeviceBlackout ? `<div class="p-1.5 bg-red-50 border border-red-200 rounded text-[11px] text-red-700 font-medium leading-tight mt-1">${routeData?.disconnect_reason || "Sudden loss of GPS pings."}</div>` : ""}
+        </div>
+      `);
+
+      // 4. Add Detected Stopover / Halt Markers
+      if (currentStops.length > 0) {
+        currentStops.forEach((stop, idx) => {
+          const stopIcon = createCustomIcon(
+            `<div class="flex items-center justify-center w-7 h-7 rounded-full bg-amber-500 text-white shadow-md border-2 border-white font-bold text-xs ring-2 ring-amber-400/50">
+              ${idx + 1}
+            </div>`,
+            28
+          );
+          const stopMarker = L.marker([stop.latitude, stop.longitude], { icon: stopIcon }).addTo(markersGroup);
+          stopMarker.bindPopup(`
+            <div class="p-2 space-y-1 font-sans text-xs">
+              <div class="flex items-center justify-between gap-2">
+                <span class="px-1.5 py-0.5 bg-amber-100 text-amber-800 font-bold rounded text-[10px]">Stop #${stop.stop_index || idx + 1}</span>
+                <span class="font-bold text-amber-600">⏱️ ${formatDuration(stop.duration_minutes)}</span>
+              </div>
+              <p class="font-medium text-slate-800 mt-1">${stop.location_name || "Halt Location"}</p>
+              <p class="text-slate-500 text-[11px]">Arrival: ${formatTimestamp(stop.arrival_time)}</p>
+              <p class="text-slate-500 text-[11px]">Departure: ${formatTimestamp(stop.departure_time)}</p>
+            </div>
+          `);
+        });
+      }
+
+      // 5. Create Live Playback Avatar Marker
+      const playbackAvatar = createCustomIcon(
+        `<div class="relative flex items-center justify-center w-10 h-10 rounded-full bg-indigo-600 text-white shadow-2xl border-2 border-white ring-4 ring-indigo-400/40">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 10.9 2 11.1 2 11.4V16c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
+        </div>`,
+        40
+      );
+      playbackMarkerRef.current = L.marker([startPoint.latitude, startPoint.longitude], { icon: playbackAvatar, zIndexOffset: 1000 }).addTo(map);
+
+      // Fit map bounds to polyline
+      map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
+    }
+
+    // Live Radar Mode: Render all staff pins
+    if (viewMode === "live_radar" && liveStaff.length > 0) {
+      const livePoints: [number, number][] = [];
+
+      liveStaff.forEach((st) => {
+        if (st.last_latitude && st.last_longitude) {
+          livePoints.push([st.last_latitude, st.last_longitude]);
+
+          const isMoving = (st.speed || 0) > 2;
+          const statusBg = isMoving ? "bg-emerald-500" : "bg-blue-600";
+
+          const staffIcon = createCustomIcon(
+            `<div class="relative group cursor-pointer">
+              <div class="flex items-center justify-center w-9 h-9 rounded-full ${statusBg} text-white shadow-xl border-2 border-white ring-2 ${isMoving ? "ring-emerald-400 ring-offset-1 animate-pulse" : "ring-blue-400"}">
+                ${st.avatar_url ? `<img src="${st.avatar_url}" class="w-full h-full rounded-full object-cover" />` : `<span class="text-xs font-black uppercase">${(st.employee_name || "EM").slice(0, 2)}</span>`}
+              </div>
+              ${isMoving ? `<span class="absolute -top-1 -right-1 flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span>` : ""}
+            </div>`,
+            36
+          );
+
+          const marker = L.marker([st.last_latitude, st.last_longitude], { icon: staffIcon }).addTo(markersGroup);
+          marker.bindPopup(`
+            <div class="p-2.5 space-y-1.5 font-sans text-xs min-w-[200px]">
+              <div class="flex items-center justify-between gap-2 border-b pb-1.5">
+                <div>
+                  <p class="font-bold text-slate-900">${st.employee_name}</p>
+                  <p class="text-[11px] text-slate-500">${st.designation || st.department || "Field Staff"}</p>
+                </div>
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${isMoving ? "bg-emerald-100 text-emerald-800" : "bg-blue-100 text-blue-800"}">
+                  ${isMoving ? "🚗 In Transit" : "📍 Stationary"}
+                </span>
+              </div>
+              <p class="text-slate-600 font-medium">📌 ${st.last_location_name || "Current Location"}</p>
+              <div class="grid grid-cols-2 gap-1 text-[11px] text-slate-500 pt-1">
+                <div>🏁 Distance: <strong class="text-slate-800">${st.total_distance_km} km</strong></div>
+                <div>⚡ Speed: <strong class="text-slate-800">${st.speed || 0} km/h</strong></div>
+                <div>🔋 Battery: <strong class="text-slate-800">${st.battery_level ? `${st.battery_level}%` : "—"}</strong></div>
+                <div>🕒 Last Ping: <strong class="text-slate-800">${formatTimestamp(st.last_ping_at)}</strong></div>
+              </div>
+              <button class="w-full mt-2 py-1 px-2 bg-indigo-600 text-white rounded font-bold text-[11px] hover:bg-indigo-700 transition"
+                onclick="window.dispatchEvent(new CustomEvent('select-route-employee', { detail: '${st.employee_id}' }))">
+                View Full Route Map 🗺️
+              </button>
+            </div>
+          `);
+        }
+      });
+
+      if (livePoints.length > 0) {
+        const bounds = L.latLngBounds(livePoints);
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+      }
+    }
+  }, [routeData, currentPoints, currentStops, liveStaff, viewMode]);
+
+  // Handle Event from Popup button to switch to individual route
+  useEffect(() => {
+    const handleSwitch = (e: any) => {
+      if (e.detail) {
+        setSelectedEmployeeId(e.detail);
+        setViewMode("journey");
+      }
+    };
+    window.addEventListener("select-route-employee", handleSwitch);
+    return () => window.removeEventListener("select-route-employee", handleSwitch);
+  }, []);
+
+  // Journey Playback Animation Step
+  useEffect(() => {
+    if (!isPlaying || currentPoints.length === 0) {
+      if (animationTimerRef.current) clearInterval(animationTimerRef.current);
+      return;
+    }
+
+    const intervalMs = Math.max(100, 1000 / playbackSpeed);
+
+    animationTimerRef.current = setInterval(() => {
+      setPlaybackIndex((prev) => {
+        if (prev >= (currentPoints.length - 1)) {
+          setIsPlaying(false);
+          return prev;
+        }
+        const nextIndex = prev + 1;
+        const pt = currentPoints[nextIndex];
+        if (playbackMarkerRef.current && pt) {
+          playbackMarkerRef.current.setLatLng([pt.latitude, pt.longitude]);
+          if (mapInstanceRef.current) {
+            mapInstanceRef.current.panTo([pt.latitude, pt.longitude], { animate: true, duration: 0.3 });
+          }
+        }
+        return nextIndex;
+      });
+    }, intervalMs);
+
+    return () => {
+      if (animationTimerRef.current) clearInterval(animationTimerRef.current);
+    };
+  }, [isPlaying, playbackSpeed, currentPoints]);
+
+  // Handle Scrub / Manual Slider Change
+  const handleSliderChange = (idx: number) => {
+    setPlaybackIndex(idx);
+    if (!currentPoints[idx]) return;
+    const pt = currentPoints[idx];
+    if (playbackMarkerRef.current) {
+      playbackMarkerRef.current.setLatLng([pt.latitude, pt.longitude]);
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.panTo([pt.latitude, pt.longitude], { animate: true, duration: 0.2 });
+      }
+    }
+  };
+
+  // Center on specific stopover
+  const handleFocusStop = (stop: RouteStopItem) => {
+    if (!mapInstanceRef.current) return;
+    mapInstanceRef.current.setView([stop.latitude, stop.longitude], 16, { animate: true });
+  };
+
+  // Filtered employees for dropdown
+  const filteredEmployees = useMemo(() => {
+    return employees.filter((e) =>
+      (e.full_name || "").toLowerCase().includes(empSearch.toLowerCase()) ||
+      (e.employee_code && e.employee_code.toLowerCase().includes(empSearch.toLowerCase())) ||
+      (((e as any).department || (e as any).department_name || "").toLowerCase().includes(empSearch.toLowerCase()))
+    );
+  }, [employees, empSearch]);
+
+  const currentPoint = currentPoints[playbackIndex];
+
+  return (
+    <div className="space-y-4 max-w-7xl mx-auto pb-20">
+      {/* ─── HEADER & STUDIO CONTROLS ─── */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-card/60 backdrop-blur-md p-4 rounded-2xl border shadow-xs">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="p-2 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+              <MapIcon className="size-5" />
+            </span>
+            <div>
+              <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+                Field Travel Route Studio
+                <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-600 rounded-full text-[10px] font-bold border border-emerald-500/20">
+                  GPS Radar v2.0
+                </span>
+              </h2>
+              <p className="text-xs text-muted-foreground">{t("Track full shift travel trajectories, compute geodesic distances, identify customer halt stops, and replay GPS journeys.", "Track full shift travel trajectories, compute geodesic distances, identify customer halt stops, and replay GPS journeys.")}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* View Mode & Tile Switcher */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center p-1 bg-muted/60 rounded-xl border">
+            <button
+              onClick={() => setViewMode("journey")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                viewMode === "journey" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Navigation className="size-3.5" /> Single Journey Replay
+            </button>
+            <button
+              onClick={() => setViewMode("live_radar")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                viewMode === "live_radar" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Radio className="size-3.5 text-emerald-500 animate-pulse" /> Live Fleet Radar
+            </button>
+          </div>
+
+          {/* Map Layer Switcher Dropdown */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-card/90 rounded-xl border shadow-xs text-xs">
+            <Layers className="size-3.5 text-primary shrink-0" />
+            <select
+              value={mapStyle}
+              onChange={(e) => setMapStyle(e.target.value as MapStyleType)}
+              className="bg-transparent text-xs font-semibold text-foreground focus:outline-hidden cursor-pointer"
+            >
+              <optgroup label="Google Maps (Official)">
+                <option value="google_roadmap">🗺️ Google Streets (Roadmap)</option>
+                <option value="google_satellite">🛰️ Google Satellite</option>
+                <option value="google_hybrid">🏙️ Google Hybrid (Satellite + Labels)</option>
+                <option value="google_terrain">⛰️ Google Terrain</option>
+                <option value="google_traffic">🚦 Google Live Traffic</option>
+              </optgroup>
+              <optgroup label="Alternative GIS Layers">
+                <option value="standard">🌐 OpenStreetMap</option>
+                <option value="dark">🌙 Dark Canvas (ArcGIS)</option>
+                <option value="satellite">🛰️ ArcGIS Satellite</option>
+              </optgroup>
+            </select>
+          </div>
+
+          {/* Google Maps API Key Config Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setInputApiKey(googleApiKey);
+              setIsGoogleModalOpen(true);
+            }}
+            className={`h-9 px-3 text-xs gap-1.5 rounded-xl transition-all ${
+              googleApiKey
+                ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/5 hover:bg-emerald-500/10 shadow-xs"
+                : "border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/5 hover:bg-amber-500/10 shadow-xs"
+            }`}
+            title="Configure Google Cloud Maps API Key"
+          >
+            <Key className="size-3.5" />
+            <span>Google Maps Key</span>
+            <span
+              className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                googleApiKey
+                  ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300"
+                  : "bg-amber-500/20 text-amber-700 dark:text-amber-300"
+              }`}
+            >
+              {googleApiKey ? "Active" : "Setup"}
+            </span>
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => (viewMode === "journey" ? fetchRouteHistory() : fetchLiveRadar())}
+            className="h-9 px-3 text-xs gap-1.5 rounded-xl"
+            disabled={loadingRoute || loadingLive}
+          >
+            <RefreshCw className={`size-3.5 ${loadingRoute || loadingLive ? "animate-spin" : ""}`} /> Refresh
+          </Button>
+        </div>
+      </div>
+
+      {/* ─── JOURNEY SELECTOR BAR (In Journey Mode) ─── */}
+      {viewMode === "journey" && (
+        <Card className="p-3 border bg-card/60 backdrop-blur-md rounded-2xl shadow-xs">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+            {/* Employee Picker */}
+            <div className="md:col-span-5 space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                  <User className="size-3 text-primary" /> Select Staff / Field Executive
+                </label>
+                {employees.length > 0 && (
+                  <span className="text-[10px] font-bold text-muted-foreground">
+                    {filteredEmployees.length} of {employees.length} staff
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={selectedEmployeeId}
+                  onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                  disabled={loadingEmployees}
+                  className="w-full h-10 px-3 text-sm rounded-xl border bg-background font-medium focus:ring-2 focus:ring-primary focus:outline-hidden"
+                >
+                  {loadingEmployees ? (
+                    <option value="">Loading staff directory...</option>
+                  ) : employees.length === 0 ? (
+                    <option value="" disabled>No employees registered in system</option>
+                  ) : (
+                    <>
+                      <option value="" disabled>-- Select Staff Member --</option>
+                      {filteredEmployees.map((emp) => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.full_name} ({emp.employee_code || "EMP"}) — {((emp as any).department || (emp as any).department_name || "Field Operations")}
+                        </option>
+                      ))}
+                    </>
+                  )}
+                </select>
+              </div>
+            </div>
+
+            {/* Shift Date Picker */}
+            <div className="md:col-span-2 space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                <Calendar className="size-3 text-primary" /> Shift Date
+              </label>
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="h-10 text-sm rounded-xl bg-background"
+              />
+            </div>
+
+            {/* Quick Action Load */}
+            <div className="md:col-span-2">
+              <Button
+                onClick={fetchRouteHistory}
+                disabled={loadingRoute || !selectedEmployeeId}
+                className="w-full h-10 gradient-brand text-white font-bold text-xs rounded-xl shadow-xs"
+              >
+                {loadingRoute ? <RefreshCw className="size-3.5 animate-spin mr-1.5" /> : <Navigation className="size-3.5 mr-1.5" />}
+                Load Route Trail
+              </Button>
+            </div>
+
+            {/* Simulate Demo Route Button */}
+            <div className="md:col-span-2">
+              <Button
+                variant="outline"
+                onClick={handleSimulateDemoRoute}
+                disabled={simulating || !selectedEmployeeId}
+                className="w-full h-10 border-indigo-500/30 text-indigo-600 dark:text-indigo-400 bg-indigo-500/5 hover:bg-indigo-500/10 font-bold text-xs rounded-xl gap-1.5 shadow-xs"
+                title="Generates a realistic 22-point full shift journey with 4 halt stops for testing"
+              >
+                {simulating ? <RefreshCw className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                Simulate Demo Trail
+              </Button>
+            </div>
+
+            {/* Clear Route Button */}
+            <div className="md:col-span-1">
+              <Button
+                variant="ghost"
+                onClick={handleClearRoute}
+                disabled={clearing || !selectedEmployeeId}
+                className="w-full h-10 text-red-600 hover:text-red-700 hover:bg-red-500/10 rounded-xl"
+                title="Clear route trail for this date"
+              >
+                {clearing ? <RefreshCw className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* ─── DEVICE BLACKOUT & POWER DIAGNOSTICS ALERT (If device offline/switched off) ─── */}
+      {viewMode === "journey" && routeData && (
+        <AnimatePresence>
+          {routeData.is_device_offline ? (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-4 rounded-2xl bg-gradient-to-r from-red-500/10 via-rose-500/5 to-amber-500/10 border-2 border-red-500/30 shadow-md space-y-2"
+            >
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 rounded-xl bg-red-600 text-white animate-pulse shadow-sm">
+                    <AlertCircle className="size-5" />
+                  </span>
+                  <div>
+                    <h4 className="font-extrabold text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
+                      Device Blackout / Sudden Power-Off Detected
+                      <span className="px-2 py-0.5 rounded-full text-[10px] uppercase font-black bg-red-600/10 text-red-600 border border-red-600/30">
+                        {routeData.device_health_status || "Signal Lost"}
+                      </span>
+                    </h4>
+                    <p className="text-xs text-foreground/80 font-medium mt-0.5">
+                      {routeData.disconnect_reason || "Phone went offline abruptly during active shift."}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Power & Blackout Timing Metrics */}
+                <div className="flex items-center gap-2 self-end sm:self-center">
+                  <div className="px-3 py-1.5 rounded-xl bg-card border shadow-xs text-right">
+                    <p className="text-[10px] text-muted-foreground uppercase font-bold">{t("Time Switched Off", "Time Switched Off")}</p>
+                    <p className="text-xs font-black font-mono text-red-600 dark:text-red-400">
+                      {formatTimestamp(routeData.last_ping_time)}
+                    </p>
+                    <p className="text-[9px] text-muted-foreground">{routeData.minutes_since_last_ping ?? 0}m ago</p>
+                  </div>
+
+                  <div className="px-3 py-1.5 rounded-xl bg-card border shadow-xs text-right">
+                    <p className="text-[10px] text-muted-foreground uppercase font-bold">{t("Battery At Disconnect", "Battery At Disconnect")}</p>
+                    <p className={`text-xs font-black font-mono flex items-center justify-end gap-1 ${
+                      (routeData.last_battery_level ?? 100) <= 15 ? "text-red-600" : "text-amber-600"
+                    }`}>
+                      <Battery className="size-3.5" />
+                      {routeData.last_battery_level !== undefined && routeData.last_battery_level !== null
+                        ? `${routeData.last_battery_level}%`
+                        : "Unknown"}
+                    </p>
+                    <p className="text-[9px] text-muted-foreground">
+                      {(routeData.last_battery_level ?? 100) <= 5 ? "Exhausted" : "Sudden Shutdown"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Exact Coordinate Location of Disconnect */}
+              <div className="pt-2 border-t border-red-500/20 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <MapPin className="size-3.5 text-red-500 shrink-0" />
+                  <span>Last Logged Location:</span>
+                  <strong className="text-foreground font-semibold">{routeData.last_known_location || "Unknown"}</strong>
+                </div>
+                {routeData.last_latitude && routeData.last_longitude && (
+                  <span className="font-mono text-[11px] text-muted-foreground bg-card/60 px-2 py-0.5 rounded-md border">
+                    GPS: {routeData.last_latitude.toFixed(5)}° N, {routeData.last_longitude.toFixed(5)}° E
+                  </span>
+                )}
+              </div>
+            </motion.div>
+          ) : (
+            routeData.shift_status !== "No Shift Data" && !routeData.clock_out && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="size-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">Device Active & Streaming Online</span>
+                  <span className="text-muted-foreground">• Last ping at {formatTimestamp(routeData.last_ping_time)}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1 text-emerald-600 font-bold font-mono">
+                    <Battery className="size-3.5" /> {routeData.last_battery_level ?? 100}% Battery
+                  </span>
+                </div>
+              </div>
+            )
+          )}
+        </AnimatePresence>
+      )}
+
+      {/* ─── METRIC CARDS OVERVIEW (Journey Mode) ─── */}
+      {viewMode === "journey" && routeData && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <Card className="p-3 border rounded-xl bg-card">
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("Total Travel Distance", "Total Travel Distance")}</p>
+            <p className="text-xl font-black font-mono text-primary mt-1">{routeData.total_distance_km ?? 0} km</p>
+            <p className="text-[10px] text-muted-foreground">{t("Geodesic Haversine", "Geodesic Haversine")}</p>
+          </Card>
+
+          <Card className="p-3 border rounded-xl bg-card">
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("Moving Duration", "Moving Duration")}</p>
+            <p className="text-xl font-black font-mono text-emerald-600 dark:text-emerald-400 mt-1">
+              {formatDuration(routeData.moving_duration_minutes)}
+            </p>
+            <p className="text-[10px] text-muted-foreground">{t("Active commute", "Active commute")}</p>
+          </Card>
+
+          <Card className="p-3 border rounded-xl bg-card">
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("Idle / Halts Duration", "Idle / Halts Duration")}</p>
+            <p className="text-xl font-black font-mono text-amber-600 dark:text-amber-400 mt-1">
+              {formatDuration(routeData.idle_duration_minutes)}
+            </p>
+            <p className="text-[10px] text-muted-foreground">{currentStops.length} customer stops</p>
+          </Card>
+
+          <Card className="p-3 border rounded-xl bg-card">
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("Avg / Top Speed", "Avg / Top Speed")}</p>
+            <p className="text-xl font-black font-mono text-indigo-600 dark:text-indigo-400 mt-1">
+              {routeData.avg_speed_kmh ?? 0} <span className="text-xs text-muted-foreground font-normal">/ {routeData.max_speed_kmh ?? 0} km/h</span>
+            </p>
+            <p className="text-[10px] text-muted-foreground">{t("Ground velocity", "Ground velocity")}</p>
+          </Card>
+
+          <Card className="p-3 border rounded-xl bg-card">
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("Clock-In & Out", "Clock-In & Out")}</p>
+            <p className="text-sm font-bold text-foreground mt-1">
+              {formatTimestamp(routeData.clock_in)}
+            </p>
+            <p className="text-[10px] text-muted-foreground">
+              {routeData.clock_out ? `Out: ${formatTimestamp(routeData.clock_out)}` : "🟢 Active On Shift"}
+            </p>
+          </Card>
+
+          <Card className="p-3 border rounded-xl bg-card">
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("Last Known Battery", "Last Known Battery")}</p>
+            <p className={`text-xl font-black font-mono mt-1 flex items-center gap-1.5 ${
+              (routeData.last_battery_level ?? 100) <= 15 ? "text-red-500" : "text-emerald-500"
+            }`}>
+              <Battery className="size-4" />
+              {routeData.last_battery_level !== undefined && routeData.last_battery_level !== null
+                ? `${routeData.last_battery_level}%`
+                : "100%"}
+            </p>
+            <p className="text-[10px] text-muted-foreground">
+              {routeData.is_device_offline ? "At Disconnect" : "Live Device Level"}
+            </p>
+          </Card>
+        </div>
+      )}
+
+      {/* ─── MAIN MAP & PLAYBACK WORKSPACE ─── */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        {/* Left / Center Map Studio Canvas (3 cols) */}
+        <div className="lg:col-span-3 space-y-3">
+          <Card className="relative p-0 overflow-hidden rounded-2xl border shadow-sm">
+            {/* Leaflet Map Canvas */}
+            <div ref={mapContainerRef} className="w-full h-[540px] z-0" />
+
+            {/* Empty State Overlay */}
+            {viewMode === "journey" && currentPoints.length === 0 && !loadingRoute && (
+              <div className="absolute inset-0 bg-background/85 backdrop-blur-md z-10 flex flex-col items-center justify-center p-6 text-center space-y-3">
+                <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                  <MapPin className="size-8" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-foreground">{t("No GPS Trail Logged For This Date", "No GPS Trail Logged For This Date")}</h3>
+                  <p className="text-xs text-muted-foreground max-w-md mt-1">
+                    The selected employee has no recorded background GPS coordinates on {selectedDate}. Geolocation logs stream automatically while employees are clocked in on their mobile / web shift.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                  <Button
+                    size="sm"
+                    onClick={handleSimulateDemoRoute}
+                    disabled={simulating || !selectedEmployeeId}
+                    className="gradient-brand text-white font-bold text-xs rounded-xl shadow-md gap-1.5 h-9 px-4"
+                  >
+                    {simulating ? <RefreshCw className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                    Simulate Demo Shift Roadmap
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setInputApiKey(googleApiKey);
+                      setIsGoogleModalOpen(true);
+                    }}
+                    className="text-xs rounded-xl gap-1.5 h-9"
+                  >
+                    <Key className="size-3.5 text-primary" />
+                    Google Maps API Key Setup
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Loading Overlay */}
+            {(loadingRoute || loadingLive) && (
+              <div className="absolute top-4 left-4 z-20 px-3 py-1.5 rounded-xl bg-background/90 backdrop-blur-md border shadow-md flex items-center gap-2 text-xs font-semibold">
+                <RefreshCw className="size-3.5 animate-spin text-primary" />
+                <span>Synchronizing satellite GIS coordinates...</span>
+              </div>
+            )}
+
+            {/* Live Legend Floating Tag */}
+            <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5 p-1.5 rounded-xl bg-background/90 backdrop-blur-md border shadow-xs text-[11px] font-semibold">
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600">
+                <span className="size-2 rounded-full bg-emerald-500"></span> Start / Origin
+              </span>
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-600">
+                <span className="size-2 rounded-full bg-amber-500"></span> Customer Halts
+              </span>
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-600">
+                <span className="size-2 rounded-full bg-indigo-500"></span> Active Trail
+              </span>
+            </div>
+
+            {/* Active Playback Point Floating Badge */}
+            {viewMode === "journey" && currentPoint && (
+              <div className="absolute bottom-4 left-4 z-20 p-3 rounded-xl bg-background/95 backdrop-blur-md border shadow-lg max-w-xs space-y-1 text-xs">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-bold text-primary flex items-center gap-1">
+                    <Navigation className="size-3.5" /> Replay Point #{playbackIndex + 1}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    {formatTimestamp(currentPoint.recorded_at)}
+                  </span>
+                </div>
+                <p className="font-medium text-foreground truncate">{currentPoint.location_name || "En Route"}</p>
+                <div className="flex items-center gap-3 text-[11px] text-muted-foreground pt-0.5">
+                  <span>⚡ {currentPoint.speed || 0} km/h</span>
+                  <span>🎯 ±{Math.round(currentPoint.accuracy || 10)}m</span>
+                  {currentPoint.battery_level && <span>🔋 {currentPoint.battery_level}%</span>}
+                </div>
+              </div>
+            )}
+          </Card>
+
+          {/* ─── JOURNEY PLAYBACK CONTROLLER SCRUB BAR ─── */}
+          {viewMode === "journey" && currentPoints.length > 0 && (
+            <Card className="p-4 border bg-card/60 backdrop-blur-md rounded-2xl shadow-xs space-y-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                {/* Play / Pause / Reset buttons */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setIsPlaying(false);
+                      handleSliderChange(0);
+                    }}
+                    className="h-9 w-9 p-0 rounded-xl"
+                    title="Reset to Start"
+                  >
+                    <RotateCcw className="size-4" />
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    onClick={() => setIsPlaying(!isPlaying)}
+                    className="h-9 px-4 rounded-xl gradient-brand text-white font-bold text-xs gap-1.5 shadow-xs"
+                  >
+                    {isPlaying ? <Pause className="size-4" /> : <Play className="size-4" />}
+                    {isPlaying ? "Pause" : "Play Journey"}
+                  </Button>
+
+                  {/* Speed Multiplier */}
+                  <div className="flex items-center p-0.5 bg-muted/60 rounded-xl border text-xs">
+                    {[1, 2, 5, 10].map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => setPlaybackSpeed(s)}
+                        className={`px-2 py-1 rounded-lg font-bold text-[11px] transition-all ${
+                          playbackSpeed === s ? "bg-card shadow-xs text-primary" : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {s}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Progress Time Indicator */}
+                <div className="text-right">
+                  <p className="text-xs font-bold font-mono text-foreground">
+                    {formatTimestamp(currentPoint?.recorded_at)} / {formatTimestamp(currentPoints[currentPoints.length - 1]?.recorded_at)}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Waypoint {playbackIndex + 1} of {currentPoints.length}
+                  </p>
+                </div>
+              </div>
+
+              {/* Range Scrub Slider */}
+              <div className="space-y-1">
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(0, currentPoints.length - 1)}
+                  value={playbackIndex}
+                  onChange={(e) => handleSliderChange(parseInt(e.target.value))}
+                  className="w-full accent-primary h-2 bg-muted rounded-lg cursor-pointer"
+                />
+              </div>
+            </Card>
+          )}
+        </div>
+
+        {/* Right Sidebar: Route Stops & Leg Breakdown (1 col) */}
+        <div className="space-y-3">
+          {viewMode === "journey" ? (
+            <Card className="p-4 border rounded-2xl bg-card h-full flex flex-col justify-between max-h-[630px]">
+              <div>
+                <div className="flex items-center justify-between border-b pb-3 mb-3">
+                  <h3 className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                    <Compass className="size-4 text-primary" /> Stops & Halt Timeline
+                  </h3>
+                  <span className="px-2 py-0.5 bg-muted text-muted-foreground rounded-full text-[10px] font-bold">
+                    {currentStops.length} Halts
+                  </span>
+                </div>
+
+                {/* Stops Scroll List */}
+                <div className="space-y-2 overflow-y-auto max-h-[440px] pr-1">
+                  {/* Origin Step */}
+                  {routeData?.start_point && (
+                    <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                          <CheckCircle2 className="size-3" /> Origin (Clock-In)
+                        </span>
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {formatTimestamp(routeData.start_point.recorded_at)}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-foreground font-medium truncate">
+                        {routeData.start_point.location_name || "Shift Start Location"}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Customer Stops */}
+                  {currentStops.length === 0 ? (
+                    <p className="text-xs text-muted-foreground italic py-4 text-center">
+                      No prolonged stops (&gt;6 min) detected on this route. Continuous transit.
+                    </p>
+                  ) : (
+                    currentStops.map((st, idx) => (
+                      <div
+                        key={st.stop_index || idx}
+                        onClick={() => handleFocusStop(st)}
+                        className="p-2.5 rounded-xl bg-muted/40 hover:bg-muted/80 border transition cursor-pointer text-xs space-y-1 group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                            Stop #{st.stop_index || idx + 1}
+                          </span>
+                          <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-600 font-bold rounded text-[10px]">
+                            ⏱️ {formatDuration(st.duration_minutes)}
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-medium text-foreground group-hover:text-primary transition truncate">
+                          {st.location_name || "Client Visit / Halt Location"}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {formatTimestamp(st.arrival_time)} → {formatTimestamp(st.departure_time)}
+                        </p>
+                      </div>
+                    ))
+                  )}
+
+                  {/* Destination Step */}
+                  {routeData?.end_point && routeData.clock_out && (
+                    <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-rose-600 dark:text-rose-400">
+                          🏁 Destination (Clock-Out)
+                        </span>
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {formatTimestamp(routeData.end_point.recorded_at)}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-foreground font-medium truncate">
+                        {routeData.end_point.location_name || "Shift End Location"}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Employee Summary Card */}
+              {routeData && (
+                <div className="mt-3 pt-3 border-t flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-sm shrink-0">
+                    {(routeData.employee_name || "EM").slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-xs text-foreground truncate">{routeData.employee_name}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{routeData.designation || "Field Executive"}</p>
+                  </div>
+                </div>
+              )}
+            </Card>
+          ) : (
+            /* Live Fleet List (Live Radar Mode) */
+            <Card className="p-4 border rounded-2xl bg-card h-full flex flex-col justify-between max-h-[630px]">
+              <div>
+                <div className="flex items-center justify-between border-b pb-3 mb-3">
+                  <h3 className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                    <Radio className="size-4 text-emerald-500" /> Active Field Staff
+                  </h3>
+                  <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-600 rounded-full text-[10px] font-bold">
+                    {liveStaff.length} On Duty
+                  </span>
+                </div>
+
+                <div className="space-y-2 overflow-y-auto max-h-[480px] pr-1">
+                  {liveStaff.length === 0 ? (
+                    <p className="text-xs text-muted-foreground italic py-8 text-center">{t("No active field staff currently clocked-in.", "No active field staff currently clocked-in.")}</p>
+                  ) : (
+                    liveStaff.map((st) => {
+                      const isMoving = (st.speed || 0) > 2;
+                      return (
+                        <div
+                          key={st.employee_id}
+                          onClick={() => {
+                            setSelectedEmployeeId(st.employee_id);
+                            setViewMode("journey");
+                          }}
+                          className="p-3 rounded-xl bg-muted/40 hover:bg-muted/80 border transition cursor-pointer text-xs space-y-1.5 group"
+                        >
+                          <div className="flex items-center justify-between">
+                            <p className="font-bold text-foreground group-hover:text-primary transition truncate">
+                              {st.employee_name}
+                            </p>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              !st.is_online ? "bg-red-500/10 text-red-600" :
+                              isMoving ? "bg-emerald-500/10 text-emerald-600" : "bg-blue-500/10 text-blue-600"
+                            }`}>
+                              {!st.is_online ? "⚠️ Offline / Switched Off" : isMoving ? "🚗 Moving" : "📍 Idle"}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground truncate">
+                            {st.last_location_name || "Field Location"}
+                          </p>
+                          <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-0.5">
+                            <span>🏁 {st.total_distance_km ?? 0} km</span>
+                            <span className="flex items-center gap-0.5">🔋 {st.battery_level !== undefined && st.battery_level !== null ? `${st.battery_level}%` : "—"}</span>
+                            <span>🕒 {st.is_online ? formatTimestamp(st.last_ping_time || st.last_ping_at) : `${st.minutes_since_ping ?? 0}m ago`}</span>
+                          </div>
+                          {!st.is_online && st.disconnect_reason && (
+                            <p className="text-[10px] text-red-600/90 font-medium bg-red-500/5 p-1 rounded border border-red-500/10 truncate">
+                              {st.disconnect_reason}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
+        </div>
+      </div>
+
+      {/* ─── GOOGLE MAPS API KEY CONFIGURATION MODAL ─── */}
+      <AnimatePresence>
+        {isGoogleModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-2xl bg-card border rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-5 border-b bg-muted/30">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-primary/10 text-primary">
+                    <Key className="size-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-foreground flex items-center gap-2">
+                      Google Cloud Maps Configuration
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                        Official Google Maps API
+                      </span>
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      Power live attendance tracking with authentic Google Roadmaps, Satellite, Terrain, and Reverse Geocoding.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsGoogleModalOpen(false)}
+                  className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-5 space-y-4 overflow-y-auto flex-1">
+                {/* Active Key Status Card */}
+                <div
+                  className={`p-3.5 rounded-2xl border text-xs flex items-center justify-between gap-3 ${
+                    googleApiKey
+                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-800 dark:text-emerald-300"
+                      : "bg-amber-500/10 border-amber-500/20 text-amber-800 dark:text-amber-300"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <CheckCircle2 className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold">
+                          {googleApiKey
+                            ? keySource === "org_custom"
+                              ? "Organization Custom Key Active (Database)"
+                              : "Global Platform Key Active (.env)"
+                            : "No Google Maps Key Configured"}
+                        </span>
+                        {keySource === "platform_env" && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-blue-500/20 text-blue-700 dark:text-blue-300">
+                            Shared across all tenants
+                          </span>
+                        )}
+                        {keySource === "org_custom" && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-purple-500/20 text-purple-700 dark:text-purple-300">
+                            Tenant Override
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] opacity-80 mt-0.5">
+                        {googleApiKey
+                          ? `Key starting with ${googleApiKey.slice(0, 8)}•••••••• is currently serving Google Maps layers.`
+                          : "Place VITE_GOOGLE_MAPS_API_KEY in .env to enable for all tenants, or enter a tenant-specific key below."}
+                      </p>
+                    </div>
+                  </div>
+                  {googleApiKey && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleSaveGoogleKey("")}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-500/10 h-7 text-xs px-2 shrink-0"
+                    >
+                      {keySource === "org_custom" ? "Remove Override" : "Clear Key"}
+                    </Button>
+                  )}
+                </div>
+
+                {/* API Key Input */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-foreground flex items-center justify-between">
+                    <span>Google Cloud Maps API Key</span>
+                    <a
+                      href="https://console.cloud.google.com/google/maps-apis/credentials"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline text-[11px] font-medium flex items-center gap-1"
+                    >
+                      Open Google Cloud Console <ExternalLink className="size-3" />
+                    </a>
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type={showKeyText ? "text" : "password"}
+                      value={inputApiKey}
+                      onChange={(e) => setInputApiKey(e.target.value)}
+                      placeholder="AIzaSy..."
+                      className="h-11 pr-20 text-sm font-mono rounded-xl bg-background"
+                    />
+                    <div className="absolute right-2 top-2 flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowKeyText(!showKeyText)}
+                        className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg"
+                        title={showKeyText ? "Hide Key" : "Show Key"}
+                      >
+                        {showKeyText ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Your key is securely stored in organization settings and loaded automatically whenever managers view route trails.
+                  </p>
+                </div>
+
+                {/* Step-by-Step Google Cloud Console Guide */}
+                <div className="p-4 rounded-2xl bg-muted/40 border space-y-3 text-xs">
+                  <h4 className="font-bold text-foreground flex items-center gap-1.5">
+                    <HelpCircle className="size-3.5 text-primary" /> What To Do In Google Cloud Console (Quick Guide):
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                    <div className="p-2.5 rounded-xl bg-card border space-y-1">
+                      <span className="font-bold text-primary flex items-center gap-1 text-[11px]">
+                        1. Select / Create Project
+                      </span>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Sign in to <a href="https://console.cloud.google.com" target="_blank" rel="noreferrer" className="text-primary underline">console.cloud.google.com</a>, create a project (e.g. <em>BusinessOS-Maps</em>) or choose your active project.
+                      </p>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-card border space-y-1">
+                      <span className="font-bold text-primary flex items-center gap-1 text-[11px]">
+                        2. Enable Billing Account
+                      </span>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Google Cloud requires a billing account attached, but Google provides <strong>$200 free credit</strong> every single month (~28,500 map loads free).
+                      </p>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-card border space-y-1 md:col-span-2">
+                      <span className="font-bold text-primary flex items-center gap-1 text-[11px]">
+                        3. Enable The Required APIs (in APIs & Services &gt; Library)
+                      </span>
+                      <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1 text-[11px] text-muted-foreground">
+                        <li className="flex items-center gap-1 font-medium text-foreground">
+                          <Check className="size-3 text-emerald-500" /> Maps JavaScript API
+                        </li>
+                        <li className="flex items-center gap-1 font-medium text-foreground">
+                          <Check className="size-3 text-emerald-500" /> Map Tiles API
+                        </li>
+                        <li className="flex items-center gap-1 font-medium text-foreground">
+                          <Check className="size-3 text-emerald-500" /> Geocoding API (Addresses)
+                        </li>
+                        <li className="flex items-center gap-1 font-medium text-foreground">
+                          <Check className="size-3 text-emerald-500" /> Geolocation API
+                        </li>
+                      </ul>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-card border space-y-1 md:col-span-2">
+                      <span className="font-bold text-primary flex items-center gap-1 text-[11px]">
+                        4. Create &amp; Restrict API Key
+                      </span>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Go to <strong>APIs &amp; Services &gt; Credentials &gt; Create Credentials &gt; API Key</strong>. Copy the key starting with <code className="bg-muted px-1 rounded text-primary">AIzaSy...</code>. Under <em>API Restrictions</em>, restrict to the 4 APIs above (or unrestricted for testing).
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t bg-muted/20 flex items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsGoogleModalOpen(false)}
+                  className="rounded-xl h-10 px-4 text-xs font-semibold"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => handleSaveGoogleKey(inputApiKey)}
+                  disabled={savingKey}
+                  className="gradient-brand text-white font-bold text-xs rounded-xl h-10 px-5 gap-1.5 shadow-md"
+                >
+                  {savingKey ? <RefreshCw className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+                  Save &amp; Activate Google Maps
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

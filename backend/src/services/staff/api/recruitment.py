@@ -1,0 +1,3229 @@
+"""
+HRMS — Recruitment & Onboarding Endpoints (Job Openings, Applicants, Interview overlap checker, Offer Letters, Onboarding)
+"""
+import uuid
+import io
+import os
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
+from datetime import datetime, date, timedelta
+from decimal import Decimal
+from typing import Annotated, Any
+from pathlib import Path
+
+import pypdf
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image as RLImage
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    HAS_REPORTLAB = True
+except ImportError:
+    HAS_REPORTLAB = False
+
+from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile, status
+from fastapi.responses import Response, HTMLResponse
+from pydantic import BaseModel
+from sqlalchemy import func, select, and_
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.services.staff.deps import CurrentUserContext, require_permission
+from src.config import get_settings
+from src.services.staff.deps import write_audit_log
+from src.services.staff.deps import get_db
+from src.services.staff.deps import add_system_notification
+from src.services.staff.models import (
+    JobOpening,
+    Applicant,
+    Interview,
+    OfferLetter,
+    OnboardingRecord,
+    Employee,
+    EmployeeDocument,
+)
+from src.services.staff.schemas import (
+    JobOpeningCreate,
+    JobOpeningUpdate,
+    JobOpeningResponse,
+    ApplicantCreate,
+    ApplicantUpdate,
+    ApplicantResponse,
+    InterviewCreate,
+    InterviewUpdate,
+    InterviewResponse,
+    OfferLetterCreate,
+    OfferLetterUpdate,
+    OfferLetterResponse,
+    OnboardingCreate,
+    OnboardingUpdate,
+    OnboardingResponse,
+)
+from src.services.staff.deps import PaginatedResponse, paginate
+
+router = APIRouter(prefix="/hrms/recruitment", tags=["HRMS - Recruitment"])
+class _SettingsProxy:
+    def __getattr__(self, name):
+        return getattr(get_settings(), name)
+
+settings = _SettingsProxy()
+
+# ─── PDF Offer Letter Generation Engine ───────────────────────────────────────
+
+def _escape_pdf_text(t: str) -> str:
+    return t.replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
+
+def _parse_offer_template_data(custom_template: str | None, offer: OfferLetter, company_name: str, company: Any | None = None):
+    import json
+    data = {}
+    if custom_template:
+        trimmed = custom_template.strip()
+        if trimmed.startswith("{") and trimmed.endswith("}"):
+            try:
+                data = json.loads(trimmed)
+            except Exception:
+                pass
+
+    header_org = data.get("org_name") or (company.name if company and company.name else company_name)
+    header_address = data.get("org_address") or (company.address if company and company.address else "")
+    header_email = data.get("org_email") or (company.email if company and company.email else "")
+    header_phone = data.get("org_phone") or (company.phone if company and company.phone else "")
+    header_gstin = data.get("org_gstin") or (company.gst_number if company and company.gst_number else "")
+    header_cin = data.get("org_cin") or (company.registration_number if company and company.registration_number else "")
+    header_badge = data.get("template_name") or data.get("header_badge_text") or "STANDARD CORPORATE (FULL-TIME)"
+    org_logo = data.get("org_logo") or (company.logo_url if company and company.logo_url else None)
+    org_initials = (company.logo_initials if company and company.logo_initials else (header_org[:2].upper() if header_org else "IO"))
+
+    subject = data.get("subject") or f"Formal Offer of Employment — {offer.role}"
+    candidate_name = offer.candidate or "Candidate"
+    role_name = offer.role or "Team Member"
+    
+    opening_text = data.get("opening_text")
+    if not opening_text:
+        opening_text = (
+            f"On behalf of <b>{header_org}</b>, we are pleased to extend this formal offer of employment for the position of <b>{role_name}</b>. "
+            f"We were exceptionally impressed with your achievements, domain knowledge, and leadership alignment with our organization."
+        )
+    
+    closing_text = data.get("closing_text")
+    if not closing_text:
+        closing_text = (
+            f"This offer remains valid until <b>{offer.expiry_date or 'the stipulated expiry date'}</b>. "
+            f"Please sign and return a duplicate copy of this letter as confirmation of your acceptance."
+        )
+        
+    clauses = data.get("clauses")
+    if not clauses:
+        if custom_template and "Terms & Clauses:" in custom_template:
+            clauses = custom_template.split("Terms & Clauses:", 1)[1].strip()
+        elif custom_template and not trimmed.startswith("{"):
+            clauses = custom_template.strip()
+        else:
+            clauses = (
+                "1. PROBATION & CONFIRMATION: You will be on probation for a period of 3 months from the date of joining. Upon successful evaluation, your employment will be confirmed in writing.\n"
+                "2. NOTICE PERIOD: Either party may terminate the employment by giving 30 days written notice or basic gross salary in lieu thereof.\n"
+                "3. CONFIDENTIALITY & IP: All proprietary information, customer records, source code, and intellectual property developed during your employment belong exclusively to the organization.\n"
+                "4. STATUTORY COMPLIANCE: Deductions for Provident Fund (PF), Professional Tax, and Income Tax (TDS) will be made as per applicable statutory laws."
+            )
+            
+    footer_text = data.get("footer_text") or f"{header_org} • Confidential"
+    signer = data.get("signing_authority") or offer.signer_name or "Authorized HR Signatory"
+    signer_title = data.get("signing_title") or "HR Signatory"
+    
+    return {
+        "subject": subject,
+        "opening_text": opening_text,
+        "closing_text": closing_text,
+        "clauses": clauses,
+        "header_org": header_org,
+        "header_address": header_address,
+        "header_email": header_email,
+        "header_phone": header_phone,
+        "header_gstin": header_gstin,
+        "header_cin": header_cin,
+        "header_badge": header_badge,
+        "footer_text": footer_text,
+        "signer": signer,
+        "signer_title": signer_title,
+        "org_logo": org_logo,
+        "org_initials": org_initials,
+        "watermark_text": data.get("watermark_text") or "CONFIDENTIAL",
+        "data": data
+    }
+
+def _parse_offer_custom_split(custom_template: str | None, ctc: float):
+    """Extract custom salary split % if specified in custom_template, defaulting to 50/20/20/10."""
+    import re
+    import json
+    basic_pct = 50.0
+    hra_pct = 20.0
+    special_pct = 20.0
+    pf_pct = 10.0
+    if custom_template:
+        trimmed = custom_template.strip()
+        if trimmed.startswith("{") and trimmed.endswith("}"):
+            try:
+                j = json.loads(trimmed)
+                if "basic_pct" in j: basic_pct = float(j["basic_pct"])
+                if "hra_pct" in j: hra_pct = float(j["hra_pct"])
+                if "special_pct" in j: special_pct = float(j["special_pct"])
+                if "pf_pct" in j: pf_pct = float(j["pf_pct"])
+            except Exception:
+                pass
+        else:
+            m_b = re.search(r"Basic:\s*(\d+(?:\.\d+)?)\s*%", custom_template, re.IGNORECASE)
+            if m_b: basic_pct = float(m_b.group(1))
+            m_h = re.search(r"HRA:\s*(\d+(?:\.\d+)?)\s*%", custom_template, re.IGNORECASE)
+            if m_h: hra_pct = float(m_h.group(1))
+            m_s = re.search(r"Special:\s*(\d+(?:\.\d+)?)\s*%", custom_template, re.IGNORECASE)
+            if m_s: special_pct = float(m_s.group(1))
+            m_p = re.search(r"PF:\s*(\d+(?:\.\d+)?)\s*%", custom_template, re.IGNORECASE)
+            if m_p: pf_pct = float(m_p.group(1))
+
+    b_a = ctc * (basic_pct / 100.0)
+    b_m = b_a / 12.0
+    h_a = ctc * (hra_pct / 100.0)
+    h_m = h_a / 12.0
+    s_a = ctc * (special_pct / 100.0)
+    s_m = s_a / 12.0
+    p_a = ctc * (pf_pct / 100.0)
+    p_m = p_a / 12.0
+    return {
+        "basic_pct": int(basic_pct) if basic_pct.is_integer() else basic_pct,
+        "b_m": b_m, "b_a": b_a,
+        "hra_pct": int(hra_pct) if hra_pct.is_integer() else hra_pct,
+        "h_m": h_m, "h_a": h_a,
+        "special_pct": int(special_pct) if special_pct.is_integer() else special_pct,
+        "s_m": s_m, "s_a": s_a,
+        "pf_pct": int(pf_pct) if pf_pct.is_integer() else pf_pct,
+        "p_m": p_m, "p_a": p_a,
+        "tot_m": ctc / 12.0, "tot_a": ctc
+    }
+
+def _generate_pure_python_offer_pdf(offer: OfferLetter, company_name: str, tenant: Any | None = None, company: Any | None = None) -> bytes:
+    """Zero-dependency pure Python PDF 1.4 generator for official Offer Letters."""
+    tpl_info = _parse_offer_template_data(offer.custom_template, offer, company_name, company)
+    org_display_name = tpl_info["header_org"]
+    ctc = float(offer.ctc or 0)
+    split = _parse_offer_custom_split(offer.custom_template, ctc)
+    b_m, b_a = split["b_m"], split["b_a"]
+    h_m, h_a = split["h_m"], split["h_a"]
+    s_m, s_a = split["s_m"], split["s_a"]
+    p_m, p_a = split["p_m"], split["p_a"]
+    tot_m, tot_a = split["tot_m"], split["tot_a"]
+
+    offer_date_str = str(offer.offer_date or date.today())
+    expiry_date_str = str(offer.expiry_date or "7 Days from Issuance")
+    joining_date_str = str(offer.joining_date or "Mutually Agreed")
+    signer_name = tpl_info["signer"]
+    signer_title = tpl_info["signer_title"]
+    candidate_name = offer.candidate or "Candidate"
+    role_name = offer.role or "Team Member"
+    ref_id = f"BOS-OFFER-{str(offer.id)[:4].upper()}" if offer.id else "BOS-OFFER-9173"
+
+    lines = [
+        ('F2', 16, 50, 780, org_display_name),
+        ('F1', 7.5, 50, 764, tpl_info.get("header_address") or "Official Corporate Headquarters"),
+        ('F1', 7.5, 50, 752, f'Email: {tpl_info.get("header_email") or "careers@businessos.ai"} • Phone: {tpl_info.get("header_phone") or "+91 98493 44919"}{" • GSTIN: " + tpl_info["header_gstin"] if tpl_info.get("header_gstin") else ""}{" • CIN: " + tpl_info["header_cin"] if tpl_info.get("header_cin") else ""}'),
+        ('F2', 8, 400, 780, tpl_info.get("header_badge") or "OFFICIAL APPOINTMENT OFFER"),
+        ('F1', 7.5, 400, 764, f'Date: {offer_date_str}'),
+        ('F1', 7.5, 400, 752, f'REF: {ref_id}'),
+        ('LINE', 0, 50, 742, 545, 742),
+        ('F2', 7.5, 55, 726, 'PRIVATE & CONFIDENTIAL • LETTER OF OFFER'),
+        ('F2', 11, 55, 712, candidate_name),
+        ('F1', 8, 55, 698, f'Email: {offer.candidate_email or "N/A"}'),
+        ('F1', 8, 55, 684, f'Position: {role_name} | Target Joining Date: {joining_date_str}'),
+        ('LINE', 0, 50, 672, 545, 672),
+        ('F2', 10, 50, 654, tpl_info["subject"]),
+        ('F2', 8.5, 50, 636, f'Dear {candidate_name},'),
+        ('F1', 8.5, 50, 620, f'On behalf of {org_display_name}, we are pleased to extend this formal offer of employment for the position of {role_name}.'),
+        ('F1', 8.5, 50, 606, 'We were exceptionally impressed with your achievements, domain knowledge, and leadership alignment with our organization.'),
+        ('F2', 9, 50, 580, 'ANNEXURE A: ANNUAL & MONTHLY COMPENSATION STRUCTURE'),
+        ('LINE', 0, 50, 570, 545, 570),
+        ('F2', 8, 55, 556, 'Salary Component'),
+        ('F2', 8, 250, 556, 'Distribution (%)'),
+        ('F2', 8, 360, 556, 'Monthly Value (INR)'),
+        ('F2', 8, 470, 556, 'Annual Value (INR)'),
+        ('LINE', 0, 50, 548, 545, 548),
+        ('F1', 7.5, 55, 534, f'Basic Salary ({split["basic_pct"]}%)'),
+        ('F1', 7.5, 250, 534, f'{split["basic_pct"]}%'),
+        ('F1', 7.5, 360, 534, f'INR {b_m:,.2f}'),
+        ('F1', 7.5, 470, 534, f'INR {b_a:,.2f}'),
+        ('F1', 7.5, 55, 518, f'House Rent Allowance (HRA) ({split["hra_pct"]}%)'),
+        ('F1', 7.5, 250, 518, f'{split["hra_pct"]}%'),
+        ('F1', 7.5, 360, 518, f'INR {h_m:,.2f}'),
+        ('F1', 7.5, 470, 518, f'INR {h_a:,.2f}'),
+        ('F1', 7.5, 55, 502, f'Special / Flexi Allowance ({split["special_pct"]}%)'),
+        ('F1', 7.5, 250, 502, f'{split["special_pct"]}%'),
+        ('F1', 7.5, 360, 502, f'INR {s_m:,.2f}'),
+        ('F1', 7.5, 470, 502, f'INR {s_a:,.2f}'),
+        ('F1', 7.5, 55, 486, f'Employer PF Contribution (Statutory) ({split["pf_pct"]}%)'),
+        ('F1', 7.5, 250, 486, f'{split["pf_pct"]}%'),
+        ('F1', 7.5, 360, 486, f'INR {p_m:,.2f}'),
+        ('F1', 7.5, 470, 486, f'INR {p_a:,.2f}'),
+        ('LINE', 0, 50, 476, 545, 476),
+        ('F2', 8, 55, 462, 'Total Annual Cost to Company (CTC)'),
+        ('F2', 8, 250, 462, '100%'),
+        ('F2', 8, 360, 462, f'INR {tot_m:,.2f}'),
+        ('F2', 8, 470, 462, f'INR {tot_a:,.2f}'),
+        ('LINE', 0, 50, 452, 545, 452),
+        ('F2', 9, 50, 432, 'ANNEXURE B: EMPLOYMENT TERMS & STATUTORY COVENANTS'),
+        ('F1', 7.5, 50, 416, '1. PROBATION & CONFIRMATION: You will serve probation for 3 months from joining, confirmed in writing upon appraisal.'),
+        ('F1', 7.5, 50, 402, '2. NOTICE PERIOD: Either party may terminate with 30 days written notice or gross basic in lieu thereof.'),
+        ('F1', 7.5, 50, 388, '3. CONFIDENTIALITY & IP: All proprietary information, customer data, and IP developed belong exclusively to the organization.'),
+        ('F1', 7.5, 50, 374, '4. STATUTORY COMPLIANCE: Statutory deductions (PF, Professional Tax, TDS) apply as per government norms.'),
+        ('LINE', 0, 50, 350, 545, 350),
+        ('F1', 8, 50, 332, f'This offer remains valid until {expiry_date_str}. Please sign and return a duplicate copy as confirmation.'),
+        ('F2', 8.5, 50, 290, signer_name),
+        ('F1', 7.5, 50, 276, f'{signer_title} • {org_display_name}'),
+        ('F2', 8.5, 340, 290, f'Accepted & Acknowledged by: {candidate_name}'),
+        ('F1', 7.5, 340, 276, 'Signature & Date: ________________________'),
+        ('LINE', 0, 50, 250, 545, 250),
+        ('F1', 7, 50, 238, f'Secure Digital Verification Token: BOS-SIGN-{abs(hash(str(offer.id))) % 900000 + 100000}'),
+        ('F1', 7, 360, 238, tpl_info["footer_text"]),
+    ]
+
+    stream_parts = []
+    for item in lines:
+        if item[0] == 'LINE':
+            _, _, x1, y1, x2, y2 = item
+            stream_parts.append(f'0.5 w\n{x1} {y1} m\n{x2} {y2} l\nS\n')
+        else:
+            font_id, size, x, y, text = item
+            clean_text = _escape_pdf_text(str(text))
+            stream_parts.append(f'BT\n/{font_id} {size} Tf\n{x} {y} Td\n({clean_text}) Tj\nET\n')
+
+    stream_bytes = ''.join(stream_parts).encode('latin-1', errors='replace')
+
+    objects = [
+        b'1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+        b'2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+        b'3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>\nendobj\n',
+        f'4 0 obj\n<< /Length {len(stream_bytes)} >>\nstream\n'.encode('latin-1') + stream_bytes + b'\nendstream\nendobj\n',
+        b'5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+        b'6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n',
+    ]
+
+    output = b'%PDF-1.4\n'
+    offsets = [len(output)]
+    for obj in objects:
+        output += obj
+        offsets.append(len(output))
+
+    xref_pos = len(output)
+    output += f'xref\n0 {len(objects) + 1}\n0000000000 65535 f \n'.encode('latin-1')
+    for off in offsets[:-1]:
+        output += f'{off:010d} 00000 n \n'.encode('latin-1')
+    output += f'trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF\n'.encode('latin-1')
+    return output
+
+
+def _generate_reportlab_offer_pdf(offer: OfferLetter, company_name: str, tenant: Any | None = None, company: Any | None = None) -> bytes:
+    """Generates an official, high-resolution A4 PDF Offer Letter with salary annexure, legal clauses & signing block via ReportLab."""
+    tpl_info = _parse_offer_template_data(offer.custom_template, offer, company_name, company)
+    org_display_name = tpl_info["header_org"]
+    
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=36,
+        leftMargin=36,
+        topMargin=36,
+        bottomMargin=36,
+    )
+    
+    h1 = ParagraphStyle('H1', fontName='Helvetica-Bold', fontSize=15, leading=18, textColor=colors.HexColor('#1e1b4b'))
+    h_sub = ParagraphStyle('HSub', fontName='Helvetica', fontSize=7.5, leading=10.5, textColor=colors.HexColor('#475569'))
+    badge_style = ParagraphStyle('Badge', fontName='Helvetica-Bold', fontSize=7.5, leading=9, textColor=colors.white, alignment=2)
+    meta_date = ParagraphStyle('MetaDate', fontName='Helvetica', fontSize=7.5, leading=10, textColor=colors.HexColor('#64748b'), alignment=2)
+    ref_style = ParagraphStyle('RefCode', fontName='Helvetica', fontSize=7.5, leading=10, textColor=colors.HexColor('#64748b'), alignment=2)
+    
+    recip_tag = ParagraphStyle('RecipTag', fontName='Helvetica-Bold', fontSize=7, leading=9, textColor=colors.HexColor('#64748b'))
+    recip_name = ParagraphStyle('RecipName', fontName='Helvetica-Bold', fontSize=11, leading=14, textColor=colors.HexColor('#0f172a'))
+    recip_sub = ParagraphStyle('RecipSub', fontName='Helvetica', fontSize=8, leading=11, textColor=colors.HexColor('#334155'))
+    
+    subj_style = ParagraphStyle('Subj', fontName='Helvetica-Bold', fontSize=10, leading=13, textColor=colors.HexColor('#0f172a'))
+    sal_style = ParagraphStyle('Sal', fontName='Helvetica-Bold', fontSize=8.5, leading=11, textColor=colors.HexColor('#0f172a'))
+    body_p = ParagraphStyle('BodyP', fontName='Helvetica', fontSize=8.5, leading=12.5, textColor=colors.HexColor('#334155'))
+    sec_title = ParagraphStyle('SecTitle', fontName='Helvetica-Bold', fontSize=8.5, leading=11, textColor=colors.HexColor('#1e1b4b'))
+    clause_p = ParagraphStyle('ClauseP', fontName='Helvetica', fontSize=8, leading=11.5, textColor=colors.HexColor('#334155'))
+    
+    th_style = ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#1e1b4b'))
+    th_r_style = ParagraphStyle('THR', fontName='Helvetica-Bold', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#1e1b4b'), alignment=2)
+    td_style = ParagraphStyle('TD', fontName='Helvetica', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#0f172a'))
+    td_r_style = ParagraphStyle('TDR', fontName='Helvetica', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#0f172a'), alignment=2)
+    td_tot_style = ParagraphStyle('TDTot', fontName='Helvetica-Bold', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#0f172a'))
+    td_tot_r = ParagraphStyle('TDTotR', fontName='Helvetica-Bold', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#0f172a'), alignment=2)
+    
+    sig_title = ParagraphStyle('SigTitle', fontName='Helvetica-Bold', fontSize=8.5, leading=11, textColor=colors.HexColor('#0f172a'))
+    sig_sub = ParagraphStyle('SigSub', fontName='Helvetica', fontSize=7.5, leading=10, textColor=colors.HexColor('#64748b'))
+    foot_l = ParagraphStyle('FootL', fontName='Helvetica', fontSize=7, leading=9, textColor=colors.HexColor('#94a3b8'))
+    foot_r = ParagraphStyle('FootR', fontName='Helvetica', fontSize=7, leading=9, textColor=colors.HexColor('#94a3b8'), alignment=2)
+
+    story = []
+
+    # Safe Logo Flowable Resolution
+    logo_flowable = None
+    org_logo = tpl_info.get("org_logo")
+    if org_logo:
+        try:
+            if org_logo.startswith("data:image"):
+                import base64
+                _, base64_data = org_logo.split(",", 1)
+                img_bytes = base64.b64decode(base64_data)
+                logo_flowable = RLImage(io.BytesIO(img_bytes), width=40, height=40)
+            elif org_logo.startswith("http://") or org_logo.startswith("https://"):
+                import urllib.request
+                req = urllib.request.Request(org_logo, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=2.0) as response:
+                    img_bytes = response.read()
+                    logo_flowable = RLImage(io.BytesIO(img_bytes), width=40, height=40)
+            elif os.path.exists(org_logo):
+                logo_flowable = RLImage(org_logo, width=40, height=40)
+        except Exception:
+            logo_flowable = None
+
+    if not logo_flowable:
+        initials = tpl_info.get("org_initials") or org_display_name[:2].upper()
+        logo_block = Paragraph(f'<font color="white"><b>{initials}</b></font>', ParagraphStyle('Monogram', fontName='Helvetica-Bold', fontSize=12, alignment=1, textColor=colors.white))
+        logo_flowable = Table([[logo_block]], colWidths=[36], rowHeights=[36])
+        logo_flowable.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#1e1b4b')),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+            ('TOPPADDING', (0,0), (-1,-1), 0),
+        ]))
+
+    contact_parts = []
+    if tpl_info.get("header_email"):
+        contact_parts.append(f"Email: {tpl_info['header_email']}")
+    if tpl_info.get("header_phone"):
+        contact_parts.append(f"Phone: {tpl_info['header_phone']}")
+    if tpl_info.get("header_gstin"):
+        contact_parts.append(f"GSTIN: {tpl_info['header_gstin']}")
+    if tpl_info.get("header_cin"):
+        contact_parts.append(f"CIN: {tpl_info['header_cin']}")
+    contact_str = " • ".join(contact_parts) if contact_parts else "Official Appointment Letter"
+
+    info_p = [
+        Paragraph(org_display_name, h1),
+        Spacer(1, 2),
+    ]
+    if tpl_info.get("header_address"):
+        info_p.append(Paragraph(tpl_info["header_address"], h_sub))
+    info_p.append(Paragraph(contact_str, h_sub))
+
+    badge_text = tpl_info.get("header_badge") or "STANDARD CORPORATE (FULL-TIME)"
+    badge_table = Table([[Paragraph(badge_text.upper(), badge_style)]], colWidths=[180])
+    badge_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#1e1b4b')),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('LEFTPADDING', (0,0), (-1,-1), 6),
+        ('RIGHTPADDING', (0,0), (-1,-1), 6),
+        ('ALIGN', (0,0), (-1,-1), 'RIGHT'),
+    ]))
+
+    ref_id = f"BOS-OFFER-{str(offer.id)[:4].upper()}" if offer.id else "BOS-OFFER-9173"
+    meta_col = [
+        badge_table,
+        Spacer(1, 3),
+        Paragraph(f'Date: {offer.offer_date.strftime("%d %B %Y") if offer.offer_date else date.today().strftime("%d %B %Y")}', meta_date),
+        Paragraph(f'REF: {ref_id}', ref_style)
+    ]
+
+    head_table = Table([[logo_flowable, info_p, meta_col]], colWidths=[42, 300, 180])
+    head_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('LEFTPADDING', (0,0), (-1,-1), 0),
+        ('RIGHTPADDING', (0,0), (-1,-1), 0),
+        ('TOPPADDING', (0,0), (-1,-1), 0),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+    ]))
+    story.append(head_table)
+    story.append(Spacer(1, 8))
+    story.append(HRFlowable(width='100%', thickness=2, color=colors.HexColor('#1e1b4b'), spaceAfter=10))
+
+    # Recipient Box
+    cand_email = offer.candidate_email or "candidate@email.com"
+    join_str = str(offer.joining_date) if offer.joining_date else "Immediate / Mutually Agreed"
+    recip_contents = [
+        Paragraph('PRIVATE &amp; CONFIDENTIAL • LETTER OF OFFER', recip_tag),
+        Spacer(1, 2),
+        Paragraph(offer.candidate or "Candidate", recip_name),
+        Paragraph(f'Email: {cand_email}', recip_sub),
+        Paragraph(f'Position: <b>{offer.role}</b> | Joining Date: <b>{join_str}</b>', recip_sub)
+    ]
+    recip_table = Table([[recip_contents]], colWidths=[522])
+    recip_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
+        ('BOX', (0,0), (-1,-1), 0.75, colors.HexColor('#e2e8f0')),
+        ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ('LEFTPADDING', (0,0), (-1,-1), 12),
+        ('RIGHTPADDING', (0,0), (-1,-1), 12),
+    ]))
+    story.append(recip_table)
+    story.append(Spacer(1, 10))
+
+    # Subject & Salutation & Opening
+    story.append(Paragraph(tpl_info["subject"], subj_style))
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(f'Dear {offer.candidate},', sal_style))
+    story.append(Spacer(1, 3))
+    story.append(Paragraph(tpl_info["opening_text"], body_p))
+    story.append(Spacer(1, 8))
+
+    # Annexure A: Compensation
+    ctc = float(offer.ctc or 0)
+    split = _parse_offer_custom_split(offer.custom_template, ctc)
+    b_m, b_a = split["b_m"], split["b_a"]
+    h_m, h_a = split["h_m"], split["h_a"]
+    s_m, s_a = split["s_m"], split["s_a"]
+    p_m, p_a = split["p_m"], split["p_a"]
+    tot_m, tot_a = split["tot_m"], split["tot_a"]
+
+    story.append(Paragraph('ANNEXURE A: ANNUAL &amp; MONTHLY COMPENSATION STRUCTURE', sec_title))
+    story.append(Spacer(1, 4))
+    comp_data = [
+        [Paragraph('Salary Component', th_style), Paragraph('Distribution (%)', th_r_style), Paragraph('Monthly Value (INR)', th_r_style), Paragraph('Annual Value (INR)', th_r_style)],
+        [Paragraph('Basic Salary', td_style), Paragraph(f'{split["basic_pct"]}%', td_r_style), Paragraph(f'{b_m:,.2f}', td_r_style), Paragraph(f'{b_a:,.2f}', td_r_style)],
+        [Paragraph('House Rent Allowance (HRA)', td_style), Paragraph(f'{split["hra_pct"]}%', td_r_style), Paragraph(f'{h_m:,.2f}', td_r_style), Paragraph(f'{h_a:,.2f}', td_r_style)],
+        [Paragraph('Special / Flexi Allowance', td_style), Paragraph(f'{split["special_pct"]}%', td_r_style), Paragraph(f'{s_m:,.2f}', td_r_style), Paragraph(f'{s_a:,.2f}', td_r_style)],
+        [Paragraph('Employer PF Contribution (Statutory)', td_style), Paragraph(f'{split["pf_pct"]}%', td_r_style), Paragraph(f'{p_m:,.2f}', td_r_style), Paragraph(f'{p_a:,.2f}', td_r_style)],
+        [Paragraph('Total Annual Cost to Company (CTC)', td_tot_style), Paragraph('100%', td_tot_r), Paragraph(f'{tot_m:,.2f}', td_tot_r), Paragraph(f'{tot_a:,.2f}', td_tot_r)],
+    ]
+    comp_table = Table(comp_data, colWidths=[200, 100, 110, 112])
+    comp_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+        ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor('#f8fafc')),
+        ('TOPPADDING', (0,0), (-1,-1), 3.5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3.5),
+    ]))
+    story.append(comp_table)
+    story.append(Spacer(1, 8))
+
+    # Annexure B: Covenants
+    story.append(Paragraph('ANNEXURE B: EMPLOYMENT TERMS &amp; STATUTORY COVENANTS', sec_title))
+    story.append(Spacer(1, 3))
+    clause_paragraphs = []
+    for line in tpl_info["clauses"].split('\n'):
+        cl = line.strip()
+        if cl:
+            clause_paragraphs.append(Paragraph(cl, clause_p))
+            clause_paragraphs.append(Spacer(1, 2))
+    if not clause_paragraphs:
+        clause_paragraphs.append(Paragraph("Standard terms and confidentiality covenants apply as per organizational handbook.", clause_p))
+    else:
+        clause_paragraphs.pop() # remove last spacer
+
+    clause_box = Table([[clause_paragraphs]], colWidths=[522])
+    clause_box.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#ffffff')),
+        ('LINELEFT', (0,0), (0,-1), 2.5, colors.HexColor('#4f46e5')),
+        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('LEFTPADDING', (0,0), (-1,-1), 10),
+        ('RIGHTPADDING', (0,0), (-1,-1), 10),
+    ]))
+    story.append(clause_box)
+    story.append(Spacer(1, 6))
+
+    # Closing Call to Action
+    story.append(Paragraph(tpl_info["closing_text"], body_p))
+    story.append(Spacer(1, 14))
+
+    # Signatures
+    signer_name = tpl_info["signer"]
+    signer_title_str = f"{tpl_info['signer_title']} • {org_display_name}"
+    sig_col_left = [
+        HRFlowable(width='85%', thickness=1, color=colors.HexColor('#0f172a'), spaceAfter=4, hAlign='LEFT'),
+        Paragraph(signer_name, sig_title),
+        Paragraph(signer_title_str, sig_sub)
+    ]
+    sig_col_right = [
+        HRFlowable(width='85%', thickness=1, color=colors.HexColor('#0f172a'), spaceAfter=4, hAlign='LEFT'),
+        Paragraph(f'Accepted &amp; Acknowledged by: {offer.candidate}', sig_title),
+        Paragraph('Signature &amp; Date: ________________________', sig_sub)
+    ]
+    sig_table = Table([[sig_col_left, sig_col_right]], colWidths=[261, 261])
+    sig_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('LEFTPADDING', (0,0), (-1,-1), 0),
+        ('RIGHTPADDING', (0,0), (-1,-1), 0),
+    ]))
+    story.append(sig_table)
+    story.append(Spacer(1, 10))
+
+    # Footer Strip
+    foot_token = f"BOS-SIGN-{abs(hash(str(offer.id))) % 900000 + 100000}"
+    foot_table = Table([[
+        Paragraph(f'Secure Digital Verification Token: {foot_token}', foot_l),
+        Paragraph(tpl_info["footer_text"], foot_r)
+    ]], colWidths=[261, 261])
+    foot_table.setStyle(TableStyle([
+        ('LINEABOVE', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('LEFTPADDING', (0,0), (-1,-1), 0),
+        ('RIGHTPADDING', (0,0), (-1,-1), 0),
+    ]))
+    story.append(foot_table)
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
+try:
+    from xhtml2pdf import pisa
+    HAS_XHTML2PDF = True
+except ImportError:
+    HAS_XHTML2PDF = False
+
+
+def _clean_html_text(text: str) -> str:
+    """Cleans up rich text tags ensuring valid xhtml for xhtml2pdf without double-escaping valid markup."""
+    if not text:
+        return ""
+    # Replace non-standard currency symbols that render as missing glyph black boxes in Helvetica
+    t = text.replace("₹", "Rs. ").replace("&#8377;", "Rs. ").replace("\u20b9", "Rs. ")
+    import re
+    # Escape lone ampersands that are not already entities
+    t = re.sub(r"&(?!(amp|lt|gt|quot|apos|bull|mdash|ndash|#\d+|#x[0-9a-fA-F]+);)", "&amp;", t)
+    return t
+
+
+def _generate_html_offer_pdf(offer: OfferLetter, company_name: str, tenant: Any | None = None, company: Any | None = None) -> bytes:
+    """Renders the pixel-perfect HTML/CSS offer letterhead matching OfferLetterStudioModal directly to PDF via xhtml2pdf."""
+    from html import escape
+    tpl_info = _parse_offer_template_data(offer.custom_template, offer, company_name, company)
+    raw_data = tpl_info.get("data") or {}
+
+    org_name = escape(tpl_info["header_org"])
+    org_address = escape(tpl_info.get("header_address") or "Official Corporate Headquarters")
+    org_email = escape(tpl_info.get("header_email") or "careers@businessos.ai")
+    org_phone = escape(tpl_info.get("header_phone") or "+91 98493 44919")
+    org_gstin = escape(tpl_info.get("header_gstin") or "")
+    org_cin = escape(tpl_info.get("header_cin") or "")
+    org_logo = tpl_info.get("org_logo") or ""
+    org_initials = escape(tpl_info.get("org_initials") or (org_name[:2].upper() if org_name else "IO"))
+
+    accent_color = raw_data.get("accent_color") or "#4f46e5"
+    primary_color = raw_data.get("primary_color") or "#1e1b4b"
+    font_size = raw_data.get("font_size") or 9
+    heading_size = raw_data.get("heading_size") or 14
+
+    probation_months = int(raw_data.get("probation_months") or 3)
+    notice_days = int(raw_data.get("notice_days") or 30)
+
+    ctc = float(offer.ctc or 0)
+    split = _parse_offer_custom_split(offer.custom_template, ctc)
+    b_m, b_a = split["b_m"], split["b_a"]
+    h_m, h_a = split["h_m"], split["h_a"]
+    s_m, s_a = split["s_m"], split["s_a"]
+    p_m, p_a = split["p_m"], split["p_a"]
+    tot_m, tot_a = split["tot_m"], split["tot_a"]
+
+    candidate = escape(offer.candidate or "Candidate")
+    cand_email = escape(offer.candidate_email or "N/A")
+    role_name = escape(offer.role or "Team Member")
+    join_str = offer.joining_date.strftime("%b %d, %Y") if offer.joining_date else "Immediate / Mutually Agreed"
+    offer_date_str = offer.offer_date.strftime("%B %d, %Y") if offer.offer_date else date.today().strftime("%B %d, %Y")
+    exp_date_str = offer.expiry_date.strftime("%B %d, %Y") if offer.expiry_date else (date.today() + timedelta(days=7)).strftime("%B %d, %Y")
+    ref_id = f"BOS-OFFER-{str(offer.id)[:6].upper()}" if offer.id else "BOS-OFFER-970562"
+    badge_enabled = raw_data.get("header_badge_enabled", True)
+    raw_badge_text = raw_data.get("header_badge_text") or raw_data.get("header_badge") or (role_name.upper() if role_name else "")
+    badge_text = escape(str(raw_badge_text).strip()) if raw_badge_text else ""
+    badge_tag_html = f'<div class="doc-tag">{badge_text}</div>' if (badge_enabled and badge_text) else ""
+    subject = _clean_html_text(tpl_info.get("subject") or f"Formal Offer of Employment &mdash; {role_name}")
+    opening_text = _clean_html_text(tpl_info.get("opening_text") or f"On behalf of <strong>{org_name}</strong>, we are pleased to extend this formal offer of employment for the position of <strong>{role_name}</strong>. We were exceptionally impressed with your achievements, domain knowledge, and leadership alignment with our organization.")
+    closing_text = _clean_html_text(tpl_info.get("closing_text") or f"This offer remains valid until <strong>{exp_date_str}</strong>. Please sign and return a duplicate copy of this letter as confirmation of your acceptance.")
+    signer = escape(tpl_info["signer"])
+    signer_title = escape(tpl_info["signer_title"])
+    footer_text = _clean_html_text(tpl_info["footer_text"])
+    foot_token = f"BOS-SIGN-{abs(hash(str(offer.id))) % 900000 + 100000}"
+
+    contact_parts = [f"Email: {org_email}", f"Phone: {org_phone}"]
+    if org_gstin:
+        contact_parts.append(f"GSTIN: {org_gstin}")
+    if org_cin:
+        contact_parts.append(f"CIN: {org_cin}")
+    contact_line = " &bull; ".join(contact_parts)
+
+    clauses_html = ""
+    for line in tpl_info["clauses"].split('\n'):
+        cl = line.strip()
+        if cl:
+            clauses_html += f"<div style='margin-bottom: 3.5px;'>{_clean_html_text(cl)}</div>"
+    if not clauses_html:
+        clauses_html = "<div>Standard terms and confidentiality covenants apply as per organizational handbook.</div>"
+
+    if org_logo and (org_logo.startswith("data:image") or org_logo.startswith("http") or os.path.exists(org_logo)):
+        logo_markup = f'<img src="{org_logo}" style="max-height: 42px; max-width: 140px;" />'
+    else:
+        logo_markup = f'<table style="width: 40px; height: 40px; background-color: {accent_color}; border-collapse: collapse;"><tr><td style="text-align: center; vertical-align: middle; color: #ffffff; font-weight: bold; font-size: 13pt;">{org_initials}</td></tr></table>'
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@page {{
+    size: A4 portrait;
+    margin: 12mm 15mm;
+}}
+* {{
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: Helvetica, Arial, sans-serif;
+}}
+body {{
+    background-color: #ffffff;
+    color: #0f172a;
+    font-size: {font_size}pt;
+    line-height: 1.45;
+}}
+.header-banner {{
+    width: 100%;
+    border-bottom: 2px solid {accent_color};
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+}}
+.org-name {{
+    font-size: {heading_size}pt;
+    font-weight: bold;
+    color: {primary_color};
+    margin-bottom: 1px;
+}}
+.org-sub {{
+    font-size: 7.5pt;
+    color: #64748b;
+    line-height: 1.35;
+}}
+.doc-tag {{
+    display: inline-block;
+    background-color: {accent_color};
+    color: #ffffff;
+    font-size: 7pt;
+    font-weight: bold;
+    padding: 3px 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-align: right;
+}}
+.meta-date {{
+    font-size: 7.5pt;
+    color: #64748b;
+    margin-top: 3px;
+    text-align: right;
+}}
+.meta-ref {{
+    font-size: 7.5pt;
+    color: #64748b;
+    text-align: right;
+    font-family: monospace;
+}}
+.recipient-table {{
+    width: 100%;
+    background-color: #f8fafc;
+    border-left: 4px solid {accent_color};
+    border-top: 1px solid #e2e8f0;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    margin-bottom: 12px;
+}}
+.recipient-cell {{
+    padding: 8px 12px;
+}}
+.recipient-tag {{
+    font-size: 7pt;
+    font-weight: bold;
+    color: #64748b;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}}
+.recipient-name {{
+    font-size: 11pt;
+    font-weight: bold;
+    color: {primary_color};
+    margin-bottom: 2px;
+}}
+.recipient-sub {{
+    font-size: 8pt;
+    color: #475569;
+}}
+.subject-line {{
+    font-size: 10pt;
+    font-weight: bold;
+    color: {primary_color};
+    margin-bottom: 6px;
+}}
+.salutation {{
+    font-size: 9pt;
+    font-weight: bold;
+    color: {primary_color};
+    margin-bottom: 4px;
+}}
+.body-p {{
+    font-size: 8.5pt;
+    color: #334155;
+    margin-bottom: 10px;
+    line-height: 1.45;
+}}
+.table-title {{
+    font-size: 8.5pt;
+    font-weight: bold;
+    color: {primary_color};
+    border-bottom: 1.5px solid #e2e8f0;
+    padding-bottom: 3px;
+    margin-top: 10px;
+    margin-bottom: 6px;
+}}
+.comp-table {{
+    width: 100%;
+    margin-bottom: 10px;
+    font-size: 8pt;
+}}
+.comp-table th {{
+    background-color: #f1f5f9;
+    color: {primary_color};
+    font-weight: bold;
+    border: 1px solid #cbd5e1;
+    padding: 4px 8px;
+    text-align: left;
+}}
+.comp-table td {{
+    border: 1px solid #e2e8f0;
+    padding: 3.5px 8px;
+    color: #334155;
+}}
+.total-row td {{
+    background-color: #eff6ff;
+    font-weight: bold;
+    color: {accent_color};
+    border-top: 1.5px solid #cbd5e1;
+}}
+.clauses-table {{
+    width: 100%;
+    background-color: #fcfcfc;
+    border-left: 3.5px solid {accent_color};
+    border-top: 1px solid #e2e8f0;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    margin-bottom: 10px;
+}}
+.clauses-cell {{
+    padding: 8px 12px;
+    font-size: 8pt;
+    color: #334155;
+    line-height: 1.45;
+}}
+.sig-table {{
+    width: 100%;
+    margin-top: 10px;
+    margin-bottom: 8px;
+}}
+.sig-line {{
+    border-bottom: 1px dashed #94a3b8;
+    width: 85%;
+    height: 20px;
+    margin-bottom: 4px;
+}}
+.sig-name {{
+    font-size: 8.5pt;
+    font-weight: bold;
+    color: {primary_color};
+}}
+.sig-sub {{
+    font-size: 7.5pt;
+    color: #64748b;
+}}
+.footer-table {{
+    width: 100%;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 4px;
+    margin-top: 8px;
+    font-size: 7pt;
+    color: #94a3b8;
+}}
+</style>
+</head>
+<body>
+<table class="header-banner">
+<tr>
+<td style="width: 48px; vertical-align: middle;">
+{logo_markup}
+</td>
+<td style="vertical-align: middle; padding-left: 10px;">
+<div class="org-name">{org_name}</div>
+<div class="org-sub">{org_address}</div>
+<div class="org-sub">{contact_line}</div>
+</td>
+<td style="width: 190px; vertical-align: middle; text-align: right;">
+{badge_tag_html}
+<div class="meta-date">Date: {offer_date_str}</div>
+<div class="meta-ref">REF: {ref_id}</div>
+</td>
+</tr>
+</table>
+
+<table class="recipient-table">
+<tr>
+<td class="recipient-cell">
+<div class="recipient-tag">PRIVATE &amp; CONFIDENTIAL &bull; APPOINTMENT OFFER</div>
+<div class="recipient-name">{candidate}</div>
+<div class="recipient-sub">Email: {cand_email}</div>
+<div class="recipient-sub">Position: <b>{role_name}</b> | Joining Date: <b>{join_str}</b></div>
+</td>
+</tr>
+</table>
+
+<div class="subject-line">{subject}</div>
+<div class="salutation">Dear {candidate},</div>
+<div class="body-p">{opening_text}</div>
+
+<div class="table-title">Annexure A: Annual &amp; Monthly Compensation Structure</div>
+<table class="comp-table">
+<thead>
+<tr>
+<th>Salary Component</th>
+<th style="text-align: right; width: 95px;">Distribution (%)</th>
+<th style="text-align: right; width: 115px;">Monthly Value (Rs.)</th>
+<th style="text-align: right; width: 115px;">Annual Value (Rs.)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Basic Salary</td>
+<td style="text-align: right;">{split["basic_pct"]}%</td>
+<td style="text-align: right;">Rs. {int(round(b_m)):,}</td>
+<td style="text-align: right;">Rs. {int(round(b_a)):,}</td>
+</tr>
+<tr>
+<td>House Rent Allowance (HRA)</td>
+<td style="text-align: right;">{split["hra_pct"]}%</td>
+<td style="text-align: right;">Rs. {int(round(h_m)):,}</td>
+<td style="text-align: right;">Rs. {int(round(h_a)):,}</td>
+</tr>
+<tr>
+<td>Special / Flexi Allowance</td>
+<td style="text-align: right;">{split["special_pct"]}%</td>
+<td style="text-align: right;">Rs. {int(round(s_m)):,}</td>
+<td style="text-align: right;">Rs. {int(round(s_a)):,}</td>
+</tr>
+<tr>
+<td>Employer PF Contribution (Statutory)</td>
+<td style="text-align: right;">{split["pf_pct"]}%</td>
+<td style="text-align: right;">Rs. {int(round(p_m)):,}</td>
+<td style="text-align: right;">Rs. {int(round(p_a)):,}</td>
+</tr>
+<tr class="total-row">
+<td><strong>Total Cost to Company (CTC)</strong></td>
+<td style="text-align: right;"><strong>100%</strong></td>
+<td style="text-align: right; font-weight: bold;">Rs. {int(round(tot_m)):,}</td>
+<td style="text-align: right; font-weight: bold;">Rs. {int(round(tot_a)):,}</td>
+</tr>
+</tbody>
+</table>
+
+<div class="table-title">Annexure B: Standard Terms, Conditions &amp; Covenants</div>
+<table class="clauses-table">
+<tr>
+<td class="clauses-cell">
+<div style="margin-bottom: 3px;"><strong>Probation Period:</strong> {f'{probation_months} months from joining.' if probation_months > 0 else 'Direct appointment (No probation).'}</div>
+<div style="margin-bottom: 6px;"><strong>Notice Period:</strong> {notice_days} days written notice or gross salary in lieu thereof.</div>
+{clauses_html}
+</td>
+</tr>
+</table>
+
+<div class="body-p" style="margin-top: 8px;">{closing_text}</div>
+
+<table class="sig-table">
+<tr>
+<td style="width: 50%; vertical-align: top;">
+<div style="font-size: 7pt; font-weight: bold; color: #64748b; text-transform: uppercase;">Authorized Signatory:</div>
+<div class="sig-line"></div>
+<div class="sig-name">{signer}</div>
+<div class="sig-sub">{signer_title}</div>
+<div class="sig-sub">{org_name}</div>
+</td>
+<td style="width: 50%; vertical-align: top; text-align: right;">
+<div style="font-size: 7pt; font-weight: bold; color: #64748b; text-transform: uppercase;">Candidate Acceptance:</div>
+<div class="sig-line" style="margin-left: auto;"></div>
+<div class="sig-name">{candidate}</div>
+<div class="sig-sub">Acceptance Date: _________________</div>
+<div class="sig-sub" style="color: {accent_color}; font-weight: bold;">Valid Until: {exp_date_str}</div>
+</td>
+</tr>
+</table>
+
+<table class="footer-table">
+<tr>
+<td style="text-align: left;">Secure Digital Verification: {foot_token}</td>
+<td style="text-align: right;">{footer_text}</td>
+</tr>
+</table>
+</body>
+</html>
+"""
+    dest = io.BytesIO()
+    pisa_status = pisa.CreatePDF(html, dest=dest, encoding="utf-8")
+    if pisa_status.err:
+        raise RuntimeError(f"xhtml2pdf rendering error: {pisa_status.err}")
+    return dest.getvalue()
+
+
+def generate_offer_letter_pdf(offer: OfferLetter, company_name: str, tenant: Any | None = None, company: Any | None = None) -> bytes:
+    """Generates an official Offer Letter PDF matching the application's letterhead template."""
+    if HAS_XHTML2PDF:
+        try:
+            return _generate_html_offer_pdf(offer, company_name, tenant, company)
+        except Exception as err:
+            print(f"[XHTML2PDF RENDERING NOTICE, FALLING BACK TO REPORTLAB]: {err}")
+
+    if HAS_REPORTLAB:
+        try:
+            return _generate_reportlab_offer_pdf(offer, company_name, tenant, company)
+        except Exception as err:
+            print(f"[REPORTLAB RENDERING NOTICE, FALLING BACK TO PURE-PYTHON]: {err}")
+
+    return _generate_pure_python_offer_pdf(offer, company_name, tenant, company)
+
+
+# ─── SMTP Live Email Dispatch Utility ───────────────────────────────────────────
+
+async def send_recruitment_email(
+    to_email: str,
+    subject: str,
+    body_text: str,
+    html_body: str | None = None,
+    attachment_bytes: bytes | None = None,
+    attachment_filename: str | None = None,
+    tenant_id: uuid.UUID | str | None = None,
+    company_id: uuid.UUID | str | None = None,
+    db: AsyncSession | None = None,
+) -> bool:
+    from src.services.staff.deps import unified_send_email
+    return await unified_send_email(
+        subject=subject,
+        recipients=[to_email],
+        html=html_body,
+        text=body_text,
+        attachment_bytes=attachment_bytes,
+        attachment_filename=attachment_filename,
+        tenant_id=tenant_id,
+        company_id=company_id,
+        db=db,
+    )
+
+
+# ─── Helper Functions & Parsers ──────────────────────────────────────────────────
+
+def calculate_match_score(resume: str | None, criteria: str) -> int:
+    if not resume or not criteria:
+        return 50
+    resume_lower = resume.lower()
+    keywords = [k.strip().lower() for k in criteria.split(",") if k.strip()]
+    if not keywords:
+        return 50
+    matches = sum(1 for kw in keywords if kw in resume_lower)
+    score = int((matches / len(keywords)) * 50) + 40 + (len(resume) % 10)
+    return min(score, 100)
+
+
+def extract_text_from_file(file_bytes: bytes, filename: str) -> str:
+    filename_lower = filename.lower()
+    if filename_lower.endswith(".txt") or filename_lower.endswith(".md"):
+        return file_bytes.decode("utf-8", errors="ignore")
+    
+    if filename_lower.endswith(".pdf"):
+        try:
+            pdf_file = io.BytesIO(file_bytes)
+            reader = pypdf.PdfReader(pdf_file)
+            text = ""
+            for page in reader.pages:
+                text += page.extract_text() or ""
+            return text
+        except Exception as e:
+            print(f"[PDF EXCLUSION ERROR] Failed to parse: {e}")
+            return ""
+    return ""
+
+
+async def ensure_seeded_data(db: AsyncSession, tenant_id: uuid.UUID):
+    """Seed recruitment data for the tenant if no job openings exist."""
+    job_count = await db.scalar(select(func.count()).select_from(JobOpening).where(JobOpening.tenant_id == tenant_id))
+    if job_count > 0:
+        return
+
+    # Seed Jobs
+    jobs_to_seed = [
+        JobOpening(
+            tenant_id=tenant_id,
+            title="Senior Backend Engineer",
+            department="Engineering",
+            location="Remote",
+            type="Full-Time",
+            experience="4-6 years",
+            openings=2,
+            applicants_count=2,
+            posted_date=date.today() - timedelta(days=30),
+            status="Open",
+            threshold_score=75,
+            portals=["Careers Page", "LinkedIn", "Naukri.com", "Zoho Careers"],
+            criteria="Python, FastAPI, PostgreSQL, AWS, Docker, Microservices",
+            description="We are looking for a Senior Backend Engineer to build scalable APIs and design microservices in a Python/FastAPI backend framework. You will work on optimizing database queries in PostgreSQL, deploying serverless workloads on AWS, and setting up CI/CD workflows."
+        ),
+        JobOpening(
+            tenant_id=tenant_id,
+            title="Sales Account Executive",
+            department="Sales",
+            location="San Francisco, CA",
+            type="Full-Time",
+            experience="2-4 years",
+            openings=3,
+            applicants_count=2,
+            posted_date=date.today() - timedelta(days=25),
+            status="Open",
+            threshold_score=70,
+            portals=["Careers Page", "LinkedIn", "Indeed"],
+            criteria="SaaS Sales, CRM, Lead Generation, Presentation, Communication",
+            description="Identify and close sales opportunities in mid-market accounts. Deliver exceptional product demonstrations, handle pricing discussions, and coordinate closely with customer success to drive user adoption."
+        ),
+        JobOpening(
+            tenant_id=tenant_id,
+            title="UX / Product Designer",
+            department="Engineering",
+            location="Remote",
+            type="Full-Time",
+            experience="3-5 years",
+            openings=1,
+            applicants_count=1,
+            posted_date=date.today() - timedelta(days=15),
+            status="Open",
+            threshold_score=80,
+            portals=["Careers Page", "Glassdoor"],
+            criteria="Figma, User Research, Wireframes, Prototyping, Design System",
+            description="Design intuitive user flows and pixel-perfect UI screens for our core platform modules. Conduct user interviews, create low and high fidelity wireframes in Figma, and manage our brand design system."
+        )
+    ]
+    
+    for j in jobs_to_seed:
+        db.add(j)
+    await db.flush()
+
+    # Seed Applicants
+    app1 = Applicant(
+        tenant_id=tenant_id,
+        name="Nikhil Mehta",
+        email="nikhil@mail.com",
+        job_id=jobs_to_seed[0].id,
+        job_title=jobs_to_seed[0].title,
+        applied_date=date.today() - timedelta(days=28),
+        experience="5 years",
+        rating=4,
+        stage="Interview",
+        source="LinkedIn",
+        match_score=85,
+        resume_text="Experienced backend engineer with 5 years building REST APIs using Python, FastAPI, and Flask. Strong knowledge of PostgreSQL databases, query optimizations, Docker containers, and deploying microservices on AWS EC2/ECS."
+    )
+    app2 = Applicant(
+        tenant_id=tenant_id,
+        name="Claire Dubois",
+        email="claire@mail.com",
+        job_id=jobs_to_seed[0].id,
+        job_title=jobs_to_seed[0].title,
+        applied_date=date.today() - timedelta(days=27),
+        experience="4 years",
+        rating=3,
+        stage="Screening",
+        source="Naukri.com",
+        match_score=72,
+        resume_text="4 years of software engineering experience. Experienced with Django and MySQL. Familiar with git, unit testing, and Docker. Looking to transition into FastAPI and AWS architecture."
+    )
+    app3 = Applicant(
+        tenant_id=tenant_id,
+        name="Tom Wilson",
+        email="tom@mail.com",
+        job_id=jobs_to_seed[1].id,
+        job_title=jobs_to_seed[1].title,
+        applied_date=date.today() - timedelta(days=22),
+        experience="3 years",
+        rating=5,
+        stage="Offer",
+        source="Indeed",
+        match_score=92,
+        resume_text="Account Executive with 3 years SaaS sales experience. Exceeded quota by 120% in consecutive quarters. Expert in lead generation, HubSpot CRM, sales calls, online product demos, and contract negotiations."
+    )
+    app4 = Applicant(
+        tenant_id=tenant_id,
+        name="Jason Bourne",
+        email="jason@mail.com",
+        job_id=jobs_to_seed[1].id,
+        job_title=jobs_to_seed[1].title,
+        applied_date=date.today() - timedelta(days=20),
+        experience="2 years",
+        rating=3,
+        stage="Applied",
+        source="LinkedIn",
+        match_score=68,
+        resume_text="Sales associate focused on enterprise communications. Experience in outbound calling, lead qualification, Salesforce entries, and client relations."
+    )
+    app5 = Applicant(
+        tenant_id=tenant_id,
+        name="Anjali Singh",
+        email="anjali@mail.com",
+        job_id=jobs_to_seed[2].id,
+        job_title=jobs_to_seed[2].title,
+        applied_date=date.today() - timedelta(days=12),
+        experience="4 years",
+        rating=5,
+        stage="Hired",
+        source="Careers Page",
+        match_score=88,
+        resume_text="Product designer with 4 years creating responsive websites and mobile interfaces. Figma power user. Deep understanding of design systems, responsive typography, user testing, wireframing, and interactive developer handoffs."
+    )
+    
+    db.add_all([app1, app2, app3, app4, app5])
+    await db.flush()
+
+    # Seed Interview
+    int1 = Interview(
+        tenant_id=tenant_id,
+        applicant_id=app1.id,
+        candidate=app1.name,
+        job_title=app1.job_title,
+        interviewer_name="Alex Rivera",
+        date=(date.today() + timedelta(days=2)).isoformat(),
+        time="10:00",
+        duration=60,
+        type="Technical",
+        mode="Video Call",
+        meeting_link="https://meet.google.com/abc-defg-hij",
+        status="Scheduled"
+    )
+    db.add(int1)
+
+    # Seed Offer
+    ofr1 = OfferLetter(
+        tenant_id=tenant_id,
+        applicant_id=app3.id,
+        candidate=app3.name,
+        role=app3.job_title,
+        ctc=85000.0,
+        offer_date=date.today() - timedelta(days=2),
+        expiry_date=date.today() + timedelta(days=5),
+        joining_date=date.today() + timedelta(days=20),
+        signer_name="Priya Sharma",
+        status="Awaiting Acceptance",
+        email_sent=True
+    )
+    db.add(ofr1)
+
+    # Seed Onboarding
+    onb1 = OnboardingRecord(
+        tenant_id=tenant_id,
+        applicant_id=app5.id,
+        new_hire=app5.name,
+        role=app5.job_title,
+        start_date=date.today() + timedelta(days=10),
+        progress=67,
+        tasks_json=[
+            {"task": "Email & System Access Created", "assignedTo": "IT", "status": "Done"},
+            {"task": "Offer Letter Signed", "assignedTo": "HR", "status": "Done"},
+            {"task": "Background Verification", "assignedTo": "HR", "status": "Done"},
+            {"task": "Workstation Setup", "assignedTo": "IT", "status": "In Progress"},
+            {"task": "Department Orientation", "assignedTo": "Manager", "status": "Pending"},
+            {"task": "Policy Training", "assignedTo": "HR", "status": "Pending"}
+        ]
+    )
+    db.add(onb1)
+    await db.commit()
+
+
+# ─── Public Job Boards RSS/XML Crawler Feed ────────────────────────────────────
+
+@router.get("/jobs/feed")
+async def jobs_xml_feed(
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Provides active open jobs structured in XML formats for LinkedIn, Indeed, and Naukri crawlers."""
+    stmt = select(JobOpening).where(JobOpening.status == "Open")
+    result = await db.execute(stmt)
+    jobs = result.scalars().all()
+
+    xml_content = '<?xml version="1.0" encoding="UTF-8" ?>\n'
+    xml_content += '<source>\n'
+    xml_content += '  <publisher>BusinessOS AI Recruitment Feed</publisher>\n'
+    xml_content += '  <publisherurl>http://localhost:8080</publisherurl>\n'
+    
+    for job in jobs:
+        xml_content += '  <job>\n'
+        xml_content += f'    <title><![CDATA[{job.title}]]></title>\n'
+        xml_content += f'    <date><![CDATA[{job.posted_date}]]></date>\n'
+        xml_content += f'    <referencenumber><![CDATA[{job.id}]]></referencenumber>\n'
+        xml_content += f'    <description><![CDATA[{job.description}]]></description>\n'
+        xml_content += f'    <department><![CDATA[{job.department}]]></department>\n'
+        xml_content += f'    <location><![CDATA[{job.location}]]></location>\n'
+        xml_content += f'    <jobtype><![CDATA[{job.type}]]></jobtype>\n'
+        xml_content += f'    <experience><![CDATA[{job.experience}]]></experience>\n'
+        xml_content += f'    <criteria><![CDATA[{job.criteria}]]></criteria>\n'
+        xml_content += '  </job>\n'
+        
+    xml_content += '</source>\n'
+    return Response(content=xml_content, media_type="application/xml")
+
+
+# ─── Real File Upload Parser Endpoint ───────────────────────────────────────────
+
+@router.post("/parse-file")
+async def parse_uploaded_file(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    file: UploadFile = File(...)
+):
+    """Parses text pages out of a PDF or TXT resume/JD and returns classifications."""
+    file_bytes = await file.read()
+    extracted_text = extract_text_from_file(file_bytes, file.filename)
+    
+    if not extracted_text:
+        raise HTTPException(status_code=400, detail="Failed to extract text from file format.")
+
+    # Apply analysis heuristics
+    text_lower = extracted_text.lower()
+    suggested_title = "Systems Architect"
+    suggested_department = "Engineering"
+    suggested_criteria = "AWS, Python, Kubernetes"
+
+    if "react" in text_lower or "typescript" in text_lower or "frontend" in text_lower:
+        suggested_title = "Senior Frontend Engineer"
+        suggested_criteria = "React, TypeScript, Tailwind CSS, Figma"
+    elif "data" in text_lower or "ml" in text_lower or "pandas" in text_lower:
+        suggested_title = "Senior Data Scientist"
+        suggested_criteria = "Python, SQL, Machine Learning, Pandas, PyTorch"
+    elif "sales" in text_lower or "account" in text_lower or "b2b" in text_lower:
+        suggested_title = "Sales Account Executive"
+        suggested_department = "Sales"
+        suggested_criteria = "SaaS Sales, CRM, Salesforce, Communication"
+    elif "hr" in text_lower or "recruit" in text_lower:
+        suggested_title = "HR Generalist"
+        suggested_department = "HR"
+        suggested_criteria = "Recruitment, Labor Laws, Employee Relations"
+
+    return {
+        "text": extracted_text[:10000],  # Truncate raw response length
+        "suggested_title": suggested_title,
+        "suggested_department": suggested_department,
+        "suggested_criteria": suggested_criteria
+    }
+
+
+# ─── Job Openings ─────────────────────────────────────────────────────────────
+
+@router.get("/jobs", response_model=PaginatedResponse[JobOpeningResponse])
+async def list_jobs(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    status_filter: str | None = Query(None, alias="status"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    search: str | None = None,
+):
+    query = select(JobOpening).where(JobOpening.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where((JobOpening.company_id == ctx.active_company_id) | (JobOpening.company_id == None))
+    if status_filter:
+        query = query.where(JobOpening.status.ilike(status_filter))
+    if search:
+        query = query.where(
+            JobOpening.title.ilike(f"%{search}%")
+            | JobOpening.department.ilike(f"%{search}%")
+            | JobOpening.criteria.ilike(f"%{search}%")
+        )
+
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    result = await db.execute(
+        query.order_by(JobOpening.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+    )
+    return paginate(result.scalars().all(), total or 0, page, page_size)
+
+
+@router.post("/jobs", response_model=JobOpeningResponse, status_code=status.HTTP_201_CREATED)
+async def create_job(
+    payload: JobOpeningCreate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    new_job = JobOpening(
+        tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
+        title=payload.title,
+        department=payload.department,
+        location=payload.location,
+        type=payload.type,
+        experience=payload.experience,
+        openings=payload.openings,
+        description=payload.description,
+        threshold_score=payload.threshold_score,
+        portals=payload.portals,
+        criteria=payload.criteria,
+    )
+    db.add(new_job)
+    await db.flush()
+
+    await add_system_notification(
+        db, 
+        ctx.tenant_id, 
+        f"New Job Opening: {new_job.title}", 
+        f"Job Opening '{new_job.title}' ({new_job.department}) with {new_job.openings} positions was created by {ctx.user.full_name}", 
+        "hrms"
+    )
+    await db.commit()
+    await db.refresh(new_job)
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="hrms_recruitment",
+        action="create_job_opening",
+        entity_type="JobOpening",
+        entity_id=new_job.id,
+        new_values=payload.model_dump(mode="json"),
+    )
+    await db.commit()
+    return new_job
+
+
+class GenerateJdRequest(BaseModel):
+    prompt: str
+
+
+class GenerateJdResponse(BaseModel):
+    title: str
+    department: str
+    criteria: str
+    description: str
+    threshold_score: int
+
+
+def generate_fallback_jd(prompt: str) -> dict:
+    prompt_lower = prompt.lower()
+    if "react" in prompt_lower or "frontend" in prompt_lower or "web" in prompt_lower:
+        title = "Senior Frontend Engineer (React)"
+        department = "Engineering"
+        criteria = "React, TypeScript, Tailwind CSS, Frontend Architecture, Redux"
+        description = (
+            "# Job Profile: Senior Frontend Engineer (React)\n"
+            "We are seeking an outstanding Senior Frontend Engineer to design, architect, and implement high-performance, "
+            "visually stunning, and responsive user interfaces for our enterprise suite.\n\n"
+            "## Key Responsibilities\n"
+            "- Design and construct state-of-the-art React components utilizing TypeScript and modern design systems.\n"
+            "- Collaborate with UI/UX designers to translate Figma visual structures into pixel-perfect modular systems.\n"
+            "- Optimize frontend bundles (via Vite/Webpack) and manage complex global states (Redux/Context API).\n"
+            "- Write comprehensive unit and integration tests with Jest, Vitest, and Playwright.\n\n"
+            "## Requirements\n"
+            "- 4+ years of professional web application development experience in JavaScript/TypeScript and modern frameworks.\n"
+            "- Strong proficiency in CSS layout models (Flexbox, Grid), CSS-in-JS, Tailwind CSS, or Glassmorphism design system paradigms.\n"
+            "- Expert knowledge of React core mechanics, hooks lifecycle, render loops, and performance profiling tools.\n"
+            "- Outstanding communication skills, ability to lead visual layouts, and passion for pixel-perfect detail.\n\n"
+            "## Evaluation Criteria\n"
+            "- Technical Coding Review Test: >= 80%\n"
+            "- Client-Side System Design: Pass\n"
+            "- Experience & Portfolio Alignment: >= 75%"
+        )
+    elif "sales" in prompt_lower or "marketing" in prompt_lower or "growth" in prompt_lower:
+        title = "Brand Marketing & Lead Specialist"
+        department = "Marketing"
+        criteria = "SEO, Google Analytics, Copywriting, Marketing Campaigns, PPC"
+        description = (
+            "# Job Profile: Brand Marketing & Lead Specialist\n"
+            "We are looking for an ambitious, data-driven Brand Marketing Specialist to execute high-impact multi-channel "
+            "marketing campaigns and drive brand visibility across channels.\n\n"
+            "## Key Responsibilities\n"
+            "- Strategize and execute digital acquisition campaigns across Google Ads, LinkedIn, and social media channels.\n"
+            "- Produce copywriting drafts for landing pages, ad creatives, and customer email newsletters.\n"
+            "- Monitor conversion rates, bounce rates, and traffic flows using Google Analytics and tag managers.\n"
+            "- Track performance analytics dashboards and deliver monthly reports on customer acquisition costs (CAC) to directors.\n\n"
+            "## Requirements\n"
+            "- 2+ years of professional digital marketing, brand specialist, or media buying experience.\n"
+            "- Proficient in copywriting, search engine optimization (SEO), and pay-per-click (PPC) campaign parameters.\n"
+            "- Excellent communication skills and familiarity with design platforms (Canva, Figma).\n\n"
+            "## Evaluation Criteria\n"
+            "- Marketing Case Study Assignment: >= 80%\n"
+            "- Analytics & SEO Interview: Pass\n"
+            "- Communication Alignment: >= 80%"
+        )
+    else:
+        title = "Enterprise Systems & Python Developer"
+        department = "Engineering"
+        criteria = "Python, REST APIs, Git, PostgreSQL, FastAPI"
+        description = (
+            "# Job Profile: Enterprise Systems & Python Developer\n"
+            "We are looking for a skilled backend developer to construct microservices, manage databases, and build scalable core structures.\n\n"
+            "## Key Responsibilities\n"
+            "- Build and configure secure REST APIs using Python, FastAPI, and SQLAlchemy.\n"
+            "- Design robust PostgreSQL relational schemas, indexes, and caching strategies.\n"
+            "- Setup continuous integration pipelines (CI/CD) and manage services deployment.\n"
+            "- Audit platform security, implement roles-based auth checks, and maintain detailed transaction logs.\n\n"
+            "## Requirements\n"
+            "- 3+ years experience building production backend systems using Python, FastAPI, or Django.\n"
+            "- Solid understanding of database architecture, SQL optimization, and key-value store cache systems.\n"
+            "- Familiarity with Git, Docker, and shell automation scripting.\n\n"
+            "## Evaluation Criteria\n"
+            "- Live Technical Coding Assignment: >= 80%\n"
+            "- System Architecture Design: Pass\n"
+            "- Relational Database Schema Design: >= 75%"
+        )
+    return {
+        "title": title,
+        "department": department,
+        "criteria": criteria,
+        "description": description,
+        "threshold_score": 80
+    }
+
+
+def parse_jd_response_text(text: str) -> GenerateJdResponse:
+    import json
+    import re
+
+    def sanitize_json_escapes(s: str) -> str:
+        # Replace invalid escape sequences: \\- \\DST etc.
+        def fix_escape(m):
+            char = m.group(1)
+            valid = {'"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'}
+            if char in valid:
+                return m.group(0)  # Keep valid escapes as-is
+            return char  # Drop the backslash for invalid escapes
+        return re.sub(r'\\(.)', fix_escape, s)
+
+    def extract_and_parse_json(raw: str):
+        """Try multiple strategies to extract and parse JSON from the raw text."""
+        # Strategy 1: Strip markdown code fences and try direct parse
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", cleaned)
+            cleaned = re.sub(r"\n?```$", "", cleaned)
+            cleaned = cleaned.strip()
+
+        # Strategy 2: Find first { to last } (handles text before/after JSON)
+        brace_match = re.search(r'\{[\s\S]*\}', cleaned)
+        candidates = []
+        if brace_match:
+            candidates.append(brace_match.group(0))
+        candidates.append(cleaned)  # Also try the whole text
+
+        for candidate in candidates:
+            # Try raw parse first
+            try:
+                data = json.loads(candidate)
+                if isinstance(data, dict):
+                    return data
+            except Exception:
+                pass
+
+            # Try after sanitizing invalid escape sequences
+            try:
+                sanitized = sanitize_json_escapes(candidate)
+                data = json.loads(sanitized)
+                if isinstance(data, dict):
+                    return data
+            except Exception:
+                pass
+
+            # Try removing all lone backslashes before non-special chars
+            try:
+                # More aggressive: replace any \X where X is not a valid escape
+                aggressive = re.sub(r'\\([^"\\/bfnrtu])', r'\1', candidate)
+                data = json.loads(aggressive)
+                if isinstance(data, dict):
+                    return data
+            except Exception:
+                pass
+
+        return None
+
+    # ── Primary: JSON extraction ──────────────────────────────────────────────
+    data = extract_and_parse_json(text)
+    if data:
+        title = data.get("title") or data.get("TITLE") or ""
+        dept  = data.get("department") or data.get("DEPARTMENT") or "Engineering"
+        crit  = data.get("criteria") or data.get("CRITERIA") or ""
+        desc  = data.get("description") or data.get("DESCRIPTION") or ""
+
+        if isinstance(crit, list):
+            crit = ", ".join(crit)
+        if isinstance(desc, list):
+            desc = "\n".join(str(x) for x in desc)
+
+        if title and desc:
+            return GenerateJdResponse(
+                title=str(title).strip(),
+                department=str(dept).strip(),
+                criteria=str(crit).strip(),
+                description=str(desc).strip(),
+                threshold_score=80
+            )
+
+    # ── Fallback: Regex heuristic line-parser ─────────────────────────────────
+    print(f"[JD Parser] JSON extraction failed; falling back to regex heuristics. Text[:200]: {text[:200]}")
+
+    title      = "Enterprise Systems Developer"
+    department = "Engineering"
+    criteria   = "Python, REST APIs, Git"
+    description = text
+
+    title_match = re.search(r"(?i)^TITLE:\s*(.*)", text, re.MULTILINE)
+    dept_match  = re.search(r"(?i)^DEPARTMENT:\s*(.*)", text, re.MULTILINE)
+    crit_match  = re.search(r"(?i)^CRITERIA:\s*(.*)", text, re.MULTILINE)
+
+    if title_match:
+        title = title_match.group(1).strip()
+    if dept_match:
+        department = dept_match.group(1).strip()
+    if crit_match:
+        criteria = crit_match.group(1).strip()
+
+    desc_match = re.search(r"(?i)DESCRIPTION:\s*(.*)", text, re.DOTALL)
+    if desc_match:
+        description = desc_match.group(1).strip()
+    else:
+        clean_desc = text
+        for pat in [r"(?i)^TITLE:.*?\n", r"(?i)^DEPARTMENT:.*?\n",
+                    r"(?i)^CRITERIA:.*?\n", r"(?i)^DESCRIPTION:.*?\n"]:
+            clean_desc = re.sub(pat, "", clean_desc, flags=re.MULTILINE)
+        description = re.sub(r"-{3,}", "", clean_desc).strip()
+
+    title      = re.sub(r"^[-#\s*]+", "", title).strip()
+    department = re.sub(r"^[-#\s*]+", "", department).strip()
+    criteria   = re.sub(r"^[-#\s*]+", "", criteria).strip()
+
+    # Last resort: try to extract title from first markdown H1
+    if title == "Enterprise Systems Developer":
+        h1_match = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
+        if h1_match:
+            title = h1_match.group(1).strip()
+
+    return GenerateJdResponse(
+        title=title,
+        department=department,
+        criteria=criteria,
+        description=description,
+        threshold_score=80
+    )
+
+
+@router.post("/jobs/generate-jd", response_model=GenerateJdResponse)
+async def generate_job_description(
+    payload: GenerateJdRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+):
+    provider = settings.ai_provider or "gemini"
+    
+    # ─── Dynamic Fallback Checks ───────────────────────────────────
+    if provider == "openai" and not settings.openai_api_key:
+        if settings.anthropic_api_key:
+            provider = "claude"
+        elif settings.gemini_api_key:
+            provider = "gemini"
+        else:
+            res = generate_fallback_jd(payload.prompt)
+            return GenerateJdResponse(**res)
+            
+    if provider == "claude" and not settings.anthropic_api_key:
+        if settings.gemini_api_key:
+            provider = "gemini"
+        elif settings.openai_api_key:
+            provider = "openai"
+        else:
+            res = generate_fallback_jd(payload.prompt)
+            return GenerateJdResponse(**res)
+            
+    if provider == "gemini" and not settings.gemini_api_key:
+        if settings.anthropic_api_key:
+            provider = "claude"
+        elif settings.openai_api_key:
+            provider = "openai"
+        else:
+            res = generate_fallback_jd(payload.prompt)
+            return GenerateJdResponse(**res)
+
+    instruction = (
+        "You are an elite enterprise HR Director and technical recruiter with 20 years of experience. "
+        "Your task: generate a COMPLETE, highly detailed, enterprise-grade Job Description (JD) based on the following context:\n\n"
+        f"{payload.prompt}\n\n"
+        "STRICT RULES:\n"
+        "1. Extract the exact job title, department, experience level, and required skills FROM the context above — do NOT use generic defaults.\n"
+        "2. If the context already contains a JD (pasted text), use ALL the information in it — role name, responsibilities, skills, requirements — and enhance/restructure it into a perfect enterprise JD.\n"
+        "3. Format the description in beautiful markdown with ALL these sections:\n"
+        "   # [Exact Job Title from context]\n"
+        "   ## About the Role\n"
+        "   ## Key Responsibilities\n"
+        "   ## Required Qualifications & Experience\n"
+        "   ## Technical Skills & Stack\n"
+        "   ## Behavioral Competencies\n"
+        "   ## What Success Looks Like (first 90 days)\n"
+        "   ## Compensation & Benefits\n"
+        "   ## Structured Evaluation Criteria (with specific threshold scores)\n"
+        "4. The 'criteria' field must list the ACTUAL key skills from the JD (comma-separated, 5-8 specific terms).\n"
+        "5. The 'department' must reflect the actual department (e.g., 'Data Science & Analytics', 'Engineering', 'Operations').\n"
+        "6. Return ONLY a raw JSON object (no markdown code fences, no extra text) matching exactly this schema:\n"
+        '{"title": "...", "department": "...", "criteria": "...", "description": "..."}\n\n'
+        "IMPORTANT: Keep your thinking/reasoning process extremely brief (under 300 tokens) to ensure the JSON fits in the token window and is not truncated."
+    )
+    
+    import requests
+    
+    # ─── OpenAI Provider execution ────────────────────────────────
+    if provider == "openai":
+        url = "https://api.openai.com/v1/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {settings.openai_api_key}"
+        }
+        body = {
+            "model": settings.openai_model or "gpt-4o",
+            "messages": [
+                {"role": "user", "content": instruction}
+            ]
+        }
+        try:
+            response = requests.post(url, json=body, headers=headers, timeout=30)
+            response.raise_for_status()
+            res_json = response.json()
+            text = res_json["choices"][0]["message"]["content"]
+            return parse_jd_response_text(text)
+        except Exception as e:
+            print(f"OpenAI API request failed, falling back. Error: {e}")
+            res = generate_fallback_jd(payload.prompt)
+            return GenerateJdResponse(**res)
+            
+    # ─── Claude / Anthropic Provider execution ────────────────────
+    elif provider == "claude":
+        url = f"{settings.anthropic_base_url.rstrip('/')}/v1/messages"
+        headers = {
+            "x-api-key": settings.anthropic_api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
+        body = {
+            "model": settings.anthropic_model or "claude-3-5-sonnet-20241022",
+            "max_tokens": 8192,
+            "messages": [
+                {"role": "user", "content": instruction}
+            ]
+        }
+        try:
+            response = requests.post(url, json=body, headers=headers, timeout=60)
+            response.raise_for_status()
+            res_json = response.json()
+            
+            # Debug log the response structure
+            print(f"[Claude JD] Response keys: {list(res_json.keys())}")
+            
+            # Handle multiple possible response formats from different proxy providers
+            text = None
+            
+            # Standard Anthropic format: {"content": [{"type": "text", "text": "..."}, ...]}
+            # Extended thinking mode adds a "thinking" block BEFORE the text block — loop to find type="text"
+            if "content" in res_json and isinstance(res_json["content"], list):
+                for block in res_json["content"]:
+                    if isinstance(block, dict):
+                        block_type = block.get("type", "")
+                        if block_type == "text":
+                            text = block.get("text")
+                            break
+                        elif block_type == "thinking":
+                            # Skip thinking/reasoning blocks
+                            continue
+                # Fallback: use first block if no text-typed block found
+                if not text and res_json["content"]:
+                    first_block = res_json["content"][0]
+                    text = first_block.get("text") or first_block.get("content")
+            
+            # OpenAI-compatible format: {"choices": [{"message": {"content": "..."}}]}
+            elif "choices" in res_json and res_json["choices"]:
+                msg = res_json["choices"][0].get("message", {})
+                text = msg.get("content") or msg.get("text")
+            
+            # Direct text field
+            elif "text" in res_json:
+                text = res_json["text"]
+            
+            # Flat message field
+            elif "message" in res_json:
+                msg = res_json["message"]
+                if isinstance(msg, str):
+                    text = msg
+                elif isinstance(msg, dict):
+                    text = msg.get("content") or msg.get("text")
+            
+            # Output field (some proxies)
+            elif "output" in res_json:
+                text = str(res_json["output"])
+
+            if not text:
+                print(f"[Claude JD] Unexpected response format: {res_json}")
+                raise ValueError(f"Could not extract text from response. Keys: {list(res_json.keys())}")
+            
+            return parse_jd_response_text(text)
+        except Exception as e:
+            print(f"Claude API request failed, falling back to Gemini. Error: {e}")
+            # Try Gemini as secondary fallback if key available
+            if settings.gemini_api_key:
+                try:
+                    api_key = settings.gemini_api_key
+                    model = settings.gemini_model or "gemini-3.6-flash"
+                    gurl = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+                    gbody = {"contents": [{"parts": [{"text": instruction}]}]}
+                    gresp = requests.post(gurl, json=gbody, headers={"Content-Type": "application/json"}, timeout=20)
+                    gresp.raise_for_status()
+                    gtext = gresp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                    return parse_jd_response_text(gtext)
+                except Exception as ge:
+                    print(f"Gemini fallback also failed: {ge}")
+            res = generate_fallback_jd(payload.prompt)
+            return GenerateJdResponse(**res)
+            
+    # ─── Gemini Provider execution ────────────────────────────────
+    else:
+        api_key = settings.gemini_api_key
+        model = settings.gemini_model or "gemini-3.6-flash"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        headers = {"Content-Type": "application/json"}
+        body = {
+            "contents": [{
+                "parts": [{
+                    "text": instruction
+                }]
+            }]
+        }
+        try:
+            response = requests.post(url, json=body, headers=headers, timeout=20)
+            response.raise_for_status()
+            res_json = response.json()
+            text = res_json["candidates"][0]["content"]["parts"][0]["text"]
+            return parse_jd_response_text(text)
+        except Exception as e:
+            print(f"Gemini API request failed, falling back. Error: {e}")
+            res = generate_fallback_jd(payload.prompt)
+            return GenerateJdResponse(**res)
+
+
+@router.patch("/jobs/{id}", response_model=JobOpeningResponse)
+async def update_job(
+    id: uuid.UUID,
+    payload: JobOpeningUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    job = await db.get(JobOpening, id)
+    if not job or job.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Job opening not found")
+
+    old_values = {}
+    new_values = {}
+
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        old_v = getattr(job, k)
+        old_values[k] = old_v
+        new_values[k] = v
+        setattr(job, k, v)
+
+    await db.commit()
+    await db.refresh(job)
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="hrms_recruitment",
+        action="update_job_opening",
+        entity_type="JobOpening",
+        entity_id=job.id,
+        old_values=old_values,
+        new_values=new_values,
+    )
+    await db.commit()
+    return job
+
+
+@router.delete("/jobs/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_job(
+    id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    job = await db.get(JobOpening, id)
+    if not job or job.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Job opening not found")
+
+    await db.delete(job)
+    await db.commit()
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="hrms_recruitment",
+        action="delete_job_opening",
+        entity_type="JobOpening",
+        entity_id=id,
+        old_values={"title": job.title},
+    )
+    await db.commit()
+    return None
+
+
+# ─── Applicants ───────────────────────────────────────────────────────────────
+
+@router.get("/applicants", response_model=PaginatedResponse[ApplicantResponse])
+async def list_applicants(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    job_id: uuid.UUID | None = None,
+    stage: str | None = None,
+    source: str | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    search: str | None = None,
+):
+    query = select(Applicant).where(Applicant.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where((Applicant.company_id == ctx.active_company_id) | (Applicant.company_id == None))
+    if job_id:
+        query = query.where(Applicant.job_id == job_id)
+    if stage:
+        query = query.where(Applicant.stage.ilike(stage))
+    if source:
+        query = query.where(Applicant.source.ilike(source))
+    if search:
+        query = query.where(
+            Applicant.name.ilike(f"%{search}%")
+            | Applicant.email.ilike(f"%{search}%")
+            | Applicant.job_title.ilike(f"%{search}%")
+        )
+
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    result = await db.execute(
+        query.order_by(Applicant.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+    )
+    return paginate(result.scalars().all(), total or 0, page, page_size)
+
+
+@router.post("/applicants", response_model=ApplicantResponse, status_code=status.HTTP_201_CREATED)
+async def create_manual_applicant(
+    payload: ApplicantCreate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    target_job_title = payload.job_title or "General Applicant"
+    match_score = 75
+
+    if payload.job_id:
+        job = await db.get(JobOpening, payload.job_id)
+        if job and job.tenant_id == ctx.tenant_id:
+            target_job_title = job.title
+            match_score = calculate_match_score(payload.resume_text, job.criteria)
+            job.applicants_count += 1
+
+    new_applicant = Applicant(
+        tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
+        name=payload.name,
+        email=payload.email,
+        phone=payload.phone,
+        job_id=payload.job_id,
+        job_title=target_job_title,
+        experience=payload.experience or "Fresher / Entry",
+        rating=0,
+        stage=payload.stage or "Applied",
+        source=payload.source or "Manual Entry",
+        match_score=match_score,
+        resume_text=payload.resume_text,
+        expected_salary=payload.expected_salary,
+        proposed_salary=payload.proposed_salary,
+        notice_period_days=payload.notice_period_days or 30,
+    )
+
+    db.add(new_applicant)
+    await db.flush()
+
+    await add_system_notification(
+        db,
+        ctx.tenant_id,
+        f"Manual Candidate Registered: {new_applicant.name}",
+        f"Candidate '{new_applicant.name}' registered manually for '{new_applicant.job_title}' in stage '{new_applicant.stage}'.",
+        "hrms"
+    )
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="hrms_recruitment",
+        action="create_manual_applicant",
+        entity_type="Applicant",
+        entity_id=new_applicant.id,
+        new_values={"name": new_applicant.name, "email": new_applicant.email, "role": new_applicant.job_title},
+    )
+
+    await db.commit()
+    await db.refresh(new_applicant)
+    return new_applicant
+
+
+@router.post("/jobs/{job_id}/apply", response_model=ApplicantResponse, status_code=status.HTTP_201_CREATED)
+async def submit_application(
+    job_id: uuid.UUID,
+    payload: ApplicantCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    job = await db.get(JobOpening, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job opening not found")
+
+    match_score = calculate_match_score(payload.resume_text, job.criteria)
+
+    new_applicant = Applicant(
+        tenant_id=job.tenant_id,
+        name=payload.name,
+        email=payload.email,
+        job_id=job_id,
+        job_title=job.title,
+        experience=payload.experience,
+        rating=0,
+        stage="Applied",
+        source=payload.source,
+        match_score=match_score,
+        resume_text=payload.resume_text,
+    )
+    
+    job.applicants_count += 1
+    
+    db.add(new_applicant)
+    await db.flush()
+    await add_system_notification(
+        db, 
+        job.tenant_id, 
+        f"New Candidate Applied: {new_applicant.name}", 
+        f"Candidate '{new_applicant.name}' applied for '{new_applicant.job_title}' (Match Score: {new_applicant.match_score}%) via {new_applicant.source or 'Direct portal'}", 
+        "hrms"
+    )
+    await db.commit()
+    await db.refresh(new_applicant)
+    return new_applicant
+
+
+@router.patch("/applicants/{id}", response_model=ApplicantResponse)
+async def update_applicant(
+    id: uuid.UUID,
+    payload: ApplicantUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    applicant = await db.get(Applicant, id)
+    if not applicant or applicant.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Applicant not found")
+
+    old_stage = applicant.stage
+    
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(applicant, k, v)
+
+    await db.commit()
+    await db.refresh(applicant)
+
+    if old_stage != applicant.stage:
+        await write_audit_log(
+            db,
+            tenant_id=ctx.tenant_id,
+            user_id=ctx.user.id,
+            module="hrms_recruitment",
+            action="advance_applicant_stage",
+            entity_type="Applicant",
+            entity_id=applicant.id,
+            old_values={"stage": old_stage},
+            new_values={"stage": applicant.stage},
+        )
+        await db.commit()
+
+    return applicant
+
+
+class AddNoteRequest(BaseModel):
+    text: str
+
+
+@router.post("/applicants/{id}/notes", response_model=ApplicantResponse)
+async def add_applicant_note(
+    id: uuid.UUID,
+    payload: AddNoteRequest,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    applicant = await db.get(Applicant, id)
+    if not applicant or applicant.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Applicant not found")
+
+    new_note = {
+        "author": ctx.user.full_name or "HR Officer",
+        "date": datetime.now().isoformat(),
+        "text": payload.text
+    }
+
+    current_notes = list(applicant.notes_json or [])
+    current_notes.insert(0, new_note)  # Put newest notes first
+    applicant.notes_json = current_notes
+
+    await db.commit()
+    await db.refresh(applicant)
+    return applicant
+
+
+
+# ─── Interviews ───────────────────────────────────────────────────────────────
+
+@router.get("/interviews", response_model=PaginatedResponse[InterviewResponse])
+async def list_interviews(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+):
+    query = select(Interview).where(Interview.tenant_id == ctx.tenant_id)
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    result = await db.execute(
+        query.order_by(Interview.date.desc(), Interview.time.desc()).offset((page - 1) * page_size).limit(page_size)
+    )
+    return paginate(result.scalars().all(), total or 0, page, page_size)
+
+
+@router.get("/interviews/check-overlap")
+async def check_overlap(
+    interviewer: str,
+    date: str,
+    time: str,
+    duration: int,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    try:
+        req_h, req_m = map(int, time.split(":"))
+        req_start = req_h + req_m / 60.0
+        req_end = req_start + duration / 60.0
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid time format. Use HH:MM")
+
+    stmt = select(Interview).where(
+        and_(
+            Interview.tenant_id == ctx.tenant_id,
+            Interview.interviewer_name == interviewer,
+            Interview.date == date,
+            Interview.status == "Scheduled"
+        )
+    )
+    result = await db.execute(stmt)
+    records = result.scalars().all()
+
+    for rec in records:
+        try:
+            ex_h, ex_m = map(int, rec.time.split(":"))
+            ex_start = ex_h + ex_m / 60.0
+            ex_end = ex_start + rec.duration / 60.0
+
+            if req_start < ex_end and req_end > ex_start:
+                return {
+                    "conflict": True,
+                    "candidate": rec.candidate,
+                    "time": rec.time,
+                    "duration": rec.duration,
+                    "detail": f"Interviewer already scheduled for candidate '{rec.candidate}' at {rec.time} for {rec.duration} minutes."
+                }
+        except Exception:
+            continue
+
+    return {"conflict": False}
+
+
+@router.post("/interviews", response_model=InterviewResponse, status_code=status.HTTP_201_CREATED)
+async def schedule_interview(
+    payload: InterviewCreate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    applicant = await db.get(Applicant, payload.applicant_id)
+    if not applicant or applicant.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Candidate applicant profile not found")
+
+    conflict_check = await check_overlap(
+        interviewer=payload.interviewer_name,
+        date=payload.date,
+        time=payload.time,
+        duration=payload.duration,
+        ctx=ctx,
+        db=db
+    )
+    if conflict_check["conflict"]:
+        raise HTTPException(status_code=409, detail=conflict_check["detail"])
+
+    meet_id = f"{uuid.uuid4().hex[:3]}-{uuid.uuid4().hex[:4]}-{uuid.uuid4().hex[:3]}"
+    meeting_link = f"https://meet.google.com/{meet_id}" if payload.mode == "Video Call" else None
+
+    new_int = Interview(
+        tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
+        applicant_id=payload.applicant_id,
+        candidate=applicant.name,
+        job_title=applicant.job_title,
+        interviewer_name=payload.interviewer_name,
+        date=payload.date,
+        time=payload.time,
+        duration=payload.duration,
+        type=payload.type,
+        mode=payload.mode,
+        meeting_link=meeting_link,
+        status="Scheduled",
+    )
+    db.add(new_int)
+    await db.commit()
+    await db.refresh(new_int)
+
+    # Trigger Live Email Notification to candidate
+    email_body = (
+        f"Dear {applicant.name},\n\n"
+        f"You have been scheduled for a recruitment selection interview for the position of: {applicant.job_title}.\n\n"
+        f"Session Details:\n"
+        f"- Interviewer: {payload.interviewer_name}\n"
+        f"- Date: {payload.date}\n"
+        f"- Time: {payload.time}\n"
+        f"- Duration: {payload.duration} minutes\n"
+        f"- Interview Type: {payload.type}\n"
+        f"- Mode: {payload.mode}\n"
+    )
+    if meeting_link:
+        email_body += f"- Google Meet Video Link: {meeting_link}\n"
+    email_body += "\nBest regards,\nHR Team · Nimbus Retail Group"
+    
+    await send_recruitment_email(applicant.email, f"Interview Scheduled: {applicant.job_title} - Nimbus Retail", email_body)
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="hrms_recruitment",
+        action="schedule_interview",
+        entity_type="Interview",
+        entity_id=new_int.id,
+        new_values={"candidate": applicant.name, "date": payload.date, "time": payload.time},
+    )
+    await db.commit()
+    return new_int
+
+
+@router.patch("/interviews/{id}", response_model=InterviewResponse)
+async def update_interview(
+    id: uuid.UUID,
+    payload: InterviewUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    intvw = await db.get(Interview, id)
+    if not intvw or intvw.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Interview not found")
+
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(intvw, k, v)
+
+    await db.commit()
+    await db.refresh(intvw)
+    return intvw
+
+
+# ─── Offer Letters ────────────────────────────────────────────────────────────
+
+@router.get("/offers", response_model=PaginatedResponse[OfferLetterResponse])
+async def list_offers(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+):
+    query = select(OfferLetter).where(OfferLetter.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where((OfferLetter.company_id == ctx.active_company_id) | (OfferLetter.company_id == None))
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    result = await db.execute(
+        query.order_by(OfferLetter.created_at.desc(), OfferLetter.offer_date.desc()).offset((page - 1) * page_size).limit(page_size)
+    )
+    return paginate(result.scalars().all(), total or 0, page, page_size)
+
+
+@router.get("/offers/{id}", response_model=OfferLetterResponse)
+async def get_offer(
+    id: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    clean_id = id.replace(".pdf", "").strip()
+    try:
+        u_id = uuid.UUID(clean_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid offer ID format")
+    offer = await db.get(OfferLetter, u_id)
+    if not offer or offer.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Offer letter not found")
+    return offer
+
+
+@router.get("/public/offers/{id}", response_model=OfferLetterResponse)
+async def get_public_offer(
+    id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    clean_id = id.replace(".pdf", "").strip()
+    try:
+        u_id = uuid.UUID(clean_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid offer ID format")
+    offer = await db.get(OfferLetter, u_id)
+    if not offer:
+        raise HTTPException(status_code=404, detail="Offer letter not found")
+    return offer
+
+
+@router.post("/offers", response_model=OfferLetterResponse, status_code=status.HTTP_201_CREATED)
+async def create_offer(
+    payload: OfferLetterCreate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    candidate_name = payload.candidate
+    candidate_role = payload.role or "Team Member"
+    candidate_email = payload.candidate_email
+
+    applicant = None
+    employee = None
+
+    if payload.employee_id:
+        employee = await db.get(Employee, payload.employee_id)
+        if not employee or employee.tenant_id != ctx.tenant_id:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        candidate_name = payload.candidate or employee.full_name
+        candidate_email = payload.candidate_email or employee.email
+        if payload.role:
+            candidate_role = payload.role
+        elif employee.designation_id:
+            from src.services.staff.models import Designation
+            desig = await db.get(Designation, employee.designation_id)
+            if desig:
+                candidate_role = desig.name
+        elif hasattr(employee, "position") and employee.position:
+            candidate_role = employee.position
+    elif payload.applicant_id:
+        applicant = await db.get(Applicant, payload.applicant_id)
+        if not applicant or applicant.tenant_id != ctx.tenant_id:
+            raise HTTPException(status_code=404, detail="Applicant profile not found")
+        candidate_name = payload.candidate or applicant.name
+        candidate_email = payload.candidate_email or applicant.email
+        candidate_role = payload.role or applicant.job_title
+        # Advance applicant stage
+        applicant.stage = "Offer"
+    else:
+        if not candidate_name:
+            raise HTTPException(status_code=400, detail="Must provide either applicant_id, employee_id, or candidate name")
+
+    new_offer = OfferLetter(
+        tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
+        applicant_id=payload.applicant_id,
+        employee_id=payload.employee_id,
+        candidate=candidate_name or "Candidate",
+        candidate_email=candidate_email,
+        role=candidate_role,
+        ctc=payload.ctc,
+        offer_date=date.today(),
+        expiry_date=payload.expiry_date,
+        joining_date=payload.joining_date,
+        signer_name=payload.signer_name,
+        status="Awaiting Acceptance",
+        custom_template=payload.custom_template,
+    )
+    db.add(new_offer)
+    await db.flush()
+
+    # If this is for an existing employee, automatically store a record in EmployeeDocument (Document Vault)
+    if employee:
+        doc_entry = EmployeeDocument(
+            tenant_id=ctx.tenant_id,
+            employee_id=employee.id,
+            document_name=f"Offer Letter - {candidate_role} ({new_offer.joining_date.strftime('%b %Y') if new_offer.joining_date else date.today().strftime('%b %Y')})",
+            document_type="Contract",
+            file_path=f"/vault/offers/{new_offer.id}.pdf",
+            upload_date=date.today(),
+            status="Valid",
+        )
+        db.add(doc_entry)
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="hrms_recruitment",
+        action="create_offer_letter",
+        entity_type="OfferLetter",
+        entity_id=new_offer.id,
+        new_values={
+            "candidate": candidate_name,
+            "role": candidate_role,
+            "ctc": payload.ctc,
+            "employee_id": str(payload.employee_id) if payload.employee_id else None,
+            "applicant_id": str(payload.applicant_id) if payload.applicant_id else None,
+        },
+    )
+    await db.commit()
+    await db.refresh(new_offer)
+    return new_offer
+
+
+@router.put("/offers/{id}", response_model=OfferLetterResponse)
+@router.patch("/offers/{id}", response_model=OfferLetterResponse)
+async def update_offer_letter(
+    id: uuid.UUID,
+    payload: OfferLetterUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("edit:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    offer = await db.get(OfferLetter, id)
+    if not offer or offer.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Offer letter not found")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    for field, val in update_data.items():
+        if hasattr(offer, field) and val is not None:
+            setattr(offer, field, val)
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="hrms_recruitment",
+        action="update_offer_letter",
+        entity_type="OfferLetter",
+        entity_id=offer.id,
+        new_values=update_data,
+    )
+    await db.commit()
+    await db.refresh(offer)
+    return offer
+
+
+@router.delete("/offers/{id}")
+async def delete_offer_letter(
+    id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("delete:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    offer = await db.get(OfferLetter, id)
+    if not offer or offer.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Offer letter not found")
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="hrms_recruitment",
+        action="delete_offer_letter",
+        entity_type="OfferLetter",
+        entity_id=offer.id,
+        new_values={"candidate": offer.candidate, "role": offer.role},
+    )
+    await db.delete(offer)
+    await db.commit()
+
+    # Try removing PDF from static vault if exists
+    try:
+        vault_file = Path(f"static/vault/offers/{id}.pdf")
+        if vault_file.exists():
+            vault_file.unlink()
+    except Exception:
+        pass
+
+    return {"status": "ok", "message": "Offer letter deleted successfully", "id": str(id)}
+
+
+@router.post("/offers/{id}/send-email")
+async def send_offer_email(
+    id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    offer = await db.get(OfferLetter, id)
+    if not offer or offer.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Offer letter not found")
+
+    # Fetch candidate email
+    target_email = offer.candidate_email
+    if not target_email and offer.applicant_id:
+        applicant = await db.get(Applicant, offer.applicant_id)
+        if applicant:
+            target_email = applicant.email
+    if not target_email and offer.employee_id:
+        employee = await db.get(Employee, offer.employee_id)
+        if employee:
+            target_email = employee.email
+
+    if not target_email:
+        raise HTTPException(status_code=400, detail="Candidate email address could not be resolved")
+
+    company = None
+    tenant = None
+    company_name = company.name if company and company.name else (tenant.name if tenant else "BusinessOS AI Global Technologies")
+
+    server_base = getattr(settings, "app_public_url", None) or "https://lazymonkeyai.com"
+    if server_base.endswith("/"):
+        server_base = server_base[:-1]
+
+    accept_url = f"{server_base}/api/v1/hrms/public/offers/respond?id={offer.id}&action=accept&email={target_email}"
+    decline_url = f"{server_base}/api/v1/hrms/public/offers/respond?id={offer.id}&action=decline&email={target_email}"
+
+    # Plain text fallback
+    plain_body = (
+        f"Dear {offer.candidate},\n\n"
+        f"We are pleased to extend this formal offer of employment to join {company_name} as a {offer.role}.\n\n"
+        f"Offer Terms:\n"
+        f"- Compensation: ₹{offer.ctc:,.2f} per annum (Gross CTC)\n"
+        f"- Target Start Date: {offer.joining_date}\n"
+        f"- Offer Expiration: {offer.expiry_date}\n\n"
+        f"To accept this offer online, click here: {accept_url}\n"
+        f"To decline this offer, click here: {decline_url}\n\n"
+        f"Sincerely,\n{offer.signer_name}\nHuman Resources Department\n{company_name}"
+    )
+
+    # Rich responsive HTML template
+    html_body = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Employment Offer: {offer.role} - {company_name}</title>
+      <style>
+        body {{ margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; }}
+        .email-container {{ max-width: 620px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.06); }}
+        .brand-header {{ background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); padding: 32px 32px; color: #ffffff; }}
+        .brand-logo {{ font-size: 20px; font-weight: 900; letter-spacing: -0.5px; margin: 0; color: #ffffff; }}
+        .brand-subtitle {{ margin: 4px 0 0 0; font-size: 12px; color: #cbd5e1; }}
+        .email-body {{ padding: 36px 32px; }}
+        .salutation {{ font-size: 18px; font-weight: 800; color: #0f172a; margin-bottom: 12px; }}
+        .intro-text {{ font-size: 14px; line-height: 1.65; color: #334155; margin-bottom: 24px; }}
+        .offer-card {{ background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 16px; padding: 24px; margin-bottom: 28px; }}
+        .offer-card-title {{ font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #1e1b4b; margin-bottom: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }}
+        .detail-row {{ display: table; width: 100%; margin-bottom: 10px; font-size: 14px; }}
+        .detail-label {{ display: table-cell; width: 45%; color: #64748b; font-weight: 600; vertical-align: top; }}
+        .detail-val {{ display: table-cell; width: 55%; color: #0f172a; font-weight: 700; text-align: right; vertical-align: top; }}
+        .highlight-ctc {{ color: #059669 !important; font-size: 16px !important; }}
+        .button-container {{ text-align: center; margin: 32px 0 20px 0; }}
+        .btn-accept {{ display: inline-block; padding: 14px 36px; background-color: #10b981; color: #ffffff !important; text-decoration: none; font-size: 15px; font-weight: 800; border-radius: 12px; box-shadow: 0 4px 14px rgba(16,185,129,0.35); margin: 0 8px 10px 0; }}
+        .btn-decline {{ display: inline-block; padding: 14px 24px; background-color: #ffffff; color: #ef4444 !important; text-decoration: none; font-size: 14px; font-weight: 700; border: 1.5px solid #fca5a5; border-radius: 12px; margin: 0 0 10px 0; }}
+        .signature-block {{ margin-top: 32px; padding-top: 20px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b; line-height: 1.5; }}
+        .signature-name {{ font-weight: 700; color: #0f172a; font-size: 14px; }}
+        .email-footer {{ background: #f8fafc; padding: 24px 32px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center; line-height: 1.5; }}
+      </style>
+    </head>
+    <body>
+      <div class="email-container">
+        <div class="brand-header">
+          <div>
+            <div class="brand-logo">{company_name}</div>
+            <div class="brand-subtitle">Official Employment Offer & Appointment Confirmation</div>
+          </div>
+        </div>
+        <div class="email-body">
+          <div class="salutation">Dear {offer.candidate},</div>
+          <div class="intro-text">
+            We are thrilled to extend this formal offer of employment to join <strong>{company_name}</strong> as <strong>{offer.role}</strong>.
+            Our leadership and team members were deeply impressed by your experience and domain expertise.
+          </div>
+
+          <div class="offer-card">
+            <div class="offer-card-title">Key Offer Summary</div>
+            <div class="detail-row">
+              <div class="detail-label">Position / Role:</div>
+              <div class="detail-val">{offer.role}</div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-label">Annual Gross CTC:</div>
+              <div class="detail-val highlight-ctc">₹{offer.ctc:,.2f} / annum</div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-label">Target Joining Date:</div>
+              <div class="detail-val">{offer.joining_date}</div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-label">Offer Expiration:</div>
+              <div class="detail-val">{offer.expiry_date}</div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-label">Authorizing Signer:</div>
+              <div class="detail-val">{offer.signer_name}</div>
+            </div>
+          </div>
+
+          <p style="font-size: 13px; color: #475569; text-align: center; margin: 0 0 16px 0;">
+            Please respond directly using the options below before <strong>{offer.expiry_date}</strong>:
+          </p>
+
+          <div class="button-container">
+            <a href="{accept_url}" class="btn-accept">✅ Accept Offer Online</a>
+            <a href="{decline_url}" class="btn-decline">❌ Decline Offer</a>
+          </div>
+
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin: 20px 0; text-align: center;">
+            <p style="margin: 0; font-size: 12px; color: #475569; font-weight: 600;">
+              📎 <strong>Official Offer Letter PDF Attached:</strong> A formal, digitally authorized PDF copy of this offer letter is attached to this email for your review and records.
+            </p>
+          </div>
+
+          <div class="signature-block">
+            Warm regards,<br>
+            <span class="signature-name">{offer.signer_name}</span><br>
+            Human Resources & Talent Operations<br>
+            <strong>{company_name}</strong>
+          </div>
+        </div>
+        <div class="email-footer">
+          &copy; {datetime.now().year} {company_name}. Confidential Employment Record.<br>
+          This is an official automated communication intended solely for {target_email}.
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+
+    # Generate official high-resolution PDF document attachment
+    pdf_bytes = generate_offer_letter_pdf(offer, company_name, tenant, company)
+    pdf_filename = f"Official_Offer_Letter_{(offer.candidate or 'Candidate').replace(' ', '_')}.pdf"
+
+    # Persist copy to static vault directory for direct file serving
+    try:
+        vault_dir = Path("static/vault/offers")
+        vault_dir.mkdir(parents=True, exist_ok=True)
+        (vault_dir / f"{offer.id}.pdf").write_bytes(pdf_bytes)
+    except Exception as e:
+        print(f"[VAULT PDF WRITE NOTICE]: {e}")
+
+    # Resolve target company for tenant/company SMTP credentials
+    target_company_id = company.id if company else None
+    if not target_company_id and offer.employee_id:
+        from src.services.staff.models import Employee
+        emp = await db.get(Employee, offer.employee_id)
+        if emp and emp.company_id:
+            target_company_id = emp.company_id
+
+    if not target_company_id:
+        primary_comp = await db.scalar(
+            select(Company).where(Company.tenant_id == ctx.tenant_id, Company.status == "active").order_by(Company.created_at.asc())
+        )
+        if primary_comp:
+            target_company_id = primary_comp.id
+
+    email_success = await send_recruitment_email(
+        to_email=target_email,
+        subject=f"Employment Offer: {offer.role} - {company_name}",
+        body_text=plain_body,
+        html_body=html_body,
+        attachment_bytes=pdf_bytes,
+        attachment_filename=pdf_filename,
+        tenant_id=ctx.tenant_id,
+        company_id=target_company_id,
+        db=db,
+    )
+
+    if email_success:
+        offer.email_sent = True
+        await db.commit()
+
+        await write_audit_log(
+            db,
+            tenant_id=ctx.tenant_id,
+            user_id=ctx.user.id,
+            module="hrms_recruitment",
+            action="send_offer_email",
+            entity_type="OfferLetter",
+            entity_id=id,
+            new_values={"recipient_candidate": offer.candidate, "recipient_email": target_email, "signer": offer.signer_name, "pdf_attached": pdf_filename},
+        )
+        await db.commit()
+        return {"status": "ok", "message": f"Official offer email with PDF attachment successfully sent to '{target_email}'."}
+    else:
+        return {"status": "warning", "message": f"Offer letter PDF generated and saved in Vault, but SMTP dispatch to '{target_email}' could not be completed. Please check your SMTP credentials or recipient inbox."}
+
+
+@router.get("/offers/{id}/download-pdf")
+async def download_offer_letter_pdf(
+    id: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    clean_id = id.replace(".pdf", "").strip()
+    try:
+        u_id = uuid.UUID(clean_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid offer ID format")
+    offer = await db.get(OfferLetter, u_id)
+    if not offer or offer.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Offer letter not found")
+    
+    company = None
+    if offer.company_id:
+        company = None
+    tenant = None
+    company_name = company.name if company and company.name else (tenant.name if tenant else "BusinessOS AI Global Technologies")
+    pdf_bytes = generate_offer_letter_pdf(offer, company_name, tenant, company)
+    filename = f"Official_Offer_Letter_{(offer.candidate or 'Candidate').replace(' ', '_')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/public/offers/{id}/download-pdf")
+async def download_public_offer_letter_pdf(
+    id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    clean_id = id.replace(".pdf", "").strip()
+    try:
+        u_id = uuid.UUID(clean_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid offer ID format")
+    offer = await db.get(OfferLetter, u_id)
+    if not offer:
+        raise HTTPException(status_code=404, detail="Offer letter not found")
+    
+    company = None
+    if offer.company_id:
+        company = None
+    tenant = None
+    company_name = company.name if company and company.name else (tenant.name if tenant else "BusinessOS AI Global Technologies")
+    pdf_bytes = generate_offer_letter_pdf(offer, company_name, tenant, company)
+    filename = f"Official_Offer_Letter_{(offer.candidate or 'Candidate').replace(' ', '_')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/public/offers/respond", response_class=HTMLResponse)
+async def public_offer_response(
+    id: uuid.UUID,
+    action: str,
+    email: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    offer = await db.get(OfferLetter, id)
+    if not offer:
+        return HTMLResponse(content="<h2>Offer letter not found or expired.</h2>", status_code=404)
+
+    expected_email = offer.candidate_email
+    applicant = None
+    if offer.applicant_id:
+        applicant = await db.get(Applicant, offer.applicant_id)
+        if applicant and not expected_email:
+            expected_email = applicant.email
+    if offer.employee_id:
+        from src.services.staff.models import Employee
+        employee = await db.get(Employee, offer.employee_id)
+        if employee and not expected_email:
+            expected_email = employee.email
+
+    if not expected_email or expected_email.strip().lower() != email.strip().lower():
+        return HTMLResponse(content="<h2>Invalid candidate authorization credentials.</h2>", status_code=403)
+
+    tenant = None
+    company_name = tenant.name if tenant else "LazyMonkeyAI"
+
+    if action.lower() == "accept":
+        await _sync_accepted_offer_onboarding(db, offer, applicant, offer.tenant_id)
+
+        return HTMLResponse(content=f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8">
+          <title>Offer Accepted — {company_name}</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0fdf4; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }}
+            .card {{ max-width: 520px; width: 100%; background: #ffffff; border-radius: 24px; padding: 44px 36px; text-align: center; box-shadow: 0 20px 40px rgba(16,185,129,0.12); border: 1.5px solid #86efac; }}
+            .icon-badge {{ width: 72px; height: 72px; background: #dcfce7; color: #16a34a; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 36px; margin: 0 auto 24px auto; box-shadow: 0 4px 12px rgba(22,163,74,0.2); }}
+            h1 {{ font-size: 24px; font-weight: 900; color: #0f172a; margin: 0 0 10px 0; }}
+            p {{ font-size: 15px; color: #334155; line-height: 1.6; margin: 0 0 24px 0; }}
+            .meta-box {{ background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 18px 20px; font-size: 13px; font-weight: 600; color: #1e293b; margin-bottom: 24px; text-align: left; }}
+            .meta-row {{ display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed #e2e8f0; }}
+            .meta-row:last-child {{ border-bottom: none; }}
+            .footer-note {{ font-size: 12px; color: #64748b; line-height: 1.5; }}
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="icon-badge">🎉</div>
+            <h1>Congratulations, {offer.candidate}!</h1>
+            <p>You have successfully <strong>ACCEPTED</strong> the offer of employment for <strong>{offer.role}</strong> at <strong>{company_name}</strong>.</p>
+            <div class="meta-box">
+              <div class="meta-row"><span>Position:</span> <span>{offer.role}</span></div>
+              <div class="meta-row"><span>Annual CTC:</span> <span style="color: #059669; font-weight: 700;">₹{offer.ctc:,.2f}</span></div>
+              <div class="meta-row"><span>Target Joining Date:</span> <span>{offer.joining_date}</span></div>
+              <div class="meta-row"><span>Response Status:</span> <span style="color: #16a34a; font-weight: 700;">Verified & Confirmed</span></div>
+            </div>
+            <p class="footer-note">Our People Operations & Onboarding team has received your confirmation in real-time and will be in touch shortly with your welcome package.</p>
+          </div>
+        </body>
+        </html>
+        """)
+    else:
+        offer.status = "Declined"
+        await db.commit()
+        return HTMLResponse(content=f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8">
+          <title>Offer Response Recorded — {company_name}</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }}
+            .card {{ max-width: 480px; width: 100%; background: #ffffff; border-radius: 20px; padding: 40px 32px; text-align: center; box-shadow: 0 15px 30px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }}
+            h1 {{ font-size: 20px; font-weight: 800; color: #0f172a; margin-bottom: 12px; }}
+            p {{ font-size: 14px; color: #64748b; line-height: 1.6; margin-bottom: 16px; }}
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h1>Offer Response Recorded</h1>
+            <p>Thank you for letting us know, {offer.candidate}. Your decision to decline the offer has been safely updated in our HRMS records.</p>
+            <p style="font-size: 13px; color: #94a3b8;">We sincerely appreciate your time and interest in {company_name}, and wish you continued success.</p>
+          </div>
+        </body>
+        </html>
+        """)
+
+
+async def _sync_accepted_offer_onboarding(
+    db: AsyncSession,
+    offer: OfferLetter,
+    applicant: Applicant | None,
+    tenant_id: uuid.UUID
+) -> OnboardingRecord:
+    """Helper to ensure Employee, Document Vault, and Onboarding Checklist records exist for accepted offers."""
+    offer.status = "Accepted"
+    
+    cand_email = offer.candidate_email or (applicant.email if applicant else "")
+    cand_name = offer.candidate or (applicant.name if applicant else "New Hire")
+    role_name = offer.role or (applicant.job_title if applicant else "Team Member")
+    start_dt = offer.joining_date or date.today()
+
+    if applicant:
+        applicant.stage = "Hired"
+
+    # 1. Provision Employee in core employees table if not present
+    emp = None
+    if cand_email:
+        emp = await db.scalar(
+            select(Employee).where(
+                Employee.email == cand_email,
+                Employee.tenant_id == tenant_id
+            )
+        )
+    if not emp:
+        count = await db.scalar(
+            select(func.count()).select_from(Employee).where(Employee.tenant_id == tenant_id)
+        ) or 0
+        seq = str(count + 1).zfill(4)
+        emp = Employee(
+            tenant_id=tenant_id,
+            company_id=offer.company_id,
+            employee_code=f"EMP-{seq}",
+            full_name=cand_name,
+            email=cand_email,
+            date_of_joining=start_dt,
+            employment_type="Full-Time",
+            status="Active",
+            basic_salary=Decimal(str(offer.ctc)) if offer.ctc else Decimal("0"),
+        )
+        db.add(emp)
+        await db.flush()
+
+    # 2. Archive offer letter in EmployeeDocument
+    if emp:
+        existing_doc = await db.scalar(
+            select(EmployeeDocument).where(
+                EmployeeDocument.employee_id == emp.id,
+                EmployeeDocument.document_type == "Offer Letter",
+                EmployeeDocument.tenant_id == tenant_id
+            )
+        )
+        if not existing_doc:
+            doc = EmployeeDocument(
+                tenant_id=tenant_id,
+                employee_id=emp.id,
+                document_name=f"Official_Offer_Letter_{cand_name.replace(' ', '_')}.pdf",
+                document_type="Offer Letter",
+                file_path=f"/hrms/documents/offer_{offer.id}.pdf",
+                upload_date=date.today()
+            )
+            db.add(doc)
+
+    # 3. Provision Onboarding Checklist record if not present
+    app_id = offer.applicant_id
+    if not app_id and applicant:
+        app_id = applicant.id
+
+    onb = None
+    if app_id:
+        onb = await db.scalar(
+            select(OnboardingRecord).where(
+                OnboardingRecord.tenant_id == tenant_id,
+                OnboardingRecord.applicant_id == app_id
+            )
+        )
+    if not onb:
+        # Check by hire name as fallback
+        onb = await db.scalar(
+            select(OnboardingRecord).where(
+                OnboardingRecord.tenant_id == tenant_id,
+                OnboardingRecord.new_hire == cand_name
+            )
+        )
+
+    if not onb:
+        # If applicant_id is missing, create a temporary applicant or link
+        if not app_id:
+            new_app = Applicant(
+                tenant_id=tenant_id,
+                name=cand_name,
+                email=cand_email or f"{cand_name.lower().replace(' ', '.')}@example.com",
+                job_title=role_name,
+                experience="Fresher / Entry",
+                stage="Hired",
+                source="Offer Letter",
+            )
+            db.add(new_app)
+            await db.flush()
+            app_id = new_app.id
+            offer.applicant_id = app_id
+
+        onb = OnboardingRecord(
+            tenant_id=tenant_id,
+            applicant_id=app_id,
+            new_hire=cand_name,
+            role=role_name,
+            start_date=start_dt,
+            progress=15,
+            tasks_json=[
+                {"task": "IT Workspace Hardware Allocation", "assignedTo": "IT", "status": "In Progress"},
+                {"task": "Corporate Email & Active Directory Setup", "assignedTo": "IT", "status": "Pending"},
+                {"task": "Signed Offer & Identity Document Verification", "assignedTo": "HR", "status": "Done"},
+                {"task": "Background Authentication Check", "assignedTo": "HR", "status": "Pending"},
+                {"task": "Introductory Department Orientation", "assignedTo": "Manager", "status": "Pending"},
+                {"task": "Core Compliance & Security Training", "assignedTo": "HR", "status": "Pending"}
+            ]
+        )
+        db.add(onb)
+
+    await db.commit()
+    await db.refresh(offer)
+    if onb:
+        await db.refresh(onb)
+
+    # 4. Push Live Notification
+    try:
+        await add_system_notification(
+            db=db,
+            tenant_id=tenant_id,
+            title="🎉 Offer Letter Accepted!",
+            message=f"{cand_name} accepted the offer for {role_name}. Onboarding checklist initialized.",
+            notification_type="recruitment_offer_accepted",
+            metadata={"offer_id": str(offer.id), "candidate": cand_name, "role": role_name}
+        )
+    except Exception:
+        pass
+
+    return onb
+
+
+@router.patch("/offers/{id}", response_model=OfferLetterResponse)
+async def update_offer_status(
+    id: uuid.UUID,
+    payload: OfferLetterUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    offer = await db.get(OfferLetter, id)
+    if not offer or offer.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Offer letter not found")
+
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(offer, k, v)
+
+    applicant = None
+    if offer.applicant_id:
+        applicant = await db.get(Applicant, offer.applicant_id)
+
+    if payload.status == "Accepted" or offer.status == "Accepted":
+        await _sync_accepted_offer_onboarding(db, offer, applicant, ctx.tenant_id)
+    else:
+        await db.commit()
+        await db.refresh(offer)
+
+    return offer
+
+
+@router.post("/offers/{id}/start-onboarding", response_model=OnboardingResponse)
+async def start_onboarding_from_offer(
+    id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Explicitly initiates or retrieves the onboarding checklist for an accepted or ready offer letter."""
+    offer = await db.get(OfferLetter, id)
+    if not offer or offer.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Offer letter not found")
+
+    applicant = None
+    if offer.applicant_id:
+        applicant = await db.get(Applicant, offer.applicant_id)
+
+    onb = await _sync_accepted_offer_onboarding(db, offer, applicant, ctx.tenant_id)
+    return onb
+
+
+# ─── Onboarding Records ────────────────────────────────────────────────────────
+
+@router.get("/onboarding", response_model=PaginatedResponse[OnboardingResponse])
+async def list_onboardings(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+):
+    # Auto-heal: Ensure all accepted offer letters have corresponding onboarding records
+    accepted_offers_res = await db.execute(
+        select(OfferLetter).where(
+            OfferLetter.tenant_id == ctx.tenant_id,
+            OfferLetter.status == "Accepted"
+        )
+    )
+    accepted_offers = accepted_offers_res.scalars().all()
+    for acc_offer in accepted_offers:
+        existing_onb = None
+        if acc_offer.applicant_id:
+            existing_onb = await db.scalar(
+                select(OnboardingRecord).where(
+                    OnboardingRecord.tenant_id == ctx.tenant_id,
+                    OnboardingRecord.applicant_id == acc_offer.applicant_id
+                )
+            )
+        if not existing_onb:
+            existing_onb = await db.scalar(
+                select(OnboardingRecord).where(
+                    OnboardingRecord.tenant_id == ctx.tenant_id,
+                    OnboardingRecord.new_hire == acc_offer.candidate
+                )
+            )
+        if not existing_onb:
+            app = await db.get(Applicant, acc_offer.applicant_id) if acc_offer.applicant_id else None
+            await _sync_accepted_offer_onboarding(db, acc_offer, app, ctx.tenant_id)
+
+    query = select(OnboardingRecord).where(OnboardingRecord.tenant_id == ctx.tenant_id)
+    if ctx.active_company_id:
+        query = query.where((OnboardingRecord.company_id == ctx.active_company_id) | (OnboardingRecord.company_id == None))
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    result = await db.execute(
+        query.order_by(OnboardingRecord.start_date.desc()).offset((page - 1) * page_size).limit(page_size)
+    )
+    return paginate(result.scalars().all(), total or 0, page, page_size)
+
+
+@router.post("/onboarding", response_model=OnboardingResponse, status_code=status.HTTP_201_CREATED)
+async def create_onboarding(
+    payload: OnboardingCreate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    applicant = await db.get(Applicant, payload.applicant_id)
+    if not applicant or applicant.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Applicant not found")
+
+    tasks = [t.model_dump() for t in payload.tasks]
+
+    new_onb = OnboardingRecord(
+        tenant_id=ctx.tenant_id,
+        applicant_id=payload.applicant_id,
+        new_hire=applicant.name,
+        role=applicant.job_title,
+        start_date=payload.start_date,
+        progress=0,
+        tasks_json=tasks,
+    )
+    db.add(new_onb)
+    await db.commit()
+    await db.refresh(new_onb)
+    return new_onb
+
+
+@router.patch("/onboarding/{id}", response_model=OnboardingResponse)
+async def update_onboarding(
+    id: uuid.UUID,
+    payload: OnboardingUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    onb = await db.get(OnboardingRecord, id)
+    if not onb or onb.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Onboarding file not found")
+
+    if payload.tasks is not None:
+        old_progress = onb.progress or 0
+        tasks = [t.model_dump() for t in payload.tasks]
+        onb.tasks_json = tasks
+        
+        # Recalculate progress dynamically
+        if tasks:
+            done = sum(1 for t in tasks if t["status"] == "Done")
+            onb.progress = int((done / len(tasks)) * 100)
+        else:
+            onb.progress = 0
+
+        # Send progression update emails on crossing 25%, 50%, or 75%
+        new_progress = onb.progress
+        milestones = [25, 50, 75]
+        crossed_milestone = None
+        for m in milestones:
+            if old_progress < m <= new_progress:
+                crossed_milestone = m
+
+        if crossed_milestone and new_progress < 100:
+            applicant = await db.get(Applicant, onb.applicant_id)
+            if applicant and applicant.email:
+                email_body = (
+                    f"Dear {applicant.name},\n\n"
+                    f"Great news! Your onboarding checklist progress is now at {new_progress}%.\n\n"
+                    "We are track-marking your setup steps. Next tasks are on the checklist. "
+                    "Looking forward to having you onboard soon!\n\n"
+                    "Best regards,\n"
+                    "HR Operations Team"
+                )
+                await send_recruitment_email(
+                    applicant.email,
+                    f"Onboarding Progression Update: {new_progress}% Completed",
+                    email_body
+                )
+
+        if onb.progress == 100:
+            from src.services.staff.models import Employee, Department, Designation, User, Role, UserRole, UserStatus
+            from src.services.staff.deps import hash_password
+            applicant = await db.get(Applicant, onb.applicant_id)
+            if applicant:
+                # Check if employee already exists by email
+                emp_check = await db.scalar(
+                    select(Employee).where(
+                        Employee.tenant_id == ctx.tenant_id,
+                        Employee.email == applicant.email
+                    )
+                )
+                if not emp_check:
+                    # Generate unique employee code
+                    count = await db.scalar(
+                        select(func.count()).select_from(Employee).where(Employee.tenant_id == ctx.tenant_id)
+                    )
+                    emp_code = f"EMP-{(count or 0) + 1:04d}"
+                    
+                    # Find designation matching candidate role
+                    designation = await db.scalar(
+                        select(Designation).where(
+                            Designation.tenant_id == ctx.tenant_id,
+                            Designation.name.ilike(f"%{onb.role}%")
+                        )
+                    )
+                    designation_id = designation.id if designation else None
+                    
+                    # Find department matching job opening
+                    job = await db.get(JobOpening, applicant.job_id)
+                    dept_id = None
+                    if job:
+                        department = await db.scalar(
+                            select(Department).where(
+                                Department.tenant_id == ctx.tenant_id,
+                                Department.name.ilike(f"%{job.department}%")
+                            )
+                        )
+                        dept_id = department.id if department else None
+                    
+                    # 1. Create or fetch User Account
+                    user_id = uuid.uuid4()
+
+                    # 2. Create Employee Linked to the User ID
+                    new_employee = Employee(
+                        tenant_id=ctx.tenant_id,
+                        employee_code=emp_code,
+                        full_name=applicant.name,
+                        email=applicant.email,
+                        phone=None,
+                        date_of_joining=date.today(),
+                        employment_type="Full-Time",
+                        status="Active",
+                        basic_salary=None,
+                        designation_id=designation_id,
+                        department_id=dept_id,
+                        user_id=user_id
+                    )
+                    db.add(new_employee)
+                    
+                    # Send welcome email notification
+                    email_body = (
+                        f"Dear {applicant.name},\n\n"
+                        "Congratulations! We are pleased to inform you that your onboarding process has been successfully completed.\n\n"
+                        f"Welcome to the team at Nimbus Retail! Your official employee profile has been created in our HRMS.\n\n"
+                        f"Official Employee Code: {emp_code}\n"
+                        f"Designated Role: {onb.role}\n"
+                        f"Joining Date: {date.today().strftime('%Y-%m-%d')}\n\n"
+                        "Your login credentials for the Employee Self Service (ESS) portal will be sent in a separate communication.\n\n"
+                        "If you have any questions, please contact your HR Manager.\n\n"
+                        "Best regards,\n"
+                        "HR Operations Team\n"
+                        "Nimbus Retail Group"
+                    )
+                    await send_recruitment_email(
+                        applicant.email,
+                        f"Welcome to the Team! Onboarding Completed - {emp_code}",
+                        email_body
+                    )
+
+    await db.commit()
+    await db.refresh(onb)
+    return onb
+
+
+@router.delete("/onboarding/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_onboarding(
+    id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    onb = await db.get(OnboardingRecord, id)
+    if not onb or onb.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Onboarding record not found")
+
+    await db.delete(onb)
+    await db.commit()
+    return None

@@ -171,11 +171,23 @@ _register(ServiceDescriptor(
     name="staff",
     port=_port("staff", 8100, 8),
     db_name="restaurantos_staff",
-    description="Employees, rosters, attendance, tips, feedback, complaints",
-    permissions=("view:staff", "manage:staff"),
+    description="Employees, HRMS studios, rosters, attendance, leaves, payroll, ATS, tips",
+    permissions=(
+        "view:staff", "manage:staff",
+        "view:hrms", "manage:hrms", "manage:hrms_employees",
+        "view:hrms_attendance", "manage:hrms_attendance",
+        "view:hrms_leaves", "manage:hrms_leaves",
+        "view:hrms_payroll", "manage:hrms_payroll",
+        "view:hrms_recruitment", "manage:hrms_recruitment",
+        "view:hrms_performance", "manage:hrms_performance",
+        "view:hrms_learning", "manage:hrms_learning",
+        "view:hrms_exit", "manage:hrms_exit",
+        "view:hrms_intelligence", "view:ess",
+    ),
     publishes=("attendance.marked", "tip.recorded"),
     subscribes=("bill.paid",),
 ))
+
 
 _register(ServiceDescriptor(
     name="customers",
@@ -259,8 +271,15 @@ def all_services() -> list[ServiceDescriptor]:
     return list(_REGISTRY.values())
 
 
+_ALIASES: dict[str, str] = {
+    "hrms": "staff",
+}
+
+
 def get_descriptor(name: str) -> ServiceDescriptor | None:
-    return _REGISTRY.get(name)
+    canonical = _ALIASES.get(name, name)
+    return _REGISTRY.get(canonical)
+
 
 
 def enabled_services() -> list[ServiceDescriptor]:
