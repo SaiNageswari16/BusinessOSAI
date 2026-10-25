@@ -31,6 +31,7 @@ from src.models import (
     VendorCreditNote, VendorDebitNote,
     Product, ProcurementAISuggestion
 )
+from src.utils.clock import clock
 from src.schemas.procurement import (
     SupplierCategoryCreate, SupplierCategoryResponse,
     SupplierCreate, SupplierUpdate, SupplierResponse,
@@ -446,7 +447,7 @@ async def onboard_supplier(
     )
     code_to_use = payload.code
     if code_exists:
-        code_to_use = f"VEN-{datetime.utcnow().strftime('%y%m%d')}-{uuid.uuid4().hex[:4].upper()}"
+        code_to_use = f"VEN-{clock.utcnow().strftime('%y%m%d')}-{uuid.uuid4().hex[:4].upper()}"
         
     supplier_kwargs = dict(
         tenant_id=ctx.tenant_id,
@@ -596,7 +597,7 @@ async def update_supplier(
     for k, v in update_data.items():
         setattr(supplier, k, v)
         
-    supplier.updated_at = datetime.utcnow()
+    supplier.updated_at = clock.utcnow()
     await db.commit()
     await db.refresh(supplier)
     return supplier
@@ -863,7 +864,8 @@ async def create_supplier_performance(
         quality_rating=payload.quality_rating,
         pricing_rating=payload.pricing_rating,
         overall_rating=payload.overall_rating,
-        evaluation_date=payload.evaluation_date or datetime.utcnow()
+        # evaluation_date is TIMESTAMP WITHOUT TIME ZONE — write naive
+        evaluation_date=(payload.evaluation_date.replace(tzinfo=None) if payload.evaluation_date else clock.utc_naive())
     )
     db.add(perf)
     await db.commit()
@@ -900,7 +902,8 @@ async def blacklist_supplier(
         supplier_id=payload.supplier_id,
         reason=payload.reason,
         blacklisted_by=ctx.user.id,
-        blacklisted_at=datetime.utcnow()
+        # blacklisted_at is TIMESTAMP WITHOUT TIME ZONE — write naive
+        blacklisted_at=clock.utc_naive()
     )
     db.add(record)
     await db.commit()
@@ -1115,7 +1118,7 @@ async def create_purchase_quotation(
         quotation_number=payload.quotation_number,
         purchase_request_id=payload.purchase_request_id,
         supplier_id=payload.supplier_id,
-        date_received=payload.date_received.replace(tzinfo=None) if payload.date_received else datetime.utcnow(),
+        date_received=payload.date_received.replace(tzinfo=None) if payload.date_received else clock.utc_naive(),
         valid_until=payload.valid_until.replace(tzinfo=None) if payload.valid_until else None,
         total_amount=total,
         status="Received"
@@ -1242,7 +1245,7 @@ async def update_purchase_quotation(
                 )
             )
 
-    q.updated_at = datetime.utcnow()
+    q.updated_at = clock.utcnow()
     await db.commit()
     await db.refresh(q)
 
@@ -1362,7 +1365,7 @@ async def create_purchase_order(
 ):
     total = sum(x.quantity * x.unit_price * (1.0 + (x.tax_percent or 0.0) / 100.0) for x in payload.items)
     
-    po_num = payload.po_number or f"PO-{datetime.utcnow().year}-{uuid.uuid4().hex[:6].upper()}"
+    po_num = payload.po_number or f"PO-{clock.utcnow().year}-{uuid.uuid4().hex[:6].upper()}"
     existing_po = await db.scalar(
         select(PurchaseOrder).where(PurchaseOrder.po_number == po_num)
     )
@@ -1375,7 +1378,7 @@ async def create_purchase_order(
         po_number=po_num,
         supplier_id=payload.supplier_id,
         purchase_request_id=payload.purchase_request_id,
-        order_date=datetime.utcnow(),
+        order_date=clock.utc_naive(),
         delivery_date=payload.delivery_date.replace(tzinfo=None) if payload.delivery_date else None,
         total_amount=total,
         status=payload.status or "Draft"
@@ -1488,7 +1491,7 @@ async def update_purchase_order(
             total += float(it["quantity"]) * float(it["unit_price"]) * (1.0 + float(it.get("tax_percent", 0.0) or 0.0) / 100.0)
         po.total_amount = total
 
-    po.updated_at = datetime.utcnow()
+    po.updated_at = clock.utcnow()
     await db.commit()
     await db.refresh(po)
 
@@ -2080,7 +2083,7 @@ async def create_vendor_bill(
             grn_status_val = auto_grn.status
         else:
             # Auto-generate verified GRN for Direct Inward Purchase Invoice
-            auto_grn_num = f"GRN-{datetime.utcnow().year}-{uuid.uuid4().hex[:4].upper()}"
+            auto_grn_num = f"GRN-{clock.utcnow().year}-{uuid.uuid4().hex[:4].upper()}"
             rec_user_id = ctx.user.id if getattr(ctx, "user", None) else ctx.tenant_id
             new_grn = GoodsReceivedNote(
                 tenant_id=ctx.tenant_id,
@@ -2088,7 +2091,7 @@ async def create_vendor_bill(
                 grn_number=auto_grn_num,
                 purchase_order_id=payload.purchase_order_id,
                 received_by=rec_user_id,
-                received_date=datetime.utcnow(),
+                received_date=clock.utc_naive(),
                 status="Verified"
             )
             db.add(new_grn)
@@ -2098,7 +2101,7 @@ async def create_vendor_bill(
             grn_status_val = "Verified"
     # ────────────────────────────────────────────────────────────────────────
 
-    b_num = payload.bill_number or f"BILL-{datetime.utcnow().year}-{uuid.uuid4().hex[:6].upper()}"
+    b_num = payload.bill_number or f"BILL-{clock.utcnow().year}-{uuid.uuid4().hex[:6].upper()}"
     existing_bill = await db.scalar(
         select(VendorBill).where(VendorBill.bill_number == b_num)
     )
@@ -2128,7 +2131,7 @@ async def create_vendor_bill(
             tenant_id=ctx.tenant_id,
             company_id=ctx.active_company_id,
             vendor_bill_id=bill.id,
-            payment_date=datetime.utcnow(),
+            payment_date=clock.utc_naive(),
             payment_method="Direct/Paid",
             amount_paid=paid_amt,
             reference_number=f"BILL-PAY-{b_num}"
@@ -2372,7 +2375,7 @@ async def cancel_vendor_bill(
     # Update bill status to Cancelled and reset paid amount
     bill.status = "Cancelled"
     bill.paid_amount = 0.0
-    bill.updated_at = datetime.utcnow()
+    bill.updated_at = clock.utcnow()
 
     # Clean up any vendor payments recorded for this bill
     await db.execute(delete(VendorPayment).where(VendorPayment.vendor_bill_id == bill.id))
@@ -2501,7 +2504,7 @@ async def create_vendor_payment(
             )
         )
         if not supp:
-            code_seq = f"VEN-{int(datetime.utcnow().timestamp()) % 10000:04d}-{random.randint(1000, 9999)}"
+            code_seq = f"VEN-{int(clock.utcnow().timestamp()) % 10000:04d}-{random.randint(1000, 9999)}"
             supp = Supplier(
                 tenant_id=ctx.tenant_id,
                 company_id=ctx.active_company_id,
@@ -2533,7 +2536,7 @@ async def create_vendor_payment(
         new_bill = VendorBill(
             tenant_id=ctx.tenant_id,
             company_id=ctx.active_company_id,
-            bill_number=f"PINV-ADV-{int(datetime.utcnow().timestamp())}",
+            bill_number=f"PINV-ADV-{int(clock.utcnow().timestamp())}",
             purchase_order_id=po.id,
             total_amount=payload.amount_paid,
             paid_amount=payload.amount_paid,
@@ -2555,7 +2558,7 @@ async def create_vendor_payment(
         tenant_id=ctx.tenant_id,
         company_id=ctx.active_company_id,
         vendor_bill_id=target_bill_id,
-        payment_date=payload.payment_date or datetime.utcnow(),
+        payment_date=(payload.payment_date.replace(tzinfo=None) if payload.payment_date else clock.utc_naive()),
         payment_method=payload.payment_method or "Bank Transfer",
         amount_paid=payload.amount_paid,
         reference_number=payload.reference_number
@@ -3121,7 +3124,7 @@ async def get_cost_analysis(
         trends_map[month_abbr]["tax_amount"] += float(po.total_amount) * 0.18
 
     cost_trends = []
-    today = datetime.utcnow()
+    today = clock.utcnow()
     for i in range(5, -1, -1):
         m = today - timedelta(days=30*i)
         abbr = m.strftime("%b")
@@ -3248,7 +3251,7 @@ async def get_procurement_forecast(
     pos = po_res.scalars().all()
     
     forecast_timeline = []
-    today = datetime.utcnow()
+    today = clock.utcnow()
     
     if pos:
         from collections import defaultdict
@@ -4200,8 +4203,8 @@ async def _resolve_or_create_supplier_from_ocr(
     # 2. If not found, create an actual persistent Supplier entity
     vendor_name = clean_name if clean_name else f"Vendor {clean_gstin}"
     vendor_comp_name = gst_legal or clean_name or vendor_name
-    seq = int(datetime.utcnow().timestamp()) % 9000 + 1000
-    code = f"VEN-{datetime.utcnow().strftime('%y%m%d')}-{seq}"
+    seq = int(clock.utcnow().timestamp()) % 9000 + 1000
+    code = f"VEN-{clock.utcnow().strftime('%y%m%d')}-{seq}"
 
     existing_code = await db.scalar(
         select(Supplier.id).where(Supplier.tenant_id == ctx.tenant_id, Supplier.code == code)
@@ -4711,7 +4714,7 @@ async def update_goods_received_note(
     for k, v in update_data.items():
         setattr(grn, k, v)
 
-    grn.updated_at = datetime.utcnow()
+    grn.updated_at = clock.utcnow()
     await db.commit()
     await db.refresh(grn)
 

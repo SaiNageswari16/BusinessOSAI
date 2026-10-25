@@ -40,6 +40,7 @@ from src.schemas.erp import (
     EmployeeDocumentResponse,
 )
 from src.utils.pagination import PaginatedResponse, paginate
+from src.utils.clock import clock
 
 router = APIRouter(prefix="/hrms", tags=["HRMS - Employee Management"])
 
@@ -120,7 +121,7 @@ async def get_my_employee_profile(
             full_name=ctx.user.full_name or ctx.user.email.split("@")[0].capitalize(),
             email=ctx.user.email,
             phone=ctx.user.phone,
-            date_of_joining=date.today(),
+            date_of_joining=clock.today(),
             employment_type="Full-Time",
             status="Active",
             sales_points=0.0,
@@ -204,7 +205,7 @@ async def list_employees(
                                 full_name=u.full_name or u.email.split('@')[0].capitalize(),
                                 email=u.email,
                                 phone=u.phone,
-                                date_of_joining=date.today(),
+                                date_of_joining=clock.today(),
                                 employment_type="Full-Time",
                                 status="Active",
                                 sales_points=0.0,

@@ -31,6 +31,7 @@ from src.services.invoice_pdf import (
 )
 from src.utils.email import send_email
 from src.utils.notifications import add_system_notification
+from src.utils.clock import clock
 
 logger = logging.getLogger(__name__)
 
@@ -389,10 +390,10 @@ async def _render_and_send_invoice(db: AsyncSession, invoice: Invoice, phone: st
                 lead_id=lead.id,
                 activity_type="whatsapp_sent",
                 summary=f"Invoice {invoice.invoice_number} PDF sent via WhatsApp",
-                occurred_at=datetime.utcnow(),
+                occurred_at=clock.utcnow(),
             )
             db.add(activity)
-            lead.last_contact_at = datetime.utcnow()
+            lead.last_contact_at = clock.utcnow()
             lead.status = "Contacted"
     except Exception as exc:
         logger.warning("Could not create LeadActivity for invoice send: %s", exc)
@@ -784,7 +785,7 @@ async def send_pos_receipt_whatsapp(
     store_name = (company.name if company else None) or (tenant.name if tenant else None) or "Store"
     target_total = getattr(target_record, "total_amount", None)
     total_line = f"💵 *Total: ₹{float(target_total):.2f}*\n" if target_total is not None else ""
-    date_line = f"📅 Date: {datetime.now().strftime('%d/%m/%Y %I:%M %p')}\n"
+    date_line = f"📅 Date: {clock.now().strftime('%d/%m/%Y %I:%M %p')}\n"
 
     caption = (
         f"🧾 *{store_name}*\n"
@@ -938,7 +939,7 @@ async def send_invoice_email(
     total_amt = float(getattr(invoice, "total_amount", 0.0) or 0.0)
     bal_due = float(getattr(invoice, "balance_due", 0.0) or 0.0)
     is_paid = getattr(invoice, "status", "").lower() == "paid" or bal_due <= 0.05
-    inv_date = str(getattr(invoice, "invoice_date", "") or datetime.utcnow().strftime("%d %b %Y"))
+    inv_date = str(getattr(invoice, "invoice_date", "") or clock.utcnow().strftime("%d %b %Y"))
 
     # Render items HTML table summary
     items_rows_html = ""
@@ -1109,10 +1110,10 @@ async def send_invoice_email(
                 lead_id=lead.id,
                 activity_type="email_sent",
                 summary=f"Invoice {inv_num} PDF sent via Email to {email}",
-                occurred_at=datetime.utcnow(),
+                occurred_at=clock.utcnow(),
             )
             db.add(activity)
-            lead.last_contact_at = datetime.utcnow()
+            lead.last_contact_at = clock.utcnow()
             lead.status = "Contacted"
     except Exception as exc:
         logger.warning("LeadActivity creation failed for invoice email: %s", exc)

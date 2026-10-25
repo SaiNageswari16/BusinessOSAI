@@ -11,6 +11,7 @@ from sqlalchemy import select, func, update, delete, or_
 from sqlalchemy.orm import selectinload
 
 from src.database.session import get_db
+from src.utils.clock import clock
 from src.api.deps import CurrentUserContext, get_current_user_context, get_optional_user_context
 from src.models import Tenant, EntityStatus
 from src.models.marketplace import (
@@ -926,8 +927,8 @@ async def create_order(
             invoice_type="tax_invoice",
             order_number=order_id,
             status=inv_status,
-            invoice_date=datetime.now(timezone.utc).date(),
-            due_date=datetime.now(timezone.utc).date(),
+            invoice_date=clock.today(),
+            due_date=clock.today(),
             payment_terms=payload.get("payment_method") or "Online Card/UPI",
             subtotal=subtotal_val,
             cgst_amount=tax_val / 2,

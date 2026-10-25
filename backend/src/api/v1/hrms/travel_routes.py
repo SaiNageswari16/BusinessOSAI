@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import os
 from src.database.session import get_db
 from src.config import get_settings
+from src.utils.clock import clock
 from src.api.deps import CurrentUserContext, get_current_user_context, require_permission
 from src.models import (
     Tenant,
@@ -262,11 +263,11 @@ async def get_employee_route_history(
         try:
             target_date = datetime.strptime(effective_date_str, "%Y-%m-%d").date()
         except ValueError:
-            target_date = datetime.now(timezone.utc).date()
+            target_date = clock.today()
     else:
-        target_date = datetime.now(timezone.utc).date()
+        target_date = clock.today()
 
-    start_dt = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0, tzinfo=timezone.utc)
+    start_dt = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0, tzinfo=clock.app_timezone())
     end_dt = start_dt + timedelta(days=1)
 
     # 3. Fetch Attendance record for Shift Context
@@ -545,9 +546,9 @@ async def simulate_employee_route(
         try:
             target_date = datetime.strptime(effective_date_str, "%Y-%m-%d").date()
         except ValueError:
-            target_date = datetime.now(timezone.utc).date()
+            target_date = clock.today()
     else:
-        target_date = datetime.now(timezone.utc).date()
+        target_date = clock.today()
 
     start_dt = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0, tzinfo=timezone.utc)
     end_dt = start_dt + timedelta(days=1)
@@ -703,9 +704,9 @@ async def clear_employee_route(
         try:
             target_date = datetime.strptime(effective_date_str, "%Y-%m-%d").date()
         except ValueError:
-            target_date = datetime.now(timezone.utc).date()
+            target_date = clock.today()
     else:
-        target_date = datetime.now(timezone.utc).date()
+        target_date = clock.today()
 
     start_dt = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0, tzinfo=timezone.utc)
     end_dt = start_dt + timedelta(days=1)
@@ -738,9 +739,9 @@ async def get_live_field_staff(
     Returns all on-duty field employees currently clocked-in today with their real-time coordinates,
     battery levels, current speeds, and shift travel distance.
     """
-    today_date = datetime.now(timezone.utc).date()
+    today_date = clock.today()
     now_utc = datetime.now(timezone.utc)
-    start_today = datetime(today_date.year, today_date.month, today_date.day, 0, 0, 0, tzinfo=timezone.utc)
+    start_today = datetime(today_date.year, today_date.month, today_date.day, 0, 0, 0, tzinfo=clock.app_timezone())
     six_minutes_ago = now_utc - timedelta(minutes=6)
 
     # 1. Query all employees of this tenant with department/designation names

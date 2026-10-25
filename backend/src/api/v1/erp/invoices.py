@@ -34,6 +34,7 @@ from src.services.whatsapp_invoice_sender import (
     InvoiceSendError,
 )
 from src.utils.pagination import PaginatedResponse, paginate
+from src.utils.clock import clock
 
 logger = logging.getLogger(__name__)
 
@@ -678,7 +679,7 @@ async def save_organization_print_template_endpoint(
 
     templates_map = cat_config.setdefault("templates", {})
 
-    tpl["updatedAt"] = datetime.utcnow().isoformat()
+    tpl["updatedAt"] = clock.utcnow().isoformat()
     if payload.set_as_default:
         tpl["isDefault"] = True
         cat_config["active"] = tpl_id
@@ -1387,7 +1388,7 @@ async def create_invoice(
                             quantity=qty,
                             unit=b_match.uom or "Pcs",
                             notes=f"Billed via Invoice #{invoice.invoice_number} (Batch #{b_match.batch_number})",
-                            event_at=datetime.utcnow(),
+                            event_at=clock.utcnow(),
                             actor_user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
                             tenant_id=ctx.tenant_id,
                             company_id=invoice.company_id or ctx.active_company_id,
@@ -1642,7 +1643,7 @@ async def create_payment_settlement(
             import random
             voucher_num = f"PAY-{random.randint(1000, 9999)}"
 
-    pay_date = payload.payment_date or date.today()
+    pay_date = payload.payment_date or clock.today()
     pay_method = payload.payment_method or "Cash"
     total_amount = float(payload.payment_amount)
     
@@ -1779,7 +1780,7 @@ async def create_payment_settlement(
                         covered.append({
                             "invoice_id": str(op_inv.id) if op_inv else str(target_cust_id),
                             "invoice_number": op_inv.invoice_number if op_inv else "Opening Balance",
-                            "invoice_date": date.today().isoformat(),
+                            "invoice_date": clock.today().isoformat(),
                             "grand_total": curr_bal,
                             "previous_pending": curr_bal,
                             "amount_allocated": apply_amt,
@@ -2013,7 +2014,7 @@ async def get_payment_settlement_by_voucher(
 
     return {
         "voucher_number": voucher_number,
-        "payment_date": first.payment_date.isoformat() if first.payment_date else date.today().isoformat(),
+        "payment_date": first.payment_date.isoformat() if first.payment_date else clock.today().isoformat(),
         "party_name": cust_name or "Customer",
         "payment_amount": total_amount,
         "payment_method": first.payment_method.capitalize() if first.payment_method else "Cash",
@@ -2072,7 +2073,7 @@ async def approve_invoice(
     invoice.status = "sent"
     invoice.is_approved = True
     invoice.approved_by_user_id = ctx.user.id
-    invoice.approved_at = datetime.now()
+    invoice.approved_at = clock.now()
 
     await write_audit_log(
         db,
@@ -2130,7 +2131,7 @@ async def add_payment(
     payment = InvoicePayment(
         tenant_id=ctx.tenant_id,
         invoice_id=invoice.id,
-        payment_date=payload.payment_date or date.today(),
+        payment_date=payload.payment_date or clock.today(),
         payment_method=payload.payment_method or "cash",
         amount=pay_amount,
         reference_number=payload.reference_number,
@@ -2403,7 +2404,7 @@ async def cancel_invoice(
                             quantity=int(qty),
                             unit=b_match.uom or "Pcs",
                             notes=f"Restocked from cancelled Invoice #{invoice.invoice_number} (Batch #{b_match.batch_number})",
-                            event_at=datetime.utcnow(),
+                            event_at=clock.utcnow(),
                             actor_user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
                             tenant_id=ctx.tenant_id,
                             company_id=invoice.company_id or ctx.active_company_id,
@@ -2562,7 +2563,7 @@ async def list_all_payments(
             items.append({
                 "id": f"inv_init_{inv.id}",
                 "invoice_id": str(inv.id),
-                "payment_date": (inv.invoice_date or date.today()).isoformat(),
+                "payment_date": (inv.invoice_date or clock.today()).isoformat(),
                 "payment_method": inv.payment_terms or "Cash",
                 "amount": float(inv.amount_paid or 0),
                 "party_name": inv.customer_name or "Customer",

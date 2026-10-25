@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     app_port: int = Field(default=8000, alias="APP_PORT")
     api_v1_prefix: str = Field(default="/api/v1", alias="API_V1_PREFIX")
     app_public_url: str = Field(default="http://localhost:8080", alias="APP_PUBLIC_URL")
+    # Fixed application time zone for all user-facing timestamps (doc numbers,
+    # document dates, "today" business logic). DB still stores instants; the
+    # frontend renders in the viewer's own zone. Set via APP_TIMEZONE env var.
+    app_timezone: str = Field(default="Asia/Kolkata", alias="APP_TIMEZONE")
     frontend_url: str = Field(default="http://localhost:8080", alias="FRONTEND_URL")
 
     # PostgreSQL

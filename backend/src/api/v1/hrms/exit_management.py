@@ -14,6 +14,7 @@ from src.schemas.erp import (
 )
 from src.api.deps import CurrentUserContext, require_permission
 from src.utils.pagination import PaginatedResponse, paginate
+from src.utils.clock import clock
 
 router = APIRouter(prefix="/hrms/exit", tags=["HRMS Exit Management"])
 
@@ -76,7 +77,7 @@ async def update_resignation(
         from src.models import Employee
         from datetime import date
         
-        from_date = date.today()
+        from_date = clock.today()
         if res.employee_id:
             emp = await db.get(Employee, res.employee_id)
             if emp:
@@ -97,8 +98,8 @@ async def update_resignation(
                 employee_name=res.employee_name,
                 designation=res.designation or "Employee",
                 from_date=from_date,
-                to_date=res.last_working_day or date.today(),
-                issued_on=date.today().strftime("%Y-%m-%d"),
+                to_date=res.last_working_day or clock.today(),
+                issued_on=clock.today().strftime("%Y-%m-%d"),
                 status="Pending Approval"
             )
             db.add(new_letter)

@@ -27,6 +27,7 @@ from src.schemas.crm import (
 )
 from src.utils.pagination import PaginatedResponse, paginate
 from src.utils.notifications import add_system_notification
+from src.utils.clock import clock
 
 router = APIRouter(prefix="/crm/discounts", tags=["CRM - Discounts"])
 
@@ -161,7 +162,7 @@ async def validate_discount(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Validate a discount code against customer/order context and compute the discount amount."""
-    now = date.today()
+    now = clock.today()
 
     # 1. Find discount
     discount = await db.scalar(

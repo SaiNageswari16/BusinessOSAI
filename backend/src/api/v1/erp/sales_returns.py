@@ -18,6 +18,7 @@ from src.models.inventory import InventoryBatch, InventoryTransaction, Traceabil
 from src.models.erp import Invoice, InvoiceLine, InvoiceReturn, InvoiceReturnLine, InvoicePayment
 from src.utils.pagination import PaginatedResponse, paginate
 from src.api.v1.erp.invoices import _bg_send_invoice_whatsapp, _bg_send_invoice_email
+from src.utils.clock import clock
 
 logger = logging.getLogger(__name__)
 
@@ -292,7 +293,7 @@ async def _restock_product(
                     quantity=int(qty),
                     unit=b_match.uom or "Pcs",
                     notes=f"Sales return restock (Batch #{b_match.batch_number}) — {reference}",
-                    event_at=datetime.utcnow(),
+                    event_at=clock.utcnow(),
                     actor_user_id=user_id,
                     tenant_id=tenant_id,
                     company_id=company_id,
@@ -370,7 +371,7 @@ async def create_sales_return(
         return_number = f"SR-{count + 1:05d}"
 
     # Parse return date
-    return_date_val = date.today()
+    return_date_val = clock.today()
     if payload.return_date:
         try:
             return_date_val = date.fromisoformat(payload.return_date[:10])
@@ -961,7 +962,7 @@ async def process_exchange(
         company_id=return_company_id,
         invoice_id=original_invoice.id if original_invoice else None,
         return_number=return_number,
-        return_date=date.today(),
+        return_date=clock.today(),
         reason=payload.reason or "Exchange",
         total_amount=0,
         status="exchanged",
@@ -1053,8 +1054,8 @@ async def process_exchange(
         customer_gstin=cust_gst or None,
         billing_address=cust_billing_addr or None,
         shipping_address=cust_shipping_addr or None,
-        invoice_date=date.today(),
-        due_date=date.today(),
+        invoice_date=clock.today(),
+        due_date=clock.today(),
         currency_code="INR",
         subtotal=round(exchange_total, 2),
         total_amount=round(exchange_total, 2),
@@ -1151,8 +1152,8 @@ async def process_exchange(
             customer_gstin=cust_gst or None,
             billing_address=cust_billing_addr or None,
             shipping_address=cust_shipping_addr or None,
-            invoice_date=date.today(),
-            due_date=date.today(),
+            invoice_date=clock.today(),
+            due_date=clock.today(),
             currency_code="INR",
             subtotal=refund_amt,
             total_amount=refund_amt,
@@ -1189,8 +1190,8 @@ async def process_exchange(
             customer_gstin=cust_gst or None,
             billing_address=cust_billing_addr or None,
             shipping_address=cust_shipping_addr or None,
-            invoice_date=date.today(),
-            due_date=date.today(),
+            invoice_date=clock.today(),
+            due_date=clock.today(),
             currency_code="INR",
             subtotal=diff_amt,
             total_amount=diff_amt,

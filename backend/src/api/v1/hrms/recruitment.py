@@ -63,6 +63,7 @@ from src.schemas.erp import (
     OnboardingResponse,
 )
 from src.utils.pagination import PaginatedResponse, paginate
+from src.utils.clock import clock
 
 router = APIRouter(prefix="/hrms/recruitment", tags=["HRMS - Recruitment"])
 class _SettingsProxy:
@@ -215,7 +216,7 @@ def _generate_pure_python_offer_pdf(offer: OfferLetter, company_name: str, tenan
     p_m, p_a = split["p_m"], split["p_a"]
     tot_m, tot_a = split["tot_m"], split["tot_a"]
 
-    offer_date_str = str(offer.offer_date or date.today())
+    offer_date_str = str(offer.offer_date or clock.today())
     expiry_date_str = str(offer.expiry_date or "7 Days from Issuance")
     joining_date_str = str(offer.joining_date or "Mutually Agreed")
     signer_name = tpl_info["signer"]
@@ -433,7 +434,7 @@ def _generate_reportlab_offer_pdf(offer: OfferLetter, company_name: str, tenant:
     meta_col = [
         badge_table,
         Spacer(1, 3),
-        Paragraph(f'Date: {offer.offer_date.strftime("%d %B %Y") if offer.offer_date else date.today().strftime("%d %B %Y")}', meta_date),
+        Paragraph(f'Date: {offer.offer_date.strftime("%d %B %Y") if offer.offer_date else clock.today().strftime("%d %B %Y")}', meta_date),
         Paragraph(f'REF: {ref_id}', ref_style)
     ]
 
@@ -634,8 +635,8 @@ def _generate_html_offer_pdf(offer: OfferLetter, company_name: str, tenant: Tena
     cand_email = escape(offer.candidate_email or "N/A")
     role_name = escape(offer.role or "Team Member")
     join_str = offer.joining_date.strftime("%b %d, %Y") if offer.joining_date else "Immediate / Mutually Agreed"
-    offer_date_str = offer.offer_date.strftime("%B %d, %Y") if offer.offer_date else date.today().strftime("%B %d, %Y")
-    exp_date_str = offer.expiry_date.strftime("%B %d, %Y") if offer.expiry_date else (date.today() + timedelta(days=7)).strftime("%B %d, %Y")
+    offer_date_str = offer.offer_date.strftime("%B %d, %Y") if offer.offer_date else clock.today().strftime("%B %d, %Y")
+    exp_date_str = offer.expiry_date.strftime("%B %d, %Y") if offer.expiry_date else (clock.today() + timedelta(days=7)).strftime("%B %d, %Y")
     ref_id = f"BOS-OFFER-{str(offer.id)[:6].upper()}" if offer.id else "BOS-OFFER-970562"
     badge_enabled = raw_data.get("header_badge_enabled", True)
     raw_badge_text = raw_data.get("header_badge_text") or raw_data.get("header_badge") or (role_name.upper() if role_name else "")
@@ -1075,7 +1076,7 @@ async def ensure_seeded_data(db: AsyncSession, tenant_id: uuid.UUID):
             experience="4-6 years",
             openings=2,
             applicants_count=2,
-            posted_date=date.today() - timedelta(days=30),
+            posted_date=clock.today() - timedelta(days=30),
             status="Open",
             threshold_score=75,
             portals=["Careers Page", "LinkedIn", "Naukri.com", "Zoho Careers"],
@@ -1091,7 +1092,7 @@ async def ensure_seeded_data(db: AsyncSession, tenant_id: uuid.UUID):
             experience="2-4 years",
             openings=3,
             applicants_count=2,
-            posted_date=date.today() - timedelta(days=25),
+            posted_date=clock.today() - timedelta(days=25),
             status="Open",
             threshold_score=70,
             portals=["Careers Page", "LinkedIn", "Indeed"],
@@ -1107,7 +1108,7 @@ async def ensure_seeded_data(db: AsyncSession, tenant_id: uuid.UUID):
             experience="3-5 years",
             openings=1,
             applicants_count=1,
-            posted_date=date.today() - timedelta(days=15),
+            posted_date=clock.today() - timedelta(days=15),
             status="Open",
             threshold_score=80,
             portals=["Careers Page", "Glassdoor"],
@@ -1127,7 +1128,7 @@ async def ensure_seeded_data(db: AsyncSession, tenant_id: uuid.UUID):
         email="nikhil@mail.com",
         job_id=jobs_to_seed[0].id,
         job_title=jobs_to_seed[0].title,
-        applied_date=date.today() - timedelta(days=28),
+        applied_date=clock.today() - timedelta(days=28),
         experience="5 years",
         rating=4,
         stage="Interview",
@@ -1141,7 +1142,7 @@ async def ensure_seeded_data(db: AsyncSession, tenant_id: uuid.UUID):
         email="claire@mail.com",
         job_id=jobs_to_seed[0].id,
         job_title=jobs_to_seed[0].title,
-        applied_date=date.today() - timedelta(days=27),
+        applied_date=clock.today() - timedelta(days=27),
         experience="4 years",
         rating=3,
         stage="Screening",
@@ -1155,7 +1156,7 @@ async def ensure_seeded_data(db: AsyncSession, tenant_id: uuid.UUID):
         email="tom@mail.com",
         job_id=jobs_to_seed[1].id,
         job_title=jobs_to_seed[1].title,
-        applied_date=date.today() - timedelta(days=22),
+        applied_date=clock.today() - timedelta(days=22),
         experience="3 years",
         rating=5,
         stage="Offer",
@@ -1169,7 +1170,7 @@ async def ensure_seeded_data(db: AsyncSession, tenant_id: uuid.UUID):
         email="jason@mail.com",
         job_id=jobs_to_seed[1].id,
         job_title=jobs_to_seed[1].title,
-        applied_date=date.today() - timedelta(days=20),
+        applied_date=clock.today() - timedelta(days=20),
         experience="2 years",
         rating=3,
         stage="Applied",
@@ -1183,7 +1184,7 @@ async def ensure_seeded_data(db: AsyncSession, tenant_id: uuid.UUID):
         email="anjali@mail.com",
         job_id=jobs_to_seed[2].id,
         job_title=jobs_to_seed[2].title,
-        applied_date=date.today() - timedelta(days=12),
+        applied_date=clock.today() - timedelta(days=12),
         experience="4 years",
         rating=5,
         stage="Hired",
@@ -1202,7 +1203,7 @@ async def ensure_seeded_data(db: AsyncSession, tenant_id: uuid.UUID):
         candidate=app1.name,
         job_title=app1.job_title,
         interviewer_name="Alex Rivera",
-        date=(date.today() + timedelta(days=2)).isoformat(),
+        date=(clock.today() + timedelta(days=2)).isoformat(),
         time="10:00",
         duration=60,
         type="Technical",
@@ -1219,9 +1220,9 @@ async def ensure_seeded_data(db: AsyncSession, tenant_id: uuid.UUID):
         candidate=app3.name,
         role=app3.job_title,
         ctc=85000.0,
-        offer_date=date.today() - timedelta(days=2),
-        expiry_date=date.today() + timedelta(days=5),
-        joining_date=date.today() + timedelta(days=20),
+        offer_date=clock.today() - timedelta(days=2),
+        expiry_date=clock.today() + timedelta(days=5),
+        joining_date=clock.today() + timedelta(days=20),
         signer_name="Priya Sharma",
         status="Awaiting Acceptance",
         email_sent=True
@@ -1234,7 +1235,7 @@ async def ensure_seeded_data(db: AsyncSession, tenant_id: uuid.UUID):
         applicant_id=app5.id,
         new_hire=app5.name,
         role=app5.job_title,
-        start_date=date.today() + timedelta(days=10),
+        start_date=clock.today() + timedelta(days=10),
         progress=67,
         tasks_json=[
             {"task": "Email & System Access Created", "assignedTo": "IT", "status": "Done"},
@@ -2076,7 +2077,7 @@ async def add_applicant_note(
 
     new_note = {
         "author": ctx.user.full_name or "HR Officer",
-        "date": datetime.now().isoformat(),
+        "date": clock.now().isoformat(),
         "text": payload.text
     }
 
@@ -2350,7 +2351,7 @@ async def create_offer(
         candidate_email=candidate_email,
         role=candidate_role,
         ctc=payload.ctc,
-        offer_date=date.today(),
+        offer_date=clock.today(),
         expiry_date=payload.expiry_date,
         joining_date=payload.joining_date,
         signer_name=payload.signer_name,
@@ -2365,10 +2366,10 @@ async def create_offer(
         doc_entry = EmployeeDocument(
             tenant_id=ctx.tenant_id,
             employee_id=employee.id,
-            document_name=f"Offer Letter - {candidate_role} ({new_offer.joining_date.strftime('%b %Y') if new_offer.joining_date else date.today().strftime('%b %Y')})",
+            document_name=f"Offer Letter - {candidate_role} ({new_offer.joining_date.strftime('%b %Y') if new_offer.joining_date else clock.today().strftime('%b %Y')})",
             document_type="Contract",
             file_path=f"/vault/offers/{new_offer.id}.pdf",
-            upload_date=date.today(),
+            upload_date=clock.today(),
             status="Valid",
         )
         db.add(doc_entry)
@@ -2610,7 +2611,7 @@ async def send_offer_email(
           </div>
         </div>
         <div class="email-footer">
-          &copy; {datetime.now().year} {company_name}. Confidential Employment Record.<br>
+          &copy; {clock.now().year} {company_name}. Confidential Employment Record.<br>
           This is an official automated communication intended solely for {target_email}.
         </div>
       </div>
@@ -2843,7 +2844,7 @@ async def _sync_accepted_offer_onboarding(
     cand_email = offer.candidate_email or (applicant.email if applicant else "")
     cand_name = offer.candidate or (applicant.name if applicant else "New Hire")
     role_name = offer.role or (applicant.job_title if applicant else "Team Member")
-    start_dt = offer.joining_date or date.today()
+    start_dt = offer.joining_date or clock.today()
 
     if applicant:
         applicant.stage = "Hired"
@@ -2892,7 +2893,7 @@ async def _sync_accepted_offer_onboarding(
                 document_name=f"Official_Offer_Letter_{cand_name.replace(' ', '_')}.pdf",
                 document_type="Offer Letter",
                 file_path=f"/hrms/documents/offer_{offer.id}.pdf",
-                upload_date=date.today()
+                upload_date=clock.today()
             )
             db.add(doc)
 
@@ -3230,7 +3231,7 @@ async def update_onboarding(
                         full_name=applicant.name,
                         email=applicant.email,
                         phone=None,
-                        date_of_joining=date.today(),
+                        date_of_joining=clock.today(),
                         employment_type="Full-Time",
                         status="Active",
                         basic_salary=None,
@@ -3247,7 +3248,7 @@ async def update_onboarding(
                         f"Welcome to the team at Nimbus Retail! Your official employee profile has been created in our HRMS.\n\n"
                         f"Official Employee Code: {emp_code}\n"
                         f"Designated Role: {onb.role}\n"
-                        f"Joining Date: {date.today().strftime('%Y-%m-%d')}\n\n"
+                        f"Joining Date: {clock.today().strftime('%Y-%m-%d')}\n\n"
                         "Your login credentials for the Employee Self Service (ESS) portal will be sent in a separate communication.\n\n"
                         "If you have any questions, please contact your HR Manager.\n\n"
                         "Best regards,\n"

@@ -24,6 +24,7 @@ from src.models.payment_reminders import PaymentReminderLog, PaymentReminderPoli
 from src.services.razorpay_service import RazorpayService
 from src.utils.email import send_email
 from src.utils.notifications import add_system_notification
+from src.utils.clock import clock
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +173,7 @@ async def dispatch_multi_channel_reminder(
 ) -> dict:
     """Dispatch Email, WhatsApp, and SMS payment reminders to the customer."""
     now_utc = datetime.now(timezone.utc)
-    today = date.today()
+    today = clock.today()
 
     # Safety checks: Strictly reject Credit Notes, Returns, Proformas, and Estimates
     raw_type = (invoice.invoice_type or "").lower().strip()
@@ -379,7 +380,7 @@ async def dispatch_multi_channel_reminder(
                 {pay_button_html}
               </div>
               <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 16px 24px; text-align: center; font-size: 12px; color: #64748b;">
-                © {datetime.now().year} {company_name}. All rights reserved.
+                © {clock.now().year} {company_name}. All rights reserved.
               </div>
             </div>
             """
@@ -622,7 +623,7 @@ async def evaluate_and_send_reminders(
 ) -> dict:
     """Batch evaluation engine: strictly inspects receivables for tenants who have explicitly enabled reminders."""
     now_utc = datetime.now(timezone.utc)
-    today = date.today()
+    today = clock.today()
 
     # Exclusive advisory lock: only ONE evaluation cycle (across all processes/workers)
     # may run at a time. A concurrent cycle (app restart with the old loop still alive, or
@@ -765,8 +766,14 @@ async def _run_reminder_cycle(
             days_remaining = abs(days_diff)
             pre_due_days = policy.pre_due_reminder_days or [7, 3, 1, 0]
             if days_remaining in pre_due_days:
-                # Check if reminder was already sent today
-                if not inv.last_reminder_sent_at or inv.last_reminder_sent_at.date() < today:
+                # Check if reminder was already sent today (app timezone — not UTC —
+                # so an IST evening send is correctly counted as "today")
+                last_sent_today = (
+                    inv.last_reminder_sent_at.astimezone(clock.app_timezone()).date()
+                    if inv.last_reminder_sent_at and inv.last_reminder_sent_at.tzinfo
+                    else (inv.last_reminder_sent_at.date() if inv.last_reminder_sent_at else None)
+                )
+                if not inv.last_reminder_sent_at or last_sent_today < today:
                     should_send = True
                     reminder_type = "due_today" if days_remaining == 0 else "pre_due"
         else:

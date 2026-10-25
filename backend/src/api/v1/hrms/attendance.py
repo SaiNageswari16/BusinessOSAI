@@ -50,6 +50,7 @@ from src.schemas.erp import (
     EmployeeSchemeDetail,
 )
 from src.utils.pagination import PaginatedResponse, paginate
+from src.utils.clock import clock
 
 router = APIRouter(prefix="/hrms", tags=["HRMS - Attendance"])
 
@@ -778,7 +779,7 @@ async def get_attendance_stats(
 ):
     target_company_id = company_id or ctx.active_company_id
     emp_base = select(Employee).where(Employee.tenant_id == ctx.tenant_id)
-    today = date.today()
+    today = clock.today()
     thirty_days_ago = today - timedelta(days=30)
     today_rec_q = select(AttendanceRecord).join(Employee, AttendanceRecord.employee_id == Employee.id).where(
         AttendanceRecord.tenant_id == ctx.tenant_id, AttendanceRecord.date == today
@@ -1030,7 +1031,7 @@ async def clock_in(
     if not emp:
         raise HTTPException(status_code=400, detail="No Employee profile linked to your user account")
 
-    today = date.today()
+    today = clock.today()
     existing = await db.scalar(
         select(AttendanceRecord).where(
             AttendanceRecord.tenant_id == ctx.tenant_id,
@@ -1211,7 +1212,7 @@ async def clock_out(
     if not emp:
         raise HTTPException(status_code=400, detail="No Employee profile linked to your user account")
 
-    today = date.today()
+    today = clock.today()
     att = await db.scalar(
         select(AttendanceRecord).where(
             AttendanceRecord.tenant_id == ctx.tenant_id,

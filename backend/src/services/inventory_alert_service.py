@@ -22,6 +22,7 @@ from sqlalchemy.orm import selectinload
 
 from src.models import Tenant, Company, LiveNotification
 from src.models.inventory import Product, ProductCategory, StockMovement, InventoryBatch
+from src.utils.clock import clock
 from src.utils.notifications import add_system_notification
 
 logger = logging.getLogger(__name__)
@@ -215,7 +216,7 @@ async def check_and_notify_low_stock(
             recipient = cfg["manager_whatsapp"]
             lines = [
                 "⚠️ *BusinessOS Inventory — Low Stock Alert*",
-                f"📅 *Time:* {datetime.now(timezone.utc).strftime('%d %b %Y, %I:%M %p')}",
+                f"📅 *Time:* {clock.now().strftime('%d %b %Y, %I:%M %p')}",
                 "",
                 "The following item(s) have fallen below minimum reorder thresholds:",
             ]
@@ -253,7 +254,7 @@ async def generate_inventory_alert_signals(
     - Dead stock (No movement in >= dead_stock_days)
     - Expiring batches
     """
-    now = datetime.now(timezone.utc)
+    now = clock.now()
     since_date = now - timedelta(days=dead_stock_days)
 
     # 1. Products list
@@ -442,7 +443,7 @@ async def dispatch_inventory_alert_digest(
     if recipient:
         lines = [
             "📊 *BusinessOS AI — Inventory Health & Stock Digest*",
-            f"📅 *Date:* {datetime.now(timezone.utc).strftime('%d %b %Y, %I:%M %p')}",
+            f"📅 *Date:* {clock.now().strftime('%d %b %Y, %I:%M %p')}",
             "━━━━━━━━━━━━━━━━━━━━━━",
         ]
 

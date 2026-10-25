@@ -21,6 +21,7 @@ from src.services.payment_reminder_engine import (
     evaluate_and_send_reminders,
     get_or_create_policy,
 )
+from src.utils.clock import clock
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +182,7 @@ async def send_single_invoice_reminder(
         )
 
     policy = await get_or_create_policy(db, ctx.tenant_id, invoice.company_id)
-    today = date.today()
+    today = clock.today()
     days_diff = (today - invoice.due_date).days if invoice.due_date else 0
 
     reminder_type = "manual"
@@ -252,7 +253,7 @@ async def get_reminder_summary(
     db: AsyncSession = Depends(get_db),
 ):
     """Get live receivables overview: overdue count, penalties accrued, and upcoming dues."""
-    today = date.today()
+    today = clock.today()
     invoices_stmt = select(Invoice).where(
         Invoice.tenant_id == ctx.tenant_id,
         func.lower(Invoice.status).notin_(["paid", "cancelled", "void"]),

@@ -18,6 +18,7 @@ from src.config import get_settings
 from src.models import Tenant
 from src.models.erp import Invoice, InvoiceLine
 from src.models.inventory import Product
+from src.utils.clock import clock
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +143,7 @@ class WhitebooksEWayBillClient:
         if not (self.client_id and self.client_secret):
             return False, "EWB Client ID and Client Secret are required.", None
 
-        if self._token and self._token_expires and datetime.now() < self._token_expires:
+        if self._token and self._token_expires and clock.now() < self._token_expires:
             return True, "Authenticated (cached session)", self._token
 
         auth_headers = {
@@ -189,7 +190,7 @@ class WhitebooksEWayBillClient:
                         )
                         if token:
                             self._token = str(token)
-                            self._token_expires = datetime.now() + timedelta(minutes=50)
+                            self._token_expires = clock.now() + timedelta(minutes=50)
                             return True, "E-Way Bill Authentication successful", str(token)
                         
                         desc = data.get("status_desc") or data.get("message") or data.get("Error")
@@ -239,13 +240,13 @@ class WhitebooksEWayBillClient:
         if not ok:
             logger.warning("EWB pre-auth failed: %s; proceeding with direct credentials in headers", auth_msg)
 
-        raw_doc_no = invoice_data.get("invoice_number") or f"INV{datetime.now().strftime('%d%H%M%S')}"
+        raw_doc_no = invoice_data.get("invoice_number") or f"INV{clock.now().strftime('%d%H%M%S')}"
         import re
         doc_no = re.sub(r"[^a-zA-Z0-9/-]", "", str(raw_doc_no))[:16]
         if not doc_no:
-            doc_no = f"INV{datetime.now().strftime('%d%H%M%S')}"
+            doc_no = f"INV{clock.now().strftime('%d%H%M%S')}"
 
-        doc_date = invoice_data.get("invoice_date") or datetime.now().strftime("%d/%m/%Y")
+        doc_date = invoice_data.get("invoice_date") or clock.now().strftime("%d/%m/%Y")
         if "-" in doc_date:
             try:
                 parts = doc_date.split("-")
@@ -425,12 +426,12 @@ class WhitebooksEWayBillClient:
                     if data.get("status_cd") == "1" or "ewayBillNo" in data or ("data" in data and isinstance(data["data"], dict) and "ewayBillNo" in data["data"]):
                         res_data = data.get("data", data)
                         ewb_no = str(res_data.get("ewayBillNo") or res_data.get("ewbNo") or res_data.get("EwbNo"))
-                        valid_until = res_data.get("validUpto") or (datetime.now() + timedelta(days=max(1, resolved_dist // 200 + 1))).strftime("%d/%m/%Y %H:%M:%S")
+                        valid_until = res_data.get("validUpto") or (clock.now() + timedelta(days=max(1, resolved_dist // 200 + 1))).strftime("%d/%m/%Y %H:%M:%S")
                         return {
                             "success": True,
                             "is_simulated": False,
                             "eway_bill_number": ewb_no,
-                            "ewb_date": res_data.get("ewayBillDate") or datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                            "ewb_date": res_data.get("ewayBillDate") or clock.now().strftime("%d/%m/%Y %H:%M:%S"),
                             "valid_until": valid_until,
                             "status": "ACTIVE",
                             "qr_code_data": f"EWB:{ewb_no}|GSTIN:{supplier_gstin}|DOC:{doc_no}|VAL:{final_inv_val}",
@@ -485,7 +486,7 @@ class WhitebooksEWayBillClient:
             "reasonCode": str(reason_code),
             "reasonRem": remarks,
             "transDocNo": f"TRN-{uuid.uuid4().hex[:6].upper()}",
-            "transDocDate": datetime.now().strftime("%d/%m/%Y"),
+            "transDocDate": clock.now().strftime("%d/%m/%Y"),
             "transMode": "1",
         }
 
@@ -503,7 +504,7 @@ class WhitebooksEWayBillClient:
                             "is_simulated": False,
                             "eway_bill_number": ewb_number,
                             "vehicle_no": vehicle_no,
-                            "updated_at": datetime.now().isoformat(),
+                            "updated_at": clock.now().isoformat(),
                             "message": data.get("status_desc") or f"Vehicle updated to {vehicle_no} on GSTN Portal.",
                             "raw_response": data,
                         }
@@ -545,7 +546,7 @@ class WhitebooksEWayBillClient:
                             "is_simulated": False,
                             "eway_bill_number": ewb_number,
                             "status": "CANCELLED",
-                            "cancelled_at": datetime.now().isoformat(),
+                            "cancelled_at": clock.now().isoformat(),
                             "message": data.get("status_desc") or f"e-Way Bill {ewb_number} cancelled on GSTN Portal.",
                             "raw_response": data,
                         }
@@ -620,7 +621,7 @@ class WhitebooksGstClient:
         if not (self.client_id and self.client_secret):
             return False, "GST Client ID and Secret are required.", None
 
-        if self._token and self._token_expires and datetime.now() < self._token_expires:
+        if self._token and self._token_expires and clock.now() < self._token_expires:
             return True, "Authenticated (cached session)", self._token
 
         urls = [
@@ -657,7 +658,7 @@ class WhitebooksGstClient:
                         token = header_token or data.get("authtoken") or data.get("token") or data.get("access_token")
                         if token:
                             self._token = str(token)
-                            self._token_expires = datetime.now() + timedelta(minutes=50)
+                            self._token_expires = clock.now() + timedelta(minutes=50)
                             return True, "GST Portal Authentication successful", str(token)
                         if data.get("status_desc"):
                             last_error = data["status_desc"]
@@ -766,7 +767,7 @@ class WhitebooksGstClient:
         # If live gateway returned token or sandbox established session
         token = verified_token or f"GST_SEK_{uuid.uuid4().hex}_{clean_otp}"
         self._token = token
-        self._token_expires = datetime.now() + timedelta(hours=6)
+        self._token_expires = clock.now() + timedelta(hours=6)
 
         return {
             "success": True,
@@ -780,8 +781,8 @@ class WhitebooksGstClient:
 
     def get_session_status(self) -> Dict[str, Any]:
         """Check the status and remaining validity of the active 6-hour GST Portal session."""
-        is_active = bool(self._token and self._token_expires and datetime.now() < self._token_expires)
-        remaining_seconds = int((self._token_expires - datetime.now()).total_seconds()) if is_active and self._token_expires else 0
+        is_active = bool(self._token and self._token_expires and clock.now() < self._token_expires)
+        remaining_seconds = int((self._token_expires - clock.now()).total_seconds()) if is_active and self._token_expires else 0
         remaining_minutes = max(0, remaining_seconds // 60)
 
         return {
@@ -1020,7 +1021,7 @@ class WhitebooksGstClient:
                 if cust_gstin not in b2b_by_ctin:
                     b2b_by_ctin[cust_gstin] = []
 
-                inv_date_str = inv.invoice_date.strftime("%d-%m-%Y") if inv.invoice_date else datetime.now().strftime("%d-%m-%Y")
+                inv_date_str = inv.invoice_date.strftime("%d-%m-%Y") if inv.invoice_date else clock.now().strftime("%d-%m-%Y")
                 rate_groups: Dict[float, Dict[str, float]] = {}
                 for cl in computed_lines:
                     r = cl["rate"]
@@ -1226,12 +1227,12 @@ class WhitebooksGstClient:
                         if data.get("status_cd") == "1" or data.get("reference_id") or data.get("ref_id"):
                             return {
                                 "success": True,
-                                "reference_id": str(data.get("reference_id") or data.get("ref_id") or f"GSTR1-{datetime.now().strftime('%Y%m%d%H%M%S')}"),
-                                "arn": str(data.get("arn") or f"AA{self.gstin[:2] if self.gstin else '29'}{datetime.now().strftime('%m%y%H%M%S')}"),
+                                "reference_id": str(data.get("reference_id") or data.get("ref_id") or f"GSTR1-{clock.now().strftime('%Y%m%d%H%M%S')}"),
+                                "arn": str(data.get("arn") or f"AA{self.gstin[:2] if self.gstin else '29'}{clock.now().strftime('%m%y%H%M%S')}"),
                                 "status": "ACCEPTED",
                                 "period": gstr1_payload.get("period") or gstr1_payload.get("fp"),
                                 "message": data.get("status_desc") or "GSTR-1 successfully uploaded to GSTN Portal via Whitebooks GSP.",
-                                "timestamp": datetime.now().isoformat(),
+                                "timestamp": clock.now().isoformat(),
                                 "raw_response": data,
                             }
                         last_error_data = data
@@ -1244,9 +1245,9 @@ class WhitebooksGstClient:
                     last_error_data = {"error": str(exc)}
 
         # If gateway returned sandbox mock response, provide statutory acknowledgement receipt
-        ref_id = f"GSTR1-WB-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        arn = f"AA{self.gstin[:2] if self.gstin else '29'}{datetime.now().strftime('%m%y%H%M%S')}"
-        period_str = str(gstr1_payload.get("period") or gstr1_payload.get("fp") or datetime.now().strftime("%m%Y"))
+        ref_id = f"GSTR1-WB-{clock.now().strftime('%Y%m%d%H%M%S')}"
+        arn = f"AA{self.gstin[:2] if self.gstin else '29'}{clock.now().strftime('%m%y%H%M%S')}"
+        period_str = str(gstr1_payload.get("period") or gstr1_payload.get("fp") or clock.now().strftime("%m%Y"))
         
         return {
             "success": True,
@@ -1255,7 +1256,7 @@ class WhitebooksGstClient:
             "status": "ACCEPTED",
             "period": period_str,
             "message": "GSTR-1 statutory return package compiled and verified with Whitebooks GST Gateway.",
-            "timestamp": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+            "timestamp": clock.now().strftime("%d/%m/%Y %H:%M:%S"),
             "raw_response": {
                 "status_cd": "1",
                 "status_desc": "GSTR-1 Upload Accepted on GSTN Gateway",
@@ -1313,7 +1314,7 @@ class WhitebooksEInvoiceClient:
         if not (self.client_id and self.client_secret):
             return False, "e-Invoice Client ID and Secret are required.", None
 
-        if self._token and self._token_expires and datetime.now() < self._token_expires:
+        if self._token and self._token_expires and clock.now() < self._token_expires:
             return True, "Authenticated (cached session)", self._token
 
         urls = [
@@ -1352,7 +1353,7 @@ class WhitebooksEInvoiceClient:
                         token = header_token or data.get("authtoken") or data.get("token") or data.get("access_token")
                         if token:
                             self._token = str(token)
-                            self._token_expires = datetime.now() + timedelta(minutes=50)
+                            self._token_expires = clock.now() + timedelta(minutes=50)
                             return True, "e-Invoice IRP Gateway Authenticated", str(token)
                         if data.get("status_desc"):
                             last_error = data["status_desc"]
@@ -1379,8 +1380,8 @@ class WhitebooksEInvoiceClient:
     async def generate_irn(self, invoice_data: Dict[str, Any]) -> Dict[str, Any]:
         """Generate standard 64-character Invoice Reference Number (IRN) and Signed QR in Real-Time."""
         await self.authenticate()
-        doc_no = invoice_data.get("invoice_number") or f"INV-{datetime.now().strftime('%Y%m%d%H%M')}"
-        doc_date = invoice_data.get("invoice_date") or datetime.now().strftime("%d/%m/%Y")
+        doc_no = invoice_data.get("invoice_number") or f"INV-{clock.now().strftime('%Y%m%d%H%M')}"
+        doc_date = invoice_data.get("invoice_date") or clock.now().strftime("%d/%m/%Y")
         seller_gstin = invoice_data.get("seller_gstin") or self.gstin or "29AAGCB1286Q000"
         buyer_gstin = invoice_data.get("buyer_gstin") or "29ABCDE1234F1Z5"
         total_val = float(invoice_data.get("total_amount") or 0.0)
@@ -1695,7 +1696,7 @@ class WhitebooksService:
                 "token_preview": f"{token[:8]}..." if token else None,
                 "client_id": client.client_id[:8] + "..." if client.client_id else "Not Set",
                 "gstin": client.gstin,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": clock.now().isoformat(),
             }
 
         if mod in ("gst", "gstr1", "gstr2b", "gstr3b"):
@@ -1708,7 +1709,7 @@ class WhitebooksService:
                 "token_preview": f"{token[:8]}..." if token else None,
                 "client_id": client.client_id[:8] + "..." if client.client_id else "Not Set",
                 "gstin": client.gstin,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": clock.now().isoformat(),
             }
 
         if mod in ("einv", "einvoice", "irn"):
@@ -1721,7 +1722,7 @@ class WhitebooksService:
                 "token_preview": f"{token[:8]}..." if token else None,
                 "client_id": client.client_id[:8] + "..." if client.client_id else "Not Set",
                 "gstin": client.gstin,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": clock.now().isoformat(),
             }
 
         return {"success": False, "message": f"Unknown Whitebooks module: {module}"}

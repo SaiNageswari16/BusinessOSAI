@@ -32,6 +32,7 @@ from src.schemas.erp import POSTransactionCreate, POSTransactionResponse, POSChe
 from src.services.whatsapp_invoice_sender import InvoiceSendError, send_pos_receipt_whatsapp
 from src.utils.notifications import add_system_notification
 from src.utils.number_series import generate_number, resolve_valid_company_id
+from src.utils.clock import clock
 
 logger = logging.getLogger(__name__)
 
@@ -550,8 +551,8 @@ async def _create_invoice_from_pos_transaction(
             customer_email=cust_email,
             customer_gstin=cust_gstin,
             billing_address=cust_address,
-            invoice_date=__import__("datetime").date.today(),
-            due_date=__import__("datetime").date.today(),
+            invoice_date=__import__("datetime").clock.today(),
+            due_date=__import__("datetime").clock.today(),
             currency_code="INR",
             subtotal=payload.subtotal,
             discount_amount=payload.discount_amount,
@@ -576,7 +577,7 @@ async def _create_invoice_from_pos_transaction(
                     inv_pay = InvoicePayment(
                         tenant_id=ctx.tenant_id,
                         invoice_id=invoice.id,
-                        payment_date=__import__("datetime").date.today(),
+                        payment_date=__import__("datetime").clock.today(),
                         amount=float(p.amount),
                         payment_method=p.payment_method.lower(),
                         reference_number=p.reference_number or f"PAY-{inv_number}",

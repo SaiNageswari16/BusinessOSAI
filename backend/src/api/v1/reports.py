@@ -20,6 +20,7 @@ from src.models.inventory import Product, Warehouse, StockMovement, MasterCatalo
 from src.models.procurement import Supplier, PurchaseOrder, VendorBill
 from src.models.erp import Invoice
 from src.models.marketplace import MarketplaceOrder
+from src.utils.clock import clock
 
 logger = logging.getLogger("reports_api")
 class _SettingsProxy:
@@ -896,14 +897,14 @@ async def get_report_builder_presets():
 
 def _normalize_dt(dt: Any) -> datetime:
     if dt is None:
-        return datetime.utcnow()
+        return clock.utcnow()
     if isinstance(dt, datetime):
         if dt.tzinfo is not None:
             return dt.replace(tzinfo=None)
         return dt
     if hasattr(dt, "year") and hasattr(dt, "month") and hasattr(dt, "day"):
         return datetime.combine(dt, datetime.min.time())
-    return datetime.utcnow()
+    return clock.utcnow()
 
 
 async def _get_all_sales_invoices(
@@ -1241,7 +1242,7 @@ async def generate_custom_report(
     filters = payload.get("filters") or {}
     search = (filters.get("search") or "").strip()
 
-    now = datetime.utcnow()
+    now = clock.utcnow()
 
     # ── Date boundaries calculation ──────────────────────────────────────────
     start_dt = None
@@ -4637,7 +4638,7 @@ async def get_employee_sales_report(
 
     # Map POS Transactions
     for tx in tx_rows:
-        created_dt = tx.created_at or datetime.now()
+        created_dt = tx.created_at or clock.now()
         dt_str = created_dt.strftime("%Y-%m-%d")
         
         # Resolve Cashier / Logged-in User
@@ -4734,7 +4735,7 @@ async def get_employee_sales_report(
 
     # Map ERP Invoices
     for inv in inv_rows:
-        inv_dt = inv.created_at or datetime.now()
+        inv_dt = inv.created_at or clock.now()
         dt_str = inv.invoice_date.strftime("%Y-%m-%d") if inv.invoice_date else inv_dt.strftime("%Y-%m-%d")
         
         # Logged-in User

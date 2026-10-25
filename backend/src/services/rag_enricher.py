@@ -28,6 +28,7 @@ from src.database.session import AsyncSessionLocal
 from src.models.inventory import MasterCatalogProduct, Product, Brand, ProductCategory
 from src.models import EntityStatus
 from src.config import get_settings
+from src.utils.clock import clock
 
 logger = logging.getLogger("rag_enricher")
 settings = get_settings()
@@ -276,7 +277,7 @@ class RAGEnricherService:
     @classmethod
     async def enrich_on_demand(cls, product_id, barcode: str, name: str):
         """Enrich a single product on demand (e.g. from UI trigger)."""
-        now = datetime.utcnow().timestamp()
+        now = clock.utcnow().timestamp()
         clean_code = (barcode or "").strip()
 
         # 1. Check in-memory cache
@@ -592,7 +593,7 @@ class RAGEnricherService:
                                 local_prod.selling_price = ai_item.sale_price
                             if ai_item.short_description and not local_prod.short_description:
                                 local_prod.short_description = ai_item.short_description
-                        local_prod.updated_at = datetime.utcnow()
+                        local_prod.updated_at = clock.utcnow()
                         await session.commit()
                         logger.info("[RAG Enricher - Inventory Worker] Enriched local product '%s' (%s) | image=%s", local_prod.name, barcode, cached_image_url or "none")
                     return
@@ -641,7 +642,7 @@ class RAGEnricherService:
                     db_prod.rag_status = "completed"
                     db_prod.rag_error = None
                     db_prod.source = "AI_WEB_SEARCH"
-                    db_prod.rag_enriched_at = datetime.utcnow()
+                    db_prod.rag_enriched_at = clock.utc_naive()
                     logger.info(
                         "[RAG Enricher] Enriched '%s' (%s) | image=%s",
                         db_prod.name, barcode, cached_image_url or "none",

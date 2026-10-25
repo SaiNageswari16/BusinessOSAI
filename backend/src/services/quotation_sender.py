@@ -30,6 +30,7 @@ from src.models import Tenant, Customer, Lead, LeadActivity, CRMQuotation
 from src.services.invoice_pdf import get_active_invoice_template
 from src.utils.email import send_email
 from src.utils.notifications import add_system_notification
+from src.utils.clock import clock
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +162,7 @@ def render_quotation_pdf(
     cust_address = _safe_text(items_data.get("customer_address") or (customer.address if customer else ""), 160)
     cust_gstin = _safe_text(items_data.get("customer_gstin") or (getattr(customer, "tax_id", None) if customer else ""), 30)
 
-    quote_date = _safe_text(items_data.get("quote_date") or (quote.created_at.strftime("%Y-%m-%d") if quote.created_at else datetime.now().strftime("%Y-%m-%d")), 20)
+    quote_date = _safe_text(items_data.get("quote_date") or (quote.created_at.strftime("%Y-%m-%d") if quote.created_at else clock.now().strftime("%Y-%m-%d")), 20)
     valid_until = _safe_text(items_data.get("valid_until") or "30 Days from Issue", 30)
     payment_terms = _safe_text(items_data.get("payment_terms") or "Net 30 Days", 50)
     delivery_terms = _safe_text(items_data.get("delivery_terms") or "3-5 Business Days", 50)
@@ -366,7 +367,7 @@ def render_quotation_pdf(
     pdf.set_y(-12)
     pdf.set_font(font_name, "I", 6.5)
     pdf.set_text_color(148, 163, 184)
-    pdf.cell(0, 4, _safe_text(f"Official Electronic Quotation - Ref #{quote.quote_number} - Generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}"), align="C")
+    pdf.cell(0, 4, _safe_text(f"Official Electronic Quotation - Ref #{quote.quote_number} - Generated on {clock.now().strftime('%Y-%m-%d %H:%M')}"), align="C")
 
     raw = pdf.output(dest="S")
     if isinstance(raw, str):
@@ -510,10 +511,10 @@ async def send_quotation_whatsapp(
                 lead_id=lead.id,
                 activity_type="whatsapp_sent",
                 summary=f"Quotation {quote.quote_number} PDF sent via WhatsApp",
-                occurred_at=datetime.utcnow(),
+                occurred_at=clock.utcnow(),
             )
             db.add(activity)
-            lead.last_contact_at = datetime.utcnow()
+            lead.last_contact_at = clock.utcnow()
             lead.status = "Contacted"
     except Exception as e:
         logger.warning("Lead activity creation failed: %s", e)

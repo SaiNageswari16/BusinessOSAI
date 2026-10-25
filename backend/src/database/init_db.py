@@ -39,6 +39,7 @@ from src.models import (
     Zone,
 )
 from src.utils.security import create_super_admin_role, seed_permissions
+from src.utils.clock import clock
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -1011,7 +1012,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 employment_type="Full-Time",
                 status="Active",
                 punch_method="GPS",
-                date_of_joining=date.today() - timedelta(days=365)
+                date_of_joining=clock.today() - timedelta(days=365)
             ),
             Employee(
                 tenant_id=tenant_id,
@@ -1024,7 +1025,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 status="Active",
                 punch_method="Biometric",
                 nfc_card_number="NFC-99481",
-                date_of_joining=date.today() - timedelta(days=300)
+                date_of_joining=clock.today() - timedelta(days=300)
             ),
             Employee(
                 tenant_id=tenant_id,
@@ -1036,7 +1037,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 employment_type="Full-Time",
                 status="Active",
                 punch_method="Face",
-                date_of_joining=date.today() - timedelta(days=200)
+                date_of_joining=clock.today() - timedelta(days=200)
             ),
             Employee(
                 tenant_id=tenant_id,
@@ -1048,7 +1049,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 employment_type="Full-Time",
                 status="Active",
                 punch_method="Web",
-                date_of_joining=date.today() - timedelta(days=150)
+                date_of_joining=clock.today() - timedelta(days=150)
             )
         ]
         for emp in employees_to_seed:
@@ -1069,7 +1070,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 experience="4-6 years",
                 openings=2,
                 applicants_count=2,
-                posted_date=date.today() - timedelta(days=30),
+                posted_date=clock.today() - timedelta(days=30),
                 status="Open",
                 threshold_score=75,
                 portals=["Careers Page", "LinkedIn", "Naukri.com", "Zoho Careers"],
@@ -1085,7 +1086,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 experience="2-4 years",
                 openings=3,
                 applicants_count=2,
-                posted_date=date.today() - timedelta(days=25),
+                posted_date=clock.today() - timedelta(days=25),
                 status="Open",
                 threshold_score=70,
                 portals=["Careers Page", "LinkedIn", "Indeed"],
@@ -1101,7 +1102,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 experience="3-5 years",
                 openings=1,
                 applicants_count=1,
-                posted_date=date.today() - timedelta(days=15),
+                posted_date=clock.today() - timedelta(days=15),
                 status="Open",
                 threshold_score=80,
                 portals=["Careers Page", "Glassdoor"],
@@ -1119,7 +1120,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
             email="nikhil@mail.com",
             job_id=jobs_to_seed[0].id,
             job_title=jobs_to_seed[0].title,
-            applied_date=date.today() - timedelta(days=28),
+            applied_date=clock.today() - timedelta(days=28),
             experience="5 years",
             rating=4,
             stage="Interview",
@@ -1128,8 +1129,8 @@ async def seed_hrms_features(db: AsyncSession) -> None:
             expected_salary=95000.0,
             proposed_salary=90000.0,
             notes_json=[
-                {"author": "Priya Sharma", "date": (date.today() - timedelta(days=5)).isoformat() + "T10:00:00", "text": "Called Nikhil. He was positive about our Tech Stack and remote working setup. Scheduled technical screening round."},
-                {"author": "Alex Rivera", "date": (date.today() - timedelta(days=3)).isoformat() + "T11:00:00", "text": "Technical interview completed. Strong knowledge of databases and FastAPI. Suggested target CTC offer of $90,000."}
+                {"author": "Priya Sharma", "date": (clock.today() - timedelta(days=5)).isoformat() + "T10:00:00", "text": "Called Nikhil. He was positive about our Tech Stack and remote working setup. Scheduled technical screening round."},
+                {"author": "Alex Rivera", "date": (clock.today() - timedelta(days=3)).isoformat() + "T11:00:00", "text": "Technical interview completed. Strong knowledge of databases and FastAPI. Suggested target CTC offer of $90,000."}
             ],
             resume_text="Experienced backend engineer with 5 years building REST APIs using Python, FastAPI, and Flask. Strong knowledge of PostgreSQL databases, query optimizations, Docker containers, and deploying microservices on AWS EC2/ECS."
         )
@@ -1139,7 +1140,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
             email="claire@mail.com",
             job_id=jobs_to_seed[0].id,
             job_title=jobs_to_seed[0].title,
-            applied_date=date.today() - timedelta(days=27),
+            applied_date=clock.today() - timedelta(days=27),
             experience="4 years",
             rating=3,
             stage="Screening",
@@ -1153,7 +1154,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
             email="tom@mail.com",
             job_id=jobs_to_seed[1].id,
             job_title=jobs_to_seed[1].title,
-            applied_date=date.today() - timedelta(days=22),
+            applied_date=clock.today() - timedelta(days=22),
             experience="3 years",
             rating=5,
             stage="Offer",
@@ -1167,7 +1168,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
             email="jason@mail.com",
             job_id=jobs_to_seed[1].id,
             job_title=jobs_to_seed[1].title,
-            applied_date=date.today() - timedelta(days=20),
+            applied_date=clock.today() - timedelta(days=20),
             experience="2 years",
             rating=3,
             stage="Applied",
@@ -1181,7 +1182,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
             email="anjali@mail.com",
             job_id=jobs_to_seed[2].id,
             job_title=jobs_to_seed[2].title,
-            applied_date=date.today() - timedelta(days=12),
+            applied_date=clock.today() - timedelta(days=12),
             experience="4 years",
             rating=5,
             stage="Hired",
@@ -1199,7 +1200,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
             candidate=app1.name,
             job_title=app1.job_title,
             interviewer_name="Alex Rivera",
-            date=(date.today() + timedelta(days=2)).isoformat(),
+            date=(clock.today() + timedelta(days=2)).isoformat(),
             time="10:00",
             duration=60,
             type="Technical",
@@ -1216,9 +1217,9 @@ async def seed_hrms_features(db: AsyncSession) -> None:
             candidate=app3.name,
             role=app3.job_title,
             ctc=85000.0,
-            offer_date=date.today() - timedelta(days=2),
-            expiry_date=date.today() + timedelta(days=5),
-            joining_date=date.today() + timedelta(days=20),
+            offer_date=clock.today() - timedelta(days=2),
+            expiry_date=clock.today() + timedelta(days=5),
+            joining_date=clock.today() + timedelta(days=20),
             signer_name="Priya Sharma",
             status="Awaiting Acceptance",
             email_sent=True
@@ -1231,7 +1232,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
             applicant_id=app5.id,
             new_hire=app5.name,
             role=app5.job_title,
-            start_date=date.today() + timedelta(days=10),
+            start_date=clock.today() + timedelta(days=10),
             progress=67,
             tasks_json=[
                 {"task": "Email & System Access Created", "assignedTo": "IT", "status": "Done"},
@@ -1261,7 +1262,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 employee_name=emp_name,
                 title="Optimize Platform Core API Latencies",
                 description="Reduce average latency for critical read/write endpoints from 250ms to less than 100ms using caching and indexing.",
-                target_date=date.today() + timedelta(days=75),
+                target_date=clock.today() + timedelta(days=75),
                 status="On Track",
                 weight=30,
                 progress=65
@@ -1272,7 +1273,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 employee_name=emp_name,
                 title="Launch CRM V2 Dashboard UI",
                 description="Draft wireframes, complete user research, code client views in React, and deploy the new CRM customer panel.",
-                target_date=date.today() + timedelta(days=45),
+                target_date=clock.today() + timedelta(days=45),
                 status="Completed",
                 weight=40,
                 progress=100
@@ -1283,7 +1284,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 employee_name=emp_name,
                 title="Increase B2B Sales Conversion Rate",
                 description="Improve target conversion rate from 8.5% to 12.0% through active demo follow-ups and custom onboarding templates.",
-                target_date=date.today() + timedelta(days=90),
+                target_date=clock.today() + timedelta(days=90),
                 status="At Risk",
                 weight=30,
                 progress=25
@@ -1409,7 +1410,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 employee_name="Aisha Patel",
                 department="Engineering",
                 designation="UX Designer",
-                last_working_day=date.today() + timedelta(days=15),
+                last_working_day=clock.today() + timedelta(days=15),
                 reason="Personal relocation to another country",
                 status="Accepted"
             ),
@@ -1419,7 +1420,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 employee_name="Sarah Mitchell",
                 department="Marketing",
                 designation="Marketing Director",
-                last_working_day=date.today() - timedelta(days=5),
+                last_working_day=clock.today() - timedelta(days=5),
                 reason="Higher learning opportunities and MBA",
                 status="Completed"
             )
@@ -1475,7 +1476,7 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 tenant_id=tenant_id,
                 employee_id=employees[2].id if len(employees) > 2 else employees[0].id,
                 employee_name="Sarah Mitchell",
-                last_working_day=date.today() - timedelta(days=5),
+                last_working_day=clock.today() - timedelta(days=5),
                 components_json=[
                     {"item": "Salary for June (30 days)", "amount": 3500},
                     {"item": "Leave Encashment (3 days unused)", "amount": 485},
@@ -1496,9 +1497,9 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 employee_id=employees[2].id if len(employees) > 2 else employees[0].id,
                 employee_name="Sarah Mitchell",
                 designation="Marketing Director",
-                from_date=date.today() - timedelta(days=730),
-                to_date=date.today() - timedelta(days=5),
-                issued_on=str(date.today() - timedelta(days=4)),
+                from_date=clock.today() - timedelta(days=730),
+                to_date=clock.today() - timedelta(days=5),
+                issued_on=str(clock.today() - timedelta(days=4)),
                 status="Issued"
             ),
             ExitExperienceLetter(
@@ -1506,8 +1507,8 @@ async def seed_hrms_features(db: AsyncSession) -> None:
                 employee_id=employees[3].id if len(employees) > 3 else employees[0].id,
                 employee_name="Aisha Patel",
                 designation="UX Designer",
-                from_date=date.today() - timedelta(days=365),
-                to_date=date.today() + timedelta(days=15),
+                from_date=clock.today() - timedelta(days=365),
+                to_date=clock.today() + timedelta(days=15),
                 issued_on="—",
                 status="Pending"
             )

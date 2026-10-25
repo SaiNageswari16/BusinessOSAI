@@ -33,6 +33,7 @@ from src.schemas.erp_accounting import (
     PaymentVoucherUpdate,
 )
 from src.utils.pagination import PaginatedResponse, paginate
+from src.utils.clock import clock
 
 router = APIRouter(prefix="/vouchers", tags=["Vouchers & Expenses"])
 
@@ -218,7 +219,7 @@ async def approve_payment_voucher(
 
     voucher.status = "approved"
     voucher.approved_by_user_id = ctx.user.id
-    voucher.approved_at = datetime.now()
+    voucher.approved_at = clock.now()
 
     await write_audit_log(
         db,

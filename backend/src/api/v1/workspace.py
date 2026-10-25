@@ -16,6 +16,7 @@ from src.models import (
 )
 from src.models.marketplace import MarketplaceOrder
 from src.models.erp import InvoiceType, InvoiceStatus, ExpenseStatus
+from src.utils.clock import clock
 
 router = APIRouter(prefix="/workspace", tags=["Workspace Dashboard"])
 
@@ -24,7 +25,7 @@ async def get_dashboard_kpis(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:dashboard"))],
     db: AsyncSession = Depends(get_db)
 ):
-    today = date.today()
+    today = clock.today()
 
     cid = ctx.active_company_id
 
@@ -201,7 +202,7 @@ async def get_dashboard_charts(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:dashboard"))],
     db: AsyncSession = Depends(get_db)
 ):
-    today = date.today()
+    today = clock.today()
     six_months_ago = today.replace(day=1) - timedelta(days=5*30)
     six_months_ago = six_months_ago.replace(day=1)
     
@@ -317,7 +318,7 @@ async def get_dashboard_widgets(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:dashboard"))],
     db: AsyncSession = Depends(get_db)
 ):
-    today = date.today()
+    today = clock.today()
     cid = ctx.active_company_id
     
     pr_q = select(func.count(PurchaseRequest.id)).where(PurchaseRequest.tenant_id == ctx.tenant_id)
@@ -469,7 +470,7 @@ async def get_dashboard_feeds(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:dashboard"))],
     db: AsyncSession = Depends(get_db)
 ):
-    today = date.today()
+    today = clock.today()
     cid = ctx.active_company_id
     feeds = {}
 

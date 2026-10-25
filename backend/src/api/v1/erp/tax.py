@@ -23,6 +23,7 @@ from src.schemas.erp_accounting import (
     TaxReturnUpdate,
 )
 from src.utils.pagination import PaginatedResponse, paginate
+from src.utils.clock import clock
 
 router = APIRouter(prefix="/tax", tags=["Tax Management"])
 
@@ -290,7 +291,7 @@ async def file_tax_return(
         raise HTTPException(status_code=404, detail="Tax return not found")
 
     tax_return.status = "filed"
-    tax_return.filed_at = datetime.now()
+    tax_return.filed_at = clock.now()
     tax_return.filed_by_user_id = ctx.user.id
 
     await write_audit_log(

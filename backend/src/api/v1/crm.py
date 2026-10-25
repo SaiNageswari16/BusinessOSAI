@@ -34,6 +34,7 @@ from src.schemas.crm import (
 from src.services.telephony_service import TelephonyService
 from src.utils.pagination import PaginatedResponse, paginate
 from src.utils.notifications import add_system_notification
+from src.utils.clock import clock
 import logging
 logger = logging.getLogger(__name__)
 
@@ -677,7 +678,7 @@ async def record_customer_payment(
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Payment amount must be greater than zero")
 
-    pay_date = datetime.now(timezone.utc)
+    pay_date = clock.now()
     if payload.payment_date:
         if isinstance(payload.payment_date, date):
             pay_date = datetime(payload.payment_date.year, payload.payment_date.month, payload.payment_date.day, tzinfo=timezone.utc)
@@ -730,7 +731,7 @@ async def record_customer_payment(
                 amount=allocated,
                 payment_date=pay_date.date() if isinstance(pay_date, datetime) else pay_date,
                 payment_method=payload.payment_method or "UPI",
-                reference_number=payload.reference_number or f"PAY-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                reference_number=payload.reference_number or f"PAY-{clock.now().strftime('%Y%m%d%H%M%S')}",
                 notes=payload.notes,
             )
             db.add(payment)
@@ -790,7 +791,7 @@ async def record_customer_payment(
                 amount=rem_payment,
                 payment_date=pay_date.date() if isinstance(pay_date, datetime) else pay_date,
                 payment_method=payload.payment_method or "UPI",
-                reference_number=payload.reference_number or f"ADV-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                reference_number=payload.reference_number or f"ADV-{clock.now().strftime('%Y%m%d%H%M%S')}",
                 notes=f"Advance / Credit balance ({payload.notes or ''})",
             )
             db.add(payment)
@@ -904,7 +905,7 @@ async def _adjust_customer_balance_internal(
         if inv.customer_id != customer.id:
             inv.customer_id = customer.id
 
-    pay_date = date.today()
+    pay_date = clock.today()
 
     if new_balance <= 0.01:
         # User cleared or settled balance to 0! Mark all invoices fully paid
@@ -919,7 +920,7 @@ async def _adjust_customer_balance_internal(
                     amount=rem_due,
                     payment_date=pay_date,
                     payment_method="Adjustment / Settlement",
-                    reference_number=f"SETTLE-{datetime.now().strftime('%Y%m%d%H%M%S')}-{str(uuid.uuid4())[:4]}",
+                    reference_number=f"SETTLE-{clock.now().strftime('%Y%m%d%H%M%S')}-{str(uuid.uuid4())[:4]}",
                     notes=reason or "Balance settled to 0",
                 )
                 db.add(pmt)
@@ -948,7 +949,7 @@ async def _adjust_customer_balance_internal(
                         amount=alloc,
                         payment_date=pay_date,
                         payment_method="Adjustment / Settlement",
-                        reference_number=f"ADJ-{datetime.now().strftime('%Y%m%d%H%M%S')}-{str(uuid.uuid4())[:4]}",
+                        reference_number=f"ADJ-{clock.now().strftime('%Y%m%d%H%M%S')}-{str(uuid.uuid4())[:4]}",
                         notes=reason or "Balance adjustment reduction",
                     )
                     db.add(pmt)
@@ -1529,7 +1530,7 @@ async def export_leads_csv(
             l.created_at.strftime("%Y-%m-%d %H:%M:%S") if l.created_at else "",
         ])
     output.seek(0)
-    filename = f"crm_leads_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    filename = f"crm_leads_export_{clock.now().strftime('%Y%m%d_%H%M%S')}.csv"
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode('utf-8-sig')),
         media_type="text/csv",
@@ -2141,7 +2142,7 @@ async def export_opportunities_csv(
             d.created_at.strftime("%Y-%m-%d %H:%M:%S") if d.created_at else "",
         ])
     output.seek(0)
-    filename = f"crm_deals_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    filename = f"crm_deals_export_{clock.now().strftime('%Y%m%d_%H%M%S')}.csv"
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode('utf-8-sig')),
         media_type="text/csv",
@@ -4267,7 +4268,7 @@ async def initiate_crm_call(
     logger_call = logging.getLogger("CRMCall")
 
     call_id = uuid.uuid4()
-    room_name = f"crm-{payload.target_type}-{payload.target_id or 'direct'}-{int(datetime.now().timestamp())}"
+    room_name = f"crm-{payload.target_type}-{payload.target_id or 'direct'}-{int(clock.now().timestamp())}"
 
     # Build contextual persona greeting and battlecards based on target entity
     entity_name = payload.contact_name or "Valued Client"
@@ -4662,7 +4663,7 @@ async def export_call_logs_csv(
         ])
 
     output.seek(0)
-    filename = f"crm_call_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    filename = f"crm_call_logs_{clock.now().strftime('%Y%m%d_%H%M%S')}.csv"
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode('utf-8-sig')),
         media_type="text/csv",
@@ -4721,7 +4722,7 @@ async def initiate_lead_ai_call(
     livekit_api_secret = getattr(settings, 'livekit_api_secret', None)
     sip_trunk_id = getattr(settings, 'sip_trunk_id', None)
 
-    room_name = f"crm-lead-{lead_id}-{int(datetime.now().timestamp())}"
+    room_name = f"crm-lead-{lead_id}-{int(clock.now().timestamp())}"
 
     # Log activity
     activity = LeadActivity(
@@ -6554,7 +6555,7 @@ async def send_email_campaign(
             sent_count += 1
 
     campaign.status = "Sent"
-    campaign.sent_at = datetime.now(timezone.utc)
+    campaign.sent_at = clock.utcnow()
     
     # Trigger system notification
     await add_system_notification(

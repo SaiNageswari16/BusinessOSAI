@@ -15,6 +15,7 @@ from src.schemas.warehouse import (
     ProductRFIDCreate, ProductRFIDUpdate, ProductRFIDResponse,
 )
 from src.api.deps import CurrentUserContext, get_current_user_context
+from src.utils.clock import clock
 
 router = APIRouter()
 
@@ -28,7 +29,7 @@ async def expiry_summary(
     ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: AsyncSession = Depends(get_db),
 ):
-    today = date.today()
+    today = clock.today()
     cutoff_30 = today + timedelta(days=30)
     cutoff_90 = today + timedelta(days=90)
 
@@ -71,7 +72,7 @@ async def expiry_list(
     db: AsyncSession = Depends(get_db),
     bucket: str = Query("all", pattern="^(expired|expiring_30|expiring_90|all|no_expiry)$"),
 ):
-    today = date.today()
+    today = clock.today()
     q = select(InventoryBatch).where(
         InventoryBatch.tenant_id == ctx.tenant_id,
         InventoryBatch.expiry_date.is_not(None),
@@ -163,7 +164,7 @@ async def manufacturing_cohorts(
     ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: AsyncSession = Depends(get_db),
 ):
-    today = date.today()
+    today = clock.today()
     cutoff_30 = today + timedelta(days=30)
     cutoff_90 = today + timedelta(days=90)
 
@@ -669,7 +670,7 @@ async def print_qr_code(
     if not qr:
         raise HTTPException(status_code=404, detail="QR code not found")
     qr.print_count += 1
-    qr.last_printed_at = datetime.utcnow()
+    qr.last_printed_at = clock.utc_naive()
     await db.commit()
     return {"message": "Printed", "print_count": qr.print_count}
 
@@ -770,7 +771,7 @@ async def scan_rfid(
     rfid = result.scalar_one_or_none()
     if not rfid:
         raise HTTPException(status_code=404, detail="RFID tag not found")
-    rfid.last_seen_at = datetime.utcnow()
+    rfid.last_seen_at = clock.utc_naive()
     rfid.last_seen_location = location
     rfid.write_count += 1
     await db.commit()

@@ -26,6 +26,7 @@ from src.schemas.crm import (
 )
 from src.utils.pagination import PaginatedResponse, paginate
 from src.utils.notifications import add_system_notification
+from src.utils.clock import clock
 
 router = APIRouter(prefix="/crm/membership-plans", tags=["CRM - Membership Plans"])
 
@@ -160,7 +161,7 @@ async def enroll_customer(
     expires_at = payload.expires_at
     if not expires_at and plan.max_duration_months:
         from dateutil.relativedelta import relativedelta
-        expires_at = date.today() + relativedelta(months=plan.max_duration_months)
+        expires_at = clock.today() + relativedelta(months=plan.max_duration_months)
 
     membership = CustomerMembership(
         tenant_id=ctx.tenant_id,

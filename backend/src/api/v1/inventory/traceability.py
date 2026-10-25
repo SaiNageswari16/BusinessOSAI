@@ -15,6 +15,7 @@ from src.schemas.warehouse import (
     TraceabilityEventCreate, TraceabilityEventResponse,
 )
 from src.api.deps import CurrentUserContext, require_any_permission, require_permission
+from src.utils.clock import clock
 from uuid import UUID
 
 router = APIRouter()
@@ -116,7 +117,7 @@ async def create_batch(
             quantity=batch.quantity,
             unit=batch.uom or "Pcs",
             notes=batch.notes,
-            event_at=datetime.utcnow(),
+            event_at=clock.utcnow(),
             actor_user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
             tenant_id=ctx.tenant_id,
             company_id=target_company_id,
@@ -263,7 +264,7 @@ async def create_serial(
             quantity=1,
             unit="Pcs",
             notes=serial.notes,
-            event_at=datetime.utcnow(),
+            event_at=clock.utcnow(),
             actor_user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
             tenant_id=ctx.tenant_id,
             company_id=target_company_id,
@@ -368,7 +369,7 @@ async def create_event(
     user = getattr(ctx, "user", None)
     event_data = event_in.model_dump()
     if not event_data.get("event_at"):
-        event_data["event_at"] = datetime.utcnow()
+        event_data["event_at"] = clock.utcnow()
     if not event_data.get("actor_user_id") and user:
         event_data["actor_user_id"] = getattr(user, "id", None)
 
@@ -443,7 +444,7 @@ async def get_batch_genealogy(
 
     # If no manual events recorded yet, generate default lot events based on batch metadata
     if not formatted_events:
-        created_time = str(batch.created_at or datetime.utcnow())
+        created_time = str(batch.created_at or clock.utcnow())
         formatted_events = [
             {
                 "id": str(batch.id),

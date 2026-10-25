@@ -1,4 +1,5 @@
 """Invoice PDF Generator — high-fidelity template-aware rendering.
+from src.utils.clock import clock
 
 Renders an exact, modern A4 Tax Invoice PDF matching the frontend's
 "Stylish Theme (A4)" in FullInvoicePrinter.tsx.
@@ -644,7 +645,7 @@ def _render_fmcg_pdf(invoice: Any, template: dict) -> bytes:
     tpl_title = template.get("headerTitle") or template.get("invoiceTitle")
     parle_title = _safe_text(tpl_title if (tpl_title and tpl_title != "TAX INVOICE") or not is_quote else default_title, 40)
 
-    inv_date = _safe_text(str(getattr(invoice, "invoice_date", None) or getattr(invoice, "created_at", None) or date.today()), 20)
+    inv_date = _safe_text(str(getattr(invoice, "invoice_date", None) or getattr(invoice, "created_at", None) or clock.today()), 20)
     if "-" in inv_date and len(inv_date.split("-")) == 3:
         p = inv_date.split("-")
         inv_date = f"{p[2]}/{p[1]}/{p[0]}" if len(p[0]) == 4 else inv_date
@@ -944,12 +945,12 @@ def _render_parle_pdf(invoice: Any, template: dict) -> bytes:
     tpl_title = template.get("headerTitle") or template.get("invoiceTitle")
     fmcg_title = _safe_text(tpl_title if (tpl_title and tpl_title != "TAX INVOICE" and tpl_title != "GST TAX INVOICE") or not is_quote else default_fmcg_title, 40)
 
-    inv_date = _safe_text(str(getattr(invoice, "invoice_date", None) or getattr(invoice, "created_at", None) or date.today()), 20)
+    inv_date = _safe_text(str(getattr(invoice, "invoice_date", None) or getattr(invoice, "created_at", None) or clock.today()), 20)
     if "-" in inv_date and len(inv_date.split("-")) == 3:
         p = inv_date.split("-")
         inv_date = f"{p[2]}/{p[1]}/{p[0]}" if len(p[0]) == 4 else inv_date
 
-    due_date = _safe_text(str(getattr(invoice, "due_date", None) or getattr(invoice, "invoice_date", None) or date.today()), 20)
+    due_date = _safe_text(str(getattr(invoice, "due_date", None) or getattr(invoice, "invoice_date", None) or clock.today()), 20)
     if "-" in due_date and len(due_date.split("-")) == 3:
         p = due_date.split("-")
         due_date = f"{p[2]}/{p[1]}/{p[0]}" if len(p[0]) == 4 else due_date
@@ -1448,16 +1449,16 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
     cust_phone = _safe_text(getattr(invoice, "customer_phone", None) or getattr(invoice, "phone", None) or "", 20)
     cust_gstin = _safe_text(getattr(invoice, "customer_gstin", None) or getattr(invoice, "gst_number", None) or "", 25)
     cust_addr = _safe_text(getattr(invoice, "billing_address", None) or getattr(invoice, "customer_address", None) or "", 80)
-    raw_date = getattr(invoice, "invoice_date", None) or getattr(invoice, "created_at", None) or date.today()
+    raw_date = getattr(invoice, "invoice_date", None) or getattr(invoice, "created_at", None) or clock.today()
     if isinstance(raw_date, datetime):
         inv_date = raw_date.strftime("%d/%m/%Y")
         inv_time = raw_date.strftime("%I:%M %p")
     elif isinstance(raw_date, date):
         inv_date = raw_date.strftime("%d/%m/%Y")
-        inv_time = datetime.now().strftime("%I:%M %p")
+        inv_time = clock.now().strftime("%I:%M %p")
     else:
         inv_date = _safe_text(str(raw_date), 20)
-        inv_time = datetime.now().strftime("%I:%M %p")
+        inv_time = clock.now().strftime("%I:%M %p")
 
     cashier_name = _safe_text(
         getattr(invoice, "sales_rep_name", None)
@@ -1813,7 +1814,7 @@ def _render_stylish_pdf(invoice: Any, template: dict) -> bytes:
     is_interstate = bool(cust_state_code and seller_state_code and cust_state_code != seller_state_code)
 
     # Invoice Meta
-    inv_date = _safe_text(str(getattr(invoice, "invoice_date", None) or getattr(invoice, "created_at", None) or date.today()), 20)
+    inv_date = _safe_text(str(getattr(invoice, "invoice_date", None) or getattr(invoice, "created_at", None) or clock.today()), 20)
     if "-" in inv_date and len(inv_date.split("-")) == 3:
         parts = inv_date.split("-")
         inv_date = f"{parts[2]}/{parts[1]}/{parts[0]}" if len(parts[0]) == 4 else inv_date

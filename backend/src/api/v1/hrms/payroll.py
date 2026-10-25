@@ -254,7 +254,7 @@ def generate_payslip_pdf(
         ('F2', 9.5, 360, 742, f'Pay Period: {month_str} {slip.year}'),
         ('F1', 9, 360, 726, f'Slip Ref No: {slip_ref}'),
         ('F1', 9, 360, 710, f'Disbursement Status: {status_str}'),
-        ('F1', 9, 360, 694, f'Generated On: {date.today().strftime("%d %b %Y")}'),
+        ('F1', 9, 360, 694, f'Generated On: {clock.today().strftime("%d %b %Y")}'),
         
         ('LINE', 0, 50, 680, 545, 680),
         ('F2', 11, 50, 660, f'Salary Statement for {month_str} {slip.year}'),
@@ -1263,7 +1263,7 @@ async def process_payroll(
         )
     ).all()
 
-    today_date = date.today()
+    today_date = clock.today()
     att_by_day = {a.date.day: a for a in emp_att}
 
     day_records, present_count, paid_leaves_count, lop_days, payable_days, ot_hours = _evaluate_monthly_roster(
@@ -1377,7 +1377,7 @@ async def process_payroll(
         document_name=doc_title,
         document_type="Payslip",
         file_path=f"/vault/payslips/{slip.id}.pdf",
-        upload_date=date.today(),
+        upload_date=clock.today(),
         status="Valid",
     )
     db.add(doc_entry)
@@ -1492,7 +1492,7 @@ async def get_monthly_attendance_sheet(
 
     # Map attendance by (employee_id, day)
     att_map = {(a.employee_id, a.date.day): a for a in att_records}
-    today_date = date.today()
+    today_date = clock.today()
 
     result_rows = []
     for idx, emp in enumerate(employees):
@@ -1752,7 +1752,7 @@ async def process_batch_payroll(
     month_names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
     m_title = month_names[m - 1] if 1 <= m <= 12 else f"Month {m}"
     doc_title = f"Salary Slip - {m_title} {y}"
-    today_date = date.today()
+    today_date = clock.today()
 
     for emp in employees:
         sal = await db.scalar(
@@ -1889,7 +1889,7 @@ async def process_batch_payroll(
             document_name=doc_title,
             document_type="Payslip",
             file_path=f"/vault/payslips/{slip.id}.pdf",
-            upload_date=date.today(),
+            upload_date=clock.today(),
             status="Valid",
         )
         db.add(doc_entry)
@@ -2107,7 +2107,7 @@ async def get_employee_payroll_history(
                 "net_salary": net,
                 "status": st,
                 "pdf_url": new_slip.pdf_url,
-                "created_at": date.today().isoformat(),
+                "created_at": clock.today().isoformat(),
             })
         await db.commit()
 
@@ -2588,6 +2588,7 @@ async def generate_payslip_pdf_on_demand(
 
 from src.models import PayGrade
 from src.schemas.erp import PayGradeCreate, PayGradeResponse
+from src.utils.clock import clock
 
 @router.get("/payroll/grades", response_model=list[PayGradeResponse])
 async def list_pay_grades(

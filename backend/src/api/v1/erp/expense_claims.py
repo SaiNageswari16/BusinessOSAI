@@ -13,6 +13,7 @@ from src.database.session import get_db
 from src.models.erp import ExpenseClaim
 from src.schemas.erp_accounting import ExpenseClaimCreate, ExpenseClaimResponse, ExpenseClaimUpdate
 from src.utils.pagination import PaginatedResponse, paginate
+from src.utils.clock import clock
 
 router = APIRouter(prefix="/expense-claims", tags=["Expense Claims"])
 
@@ -125,7 +126,7 @@ def _save_base64_image_if_needed(val: str | None) -> str | None:
                 ext = ".webp"
             elif "gif" in header:
                 ext = ".gif"
-            filename = f"receipt_{uuid.uuid4().hex[:12]}_{int(date.today().strftime('%Y%m%d'))}{ext}"
+            filename = f"receipt_{uuid.uuid4().hex[:12]}_{int(clock.today().strftime('%Y%m%d'))}{ext}"
             file_path = os.path.join(UPLOAD_DIR, filename)
             with open(file_path, "wb") as f:
                 f.write(base64.b64decode(encoded))
@@ -144,7 +145,7 @@ async def upload_expense_receipt(
     ext = os.path.splitext(file.filename or "")[1].lower() or ".jpg"
     if ext not in [".jpg", ".jpeg", ".png", ".webp", ".pdf", ".gif"]:
         ext = ".jpg"
-    filename = f"receipt_{uuid.uuid4().hex[:12]}_{int(date.today().strftime('%Y%m%d'))}{ext}"
+    filename = f"receipt_{uuid.uuid4().hex[:12]}_{int(clock.today().strftime('%Y%m%d'))}{ext}"
     file_path = os.path.join(UPLOAD_DIR, filename)
     content = await file.read()
     with open(file_path, "wb") as out_file:
@@ -177,7 +178,7 @@ async def create_expense_claim(
             select(func.count()).select_from(ExpenseClaim).where(ExpenseClaim.tenant_id == ctx.tenant_id)
         )
         seq = (count or 0) + 1
-        data["claim_number"] = f"EXP-{date.today().year}-{seq:04d}"
+        data["claim_number"] = f"EXP-{clock.today().year}-{seq:04d}"
 
     if not data.get("status"):
         data["status"] = "pending"
@@ -275,7 +276,7 @@ async def approve_expense_claim(
     obj.status = "approved"
     obj.approved_by_user_id = ctx.user.id
     from datetime import datetime
-    obj.approved_at = datetime.now()
+    obj.approved_at = clock.now()
     await write_audit_log(db, tenant_id=ctx.tenant_id, user_id=ctx.user.id, module="expense_claims", action="approved", entity_type="expense_claim", entity_id=obj.id, ip_address=request.client.host if request.client else None, user_agent=request.headers.get("user-agent"))
     await db.commit()
     return {"message": "Expense claim approved"}
@@ -326,7 +327,7 @@ async def batch_approve_expense_claims(
     if not ids:
         return {"message": "No claims specified", "count": 0}
     from datetime import datetime
-    now = datetime.now()
+    now = clock.now()
     count = 0
     for cid in ids:
         obj = await db.scalar(select(ExpenseClaim).where(ExpenseClaim.id == cid, ExpenseClaim.tenant_id == ctx.tenant_id))

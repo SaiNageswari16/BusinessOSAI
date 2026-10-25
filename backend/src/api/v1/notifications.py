@@ -7,6 +7,8 @@ from sqlalchemy import select, update, delete, desc, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from src.utils.clock import clock
+
 from src.api.deps import CurrentUserContext, get_current_user_context, require_permission
 from src.database.session import get_db
 from src.models import (
@@ -478,7 +480,7 @@ async def send_broadcast_push(
     """
     tenant = await db.get(Tenant, ctx.tenant_id)
     org_name = tenant.name if tenant else "Workspace Organization"
-    current_date_str = date.today().strftime("%d %b %Y")
+    current_date_str = clock.today().strftime("%d %b %Y")
 
     # 1. Resolve Target Users
     target_users: List[User] = []

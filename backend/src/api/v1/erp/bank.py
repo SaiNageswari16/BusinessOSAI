@@ -29,6 +29,7 @@ from src.schemas.erp_accounting import (
     BankTransactionResponse,
 )
 from src.utils.pagination import PaginatedResponse, paginate
+from src.utils.clock import clock
 
 router = APIRouter(prefix="/bank", tags=["Bank Management"])
 
@@ -360,7 +361,7 @@ async def complete_reconciliation(
 
     recon.status = "completed"
     recon.completed_by_user_id = ctx.user.id
-    recon.completed_at = datetime.now()
+    recon.completed_at = clock.now()
 
     for item in recon.items:
         item.is_cleared = True
@@ -370,7 +371,7 @@ async def complete_reconciliation(
             )
             if txn:
                 txn.is_reconciled = True
-                txn.reconciled_at = datetime.now()
+                txn.reconciled_at = clock.now()
                 txn.reconciled_by_user_id = ctx.user.id
 
     await write_audit_log(

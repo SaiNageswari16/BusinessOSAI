@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.session import get_db
 from src.api.deps import CurrentUserContext, require_permission
 from src.models import Tenant, User, Lead, LeadActivity
+from src.utils.clock import clock
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/whatsapp-automation", tags=["CRM & Sales - WhatsApp"])
@@ -137,7 +138,7 @@ async def inbound_webhook(
         lead_id=lead.id,
         activity_type="whatsapp_received",
         summary=payload.body[:500], # crm_lead_activities summary is varchar(500)
-        occurred_at=datetime.fromtimestamp(payload.timestamp, timezone.utc) if payload.timestamp else datetime.utcnow()
+        occurred_at=datetime.fromtimestamp(payload.timestamp, timezone.utc) if payload.timestamp else clock.utcnow()
     )
     db.add(activity)
     await db.commit()
@@ -459,7 +460,7 @@ async def get_chat_messages(
             "id": str(act.id),
             "body": act.summary,
             "fromMe": act.activity_type == "whatsapp_sent",
-            "timestamp": int(act.occurred_at.replace(tzinfo=timezone.utc).timestamp()) if act.occurred_at else int(datetime.utcnow().timestamp())
+            "timestamp": int(act.occurred_at.replace(tzinfo=timezone.utc).timestamp()) if act.occurred_at else int(clock.utcnow().timestamp())
         })
 
     return {"success": True, "messages": messages}
@@ -527,13 +528,13 @@ async def send_message(
         lead_id=lead.id,
         activity_type="whatsapp_sent",
         summary=payload.message[:500],
-        occurred_at=datetime.utcnow(),
+        occurred_at=clock.utcnow(),
         created_by_user_id=ctx.user.id
     )
     db.add(activity)
     
     # Update Lead's last contact timestamp
-    lead.last_contact_at = datetime.utcnow()
+    lead.last_contact_at = clock.utcnow()
     lead.status = "Contacted"
 
     await db.commit()
@@ -624,13 +625,13 @@ async def send_media(
         lead_id=lead.id,
         activity_type="whatsapp_sent",
         summary=f"[{payload.mimeType}] {summary_text}"[:500],
-        occurred_at=datetime.utcnow(),
+        occurred_at=clock.utcnow(),
         created_by_user_id=ctx.user.id
     )
     db.add(activity)
 
     # Update Lead's last contact timestamp
-    lead.last_contact_at = datetime.utcnow()
+    lead.last_contact_at = clock.utcnow()
     lead.status = "Contacted"
 
     await db.commit()
@@ -862,8 +863,8 @@ async def save_template(
         "media_mime_type": payload.media_mime_type,
         "media_file_name": payload.media_file_name,
         "placeholders": payload.placeholders,
-        "updated_at": datetime.utcnow().isoformat(),
-        "created_at": datetime.utcnow().isoformat()
+        "updated_at": clock.utcnow().isoformat(),
+        "created_at": clock.utcnow().isoformat()
     }
 
     # Replace existing or append
@@ -962,7 +963,7 @@ async def run_broadcast_campaign(
     comp_res = await db.execute(comp_stmt)
     comp = comp_res.scalars().first()
     company_name = comp.name if comp else "Our Organization"
-    today_str = datetime.utcnow().strftime("%d %b %Y")
+    today_str = clock.utcnow().strftime("%d %b %Y")
 
     campaign_id = f"cmp-{uuid.uuid4().hex[:8]}"
     sent_count = 0
@@ -1043,7 +1044,7 @@ async def run_broadcast_campaign(
             "failed_count": failed_count,
             "status": "Completed" if failed_count == 0 else ("Partial" if sent_count > 0 else "Failed"),
             "has_media": bool(payload.media and payload.media.data),
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": clock.utcnow().isoformat(),
             "created_by": str(ctx.user.id),
             "logs": logs[:200]  # Store first 200 logs to prevent bloat
         }

@@ -21,6 +21,7 @@ from src.schemas.erp_accounting import (
     FixedAssetUpdate,
 )
 from src.utils.pagination import PaginatedResponse, paginate
+from src.utils.clock import clock
 
 router = APIRouter(prefix="/fixed-assets", tags=["Fixed Assets"])
 
@@ -285,9 +286,9 @@ async def run_depreciation(
     dep_run = FixedAssetDepreciation(
         tenant_id=ctx.tenant_id,
         asset_id=asset.id,
-        depreciation_date=dt_date.today(),
-        period_start=dt_date.fromisoformat(period_start) if period_start else dt_date.today(),
-        period_end=dt_date.fromisoformat(period_end) if period_end else dt_date.today(),
+        depreciation_date=dt_clock.today(),
+        period_start=dt_date.fromisoformat(period_start) if period_start else dt_clock.today(),
+        period_end=dt_date.fromisoformat(period_end) if period_end else dt_clock.today(),
         depreciation_amount=depreciation_amount,
         accumulated_after=asset.accumulated_depreciation + depreciation_amount,
         net_book_value_after=asset.net_book_value - depreciation_amount,

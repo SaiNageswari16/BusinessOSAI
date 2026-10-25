@@ -92,6 +92,7 @@ HSN_DATA_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.
 
 from sqlalchemy import or_
 from src.models.inventory import HSNMaster
+from src.utils.clock import clock
 
 @router.get("/hsn-codes")
 async def list_hsn_codes(
@@ -911,7 +912,7 @@ async def _sync_product_inventory_batch(
 
         # Auto-generate batch code if empty
         if not batch_num:
-            today_str = datetime.utcnow().strftime("%Y%m%d")
+            today_str = clock.utcnow().strftime("%Y%m%d")
             rand_suffix = f"{random.randint(1000, 9999)}"
             batch_num = f"BAT-{today_str}-{rand_suffix}"
 
@@ -1087,7 +1088,7 @@ async def _sync_product_inventory_batch(
                 quantity=qty,
                 unit=uom_name or "Pcs",
                 notes=f"Initial stock batch receipt for product {product.name}",
-                event_at=datetime.utcnow(),
+                event_at=clock.utcnow(),
                 actor_user_id=ctx.user.id if hasattr(ctx, "user") and ctx.user else None,
             )
             db.add(ev)

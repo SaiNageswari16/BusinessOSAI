@@ -29,6 +29,7 @@ from src.models.inventory import (
     Warehouse,
 )
 from src.api.deps import CurrentUserContext, get_current_user_context
+from src.utils.clock import clock
 
 router = APIRouter()
 
@@ -37,7 +38,7 @@ router = APIRouter()
 
 async def _products_with_signals(ctx, db) -> List[Dict]:
     """Materialise each product with computed signals."""
-    today = date.today()
+    today = clock.today()
 
     # Category + brand name lookup
     cats_q = select(ProductCategory.id, ProductCategory.name).where(ProductCategory.tenant_id == ctx.tenant_id)
@@ -68,7 +69,7 @@ async def _products_with_signals(ctx, db) -> List[Dict]:
 
     # Stock movement counts per product in last 30/90/365 days
     async def movement_agg(days: int):
-        since = datetime.utcnow() - timedelta(days=days)
+        since = clock.utcnow() - timedelta(days=days)
         q = (
             select(
                 StockMovement.product_id,
@@ -284,7 +285,7 @@ async def dead_stock(
 ):
     """Products with stock but no movement in 90+ days."""
     prods = await _products_with_signals(ctx, db)
-    today = date.today()
+    today = clock.today()
 
     candidates = []
     for p in prods:
@@ -486,7 +487,7 @@ async def anomalies(
                 "message": f"Recent 30-day rate is {recent_daily:.1f}u/day vs. long-term {avg_daily:.1f}u/day ({recent_daily / max(avg_daily, 0.01):.1f}×).",
                 "metric": f"{recent_daily:.1f} u/day",
                 "context": "May be seasonal demand, marketing campaign, or stock-out backfill.",
-                "ts": datetime.utcnow().isoformat(),
+                "ts": clock.utcnow().isoformat(),
             })
 
         if avg_daily > 0 and recent_daily < avg_daily * 0.2 and p["movement_365d_qty"] > 50 and p["on_hand"] > 0:
@@ -500,7 +501,7 @@ async def anomalies(
                 "message": f"Recent 30-day rate {recent_daily:.1f}u/day is way below long-term {avg_daily:.1f}u/day.",
                 "metric": f"{recent_daily:.1f} u/day",
                 "context": "Possible demand shift, supplier issue, or competitor entry.",
-                "ts": datetime.utcnow().isoformat(),
+                "ts": clock.utcnow().isoformat(),
             })
 
         # Shrinkage
@@ -515,7 +516,7 @@ async def anomalies(
                 "message": f"{p['adjustments_count']} adjustments totaling {p['adjustments_net']} units negative.",
                 "metric": f"{p['adjustments_net']} units",
                 "context": "Investigate counting variance, damage patterns, or theft.",
-                "ts": datetime.utcnow().isoformat(),
+                "ts": clock.utcnow().isoformat(),
             })
 
         # Sleeper: high stock, zero movement, nearing expiry
@@ -533,7 +534,7 @@ async def anomalies(
                 "message": f"{p['on_hand']} units unmoved for 90+ days, expiring in {p['days_to_expiry']} days.",
                 "metric": f"{p['on_hand']}u · ₹{p['stock_value']:.0f}",
                 "context": "High-priority clearance candidate.",
-                "ts": datetime.utcnow().isoformat(),
+                "ts": clock.utcnow().isoformat(),
             })
 
     # Negative-stocked products (data integrity)
@@ -549,7 +550,7 @@ async def anomalies(
                 "message": f"On-hand quantity is {p['on_hand']} — investigate cycle-count error.",
                 "metric": f"{p['on_hand']} units",
                 "context": "Indicates missing receipt, double-issued, or counting error.",
-                "ts": datetime.utcnow().isoformat(),
+                "ts": clock.utcnow().isoformat(),
             })
 
     severity_order = {"critical": 0, "warning": 1, "info": 2}
@@ -573,7 +574,7 @@ async def category_breakdown(
     prods = await _products_with_signals(ctx, db)
 
     by_cat: Dict = defaultdict(lambda: {"units": 0, "value": 0, "potential_revenue": 0, "count": 0, "expiring_value": 0, "dead_value": 0})
-    today = date.today()
+    today = clock.today()
 
     for p in prods:
         c = p["category"]
@@ -622,7 +623,7 @@ async def smart_insights(
         return {"insights": [], "summary": "No product data yet."}
 
     insights = []
-    today = date.today()
+    today = clock.today()
     total_value = sum(p["stock_value"] for p in prods) or 1
 
     # 1. Dead capital report
@@ -802,5 +803,5 @@ async def intelligence_summary(
         "insights": insights,
         "categories": breakdown,
         "anomalies": anomalies_data,
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": clock.utcnow().isoformat(),
     }

@@ -15,6 +15,7 @@ from src.database.session import get_db
 from src.api.deps import require_permission, CurrentUserContext
 from src.models import Tenant
 from src.services.whitebooks_service import whitebooks_service
+from src.utils.clock import clock
 
 router = APIRouter(prefix="/erp/gst", tags=["ERP - GST Filing & Compliance"])
 
@@ -64,8 +65,8 @@ async def search_gstin_details(
 async def get_gstr1_summary(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
     db: Annotated[AsyncSession, Depends(get_db)],
-    year: int = Query(default=datetime.now().year),
-    month: int = Query(default=datetime.now().month),
+    year: int = Query(default=clock.now().year),
+    month: int = Query(default=clock.now().month),
     invoice_type: Optional[str] = Query(default="tax_invoice", description="tax_invoice | estimate | all"),
 ):
     """
@@ -110,8 +111,8 @@ async def upload_gstr1(
 async def get_gstr2b(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
     db: Annotated[AsyncSession, Depends(get_db)],
-    year: int = Query(default=datetime.now().year),
-    month: int = Query(default=datetime.now().month),
+    year: int = Query(default=clock.now().year),
+    month: int = Query(default=clock.now().month),
 ):
     """
     Fetch auto-drafted ITC statement (GSTR-2B) from GSTN for supplier invoice reconciliation.
@@ -131,8 +132,8 @@ async def get_gstr2b(
 async def get_gstr3b_summary(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
     db: Annotated[AsyncSession, Depends(get_db)],
-    year: int = Query(default=datetime.now().year),
-    month: int = Query(default=datetime.now().month),
+    year: int = Query(default=clock.now().year),
+    month: int = Query(default=clock.now().month),
     invoice_type: Optional[str] = Query(default="tax_invoice", description="tax_invoice | estimate | all"),
 ):
     """
