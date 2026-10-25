@@ -223,6 +223,7 @@ export function WordInvoiceDocument({
       watermarkText: raw?.watermarkText || template?.watermarkText || "",
       watermarkOpacity: raw?.watermarkOpacity || 0.04,
       invoiceTitle: raw?.invoiceTitle || raw?.headerTitle || invoice?.header_title || (
+        (invoice.doc_type === 'purchase_invoice' || invoice.invoice_type === 'PURCHASE_INVOICE' || String(invoice.invoice_number || '').toUpperCase().startsWith('BILL-')) ? "PURCHASE INVOICE & BILL" :
         (invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? "TAX QUOTATION / ESTIMATE" :
         (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? "TAX ESTIMATE / ESTIMATE" :
         (invoice.doc_type === 'proforma' || invoice.invoice_type === 'PROFORMA' || String(invoice.invoice_number || '').toUpperCase().startsWith('PI-')) ? "PROFORMA INVOICE" :
@@ -236,15 +237,16 @@ export function WordInvoiceDocument({
       companyEmail: resolvedCompanyEmail,
       companyGstin: resolvedCompanyGstin,
       companyPan: raw?.companyPan || activeGst?.pan || "",
-      customerTitle: raw?.customerTitle || "Billed To (Customer):",
+      customerTitle: raw?.customerTitle || (invoice.doc_type === 'purchase_invoice' || invoice.invoice_type === 'PURCHASE_INVOICE' || String(invoice.invoice_number || '').toUpperCase().startsWith('BILL-') ? "Supplier / Vendor Party:" : "Billed To (Customer):"),
       customerName: raw?.customerName || "Customer Name",
       customerAddress: raw?.customerAddress || "",
       customerGstin: raw?.customerGstin || "",
       customerPhone: raw?.customerPhone || "",
-      shippingTitle: raw?.shippingTitle || "Shipped To (Delivery):",
+      shippingTitle: raw?.shippingTitle || (invoice.doc_type === 'purchase_invoice' || invoice.invoice_type === 'PURCHASE_INVOICE' ? "Supplier Address:" : "Shipped To (Delivery):"),
       shippingName: raw?.shippingName || "",
       shippingAddress: raw?.shippingAddress || "",
       invoiceNumberLabel: raw?.invoiceNumberLabel || (
+        (invoice.doc_type === 'purchase_invoice' || invoice.invoice_type === 'PURCHASE_INVOICE' || String(invoice.invoice_number || '').toUpperCase().startsWith('BILL-')) ? "Bill No" :
         (invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? "Quote No" :
         (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? "Estimate No" :
         (invoice.doc_type === 'proforma' || invoice.invoice_type === 'PROFORMA' || String(invoice.invoice_number || '').toUpperCase().startsWith('PI-')) ? "Proforma No" :

@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Company, Customer, Lead, LeadActivity, Tenant, POSTransaction
 from src.models.erp import Invoice
+from src.models.procurement import VendorBill, PurchaseOrder, Supplier
 from src.services.invoice_pdf import (
     get_active_invoice_template,
     get_invoice_pdf_path,
@@ -277,32 +278,43 @@ async def send_invoice_whatsapp(
 
     if not phone:
         raise InvoiceSendError("Customer has no WhatsApp phone number on file.")
+    return await _render_and_send_invoice(db, invoice, phone)
 
+
+async def _render_and_send_invoice(db: AsyncSession, invoice: Invoice, phone: str) -> dict:
+    """Shared pipeline: load relations, resolve session, render PDF, dispatch, log.
+
+    Extracted so both the sales-invoice and purchase-invoice (vendor bill) paths
+    use the exact same WhatsApp dispatch + audit flow.
+    """
     # 2. Load tenant's active invoice template (prefer active A4 invoice template for official tax invoices)
     raw_tpl_id = str(getattr(invoice, "print_template_id", "") or getattr(invoice, "template_id", "") or "").lower()
     is_thermal = (
         (raw_tpl_id in ("thermal", "receipt") or "tpl-thm-" in raw_tpl_id)
-        and not str(getattr(invoice, "invoice_number", "")).upper().startswith(("INV-", "TAX-", "QT-", "PI-", "EST-"))
+        and not str(getattr(invoice, "invoice_number", "")).upper().startswith(("INV-", "TAX-", "QT-", "PI-", "EST-", "BILL-", "PBILL-", "VEND-", "PO-", "GRN-"))
     )
     cat = "thermal" if is_thermal else "invoices"
     template = await get_active_invoice_template(db, invoice.tenant_id, getattr(invoice, "company_id", None), category=cat)
 
-    # Ensure invoice relationships (lines, payments, company) are eagerly loaded in memory
-    inv_id = getattr(invoice, "id", None)
-    if inv_id and db:
-        inv_loaded = (
-            await db.execute(
-                select(Invoice)
-                .options(
-                    selectinload(Invoice.lines),
-                    selectinload(Invoice.payments),
-                    selectinload(Invoice.company),
+    # Ensure invoice relationships (lines, payments, company) are eagerly loaded in memory.
+    # Only applies to real ORM Invoice instances — synthesized purchase invoices already
+    # carry their .lines / .company / .payments, so we skip the reload for them.
+    if not getattr(invoice, "_is_synthesized", False):
+        inv_id = getattr(invoice, "id", None)
+        if inv_id and db:
+            inv_loaded = (
+                await db.execute(
+                    select(Invoice)
+                    .options(
+                        selectinload(Invoice.lines),
+                        selectinload(Invoice.payments),
+                        selectinload(Invoice.company),
+                    )
+                    .where(Invoice.id == inv_id)
                 )
-                .where(Invoice.id == inv_id)
-            )
-        ).scalar_one_or_none()
-        if inv_loaded:
-            invoice = inv_loaded
+            ).scalar_one_or_none()
+            if inv_loaded:
+                invoice = inv_loaded
 
     # 3. Find connected gateway session strictly for this tenant
     tenant = await db.get(Tenant, invoice.tenant_id)
@@ -391,6 +403,216 @@ async def send_invoice_whatsapp(
         "error": None,
         "session_id": session_id,
     }
+
+
+def _synthesize_purchase_invoice(vbill: Any, po: Any, lines: list, supplier: dict | None, company: Any | None) -> Any:
+    """Build an Invoice-shaped object from a VendorBill + its PurchaseOrder items.
+
+    The PDF renderer and WhatsApp caption builder both expect an Invoice-like
+    object with .lines, .invoice_number, .total_amount, etc. This lets a
+    purchase invoice (which is NOT an ar_invoices row) flow through the exact
+    same _render_and_send_invoice pipeline without touching the sales schema.
+    """
+    from types import SimpleNamespace
+
+    supplier = supplier or {}
+    total = float(vbill.total_amount or 0.0)
+    paid = float(vbill.paid_amount or 0.0)
+    balance_due = round(max(0.0, total - paid), 2)
+    status_str = str(vbill.status or "Unpaid").lower()
+    is_paid = status_str == "paid" or (balance_due <= 0.01 and total > 0)
+
+    # Resolve per-line values: prefer item_overrides (captured at billing time),
+    # fall back to the PO line, fall back to product master for tax/HSN.
+    override_map = {}
+    for ov in (vbill.item_overrides or []):
+        key = ov.get("product_id") or ov.get("product_name")
+        if key:
+            override_map[str(key).lower()] = ov
+
+    po_items = po.items if po and hasattr(po, "items") and po.items else []
+    po_map = {}
+    for it in po_items:
+        pid = getattr(it, "product_id", None)
+        if pid:
+            po_map[str(pid).lower()] = it
+
+    syn_lines = []
+    for idx, ln in enumerate(lines or []):
+        pid_raw = ln.get("product_id")
+        pid_key = str(pid_raw).lower() if pid_raw else None
+        ov = override_map.get(pid_key) if pid_key else None
+        po_it = po_map.get(pid_key) if pid_key else None
+
+        name = (
+            ln.get("product_name")
+            or (ov or {}).get("product_name")
+            or (getattr(po_it, "product_name", None) if po_it else None)
+            or "Material Item"
+        )
+        qty = float(ln.get("quantity") or (ov or {}).get("quantity") or (getattr(po_it, "quantity", 1) if po_it else 1) or 1)
+        unit_price = float(ln.get("unit_price") or (ov or {}).get("unit_price") or (getattr(po_it, "unit_price", 0) if po_it else 0) or 0)
+        tax_rate = float(ln.get("tax_percent") or (ov or {}).get("tax_percent") or (getattr(po_it, "tax_percent", 0) if po_it else 0) or 0)
+        hsn = ln.get("hsn_code") or (ov or {}).get("hsn_code") or (getattr(po_it, "hsn_code", None) if po_it else None) or ""
+        uom = ln.get("uom") or (ov or {}).get("uom") or (getattr(po_it, "uom", None) if po_it else None) or "Pcs"
+
+        taxable = round(qty * unit_price, 2)
+        tax_amt = round(taxable * (tax_rate / 100.0), 2) if tax_rate > 0 else 0.0
+        line_total = round(taxable + tax_amt, 2)
+
+        syn_lines.append(SimpleNamespace(
+            id=None,
+            line_number=idx + 1,
+            product_id=pid_raw,
+            product_name=name,
+            product_sku=ln.get("sku") or getattr(po_it, "product_sku", None),
+            barcode=None,
+            hsn_code=hsn,
+            batch_number=ln.get("batch_number"),
+            uom=uom,
+            quantity=qty,
+            unit_price=unit_price,
+            discount_amount=0.0,
+            taxable_amount=taxable,
+            tax_rate=tax_rate,
+            cgst_amount=round(tax_amt / 2.0, 2),
+            sgst_amount=round(tax_amt / 2.0, 2),
+            igst_amount=0.0,
+            line_total=line_total,
+        ))
+
+    # Aggregate tax for the invoice-level totals (sum of line taxes)
+    total_cgst = round(sum(l.cgst_amount for l in syn_lines), 2)
+    total_sgst = round(sum(l.sgst_amount for l in syn_lines), 2)
+    total_tax = round(total_cgst + total_sgst, 2)
+    taxable_subtotal = round(sum(l.taxable_amount for l in syn_lines), 2)
+
+    doc_label = "Purchase Invoice" if str(vbill.bill_number or "").upper().startswith("BILL") else "Vendor Bill"
+
+    # Supplier phone: prefer explicit, then supplier record, then any contact
+    sup_phone = (supplier.get("phone") or supplier.get("primary_contact") or "").strip()
+
+    syn_invoice = SimpleNamespace(
+        id=vbill.id,
+        tenant_id=vbill.tenant_id,
+        company_id=getattr(vbill, "company_id", None),
+        invoice_number=vbill.bill_number,
+        invoice_type="purchase_invoice",
+        doc_label=doc_label,
+        reference_number=(po.po_number if po and getattr(po, "po_number", None) else None),
+        customer_name=supplier.get("name") or supplier.get("supplier_name") or "Vendor",
+        customer_phone=sup_phone or None,
+        customer_email=supplier.get("email") or None,
+        customer_gstin=(supplier.get("gst_number") or supplier.get("gstin") or supplier.get("tax_id") or "").upper() or None,
+        billing_address=supplier.get("address") or "",
+        shipping_address=supplier.get("address") or "",
+        lines=syn_lines,
+        payments=[],
+        company=company,
+        status="paid" if is_paid else ("partially_paid" if paid > 0 else "sent"),
+        invoice_date=vbill.bill_date,
+        due_date=vbill.due_date,
+        subtotal=taxable_subtotal,
+        cgst_amount=total_cgst,
+        sgst_amount=total_sgst,
+        igst_amount=0.0,
+        tax_amount=total_tax,
+        total_amount=total,
+        amount_paid=paid,
+        balance_due=balance_due,
+        notes="Verified Purchase Invoice & Bill" if is_paid else "Purchase Invoice & Bill — Pending Settlement",
+        template_id=None,
+        print_template_id=None,
+        _is_synthesized=True,  # pipeline marker: do NOT re-query ar_invoices for this
+    )
+    return syn_invoice
+
+
+async def send_purchase_invoice_whatsapp(
+    db: AsyncSession,
+    vendor_bill_id: uuid.UUID,
+    recipient_phone: str | None = None,
+) -> dict:
+    """Dispatch a purchase invoice / vendor bill as a PDF to the vendor's WhatsApp.
+
+    This is the mirror of send_invoice_whatsapp() for the procurement side. It:
+    - Loads the VendorBill, its PurchaseOrder (for line detail + PO reference),
+      and the supplier record
+    - Synthesizes an Invoice-shaped object so the SAME A4 PDF renderer and the
+      SAME WhatsApp caption + gateway pipeline are reused (no separate template)
+    - Runs under the "auto_send_invoices" dispatch toggle and logs a
+      LiveNotification + LeadActivity just like the sales side
+
+    recipient_phone: optional override. If omitted, the supplier's phone is
+    resolved from the supplier record / bill.
+    """
+    vbill = await db.scalar(
+        select(VendorBill).where(VendorBill.id == vendor_bill_id)
+    )
+    if not vbill:
+        raise InvoiceSendError(f"Vendor bill {vendor_bill_id} not found.")
+
+    tenant_id = vbill.tenant_id
+
+    # 0. Dispatch toggle (same trigger as sales so the org master switch governs both)
+    allowed, disallow_reason = await check_whatsapp_dispatch_allowed(
+        db, tenant_id, getattr(vbill, "company_id", None), trigger="auto_send_invoices"
+    )
+    if not allowed:
+        raise InvoiceSendError(disallow_reason)
+
+    # Load the linked PurchaseOrder (for line items + PO number reference)
+    po = None
+    if getattr(vbill, "purchase_order_id", None):
+        po = await db.get(PurchaseOrder, vbill.purchase_order_id)
+
+    # Load the supplier record (for name, GST, phone, address)
+    supplier: dict | None = None
+    sup_id = getattr(po, "supplier_id", None) if po else None
+    if sup_id:
+        sup_rec = await db.get(Supplier, sup_id)
+        if sup_rec:
+            supplier = {
+                "name": getattr(sup_rec, "name", None),
+                "gst_number": getattr(sup_rec, "gst_number", None) or getattr(sup_rec, "tax_id", None),
+                "phone": getattr(sup_rec, "phone", None),
+                "email": getattr(sup_rec, "email", None),
+                "address": getattr(sup_rec, "address", None),
+            }
+
+    # Build the synthesized Invoice object (lines from bill item_overrides,
+    # falling back to PO lines, falling back to product master)
+    lines_payload = list(vbill.item_overrides or [])
+    # If no item_overrides captured, pull from PO items
+    if not lines_payload and po and hasattr(po, "items") and po.items:
+        lines_payload = [
+            {
+                "product_id": getattr(it, "product_id", None),
+                "product_name": getattr(it, "product_name", None),
+                "quantity": getattr(it, "quantity", 1),
+                "unit_price": getattr(it, "unit_price", 0),
+                "tax_percent": getattr(it, "tax_percent", 0),
+                "hsn_code": getattr(it, "hsn_code", None),
+                "uom": getattr(it, "uom", None),
+            }
+            for it in po.items
+        ]
+
+    company = None
+    if getattr(vbill, "company_id", None):
+        company = await db.get(Company, vbill.company_id)
+
+    invoice = _synthesize_purchase_invoice(vbill, po, lines_payload, supplier, company)
+
+    # Resolve recipient phone
+    phone = (recipient_phone or invoice.customer_phone or "").strip()
+    if not phone and supplier:
+        phone = (supplier.get("phone") or "").strip()
+    if not phone:
+        raise InvoiceSendError("Vendor has no WhatsApp phone number on file.")
+
+    return await _render_and_send_invoice(db, invoice, phone)
+
 
 async def get_active_org_whatsapp_session(
     db: AsyncSession,

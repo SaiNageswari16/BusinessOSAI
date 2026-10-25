@@ -51,6 +51,8 @@ export interface FullInvoiceData {
   header_title?: string;
   documentTitle?: string;
   place_of_supply?: string;
+  po_reference?: string;
+  grn_reference?: string;
   invoice_number?: string;
   invoice_date?: string;
   due_date?: string;

@@ -4909,6 +4909,7 @@ export const inventoryApi = {
   updatePurchaseOrderStatus: (id: string, status: string) => request<any>("PATCH", `/inventory/procurement/purchase-orders/${id}`, { status }),
   deletePurchaseOrder: (id: string) => request<void>("DELETE", `/inventory/procurement/purchase-orders/${id}`),
   deleteVendorBill: (id: string) => request<void>("DELETE", `/inventory/procurement/vendor-bills/${id}`),
+  sendVendorBillWhatsApp: (id: string, phone?: string) => request<{ success: boolean; status: string; detail?: any }>("POST", `/inventory/procurement/vendor-bills/${id}/send-whatsapp`, { phone }),
 
   getGoodsReceivedNotes: () => request<any[]>("GET", "/inventory/procurement/goods-received-notes"),
   createGoodsReceivedNote: (data: any) => request<any>("POST", "/inventory/procurement/goods-received-notes", data),
@@ -5615,6 +5616,12 @@ export const deliveryChallanApi = {
   dispatchChallan: (id: string) => request<any>("POST", `/erp/delivery-challans/${id}/dispatch`),
 };
 
+export interface CopilotChatParams {
+  message: string;
+  history?: Array<{ role: string; content: string }>;
+  page_context?: string;
+}
+
 export interface CopilotChatResponse {
   reply: string;
   widget?: "sales" | "inventory" | "payroll" | null;
@@ -5623,8 +5630,14 @@ export interface CopilotChatResponse {
 }
 
 export const copilotApi = {
-  chat: (message: string, history: { role: string; content: string }[] = []) =>
-    request<CopilotChatResponse>("POST", "/copilot/chat", { message, history }),
+  chat: (message: string, history: { role: string; content: string }[] = [], page_context?: string) =>
+    request<CopilotChatResponse>("POST", "/copilot/chat", { message, history, page_context }),
+  chatParams: (params: CopilotChatParams) =>
+    request<CopilotChatResponse>("POST", "/copilot/chat", {
+      message: params.message,
+      history: params.history || [],
+      page_context: params.page_context,
+    }),
   getSuggestions: () =>
     request<{ title: string; category: string }[]>("GET", "/copilot/suggestions"),
 };

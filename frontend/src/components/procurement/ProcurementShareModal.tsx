@@ -62,7 +62,23 @@ export function ProcurementShareModal({
   const totalAmount = Number(documentData?.total_amount || documentData?.grand_total || 0);
   const paidAmount = Number(documentData?.paid_amount || documentData?.amount_received || 0);
   const paymentStatus = documentData?.status || (paidAmount >= totalAmount && totalAmount > 0 ? 'Paid' : 'Unpaid');
-  const items = documentData?.items || [];
+  // Prefer the bill's own captured line values (item_overrides) when present — they
+  // are the EXACT numbers the user entered on this bill. Fall back to the PO lines
+  // only when a bill was created without persisted overrides.
+  const billItems = documentData?.items || [];
+  const overrideItems: any[] = (documentData?.item_overrides && documentData.item_overrides.length > 0)
+    ? documentData.item_overrides.map((ov: any) => ({
+        product_id: ov.product_id,
+        product_name: ov.product_name,
+        quantity: ov.quantity,
+        unit_price: ov.unit_price,
+        tax_percent: ov.tax_percent,
+        hsn_code: ov.hsn_code,
+        sku: ov.sku,
+        uom: ov.uom,
+      }))
+    : [];
+  const items = overrideItems.length > 0 ? overrideItems : billItems;
 
   // Sync phone and email when documentData changes
   useEffect(() => {
@@ -95,6 +111,22 @@ export function ProcurementShareModal({
         });
     }
   }, [documentData, items]);
+
+  // Build a merged map of per-line values captured at billing time (item_overrides),
+  // keyed by BOTH product_id and product_name (lowercased). These are the exact
+  // values the user entered on THIS bill, and they override the PO line values so
+  // the rendered document reflects what was actually billed — not the current PO.
+  const overridesByProduct = React.useMemo(() => {
+    const map: Record<string, any> = {};
+    const list = documentData?.item_overrides || [];
+    list.forEach((ov: any) => {
+      const idKey = ov.product_id ? String(ov.product_id).toLowerCase() : '';
+      const nameKey = ov.product_name ? String(ov.product_name).trim().toLowerCase() : '';
+      if (idKey) map[idKey] = ov;
+      if (nameKey) map[nameKey] = ov;
+    });
+    return map;
+  }, [documentData]);
 
   // Active Store / Tenant details
   const activeCompanyId = typeof window !== 'undefined' ? localStorage.getItem('bos_active_company_id') : undefined;
@@ -167,11 +199,24 @@ export function ProcurementShareModal({
     (tenant?.logo_url && !tenant.logo_url.includes('/Logo.png') ? tenant.logo_url : null) ||
     null;
 
+  // Place of supply: derive from the supplier's GSTIN state code (2 digits) when
+  // available, else fall back to the supplier's state field. This is what GST
+  // regulations require for inter-state CGST/SGST vs IGST determination.
+  const supplierGstCode = supplierGst.slice(0, 2);
+  const supplierStateCode = supplierGstCode.length === 2 && !isNaN(Number(supplierGstCode))
+    ? supplierGstCode
+    : (supp?.state || activeGst?.state_code || '');
+
   // Formatted FullInvoiceData for PDF Printer
   const fullInvoiceData: FullInvoiceData = {
+    doc_type: 'purchase_invoice',
+    header_title: docType === 'PO' ? 'Purchase Order' : (docType === 'PR' ? 'Purchase Requisition' : 'Purchase Invoice & Bill'),
     invoice_number: docNumber,
+    po_number: documentData?.po_number || supp?.po_number || '',
+    grn_reference: documentData?.grn_number || '',
     invoice_date: documentData?.bill_date || documentData?.order_date || documentData?.created_at || new Date().toISOString(),
     due_date: documentData?.due_date || documentData?.delivery_date,
+    place_of_supply: supplierStateCode ? `${supplierStateCode} - ${supp?.state || activeGst?.state_name || 'N/A'}` : undefined,
     seller_name: orgName,
     seller_trade_name: orgName,
     company_name: orgName,
@@ -195,14 +240,21 @@ export function ProcurementShareModal({
     customerPan: supplierPan,
     customerAddress: supplierAddress,
     items: items.map((it: any) => {
+      // 1) Look up the bill-level override for this line (exact values as captured
+      //    at billing time). Overrides win over PO line values so the document
+      //    matches what the user actually entered on this purchase invoice.
       const pName = (it.product_name || it.name || '').trim().toLowerCase();
       const pId = it.product_id ? String(it.product_id).toLowerCase() : '';
-      const rawHsn = 
-        it.hsn_code || 
-        it.hsn || 
-        it.hsn_sac || 
+      const ov = (pId && overridesByProduct[pId]) || (pName && overridesByProduct[pName]) || null;
+
+      // 2) Resolve HSN with priority: override → PO line → product catalog lookup
+      const rawHsn =
+        ov?.hsn_code ||
+        it.hsn_code ||
+        it.hsn ||
+        it.hsn_sac ||
         (it as any).hsnCode ||
-        it.product?.hsn_code || 
+        it.product?.hsn_code ||
         it.product?.hsn ||
         (pId && productHsnMap[pId]) ||
         (pName && productHsnMap[pName]) ||
@@ -210,20 +262,53 @@ export function ProcurementShareModal({
 
       const hsnCode = typeof rawHsn === 'string' ? rawHsn.trim() : String(rawHsn || '').trim();
 
+      // 3) Resolve numeric fields: override → PO line → 0
+      const qty = Number(ov?.quantity ?? it.quantity ?? 1) || 1;
+      const unitPrice = Number(ov?.unit_price ?? it.unit_price ?? 0) || 0;
+      const taxPct = Number(ov?.tax_percent ?? it.tax_percent ?? 0) || 0;
+      const mrp = Number(ov?.mrp ?? it.mrp ?? 0) || 0;
+      const sellPrice = Number(ov?.selling_price ?? it.selling_price ?? mrp ?? 0) || 0;
+      const isTaxIncl = Boolean(ov?.is_tax_inclusive ?? it.is_tax_inclusive);
+
+      // 4) Compute the line subtotal the same way computeGstBreakdown does:
+      //    inclusive → price already includes tax; exclusive → tax added on top
+      const grossAfterDisc = Math.max(0, qty * unitPrice);
+      const lineTax = isTaxIncl && taxPct > 0 ? (grossAfterDisc - grossAfterDisc / (1 + taxPct / 100)) : grossAfterDisc * (taxPct / 100);
+      const lineSubtotal = isTaxIncl ? grossAfterDisc : grossAfterDisc + lineTax;
+
       return {
+        product_id: it.product_id,
         product_name: it.product_name || it.name || 'Material Item',
         hsn_code: hsnCode,
         hsn: hsnCode,
-        mrp: Number(it.mrp) || 0,
-        selling_price: Number(it.selling_price) || Number(it.mrp) || 0,
-        quantity: Number(it.quantity) || 1,
-        unit_price: Number(it.unit_price) || 0,
-        tax_rate: Number(it.tax_percent) || 0,
-        subtotal: (Number(it.quantity) || 1) * (Number(it.unit_price) || 0) * (1 + (Number(it.tax_percent) || 0) / 100),
+        sku: it.sku || it.product_sku || '',
+        barcode: it.barcode || '',
+        uom: ov?.uom || it.uom || '',
+        mrp,
+        selling_price: sellPrice,
+        quantity: qty,
+        unit_price: unitPrice,
+        tax_rate: taxPct,
+        is_tax_inclusive: isTaxIncl,
+        discount_amount: Number(it.discount_amount ?? 0) || 0,
+        discount_type: 'amount',
+        subtotal: lineSubtotal,
       };
     }),
-    subtotal: documentData?.subtotal || totalAmount,
-    tax_amount: documentData?.tax_amount || items.reduce((acc: number, it: any) => acc + ((Number(it.quantity) || 1) * (Number(it.unit_price) || 0) * (Number(it.tax_percent) || 0) / 100), 0),
+    subtotal: Number(documentData?.subtotal || 0) || items.reduce((acc: number, it: any) => {
+      const qty = Number(it.quantity) || 1;
+      const price = Number(it.unit_price) || 0;
+      const rate = Number(it.tax_rate ?? it.tax_percent) || 0;
+      const gross = qty * price;
+      return acc + (it.is_tax_inclusive ? (gross / (1 + rate / 100)) : gross);
+    }, 0),
+    tax_amount: Number(documentData?.tax_amount || 0) || items.reduce((acc: number, it: any) => {
+      const qty = Number(it.quantity) || 1;
+      const price = Number(it.unit_price) || 0;
+      const rate = Number(it.tax_rate ?? it.tax_percent) || 0;
+      const gross = qty * price;
+      return acc + (it.is_tax_inclusive ? (gross - gross / (1 + rate / 100)) : gross * (rate / 100));
+    }, 0),
     round_off: Number(documentData?.round_off || 0),
     grand_total: totalAmount,
     amount_received: paidAmount,
@@ -255,12 +340,31 @@ export function ProcurementShareModal({
     return lines.join('\n');
   };
 
-  const handleSendWhatsApp = () => {
+  const handleSendWhatsApp = async () => {
     const cleanPhone = phoneInput.replace(/[^0-9]/g, '');
     if (!cleanPhone || cleanPhone.length < 10) {
       toast.error('Please enter a valid 10-digit WhatsApp phone number.');
       return;
     }
+    // Prefer the backend dispatch: generates the SAME A4 PDF as the print preview
+    // and sends it through the WhatsApp gateway with the official caption + audit trail.
+    const billId = documentData?.id;
+    if (billId) {
+      try {
+        toast.info(`Sending ${docTitle} PDF to ${supplierName} via WhatsApp...`);
+        const res = await inventoryApi.sendVendorBillWhatsApp(String(billId), cleanPhone);
+        if (res?.success) {
+          toast.success(`Purchase invoice sent to ${cleanPhone} via WhatsApp!`);
+          onClose();
+          return;
+        }
+        // Backend failed (e.g. gateway down) — fall through to manual wa.me
+        if (res?.detail) toast.warning(String(res.detail));
+      } catch (e: any) {
+        console.warn('Vendor bill WhatsApp backend dispatch failed, opening manual chat:', e);
+      }
+    }
+    // Fallback: open a manual WhatsApp chat with the plain-text summary
     const message = generateWhatsAppMessage();
     const waUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`;
     window.open(waUrl, '_blank');

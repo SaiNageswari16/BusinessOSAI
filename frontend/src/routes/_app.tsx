@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AppTopbar } from "@/components/layout/app-topbar";
 import { RibbonNavigation } from "@/components/layout/ribbon-navigation";
+import { MonaFloatingAgent } from "@/components/copilot/MonaFloatingAgent";
 import { useAuth } from "@/contexts/auth-context";
 import { TenantProvider } from "@/contexts/tenant-context";
 import { useRbac } from "@/contexts/rbac-context";
@@ -33,6 +34,9 @@ function AppLayoutInner({ isPosTerminal }: { isPosTerminal: boolean }) {
       <main key={tenant.id} className="flex-1 min-h-0 overflow-y-auto bg-background">
         <Outlet />
       </main>
+
+      {/* Mona — always-present floating AI agent, page-aware */}
+      {!isPosTerminal && <MonaFloatingAgent />}
     </div>
   );
 }

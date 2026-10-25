@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -31,6 +31,7 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { WhatsAppStatusIndicator } from "./WhatsAppStatusIndicator";
 import { Hash, User as UserIcon, Loader2, AlertCircle, Tag, RefreshCw } from "lucide-react";
+import { MarkdownFormatter } from "@/components/copilot/MarkdownFormatter";
 
 const moduleDisplayList = [
   {
@@ -322,6 +323,13 @@ export function AppTopbar({
   const [selectedThreadId, setSelectedThreadId] = useState<string>("c-general");
   const [messageInput, setMessageInput] = useState("");
   const [messageTag, setMessageTag] = useState<string>("Normal");
+
+  // ── @Mention / Direct-Message State ──
+  const [mentionQuery, setMentionQuery] = useState<string>("");
+  const [showMentionDropdown, setShowMentionDropdown] = useState<boolean>(false);
+  const [mentionIndex, setMentionIndex] = useState<number>(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
   const [aiAssistantInput, setAiAssistantInput] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiChatHistory, setAiChatHistory] = useState<Array<{ sender: "user" | "ai"; text: string; time: string }>>([
@@ -387,6 +395,77 @@ export function AppTopbar({
   }>>>({});
 
   const [colleagues, setColleagues] = useState<Array<{ id: string; name: string; role: string; email?: string }>>([]);
+
+  // Compute filtered colleagues based on mentionQuery
+  const filteredColleagues = useMemo(() => {
+    if (!mentionQuery) return colleagues;
+    const q = mentionQuery.toLowerCase();
+    return colleagues.filter((c) => c.name.toLowerCase().includes(q) || (c.role || "").toLowerCase().includes(q));
+  }, [colleagues, mentionQuery]);
+
+  // Handle message input change: detect @ mention trigger
+  const handleMentionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setMessageInput(val);
+
+    const match = val.match(/(?:^|\s)@([a-zA-Z0-9_ \-]*)$/);
+    if (match) {
+      setMentionQuery(match[1] || "");
+      setShowMentionDropdown(true);
+      setMentionIndex(0);
+    } else {
+      setMentionQuery("");
+      setShowMentionDropdown(false);
+    }
+  };
+
+  // Insert a colleague into the message input at the @ position
+  const insertMention = (colleague: { name: string }) => {
+    const val = messageInput;
+    const match = val.match(/((?:^|\s)@)([a-zA-Z0-9_ \-]*)$/);
+    if (match && match.index !== undefined) {
+      const prefix = val.slice(0, match.index);
+      setMessageInput(`${prefix}@${colleague.name} `);
+      requestAnimationFrame(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          const len = inputRef.current.value.length;
+          inputRef.current.setSelectionRange(len, len);
+        }
+      });
+    } else {
+      setMessageInput(`${val} @${colleague.name} `);
+      requestAnimationFrame(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          const len = inputRef.current.value.length;
+          inputRef.current.setSelectionRange(len, len);
+        }
+      });
+    }
+    setMentionQuery("");
+    setShowMentionDropdown(false);
+  };
+
+  // Navigate mention dropdown with arrow keys
+  const handleMentionKeydown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showMentionDropdown || filteredColleagues.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setMentionIndex((i) => (i + 1) % filteredColleagues.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setMentionIndex((i) => (i - 1 + filteredColleagues.length) % filteredColleagues.length);
+    } else if (e.key === "Tab" || (e.key === "Enter" && e.shiftKey)) {
+      e.preventDefault();
+      const chosen = filteredColleagues[mentionIndex];
+      if (chosen) insertMention(chosen);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setShowMentionDropdown(false);
+      setMentionQuery("");
+    }
+  };
 
   // Load team messages from localStorage & sync across windows
   useEffect(() => {
@@ -623,7 +702,9 @@ export function AppTopbar({
         content: m.text,
       }));
 
-      const res = await copilotApi.chat(query, historyPayload);
+      // Pass current page so the copilot answers are relevant to where the user is
+      const pageContext = location.pathname + (location.searchStr || "");
+      const res = await copilotApi.chat(query, historyPayload, pageContext);
       const reply = res?.reply || "I am connected to your workspace data and ready to assist with sales, inventory, or billing.";
 
       setAiChatHistory((prev) => [
@@ -1221,8 +1302,40 @@ export function AppTopbar({
                   })()}
                 </div>
 
-                {/* Send Message Input with Tag Pills */}
-                <form onSubmit={handleSendMessage} className="p-2.5 border-t bg-background shrink-0 space-y-1.5">
+                {/* Send Message Input with @Mention + Tag Pills */}
+                <form onSubmit={handleSendMessage} className="p-2.5 border-t bg-background shrink-0 space-y-1.5 relative">
+                  {/* @Mention Colleague Dropdown */}
+                  {showMentionDropdown && filteredColleagues.length > 0 && (
+                    <div className="absolute bottom-full left-8 right-8 mb-1.5 z-50 max-h-48 overflow-y-auto rounded-xl border bg-white dark:bg-slate-900 shadow-xl backdrop-blur-md">
+                      <div className="px-3 py-1.5 text-[10px] font-bold text-slate-500 border-b bg-slate-50 dark:bg-slate-800 sticky top-0">
+                        Direct message to colleague (type @ to mention)
+                      </div>
+                      {filteredColleagues.map((c, idx) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => insertMention(c)}
+                          onMouseEnter={() => setMentionIndex(idx)}
+                          className={cn(
+                            "w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors cursor-pointer",
+                            idx === mentionIndex ? "bg-purple-50 dark:bg-purple-950/40" : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                          )}
+                        >
+                          <div className="size-7 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 text-white flex items-center justify-center text-[11px] font-bold shrink-0">
+                            {c.name.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">{c.name}</div>
+                            <div className="text-[10px] text-slate-500 truncate">{c.role}</div>
+                          </div>
+                          {idx === mentionIndex && (
+                            <span className="text-[9px] font-bold text-purple-600 shrink-0">↵ select</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-1.5">
                     <select
                       value={messageTag}
@@ -1236,10 +1349,13 @@ export function AppTopbar({
                       <option value="Billing / Invoice 📄">📄 Invoice</option>
                     </select>
                     <input
+                      ref={inputRef}
                       type="text"
                       value={messageInput}
-                      onChange={(e) => setMessageInput(e.target.value)}
-                      placeholder="Type a team message..."
+                      onChange={handleMentionChange}
+                      onKeyDown={handleMentionKeydown}
+                      onBlur={() => setTimeout(() => setShowMentionDropdown(false), 150)}
+                      placeholder="Type a team message... (@ to mention a colleague)"
                       className="flex-1 text-xs px-3 py-1.5 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 border-none outline-none focus:ring-1 focus:ring-purple-500"
                     />
                     <Button
@@ -1452,7 +1568,11 @@ export function AppTopbar({
                           {item.time}
                         </span>
                       </div>
-                      <p className="whitespace-pre-line leading-relaxed text-xs">{item.text}</p>
+                      {item.sender === "ai" ? (
+                        <MarkdownFormatter text={item.text} className="text-xs" />
+                      ) : (
+                        <p className="whitespace-pre-line leading-relaxed text-xs">{item.text}</p>
+                      )}
                     </div>
                   ))}
 

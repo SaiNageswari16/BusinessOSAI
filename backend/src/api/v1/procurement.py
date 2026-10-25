@@ -1861,6 +1861,10 @@ async def list_vendor_bills(
         grn_number = None
         grn_status = None
         resolved_grn_id = bill.grn_id
+        # Bill-level per-line overrides captured at billing time (MRP/sell price/UOM as recorded).
+        # When present, these are the source of truth for the item list — they override the
+        # PO lines so the rendered document matches exactly what was entered on this bill.
+        bill_overrides = getattr(bill, "item_overrides", None) or []
         
         supplier_obj: dict | None = None
         if bill.purchase_order_id:
@@ -1892,21 +1896,32 @@ async def list_vendor_bills(
                     select(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == po.id)
                 )
                 items = items_res.scalars().all()
+
+                # Index the bill's captured per-line overrides by product so we can
+                # render the EXACT values the user entered on THIS bill (MRP / sell
+                # price / UOM / tax) rather than the PO line's current values.
+                ov_by_pid: dict = {}
+                for ov in bill_overrides:
+                    pid = ov.get("product_id")
+                    if pid:
+                        ov_by_pid[str(pid).lower()] = ov
+
                 for it in items:
                     prod = await db.get(Product, it.product_id)
+                    ov = ov_by_pid.get(str(it.product_id).lower()) if it.product_id else None
                     from src.schemas.procurement import PurchaseOrderItemResponse
                     po_items.append(
                         PurchaseOrderItemResponse(
                             id=it.id,
                             product_id=it.product_id,
                             product_name=prod.name if prod else "Unknown Product",
-                            hsn_code=it.hsn_code or (prod.hsn_code if prod else None),
-                            uom=it.uom,
-                            mrp=float(it.mrp) if it.mrp is not None else None,
-                            selling_price=float(it.selling_price) if it.selling_price is not None else None,
-                            quantity=float(it.quantity),
-                            unit_price=float(it.unit_price),
-                            tax_percent=float(it.tax_percent)
+                            hsn_code=(ov or {}).get("hsn_code") or it.hsn_code or (prod.hsn_code if prod else None),
+                            uom=(ov or {}).get("uom") or it.uom,
+                            mrp=float(ov["mrp"]) if ov and ov.get("mrp") is not None else (float(it.mrp) if it.mrp is not None else None),
+                            selling_price=float(ov["selling_price"]) if ov and ov.get("selling_price") is not None else (float(it.selling_price) if it.selling_price is not None else None),
+                            quantity=float(ov["quantity"]) if ov and ov.get("quantity") is not None else float(it.quantity),
+                            unit_price=float(ov["unit_price"]) if ov and ov.get("unit_price") is not None else float(it.unit_price),
+                            tax_percent=float(ov["tax_percent"]) if ov and ov.get("tax_percent") is not None else float(it.tax_percent)
                         )
                     )
         
@@ -1956,6 +1971,46 @@ async def list_vendor_bills(
             )
         )
     return responses
+
+
+@router.post("/vendor-bills/{bill_id}/send-whatsapp", status_code=status.HTTP_200_OK)
+async def send_vendor_bill_whatsapp(
+    bill_id: str,
+    payload: dict,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: AsyncSession = Depends(get_db),
+):
+    """Dispatch a purchase invoice / vendor bill PDF to the vendor's WhatsApp.
+
+    Body: { "phone": "9849344919" } (optional — defaults to the supplier's phone).
+
+    Uses the exact same PDF renderer + gateway pipeline as the sales invoice
+    path so the purchase invoice looks and behaves identically, just mirrored
+    for the procurement side.
+    """
+    from src.services.whatsapp_invoice_sender import send_purchase_invoice_whatsapp, InvoiceSendError
+
+    bill_uuid: uuid.UUID
+    try:
+        bill_uuid = uuid.UUID(str(bill_id))
+    except Exception:
+        # bill_id may be the bill_number (string) — resolve it
+        bill_rec = await db.scalar(
+            select(VendorBill).where(VendorBill.bill_number == str(bill_id).strip(), VendorBill.tenant_id == ctx.tenant_id)
+        )
+        if not bill_rec:
+            raise HTTPException(status_code=404, detail=f"Vendor bill '{bill_id}' not found.")
+        bill_uuid = bill_rec.id
+
+    phone = (payload or {}).get("phone")
+    try:
+        result = await send_purchase_invoice_whatsapp(db, bill_uuid, recipient_phone=phone)
+        return {"success": True, "status": "ok", "detail": result}
+    except InvoiceSendError as e:
+        return {"success": False, "status": "error", "detail": str(e)}
+    except Exception as e:
+        logger.warning("Vendor bill WhatsApp dispatch failed for %s: %s", bill_uuid, e)
+        return {"success": False, "status": "error", "detail": str(e)}
 
 
 @router.delete("/vendor-bills/{bill_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -2213,22 +2268,34 @@ async def cancel_vendor_bill(
     if (bill.status or "").lower() == "cancelled":
         raise HTTPException(status_code=400, detail="This purchase invoice is already cancelled.")
 
-    # Deduct / reverse product stock that was added when this purchase invoice was created
+    # Deduct / reverse product stock that was added when this purchase invoice was created.
+    # Prefer the bill's own captured per-line overrides (item_overrides) — these are the
+    # EXACT values recorded at billing time — and fall back to the PO line only when an
+    # override is missing for that product.
     reversed_items = []
     po = None
     if bill.purchase_order_id:
         po = await db.get(PurchaseOrder, bill.purchase_order_id)
+
+        # Build a product_id → override map from the bill's captured line values
+        ov_by_pid: dict = {}
+        for ov in (getattr(bill, "item_overrides", None) or []):
+            pid = ov.get("product_id")
+            if pid:
+                ov_by_pid[str(pid).lower()] = ov
+
         if po:
             items_res = await db.execute(
                 select(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == po.id)
             )
             items = items_res.scalars().all()
             for it in items:
+                ov = ov_by_pid.get(str(it.product_id).lower()) if it.product_id else None
                 prod = await db.scalar(
                     select(Product).where(Product.id == it.product_id, Product.tenant_id == ctx.tenant_id).with_for_update()
                 )
                 if prod:
-                    qty = int(it.quantity)
+                    qty = int(float(ov["quantity"]) if ov and ov.get("quantity") is not None else it.quantity)
                     current_initial = prod.initial_stock if prod.initial_stock is not None else 0
                     current_on_hand = prod.on_hand_stock if prod.on_hand_stock is not None else current_initial
                     new_initial = max(0, current_initial - qty)

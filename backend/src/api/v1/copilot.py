@@ -32,6 +32,7 @@ class ChatRequest(BaseModel):
     message: str
     history: list[ChatMessage] = []
     scope: str = "global"
+    page_context: str | None = None  # active route path, e.g. "/pos?tab=terminal"
 
 
 class ChatResponse(BaseModel):
@@ -40,6 +41,95 @@ class ChatResponse(BaseModel):
     direct_link: str | None = None
     suggested_actions: list[str] = []
     stats: dict[str, Any] | None = None
+
+
+def _page_suggested_actions(page_context: str) -> list[str]:
+    """Return page-relevant quick-action prompts based on the active screen."""
+    p = (page_context or "").lower().split("?")[0]
+    tab = (page_context or "").split("?")[-1].lower() if "?" in (page_context or "") else ""
+    actions: list[str] = []
+
+    if "dashboard" in p:
+        actions = [
+            "Show today's sales & revenue",
+            "Which products are low on stock?",
+            "Any open support tickets?",
+        ]
+    elif "pos" in p:
+        if "terminal" in tab or "sessions" in tab:
+            actions = ["How do I open & close a POS shift?", "Show today's counter transactions"]
+        elif "invoices" in tab or "history" in tab:
+            actions = ["Show unpaid customer invoices", "How do I send an invoice via WhatsApp?"]
+        else:
+            actions = ["Show today's POS sales", "How do I issue a sales return?", "Configure thermal receipt template"]
+    elif "inventory" in p or "warehouse" in p:
+        if "products" in tab or "catalog" in tab:
+            actions = ["How do I add a new product?", "Which items are low on stock?"]
+        elif "stock" in tab or "godown" in tab:
+            actions = ["Show stock summary by warehouse", "Which batches expire soon?"]
+        elif "grn" in tab or "goods" in tab:
+            actions = ["How do I receive goods against a PO?", "Show unmatched GRNs"]
+        else:
+            actions = ["Show low-stock items", "How do I run a cycle count?", "Explain batch & expiry tracking"]
+    elif "purchase" in p or "procurement" in p:
+        if "suppliers" in tab:
+            actions = ["How do I onboard a new vendor?", "Show supplier-wise purchase totals"]
+        elif "purchase_invoice" in tab or "vendor" in tab or "bills" in tab:
+            actions = ["Show outstanding vendor bills", "How do I pay a vendor bill?"]
+        elif "po" in tab or "order" in tab:
+            actions = ["How do I create a purchase order?", "Show open purchase orders"]
+        else:
+            actions = ["Show vendor outstanding balances", "How do I process a purchase return?", "3-way matching status"]
+    elif "accounting" in p or "erp" in p:
+        if "invoices" in tab:
+            actions = ["Show unpaid customer invoices", "Generate e-invoice / IRN"]
+        elif "gst" in tab or "tax" in tab:
+            actions = ["Show GST payable & ITC summary", "How do I file GSTR-1?"]
+        elif "bank" in tab:
+            actions = ["Show bank reconciliation status", "How do I record a bank payment?"]
+        else:
+            actions = ["Show profit & loss for this month", "Show trial balance", "Explain chart of accounts"]
+    elif "hrms" in p or "hr" in p:
+        if "employees" in tab:
+            actions = ["Show employee directory & designations", "How do I add a new employee?"]
+        elif "payroll" in tab:
+            actions = ["Run a payroll summary", "How do I generate payslips?"]
+        elif "attendance" in tab:
+            actions = ["Show today's attendance & absentees", "Configure attendance scheme"]
+        elif "leaves" in tab:
+            actions = ["Show pending leave requests", "How do I approve a leave?"]
+        else:
+            actions = ["Show employee headcount by department", "How do I process an exit / resignation?"]
+    elif "crm" in p:
+        if "customers" in tab:
+            actions = ["Show customer sales & outstanding", "How do I create a customer?"]
+        elif "leads" in tab:
+            actions = ["Show lead pipeline by stage", "How do I convert a lead to customer?"]
+        elif "tickets" in tab:
+            actions = ["Show open support tickets", "How do I assign a ticket?"]
+        elif "whatsapp" in tab:
+            actions = ["How do I send a WhatsApp campaign?", "Show WhatsApp session status"]
+        else:
+            actions = ["Show CRM customer summary", "How do I run an email campaign?"]
+    elif "reports" in p:
+        actions = ["Generate sales summary report", "Show GST purchase & sales summary", "Run a profit & loss statement"]
+    elif "settings" in p or "system" in p:
+        if "push" in tab or "notification" in tab:
+            actions = ["How do I broadcast a notice?", "Show active push templates"]
+        elif "payment" in tab:
+            actions = ["How do I configure Razorpay?", "Show active payment gateways"]
+        elif "users" in tab or "roles" in tab:
+            actions = ["Show users & role matrix", "How do I manage MFA policies?"]
+        else:
+            actions = ["How do I manage company profile & GSTIN?", "Show backup & restore options", "How do I configure print settings?"]
+    elif "social" in p:
+        actions = ["How do I schedule a social post?", "Show connected social accounts"]
+    elif "marketplace" in p:
+        actions = ["Show marketplace order status", "How do I onboard a marketplace vendor?"]
+    elif "copilot" in p:
+        actions = ["Show today's sales & revenue", "Find low stock products", "How do I configure payment gateways?"]
+
+    return actions
 
 
 PLATFORM_SYSTEM_PROMPT = """You are LazyMonkeyAI, the powerful, ultra-smart Enterprise AI Operating System & Copilot for BusinessOS.
@@ -114,6 +204,12 @@ async def chat_with_copilot(
         total_employees = 0
 
     # Build Live Snapshot summary
+    page_ctx = (payload.page_context or "").strip()
+    page_block = f"\n- User is currently viewing: {page_ctx}\n" if page_ctx else ""
+
+    # Suggest a friendly, page-aware quick-action for the active screen
+    page_actions = _page_suggested_actions(page_ctx)
+
     tenant_context = f"""
 LIVE TENANT BUSINESS DATA SNAPSHOT:
 - Tenant / Organization ID: {ctx.tenant_id}
@@ -124,7 +220,7 @@ LIVE TENANT BUSINESS DATA SNAPSHOT:
 - CRM Customers: {total_customers} registered accounts
 - Total Workforce: {total_employees} employees on record
 - Current Timestamp: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
-"""
+{page_block}"""
 
     history_lines = []
     for h in payload.history[-6:]:
@@ -133,10 +229,20 @@ LIVE TENANT BUSINESS DATA SNAPSHOT:
 
     history_block = "\n".join(history_lines) if history_lines else "No previous messages."
 
+    # Add page-aware context so the copilot answers are relevant to the screen the user is on
+    page_context_block = ""
+    if page_ctx:
+        page_context_block = f"""
+CURRENT PAGE CONTEXT:
+The user is actively viewing "{page_ctx}" in the BusinessOS interface.
+- Prioritize answers, tips and navigation relevant to this specific screen.
+- If the user's question is generic, still tie your response to the module they are on where sensible.
+"""
+
     prompt = f"""{PLATFORM_SYSTEM_PROMPT}
 
 {tenant_context}
-
+{page_context_block}
 CONVERSATION HISTORY:
 {history_block}
 
@@ -257,7 +363,7 @@ Please respond as LazyMonkeyAI:"""
     elif "gateway" in lower_q or "payment" in lower_q:
         direct_link = "/settings?tab=payment_gateways"
 
-    suggested_actions = [
+    suggested_actions = page_actions or [
         "Show today's sales & revenue",
         "Find low stock products",
         "How do I configure payment gateways?",
