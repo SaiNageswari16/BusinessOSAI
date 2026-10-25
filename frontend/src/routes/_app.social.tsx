@@ -2,7 +2,6 @@ import React from "react";
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { useRbac } from "@/contexts/rbac-context";
 import { Unauthorized } from "@/components/unauthorized";
-import { MockScreen } from "@/components/mock-screen";
 
 // Social Media & Marketing Components
 import { SocialMediaDashboard } from "@/components/crm/SocialMediaDashboard";
@@ -51,15 +50,7 @@ function SocialModule() {
     return <Unauthorized />;
   }
 
-  const formatTitle = (str: string) =>
-    str
-      .split("_")
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(" ");
-
-  const ActiveComponent =
-    componentMap[activeTab] ||
-    (() => <MockScreen type="crm" title={formatTitle(activeTab)} />);
+  const ActiveComponent = componentMap[activeTab] || SocialMediaDashboard;
 
   return (
     <div className="flex min-h-full flex-col bg-background">

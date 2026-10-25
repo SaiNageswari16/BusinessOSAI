@@ -3,7 +3,6 @@ import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRbac } from "@/contexts/rbac-context";
 import { Unauthorized } from "@/components/unauthorized";
-import { MockScreen } from "@/components/mock-screen";
 import { RecruitmentIntegrations } from "@/components/recruitment-integrations";
 import { NotificationSettings } from "@/components/NotificationSettings";
 import { EmailCampaigns } from "@/components/crm/EmailCampaigns";
@@ -222,8 +221,7 @@ function SettingsModule() {
     return <Unauthorized />;
   }
 
-  const formatTitle = (str: string) => str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-  const ActiveComponent = componentMap[activeTab] || (() => <MockScreen type="settings" title={formatTitle(activeTab)} />);
+  const ActiveComponent = componentMap[activeTab] || CompanyProfile;
 
   return (
     <div className="flex min-h-full flex-col bg-background">

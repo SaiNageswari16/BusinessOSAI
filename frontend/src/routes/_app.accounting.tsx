@@ -1,7 +1,6 @@
 import React from "react";
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
-import { MockScreen } from "@/components/mock-screen";
 import { useRbac } from "@/contexts/rbac-context";
 import { Unauthorized } from "@/components/unauthorized";
 
@@ -173,10 +172,7 @@ function AccountingModule() {
     return <Unauthorized />;
   }
 
-  const formatTitle = (str: string) =>
-    str.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-
-  const ActiveComponent = componentMap[activeTab] || (() => <MockScreen type="accounting" title={formatTitle(activeTab)} />);
+  const ActiveComponent = componentMap[activeTab] || FinanceDashboard;
 
   return (
     <div className="flex min-h-full flex-col bg-background">
