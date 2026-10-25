@@ -490,26 +490,45 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             }
           }
           if (initialData.items && initialData.items.length > 0) {
+            // Per-line overrides captured at entry time (MRP / sell price / UOM / rate).
+            // These take PRIORITY over the inventory product's current values, so
+            // re-opening the bill never "rolls back" the numbers the user recorded.
+            const overrides: Record<string, any> = {};
+            (initialData.item_overrides || []).forEach((o: any) => {
+              if (!o) return;
+              const key = o.product_id ? String(o.product_id) : String(o.product_name || "").toLowerCase();
+              if (key) overrides[key] = o;
+            });
+            const overrideFor = (it: any, foundProd: any) =>
+              overrides[String(it.product_id || foundProd?.id || "").trim()] ||
+              overrides[String(it.product_name || "").toLowerCase()] || null;
+
             setItems(initialData.items.map((it: any, idx: number) => {
               const pName = it.product_name || it.name || "";
               const foundProd = (it.product_id ? loadedProds.find((p: any) => p.id === it.product_id) : undefined) ||
                 findMatchingInventoryProduct(pName, it.sku, it.barcode, it.hsn_code, loadedProds);
-              const price = Number(it.unit_price || it.estimated_unit_cost || it.cost_price || it.mrp || it.selling_price || it.price) 
+              const ovr = overrideFor(it, foundProd);
+
+              const price = Number(it.unit_price || it.estimated_unit_cost || it.cost_price || (ovr?.unit_price ?? 0) || it.mrp || it.selling_price || it.price)
                 || (foundProd ? (Number((foundProd as any).cost_price) || Number((foundProd as any).selling_price) || Number(foundProd.mrp) || Number((foundProd as any).wholesale_price) || 0) : 0);
-              const mrpVal = Number(it.mrp) || (foundProd ? Number(foundProd.mrp) : 0) || price;
+              // MRP: bill's own recorded value first, then override, then product — only
+              // fall back to the product MRP when the bill genuinely had no MRP.
+              const mrpVal = Number(it.mrp ?? ovr?.mrp ?? 0) || (foundProd ? Number(foundProd.mrp) : 0) || price;
+              const sellVal = Number(it.selling_price ?? ovr?.selling_price ?? 0) || mrpVal;
 
               return {
                 id: it.id || String(idx + 1),
                 product_id: it.product_id || foundProd?.id,
                 product_name: pName || foundProd?.name || "Purchased Product",
-                hsn_code: it.hsn_code || (foundProd as any)?.hsn_code || "",
-                uom: it.uom || (foundProd as any)?.uom_name || "PCS",
+                hsn_code: it.hsn_code || ovr?.hsn_code || (foundProd as any)?.hsn_code || "",
+                uom: it.uom || ovr?.uom || (foundProd as any)?.uom_name || "PCS",
                 mrp: mrpVal,
-                quantity: Number(it.quantity) || 1,
+                selling_price: sellVal,
+                quantity: Number(it.quantity || ovr?.quantity) || 1,
                 unit_price: price,
                 discount_value: Number(it.discount_value) || 0,
                 discount_type: "percent",
-                tax_rate: Number(it.tax_rate) || 18
+                tax_rate: Number(it.tax_rate || ovr?.tax_percent) || 18
               };
             }));
           }
@@ -1039,6 +1058,9 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       total_amount: roundedTotal,
       paid_amount: paidVal,
       status: docType === "PINV" ? (currentPoStatus === "Paid" ? "Paid" : "Unpaid") : (currentPoStatus || "Draft"),
+      // Tax mode is part of the document: carry it so the PDF template recomputes
+      // totals with the same math as the form (tax-inclusive rate vs base rate).
+      is_tax_inclusive: isTaxInclusive,
       items: items.map((it) => ({
         product_name: it.product_name || "Material Item",
         hsn_code: it.hsn_code || "",
@@ -1049,6 +1071,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         quantity: Number(it.quantity) || 1,
         unit_price: Number(it.unit_price) || 0,
         tax_percent: Number(it.tax_rate) || 0,
+        is_tax_inclusive: isTaxInclusive,
       })),
     };
   };
@@ -1192,6 +1215,10 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
             tax_percent: it.is_free ? 0 : (Number(it.tax_rate) || 0),
             estimated_price: it.is_free ? 0 : (Number(it.unit_price) || 0),
             is_free: Boolean(it.is_free),
+            hsn_code: it.hsn_code || undefined,
+            uom: it.uom || undefined,
+            mrp: Number(it.mrp) || 0,
+            selling_price: Number(it.selling_price) || Number(it.mrp) || 0,
           };
         })
       );
@@ -1250,6 +1277,10 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
               quantity: it.quantity,
               unit_price: it.unit_price,
               tax_percent: it.tax_percent,
+              hsn_code: it.hsn_code || undefined,
+              uom: it.uom || undefined,
+              mrp: it.mrp > 0 ? it.mrp : undefined,
+              selling_price: it.selling_price > 0 ? it.selling_price : undefined,
             })),
           });
           poIdToUse = createdPo.id;
@@ -1267,6 +1298,19 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
           paid_amount: finalPaidAmount,
           status: billStatus,
           due_date: safeToIsoString(dueDate),
+          // Persist the EXACT per-line values so re-opening the bill for edit
+          // restores MRP / sell price / UOM without falling back to product MRP.
+          item_overrides: items.map((it) => ({
+            product_id: it.product_id || undefined,
+            product_name: it.product_name || undefined,
+            hsn_code: it.hsn_code || undefined,
+            uom: it.uom || undefined,
+            mrp: Number(it.mrp) || 0,
+            selling_price: Number(it.selling_price) || Number(it.mrp) || 0,
+            quantity: Number(it.quantity) || 0,
+            unit_price: Number(it.unit_price) || 0,
+            tax_percent: Number(it.tax_rate) || 0,
+          })),
         });
         toast.success(`Purchase Invoice ${docNumber} recorded successfully (Status: ${billStatus})!`);
       }

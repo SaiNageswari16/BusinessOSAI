@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, Date, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from datetime import datetime
 
 from src.database.base import Base, EntityStatus, TenantScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
@@ -199,6 +199,11 @@ class PurchaseOrderItem(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     quantity: Mapped[float] = mapped_column(Numeric(15, 4), default=1.0)
     unit_price: Mapped[float] = mapped_column(Numeric(15, 2), default=0.0)
     tax_percent: Mapped[float] = mapped_column(Numeric(5, 2), default=0.0)
+    # Informational billing columns (persisted when the PO acts as a bill line)
+    hsn_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    uom: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    mrp: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
+    selling_price: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
 
 
 class GoodsReceivedNote(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
@@ -283,7 +288,12 @@ class VendorBill(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     total_amount: Mapped[float] = mapped_column(Numeric(15, 2), default=0.0)
     paid_amount: Mapped[float] = mapped_column(Numeric(15, 2), default=0.0)
     status: Mapped[str] = mapped_column(String(50), default="Draft") # Draft, Unpaid, Partially Paid, Paid, Overdue
-    
+
+    # Exact per-line values as recorded at entry time (MRP / sell price / UOM), so
+    # reopening the bill for edit restores the exact same numbers without falling
+    # back to the inventory product's current MRP. JSONB list of override dicts.
+    item_overrides: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=list)
+
     payments: Mapped[list["VendorPayment"]] = relationship(back_populates="vendor_bill", cascade="all, delete-orphan")
 
 

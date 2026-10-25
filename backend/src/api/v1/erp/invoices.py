@@ -433,6 +433,45 @@ async def _lookup_invoice(
     return inv
 
 
+@router.delete("/{invoice_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_invoice(
+    invoice_id: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Permanently delete a sales / proforma invoice and its line items & payments."""
+    inv = await _lookup_invoice(db, ctx.tenant_id, invoice_id, include_relations=True)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if ctx.active_company_id and inv.company_id and str(inv.company_id) != str(ctx.active_company_id) and not ctx.is_primary_company:
+        raise HTTPException(status_code=403, detail="This invoice belongs to a different workspace")
+
+    # Remove associated lines, payments and returns first
+    if getattr(inv, "lines", None):
+        for line in list(inv.lines):
+            await db.delete(line)
+    if getattr(inv, "payments", None):
+        for pmt in list(inv.payments):
+            await db.delete(pmt)
+    if getattr(inv, "returns", None):
+        for ret in list(inv.returns):
+            await db.delete(ret)
+
+    await db.delete(inv)
+    await db.flush()
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="erp",
+        action="invoice_deleted",
+        entity_type="invoice",
+        entity_id=str(inv.id),
+        new_values={"invoice_number": inv.invoice_number, "total_amount": str(inv.total_amount)},
+    )
+    await db.commit()
+
+
 # ---------------------------------------------------------------------------
 # Organization Print Templates (Must be defined before /{invoice_id} route)
 # ---------------------------------------------------------------------------

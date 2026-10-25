@@ -23,6 +23,7 @@ import {
   Sparkles,
   RefreshCw,
   Zap,
+  Trash2,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { invoicesApi, crmQuotationsApi } from "@/lib/api-client";
@@ -78,6 +79,43 @@ export function PosProformaInvoices() {
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [deleteProforma, setDeleteProforma] = useState<any | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteProforma = async () => {
+    if (!deleteProforma) return;
+    setIsDeleting(true);
+    try {
+      if (deleteProforma.id) {
+        await invoicesApi.deleteInvoice(deleteProforma.id);
+      }
+      const ref = String(deleteProforma.proforma_number || deleteProforma.invoice_number || deleteProforma.id || "").trim();
+      // Also clear from localStorage so the list fully refreshes
+      try {
+        const tid = (tenant as any)?.raw?.tenant_id || tenant?.id || "default";
+        const keys = Object.keys(localStorage).filter((k) => k.startsWith("pos_saved_invoices"));
+        keys.forEach((k) => {
+          const raw = localStorage.getItem(k);
+          if (!raw) return;
+          const list = JSON.parse(raw);
+          const filtered = list.filter((r: any) =>
+            !(r.invoice_number === ref || r.proforma_number === ref || r.id === deleteProforma.id)
+          );
+          if (filtered.length !== list.length) {
+            localStorage.setItem(k, JSON.stringify(filtered));
+          }
+        });
+      } catch {}
+      toast.success(`Proforma ${deleteProforma.proforma_number || deleteProforma.invoice_number || deleteProforma.id?.slice(0, 8)} deleted.`);
+      setProformaList((prev) => prev.filter((p) => p !== deleteProforma));
+      setDeleteProforma(null);
+      fetchProformaInvoices();
+    } catch (err: any) {
+      toast.error(err?.detail || err?.message || "Failed to delete proforma invoice.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   useEffect(() => {
     setCurrentPage(1);
@@ -957,6 +995,16 @@ export function PosProformaInvoices() {
                             <PhoneCall className="size-4" />
                           </button>
 
+                          {/* Delete */}
+                          <button
+                            type="button"
+                            onClick={() => setDeleteProforma(proforma)}
+                            className="p-1.5 rounded-lg hover:bg-rose-500/10 text-muted-foreground hover:text-rose-600 transition-colors cursor-pointer"
+                            title="Delete Proforma Invoice"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+
                           {/* Convert to Tax Invoice (If not yet converted) */}
                           {!isConverted ? (
                             <button
@@ -1029,6 +1077,42 @@ export function PosProformaInvoices() {
           phoneNumber={callingProforma.customer_phone || ""}
           email={callingProforma.customer_email || ""}
         />
+      )}
+
+      {/* Delete Proforma Confirmation Modal */}
+      {deleteProforma && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-rose-100 dark:bg-rose-900/40 text-rose-600 rounded-xl">
+                <Trash2 className="size-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900 dark:text-white">Delete Proforma Invoice?</h3>
+                <p className="text-[11px] text-slate-500">
+                  {deleteProforma.proforma_number || deleteProforma.invoice_number || "This proforma"} will be permanently removed.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteProforma(null)}
+                className="px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleDeleteProforma}
+                className="px-3 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

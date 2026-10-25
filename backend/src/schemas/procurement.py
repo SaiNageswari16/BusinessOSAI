@@ -277,6 +277,11 @@ class PurchaseOrderItemBase(BaseModel):
     quantity: float
     unit_price: float
     tax_percent: Optional[float] = 0.0
+    # Optional informational columns (persisted when the PO is used as a bill line)
+    hsn_code: Optional[str] = None
+    uom: Optional[str] = None
+    mrp: Optional[float] = None
+    selling_price: Optional[float] = None
 
 
 class PurchaseOrderItemCreate(PurchaseOrderItemBase):
@@ -286,7 +291,6 @@ class PurchaseOrderItemCreate(PurchaseOrderItemBase):
 class PurchaseOrderItemResponse(PurchaseOrderItemBase):
     id: uuid.UUID
     product_name: Optional[str] = None
-    hsn_code: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -445,6 +449,19 @@ class VendorBillBase(BaseModel):
     status: Optional[str] = "Draft"
 
 
+class VendorBillItemOverride(BaseModel):
+    """Per-line overrides stored on the bill itself (MRP / sell price / UOM as recorded at billing time)."""
+    product_id: Optional[uuid.UUID] = None
+    product_name: Optional[str] = None
+    hsn_code: Optional[str] = None
+    uom: Optional[str] = None
+    mrp: Optional[float] = None
+    selling_price: Optional[float] = None
+    quantity: Optional[float] = None
+    unit_price: Optional[float] = None
+    tax_percent: Optional[float] = None
+
+
 class VendorBillCreate(BaseModel):
     bill_number: str
     purchase_order_id: uuid.UUID
@@ -453,6 +470,7 @@ class VendorBillCreate(BaseModel):
     total_amount: float
     paid_amount: Optional[float] = 0.0
     status: Optional[str] = "Unpaid"
+    item_overrides: Optional[List[VendorBillItemOverride]] = None  # persist exact per-line values shown at entry
 
 
 class CancelVendorBillPayload(BaseModel):
@@ -469,6 +487,8 @@ class VendorBillResponse(VendorBillBase):
     # Full vendor party details for the PI preview (GSTIN, address, contact, etc.)
     supplier: Optional[dict] = None
     items: Optional[List[PurchaseOrderItemResponse]] = []
+    # Exact per-line values captured at entry (MRP / sell price / UOM), keyed by product
+    item_overrides: Optional[List[dict]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

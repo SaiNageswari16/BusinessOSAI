@@ -138,14 +138,16 @@ export interface WordInvoiceTemplateConfig {
 }
 
 export const DEFAULT_WORD_COLUMNS: WordStudioColumnConfig[] = [
-  { id: "col_sno", fieldKey: "sno", headerTitle: "S.No", widthPercent: 6, align: "center", enabled: true },
-  { id: "col_desc", fieldKey: "description", headerTitle: "Item Description & Notes", widthPercent: 34, align: "left", enabled: true },
-  { id: "col_hsn", fieldKey: "hsn", headerTitle: "HSN / SAC", widthPercent: 12, align: "center", enabled: true },
-  { id: "col_qty", fieldKey: "quantity", headerTitle: "Qty", widthPercent: 8, align: "center", enabled: true },
-  { id: "col_rate", fieldKey: "unit_price", headerTitle: "Unit Price (₹)", widthPercent: 12, align: "right", enabled: true },
-  { id: "col_disc", fieldKey: "discount", headerTitle: "Disc %", widthPercent: 8, align: "center", enabled: true },
-  { id: "col_tax", fieldKey: "tax_rate", headerTitle: "GST %", widthPercent: 8, align: "center", enabled: true },
-  { id: "col_amt", fieldKey: "total_amount", headerTitle: "Amount (₹)", widthPercent: 12, align: "right", enabled: true },
+  { id: "col_sno", fieldKey: "sno", headerTitle: "S.No", widthPercent: 5, align: "center", enabled: true },
+  { id: "col_desc", fieldKey: "description", headerTitle: "Item Description & Notes", widthPercent: 27, align: "left", enabled: true },
+  { id: "col_hsn", fieldKey: "hsn", headerTitle: "HSN / SAC", widthPercent: 10, align: "center", enabled: true },
+  { id: "col_qty", fieldKey: "quantity", headerTitle: "Qty", widthPercent: 7, align: "center", enabled: true },
+  { id: "col_mrp", fieldKey: "mrp", headerTitle: "MRP (₹)", widthPercent: 9, align: "right", enabled: true },
+  { id: "col_selling", fieldKey: "selling_price", headerTitle: "Sell Price (₹)", widthPercent: 9, align: "right", enabled: true },
+  { id: "col_rate", fieldKey: "unit_price", headerTitle: "Rate (₹)", widthPercent: 9, align: "right", enabled: true },
+  { id: "col_disc", fieldKey: "discount", headerTitle: "Disc %", widthPercent: 7, align: "center", enabled: true },
+  { id: "col_tax", fieldKey: "tax_rate", headerTitle: "GST %", widthPercent: 7, align: "center", enabled: true },
+  { id: "col_amt", fieldKey: "total_amount", headerTitle: "Amount (₹)", widthPercent: 10, align: "right", enabled: true },
 ];
 
 export const DEFAULT_WORD_SECTIONS: WordStudioSectionConfig[] = [

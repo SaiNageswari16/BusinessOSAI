@@ -42,7 +42,8 @@ import {
   Package,
   ShoppingBag,
   UserPlus,
-  Wallet
+  Wallet,
+  Trash2
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -212,6 +213,40 @@ export function PosInvoicesHistory() {
   const [isCancelModalOpen, setIsCancelModalOpen] = useState<boolean>(false);
   const [cancellationReason, setCancellationReason] = useState<string>("");
   const [isCancelling, setIsCancelling] = useState<boolean>(false);
+
+  // Permanent Delete State
+  const [deleteTarget, setDeleteTarget] = useState<LocalInvoiceRecord | null>(null);
+  const [isDeletingInvoice, setIsDeletingInvoice] = useState<boolean>(false);
+
+  const handleDeleteInvoice = async () => {
+    if (!deleteTarget) return;
+    setIsDeletingInvoice(true);
+    try {
+      if (deleteTarget.id) {
+        await invoicesApi.deleteInvoice(deleteTarget.id);
+      }
+      // Clear the local-storage copy too so the list updates immediately
+      try {
+        const tid = (tenant as any)?.raw?.tenant_id || tenant?.id || "default";
+        const cid = (tenant as any)?.raw?.company_id || "default";
+        const keys = [`pos_saved_invoices_${tid}_${cid}`, `pos_saved_invoices_${tid}`, "pos_saved_invoices"];
+        keys.forEach((k) => {
+          const raw = localStorage.getItem(k);
+          if (!raw) return;
+          const list = JSON.parse(raw);
+          const filtered = list.filter((r: any) => !(r.id === deleteTarget.id || r.invoice_number === deleteTarget.invoice_number));
+          localStorage.setItem(k, JSON.stringify(filtered));
+        });
+      } catch {}
+      toast.success(`Invoice ${deleteTarget.invoice_number} deleted permanently.`);
+      setDeleteTarget(null);
+      loadInvoices();
+    } catch (err: any) {
+      toast.error(err?.detail || err?.message || "Failed to delete invoice");
+    } finally {
+      setIsDeletingInvoice(false);
+    }
+  };
 
   // Standard Voucher Modal State (for Cancellation & Return Vouchers)
   const [activeVoucher, setActiveVoucher] = useState<StandardVoucherData | null>(null);
@@ -3110,6 +3145,16 @@ export function PosInvoicesHistory() {
                                 </DropdownMenuItem>
                               </>
                             )}
+
+                            {/* Permanent Delete */}
+                            <DropdownMenuSeparator className="my-1 bg-rose-100" />
+                            <DropdownMenuItem
+                              onClick={() => setDeleteTarget(inv)}
+                              className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-rose-700 hover:text-rose-800 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4 text-rose-600 shrink-0" />
+                              <span>Delete Invoice Permanently</span>
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -3904,6 +3949,50 @@ export function PosInvoicesHistory() {
         onClose={() => setIsVoucherModalOpen(false)}
         voucher={activeVoucher}
       />
+
+      {/* Permanent Delete Invoice Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-rose-100 dark:bg-rose-900/40 text-rose-600 rounded-xl">
+                <Trash2 className="size-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900 dark:text-white">Delete Invoice Permanently?</h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  <strong>{deleteTarget.invoice_number}</strong> will be removed from this workspace. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/50 rounded-xl text-[11px] text-rose-700 dark:text-rose-300 space-y-1">
+              <p className="font-bold">Warning:</p>
+              <p>• All line items, payments, and returns attached to this invoice will also be deleted.</p>
+              <p>• Any e-Invoice / IRN already filed for this document cannot be un-filed automatically — verify before proceeding if GST compliance applies.</p>
+              <p>• Use <strong>Cancel Invoice</strong> (above) instead of Delete if you only need to void it and keep an audit trail.</p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              >
+                Keep Invoice
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingInvoice}
+                onClick={handleDeleteInvoice}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black rounded-lg transition-colors cursor-pointer disabled:opacity-50 shadow-sm"
+              >
+                {isDeletingInvoice ? "Deleting..." : "Delete Invoice"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

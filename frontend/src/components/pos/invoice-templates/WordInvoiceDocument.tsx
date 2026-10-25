@@ -342,6 +342,7 @@ export function WordInvoiceDocument({
         unit_type: it.secondary_uom && it.selected_uom === it.secondary_uom ? "Secondary Unit" : "Primary Unit",
         unit_price: unitPrice,
         mrp,
+        selling_price: Number(it.selling_price || it.mrp || 0),
         discount: disc,
         tax_rate: taxRate,
         is_tax_inclusive: isTaxInclusive,
@@ -1346,6 +1347,34 @@ export function WordInvoiceDocument({
                                   <span className="text-slate-900 font-extrabold text-[11px]">{item.quantity}</span>
                                   <span className="text-slate-500 font-bold text-[9px] uppercase">{item.unit}</span>
                                 </div>
+                              </td>
+                            );
+                          }
+
+                          // MRP (retail shelf price — read-only informational, not used in totals)
+                          if (col.fieldKey === "mrp") {
+                            const mrpVal = Number((item as any).mrp || 0);
+                            return (
+                              <td key={col.id} className="py-3 px-3 text-right font-mono text-[10.5px] text-slate-500">
+                                {mrpVal > 0 ? (
+                                  <span>{currency.symbol}{mrpVal.toFixed(2)}</span>
+                                ) : (
+                                  <span className="text-slate-300">—</span>
+                                )}
+                              </td>
+                            );
+                          }
+
+                          // Selling Price (user-editable retail price, defaults to MRP)
+                          if (col.fieldKey === "selling_price") {
+                            const sellVal = Number((item as any).selling_price || (item as any).mrp || 0);
+                            return (
+                              <td key={col.id} className="py-3 px-3 text-right font-mono text-[10.5px] text-slate-700 font-semibold">
+                                {sellVal > 0 ? (
+                                  <span>{currency.symbol}{sellVal.toFixed(2)}</span>
+                                ) : (
+                                  <span className="text-slate-300">—</span>
+                                )}
                               </td>
                             );
                           }

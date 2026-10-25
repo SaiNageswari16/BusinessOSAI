@@ -21,6 +21,7 @@ import {
   TrendingUp,
   Ban,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { crmQuotationsApi } from "@/lib/api-client";
@@ -80,6 +81,23 @@ export function Quotations() {
   const [isAutoPrint, setIsAutoPrint] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [deleteQuote, setDeleteQuote] = useState<any | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteQuote = async () => {
+    if (!deleteQuote) return;
+    setIsDeleting(true);
+    try {
+      await crmQuotationsApi.delete(deleteQuote.id);
+      toast.success(`Quotation ${deleteQuote.quote_number || deleteQuote.id?.slice(0, 8)} deleted successfully.`);
+      setQuotations((prev) => prev.filter((q) => q.id !== deleteQuote.id));
+      setDeleteQuote(null);
+    } catch (err: any) {
+      toast.error(err?.detail || err?.message || "Failed to delete quotation.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   useEffect(() => {
     setCurrentPage(1);
@@ -935,6 +953,14 @@ export function Quotations() {
                           >
                             <Edit className="size-4" />
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteQuote(quote)}
+                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Delete Quotation"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
                         </div>
                       </td>
                     </motion.tr>
@@ -986,6 +1012,42 @@ export function Quotations() {
           setIsAutoPrint(false);
         }}
       />
+
+      {/* Delete Quotation Confirmation Modal */}
+      {deleteQuote && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-rose-100 dark:bg-rose-900/40 text-rose-600 rounded-xl">
+                <Trash2 className="size-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900 dark:text-white">Delete Quotation?</h3>
+                <p className="text-[11px] text-slate-500">
+                  {deleteQuote.quote_number || "This quotation"} will be permanently removed.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteQuote(null)}
+                className="px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleDeleteQuote}
+                className="px-3 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

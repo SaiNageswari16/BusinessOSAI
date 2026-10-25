@@ -4907,6 +4907,8 @@ export const inventoryApi = {
   createPurchaseOrder: (data: any) => request<any>("POST", "/inventory/procurement/purchase-orders", data),
   updatePurchaseOrder: (id: string, data: any) => request<any>("PATCH", `/inventory/procurement/purchase-orders/${id}`, data),
   updatePurchaseOrderStatus: (id: string, status: string) => request<any>("PATCH", `/inventory/procurement/purchase-orders/${id}`, { status }),
+  deletePurchaseOrder: (id: string) => request<void>("DELETE", `/inventory/procurement/purchase-orders/${id}`),
+  deleteVendorBill: (id: string) => request<void>("DELETE", `/inventory/procurement/vendor-bills/${id}`),
 
   getGoodsReceivedNotes: () => request<any[]>("GET", "/inventory/procurement/goods-received-notes"),
   createGoodsReceivedNote: (data: any) => request<any>("POST", "/inventory/procurement/goods-received-notes", data),
@@ -5201,6 +5203,7 @@ export const invoicesApi = {
   listInvoices: (params?: { page?: number; page_size?: number; status?: string; invoice_type?: string; search?: string; company_id?: string }) =>
     request<PaginatedResponse<Invoice>>("GET", "/invoices", undefined, params),
   getInvoice: (id: string) => request<Invoice>("GET", `/invoices/${id}`),
+  deleteInvoice: (id: string) => request<void>("DELETE", `/invoices/${id}`),
   getCustomerSummary: (customerId: string) => request<any>("GET", `/invoices/customer-summary/${customerId}`),
   createInvoice: (data: any) => request<Invoice>("POST", "/invoices", data),
   sendInvoice: (

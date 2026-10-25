@@ -1325,13 +1325,16 @@ async def list_purchase_orders(
                     id=it.id,
                     product_id=it.product_id,
                     product_name=prod.name if prod else "Unknown",
-                    hsn_code=prod.hsn_code if prod else None,
+                    hsn_code=it.hsn_code or (prod.hsn_code if prod else None),
+                    uom=it.uom,
+                    mrp=float(it.mrp) if it.mrp is not None else None,
+                    selling_price=float(it.selling_price) if it.selling_price is not None else None,
                     quantity=float(it.quantity),
                     unit_price=float(it.unit_price),
                     tax_percent=float(it.tax_percent)
                 )
             )
-            
+
         responses.append(
             PurchaseOrderResponse(
                 id=po.id,
@@ -1387,11 +1390,15 @@ async def create_purchase_order(
             product_id=it.product_id,
             quantity=it.quantity,
             unit_price=it.unit_price,
-            tax_percent=it.tax_percent
+            tax_percent=it.tax_percent,
+            hsn_code=it.hsn_code,
+            uom=it.uom,
+            mrp=it.mrp,
+            selling_price=it.selling_price
         )
         db.add(item)
         await db.flush()
-        
+
         prod = await db.get(Product, it.product_id)
         from src.schemas.procurement import PurchaseOrderItemResponse
         created_items.append(
@@ -1399,7 +1406,10 @@ async def create_purchase_order(
                 id=item.id,
                 product_id=item.product_id,
                 product_name=prod.name if prod else "Unknown",
-                hsn_code=prod.hsn_code if prod else None,
+                hsn_code=item.hsn_code or (prod.hsn_code if prod else None),
+                uom=item.uom,
+                mrp=float(item.mrp) if item.mrp is not None else None,
+                selling_price=float(item.selling_price) if item.selling_price is not None else None,
                 quantity=float(item.quantity),
                 unit_price=float(item.unit_price),
                 tax_percent=float(item.tax_percent)
@@ -1425,6 +1435,21 @@ async def create_purchase_order(
         created_at=po.created_at,
         updated_at=po.updated_at
     )
+
+
+@router.delete("/purchase-orders/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_purchase_order(
+    id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Permanently delete a purchase order and its line items."""
+    po = await db.get(PurchaseOrder, id)
+    if not po or po.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Purchase order not found.")
+    await db.execute(delete(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == po.id))
+    await db.delete(po)
+    await db.commit()
 
 
 @router.patch("/purchase-orders/{id}", response_model=PurchaseOrderResponse)
@@ -1875,7 +1900,10 @@ async def list_vendor_bills(
                             id=it.id,
                             product_id=it.product_id,
                             product_name=prod.name if prod else "Unknown Product",
-                            hsn_code=prod.hsn_code if prod else None,
+                            hsn_code=it.hsn_code or (prod.hsn_code if prod else None),
+                            uom=it.uom,
+                            mrp=float(it.mrp) if it.mrp is not None else None,
+                            selling_price=float(it.selling_price) if it.selling_price is not None else None,
                             quantity=float(it.quantity),
                             unit_price=float(it.unit_price),
                             tax_percent=float(it.tax_percent)
@@ -1917,6 +1945,7 @@ async def list_vendor_bills(
                 supplier_name=supplier_name,
                 supplier=supplier_obj,
                 items=po_items,
+                item_overrides=getattr(bill, "item_overrides", None) or [],
                 bill_date=bill.bill_date,
                 due_date=bill.due_date,
                 total_amount=float(bill.total_amount),
@@ -1927,6 +1956,28 @@ async def list_vendor_bills(
             )
         )
     return responses
+
+
+@router.delete("/vendor-bills/{bill_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_vendor_bill(
+    bill_id: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Permanently delete a purchase invoice / vendor bill and its payments."""
+    bill = None
+    try:
+        u_id = uuid.UUID(bill_id)
+        bill = await db.scalar(select(VendorBill).where(VendorBill.id == u_id, VendorBill.tenant_id == ctx.tenant_id))
+    except ValueError:
+        bill = await db.scalar(select(VendorBill).where(VendorBill.bill_number == bill_id, VendorBill.tenant_id == ctx.tenant_id))
+    if not bill:
+        raise HTTPException(status_code=404, detail="Vendor bill not found.")
+
+    # Remove any payments recorded against this bill
+    await db.execute(delete(VendorPayment).where(VendorPayment.vendor_bill_id == bill.id))
+    await db.delete(bill)
+    await db.commit()
 
 
 @router.post("/vendor-bills", response_model=VendorBillResponse, status_code=status.HTTP_201_CREATED)
@@ -2008,7 +2059,10 @@ async def create_vendor_bill(
         due_date=payload.due_date.replace(tzinfo=None) if payload.due_date else None,
         total_amount=payload.total_amount,
         paid_amount=paid_amt,
-        status=bill_status
+        status=bill_status,
+        # Persist the exact per-line values the user saw at entry (MRP / sell price / UOM).
+        # Use json-compatible dump (UUIDs -> str) so JSONB can serialize cleanly.
+        item_overrides=[o.model_dump(mode="json") for o in payload.item_overrides] if payload.item_overrides else []
     )
     db.add(bill)
     await db.flush()
@@ -2085,7 +2139,10 @@ async def create_vendor_bill(
                     id=it.id,
                     product_id=it.product_id,
                     product_name=prod.name if prod else "Unknown Product",
-                    hsn_code=prod.hsn_code if prod else None,
+                    hsn_code=it.hsn_code or (prod.hsn_code if prod else None),
+                    uom=it.uom,
+                    mrp=float(it.mrp) if it.mrp is not None else None,
+                    selling_price=float(it.selling_price) if it.selling_price is not None else None,
                     quantity=float(it.quantity),
                     unit_price=float(it.unit_price),
                     tax_percent=float(it.tax_percent)
@@ -2117,6 +2174,7 @@ async def create_vendor_bill(
         supplier_id=supplier_id,
         supplier_name=supplier_name,
         items=po_items,
+        item_overrides=getattr(bill, "item_overrides", None) or [],
         bill_date=bill.bill_date,
         due_date=bill.due_date,
         total_amount=float(bill.total_amount),

@@ -2,20 +2,20 @@ import { useState, useEffect, useMemo } from "react";
 import React from "react";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
-import { 
-  Plus, 
-  Receipt, 
-  Loader2, 
-  Eye, 
-  FileText, 
-  Boxes, 
-  CheckCircle2, 
-  Search, 
-  Calendar, 
-  ArrowUpDown, 
-  RotateCcw, 
-  Filter, 
-  Wallet, 
+import {
+  Plus,
+  Receipt,
+  Loader2,
+  Eye,
+  FileText,
+  Boxes,
+  CheckCircle2,
+  Search,
+  Calendar,
+  ArrowUpDown,
+  RotateCcw,
+  Filter,
+  Wallet,
   AlertCircle,
   TrendingUp,
   X,
@@ -23,7 +23,8 @@ import {
   Sparkles,
   Ban,
   AlertTriangle,
-  XCircle
+  XCircle,
+  Trash2
 } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
@@ -76,6 +77,20 @@ export function VendorBills() {
       toast.error(err.message || "Failed to cancel purchase invoice");
     } finally {
       setIsCancelling(false);
+    }
+  };
+
+  const handleDeleteBill = async (bill: any) => {
+    const ok = window.confirm(
+      `Permanently delete Purchase Invoice ${bill.bill_number || bill.id?.slice(0, 8)}?\n\nThis will remove the bill and its payment records. It cannot be undone.`
+    );
+    if (!ok) return;
+    try {
+      await inventoryApi.deleteVendorBill(bill.id || bill.bill_number);
+      toast.success(`Purchase Invoice ${bill.bill_number || bill.id?.slice(0, 8)} deleted.`);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err?.detail || err?.message || "Failed to delete purchase invoice");
     }
   };
 
@@ -742,6 +757,15 @@ export function VendorBills() {
                             <Ban className="size-3.5 text-rose-600" /> Cancel
                           </Button>
                         )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteBill(b)}
+                          className="h-8 gap-1 font-bold rounded-lg border-red-300 text-red-700 bg-red-50/50 hover:bg-red-100 dark:bg-red-950/30 dark:border-red-900/50 dark:text-red-400 shadow-2xs cursor-pointer"
+                          title="Permanently delete this purchase invoice"
+                        >
+                          <Trash2 className="size-3.5 text-red-600" /> Delete
+                        </Button>
                       </div>
                     </td>
                   </tr>
