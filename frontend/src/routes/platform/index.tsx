@@ -7,18 +7,29 @@ import {
   Cpu,
   Database,
   ExternalLink,
+  FileClock,
   HardDrive,
   KeyRound,
   Layers,
   Network,
   Plus,
   RefreshCw,
+  ScrollText,
   Server,
   Shield,
   ShieldAlert,
+  ShieldCheck,
   Users,
 } from "lucide-react";
-import { platformService, type FleetHealthReport, type TenantSummary } from "@/services/platformService";
+import {
+  platformService,
+  type AuditEntry,
+  type FleetHealthReport,
+  type PermissionCatalogueItem,
+  type PlatformAdminRecord,
+  type TenantRosterItem,
+} from "@/services/platformService";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,19 +47,30 @@ export const Route = createFileRoute("/platform/")({
 
 function PlatformDashboardPage() {
   const [fleet, setFleet] = useState<FleetHealthReport | null>(null);
-  const [tenants, setTenants] = useState<TenantSummary[]>([]);
+  const [rosterTotal, setRosterTotal] = useState<number | null>(null);
+  const [roster, setRoster] = useState<TenantRosterItem[]>([]);
+  const [permissions, setPermissions] = useState<PermissionCatalogueItem[]>([]);
+  const [admins, setAdmins] = useState<PlatformAdminRecord[]>([]);
+  const [recentAudit, setRecentAudit] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchData = async () => {
     try {
       setRefreshing(true);
-      const [fleetData, tenantsData] = await Promise.all([
+      const [fleetData, rosterData, permData, adminData, auditData] = await Promise.all([
         platformService.getFleetHealth(),
-        platformService.getTenants(),
+        platformService.listAllTenants({ limit: 5 }),
+        platformService.getPermissions(),
+        platformService.getAdmins(),
+        platformService.getAudit({ limit: 8 }),
       ]);
       setFleet(fleetData);
-      setTenants(tenantsData);
+      setRosterTotal(rosterData.total);
+      setRoster(rosterData.items);
+      setPermissions(permData);
+      setAdmins(adminData.items);
+      setRecentAudit(auditData.items);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to load telemetry";
       toast.error(message);
@@ -113,18 +135,22 @@ function PlatformDashboardPage() {
         </div>
       </div>
 
-      {/* Top 4 Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Top 6 Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <div className="p-4 rounded-xl bg-white border border-slate-200 space-y-3 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-slate-500">Mesh State</span>
-            <span className="size-2 rounded-full bg-emerald-500 animate-pulse shadow-xs shadow-emerald-500/50" />
+            <span className={cn("size-2 rounded-full shadow-xs",
+              report.overall_status === "ok" ? "bg-emerald-500 animate-pulse shadow-emerald-500/50" : "bg-rose-500 shadow-rose-500/50")} />
           </div>
           <div className="flex items-baseline justify-between">
             <div className="text-2xl font-bold text-slate-900 font-mono">
               {report.services_up} / {report.services_total}
             </div>
-            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-mono">
+            <Badge className={cn("text-[10px] font-mono",
+              report.overall_status === "ok"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : "bg-rose-50 text-rose-700 border-rose-200")}>
               {report.overall_status.toUpperCase()}
             </Badge>
           </div>
@@ -137,12 +163,50 @@ function PlatformDashboardPage() {
             <Users className="size-4 text-indigo-600" />
           </div>
           <div className="flex items-baseline justify-between">
-            <div className="text-2xl font-bold text-slate-900 font-mono">{tenants.length}</div>
+            <div className="text-2xl font-bold text-slate-900 font-mono">
+              {rosterTotal === null ? "—" : rosterTotal.toLocaleString()}
+            </div>
             <Badge variant="outline" className="border-indigo-200 text-indigo-700 bg-indigo-50 text-[10px]">
-              Active Fleets
+              Full Roster
             </Badge>
           </div>
-          <p className="text-[11px] text-slate-500">Isolated database schemas per tenant</p>
+          <p className="text-[11px] text-slate-500">
+            {roster.filter((t) => t.is_managed).length > 0
+              ? `${roster.filter((t) => t.is_managed).length} of first page under module management`
+              : "Isolated database schemas per tenant"}
+          </p>
+        </div>
+
+        <div className="p-4 rounded-xl bg-white border border-slate-200 space-y-3 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-500">Control-Plane Admins</span>
+            <ShieldCheck className="size-4 text-sky-600" />
+          </div>
+          <div className="flex items-baseline justify-between">
+            <div className="text-2xl font-bold text-slate-900 font-mono">
+              {admins.length === 0 ? "—" : admins.length}
+            </div>
+            <Badge variant="outline" className="border-sky-200 text-sky-700 bg-sky-50 text-[10px]">
+              {admins.filter((a) => a.is_active).length} active
+            </Badge>
+          </div>
+          <p className="text-[11px] text-slate-500">Platform realm account holders</p>
+        </div>
+
+        <div className="p-4 rounded-xl bg-white border border-slate-200 space-y-3 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-500">Permission Registry</span>
+            <KeyRound className="size-4 text-amber-600" />
+          </div>
+          <div className="flex items-baseline justify-between">
+            <div className="text-2xl font-bold text-slate-900 font-mono">
+              {permissions.length === 0 ? "—" : permissions.length}
+            </div>
+            <Badge variant="outline" className="border-amber-200 text-amber-700 bg-amber-50 text-[10px]">
+              Granular RBAC
+            </Badge>
+          </div>
+          <p className="text-[11px] text-slate-500">Fine-grained permission keys enforced at gateway</p>
         </div>
 
         <div className="p-4 rounded-xl bg-white border border-slate-200 space-y-3 shadow-xs">
@@ -161,16 +225,18 @@ function PlatformDashboardPage() {
 
         <div className="p-4 rounded-xl bg-white border border-slate-200 space-y-3 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500">Permission Registry</span>
-            <KeyRound className="size-4 text-amber-600" />
+            <span className="text-xs font-medium text-slate-500">Audit Activity</span>
+            <FileClock className="size-4 text-emerald-600" />
           </div>
           <div className="flex items-baseline justify-between">
-            <div className="text-2xl font-bold text-slate-900 font-mono">67 Keys</div>
-            <Badge variant="outline" className="border-amber-200 text-amber-700 bg-amber-50 text-[10px]">
-              Tier 1-5 RBAC
+            <div className="text-2xl font-bold text-slate-900 font-mono">
+              {recentAudit.length}
+            </div>
+            <Badge variant="outline" className="border-emerald-200 text-emerald-700 bg-emerald-50 text-[10px]">
+              Recent
             </Badge>
           </div>
-          <p className="text-[11px] text-slate-500">Granular operation guards across all endpoints</p>
+          <p className="text-[11px] text-slate-500">Control-plane actions captured in the immutable log</p>
         </div>
       </div>
 
@@ -234,6 +300,100 @@ function PlatformDashboardPage() {
           ))}
         </div>
       </div>
+
+      {/* Management Domains — quick navigation to every control-plane page */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <ScrollText className="size-4 text-emerald-600" />
+          <h2 className="text-sm font-semibold text-slate-900">Control-Plane Management Domains</h2>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <Link to="/platform/tenants">
+            <div className="p-4 rounded-xl bg-white border border-slate-200 hover:border-indigo-300 transition-colors flex items-center gap-3 shadow-xs">
+              <Users className="size-4 text-indigo-600" />
+              <div>
+                <div className="text-xs font-semibold text-slate-900">Tenant Roster & Onboarding</div>
+                <div className="text-[10px] text-slate-500">Provision, page & filter {rosterTotal === null ? "…" : `${rosterTotal.toLocaleString()}`} tenants</div>
+              </div>
+            </div>
+          </Link>
+          <Link to="/platform/modules">
+            <div className="p-4 rounded-xl bg-white border border-slate-200 hover:border-violet-300 transition-colors flex items-center gap-3 shadow-xs">
+              <Boxes className="size-4 text-violet-600" />
+              <div>
+                <div className="text-xs font-semibold text-slate-900">Module Lifecycle</div>
+                <div className="text-[10px] text-slate-500">Per-tenant on/off, kill-switches</div>
+              </div>
+            </div>
+          </Link>
+          <Link to="/platform/permissions">
+            <div className="p-4 rounded-xl bg-white border border-slate-200 hover:border-amber-300 transition-colors flex items-center gap-3 shadow-xs">
+              <KeyRound className="size-4 text-amber-600" />
+              <div>
+                <div className="text-xs font-semibold text-slate-900">RBAC & ABAC Policies</div>
+                <div className="text-[10px] text-slate-500">Permission matrix, allow/deny rules</div>
+              </div>
+            </div>
+          </Link>
+          <Link to="/platform/admins">
+            <div className="p-4 rounded-xl bg-white border border-slate-200 hover:border-sky-300 transition-colors flex items-center gap-3 shadow-xs">
+              <ShieldCheck className="size-4 text-sky-600" />
+              <div>
+                <div className="text-xs font-semibold text-slate-900">Admin Users</div>
+                <div className="text-[10px] text-slate-500">Control-plane accounts, roles, kill-switch</div>
+              </div>
+            </div>
+          </Link>
+          <div className="p-4 rounded-xl bg-white border border-slate-200 flex items-center gap-3 shadow-xs">
+            <FileClock className="size-4 text-emerald-600" />
+            <div>
+              <div className="text-xs font-semibold text-slate-900">Audit Trail</div>
+              <div className="text-[10px] text-slate-500">Immutable log, filterable & exportable</div>
+            </div>
+          </div>
+          <div className="p-4 rounded-xl bg-white border border-slate-200 flex items-center gap-3 shadow-xs">
+            <Activity className="size-4 text-rose-600" />
+            <div>
+              <div className="text-xs font-semibold text-slate-900">Fleet Telemetry</div>
+              <div className="text-[10px] text-slate-500">Live status of every microservice (this page)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Recent Control-Plane Activity */}
+      {recentAudit.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FileClock className="size-4 text-emerald-600" />
+              <h2 className="text-sm font-semibold text-slate-900">Recent Control-Plane Activity</h2>
+            </div>
+            <Link to="/platform/audit">
+              <Button variant="ghost" size="sm" className="text-xs h-7 gap-1.5 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50">
+                View full audit log <ExternalLink className="size-3" />
+              </Button>
+            </Link>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs divide-y divide-slate-100">
+            {recentAudit.map((entry) => (
+              <div key={entry.id} className="px-4 py-2.5 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Badge variant="outline" className="text-[10px] font-mono border-emerald-200 bg-emerald-50 text-emerald-700 shrink-0">
+                    {entry.action}
+                  </Badge>
+                  <span className="text-[11px] text-slate-600 truncate">
+                    {entry.target_type} <code className="font-mono text-slate-400">{entry.target_id}</code>
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                  {entry.admin_email} • {new Date(entry.created_at).toLocaleTimeString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Bottom Row: Quick Navigation & Telemetry Architecture */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

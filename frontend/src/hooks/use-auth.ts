@@ -32,7 +32,9 @@ export function decodeJwtPayload(token: string): Record<string, unknown> | null 
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
-    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const seg = parts[1];
+    if (!seg) return null;
+    const base64 = seg.replace(/-/g, "+").replace(/_/g, "/");
     const json = atob(base64);
     return JSON.parse(json);
   } catch {
@@ -49,20 +51,25 @@ export function useAuth() {
     const payload = decodeJwtPayload(jwt);
     if (!payload) return null;
 
+    const roles = Array.isArray(payload["roles"]) ? (payload["roles"] as string[]) : [];
+    const permissions = Array.isArray(payload["permissions"]) ? (payload["permissions"] as string[]) : [];
+    const allowedOutletIds = Array.isArray(payload["allowed_outlet_ids"])
+      ? (payload["allowed_outlet_ids"] as string[])
+      : [];
+    const activeOutletId = payload["active_outlet_id"] ? String(payload["active_outlet_id"]) : undefined;
+
     const authUser: AuthUser = {
-      id: String(payload.sub || ""),
-      email: String(payload.email || ""),
-      fullName: String(payload.full_name || payload.email || "User"),
-      role: Array.isArray(payload.roles) && payload.roles[0] ? String(payload.roles[0]) : "member",
-      roles: Array.isArray(payload.roles) ? (payload.roles as string[]) : [],
-      permissions: Array.isArray(payload.permissions) ? (payload.permissions as string[]) : [],
-      isTenantOwner: Boolean(payload.is_tenant_owner),
-      tenantId: String(payload.tenant_id || ""),
-      tenantSlug: String(payload.tenant_slug || ""),
-      activeOutletId: payload.active_outlet_id ? String(payload.active_outlet_id) : undefined,
-      allowedOutletIds: Array.isArray(payload.allowed_outlet_ids)
-        ? (payload.allowed_outlet_ids as string[])
-        : [],
+      id: String(payload["sub"] || ""),
+      email: String(payload["email"] || ""),
+      fullName: String(payload["full_name"] || payload["email"] || "User"),
+      role: roles[0] ? String(roles[0]) : "member",
+      roles,
+      permissions,
+      isTenantOwner: Boolean(payload["is_tenant_owner"]),
+      tenantId: String(payload["tenant_id"] || ""),
+      tenantSlug: String(payload["tenant_slug"] || ""),
+      activeOutletId,
+      allowedOutletIds,
     };
 
     setUser(authUser);

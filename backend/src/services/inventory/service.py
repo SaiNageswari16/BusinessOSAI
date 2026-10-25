@@ -13,7 +13,7 @@ The two invariants this module exists to maintain:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +21,8 @@ from sqlalchemy.orm import selectinload
 
 from src.services.inventory.models import (
     AdjustmentStatus,
+    ExpiryStatus,
+    InventoryBatch,
     InventoryItem,
     InventoryStock,
     MovementType,
@@ -402,15 +404,37 @@ async def decide_adjustment(
         return adjustment, None
 
     delta = _q(adjustment.qty_delta)
+
+    if delta == 0:
+        adjustment.status = AdjustmentStatus.APPROVED
+        adjustment.approved_by = approved_by
+        adjustment.approved_at = _now()
+        if reason:
+            adjustment.reason = reason
+        await db.flush()
+        return adjustment, None
+
+    # A downward recount (counted less than recorded) that would drive stock
+    # negative is refused unless the item opts in with allow_negative_stock —
+    # the same rule record_movement enforces, applied to the adjustment
+    # path so the two cannot disagree about what "enough" means. Checked
+    # BEFORE marking the row approved: a refused recount must not leave a
+    # half-approved adjustment on the books.
+    if delta < 0:
+        stock = await stock_for(db, tenant_id, outlet_id, item.id, adjustment.location_id)
+        projected = _q(float(stock.qty_on_hand) + delta)
+        if projected < 0 and not item.allow_negative_stock:
+            raise InventoryError(
+                f"Approving this recount would drive {item.name} to a negative "
+                f"level ({projected}); set allow_negative_stock on the item to override"
+            )
+
     adjustment.status = AdjustmentStatus.APPROVED
     adjustment.approved_by = approved_by
     adjustment.approved_at = _now()
     if reason:
         adjustment.reason = reason
     await db.flush()
-
-    if delta == 0:
-        return adjustment, None
 
     movement = await record_movement(
         db, tenant_id, outlet_id, item, delta, MovementType.ADJUSTMENT,
@@ -422,6 +446,217 @@ async def decide_adjustment(
         created_by=approved_by,
     )
     return adjustment, movement
+
+
+# ─── Stock-in (manual receipt, no GRN) ──────────────────────────────────────
+
+async def record_stock_in(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    outlet_id: uuid.UUID,
+    item: InventoryItem,
+    qty: float,
+    *,
+    location_id: uuid.UUID | None = None,
+    unit_cost: float | None = None,
+    notes: str | None = None,
+    created_by: uuid.UUID | None = None,
+) -> StockMovement:
+    """A walk-in receipt with no purchase document behind it — a delivery that
+    was never ordered, an emergency top-up. Distinct from opening-stock
+    (the very first load) and from a GRN receipt (which has a paper trail and
+    a vendor to bill)."""
+    qty = _q(qty)
+    if qty <= 0:
+        raise InventoryError("Stock-in quantity must be greater than zero")
+
+    loc = location_id if location_id is not None else item.default_location_id
+    cost = _q(unit_cost) if unit_cost is not None else float(item.standard_cost)
+
+    return await record_movement(
+        db, tenant_id, outlet_id, item, qty, MovementType.PURCHASE,
+        location_id=loc,
+        unit_cost=cost,
+        reference_type="manual_stock_in",
+        notes=notes,
+        created_by=created_by,
+        check_negative=False,
+    )
+
+
+# ─── Batch / FEFO ────────────────────────────────────────────────────────────
+
+async def create_batch(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    outlet_id: uuid.UUID,
+    item: InventoryItem,
+    *,
+    batch_number: str,
+    qty: float,
+    expiry_date=None,
+    cost: float = 0.0,
+    location_id: uuid.UUID | None = None,
+    grn_id: uuid.UUID | None = None,
+) -> InventoryBatch:
+    """Record a received lot.
+
+    ``grn_id`` is the last link in the P2P chain: when a GRN is QC-passed in
+    the purchase service, this is the function that actually creates the
+    batch row (if the item tracks batches) — the batch is what FEFO picking
+    later reads. Without this, received goods change the aggregate stock
+    number but leave no traceable lot behind, and the moment the item is
+    ``track_batch=True`` that gap is invisible until a count doesn't match.
+    """
+    if not batch_number:
+        batch_number = f"BT-{uuid.uuid4().hex[:10].upper()}"
+
+    batch = InventoryBatch(
+        tenant_id=tenant_id,
+        outlet_id=outlet_id,
+        inventory_item_id=item.id,
+        location_id=location_id,
+        batch_number=batch_number,
+        expiry_date=expiry_date,
+        qty=_q(qty),
+        cost=_q(cost),
+        grn_id=grn_id,
+    )
+    db.add(batch)
+    await db.flush()
+    return batch
+
+
+async def fefo_pick(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    outlet_id: uuid.UUID,
+    item: InventoryItem,
+    required: float,
+    *,
+    location_id: uuid.UUID | None = None,
+) -> dict:
+    """Pick the soonest-expiring lot(s) to cover ``required`` — FEFO, the
+    gate the gap analysis called out: ``deduct_recipe`` today never looks at
+    a batch, so an item flagged ``track_expiry`` can be consumed past its
+    expiry with zero signal.
+
+    Returns a ``dict`` so the caller (``deduct_recipe``) can fold the result
+    into its normal per-line reporting without the two getting coupled to a
+    specific dataclass. ``expired`` is a list, not a count, because the caller
+    wants to know *which lot* crossed the line, not just that some lot did.
+    """
+    now = _now().date()
+    batches = list((await db.execute(
+        select(InventoryBatch).where(
+            InventoryBatch.tenant_id == tenant_id,
+            InventoryBatch.outlet_id == outlet_id,
+            InventoryBatch.inventory_item_id == item.id,
+            InventoryBatch.qty > 0,
+        )
+        .order_by(InventoryBatch.expiry_date.asc().nulls_last(), InventoryBatch.created_at.asc())
+    )).scalars().all())
+
+    required = _q(required)
+    picked: list[dict] = []
+    remaining = required
+    expired: list[InventoryBatch] = []
+    total_available = 0.0
+    usable = 0.0
+
+    for batch in batches:
+        available = _q(batch.qty)
+        total_available += available
+
+        is_expired = batch.expiry_date is not None and batch.expiry_date < now
+        if is_expired:
+            expired.append(batch)
+            continue
+
+        if remaining <= 0:
+            # Enough has been picked; still count the remaining usable stock
+            # so total_available/usable report the true picture.
+            usable += available
+            continue
+
+        usable += available
+        take = min(remaining, available)
+        if take <= 0:
+            continue
+        picked.append({
+            "batch_id": batch.id,
+            "batch_number": batch.batch_number,
+            "expiry_date": batch.expiry_date.isoformat() if batch.expiry_date else None,
+            "qty": _q(take),
+        })
+        batch.qty = _q(available - take)
+        remaining = _q(remaining - take)
+        await db.flush()
+
+    return {
+        "required": required,
+        "picked": picked,
+        "total_available": total_available,
+        "usable": usable,
+        "remaining_uncovered": remaining,
+        "shortage": remaining > 0,
+        # Every lot on hand is past expiry — nothing could be picked, even
+        # though the total available count is not zero.
+        "all_expired": bool(batches) and usable <= 0 and not picked,
+        "expired_batches": [
+            {"batch_id": b.id, "batch_number": b.batch_number,
+             "qty": float(b.qty),
+             "expiry_date": b.expiry_date.isoformat()}
+            for b in expired
+        ],
+    }
+
+
+async def expiry_scan(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    outlet_id: uuid.UUID,
+    within_days: int = 7,
+) -> list[dict]:
+    """Every lot for this outlet that is expired or expiring within the
+    window, regardless of which item it belongs to — the "what do I throw
+    out today" scan, not a per-item check.
+
+    This is also where the missing ``stock.low``-style proactive signal lives
+    for expiry: a batch silently crossing its date is as important to surface
+    as an item crossing its reorder level, and there was no endpoint that
+    looked at batches at all."""
+    now = _now().date()
+    horizon = now + timedelta(days=within_days)
+
+    batches = list((await db.execute(
+        select(InventoryBatch).where(
+            InventoryBatch.tenant_id == tenant_id,
+            InventoryBatch.outlet_id == outlet_id,
+            InventoryBatch.expiry_date.isnot(None),
+            InventoryBatch.expiry_date <= horizon,
+        )
+    )).scalars().all())
+
+    results = []
+    for batch in batches:
+        item = await load_item(db, tenant_id, batch.inventory_item_id)
+        if batch.expiry_date < now:
+            status = ExpiryStatus.EXPIRED
+        elif batch.expiry_date <= horizon:
+            status = ExpiryStatus.EXPIRING
+        else:
+            status = ExpiryStatus.OK
+        results.append({
+            "batch_id": batch.id,
+            "batch_number": batch.batch_number,
+            "inventory_item_id": batch.inventory_item_id,
+            "item_name": item.name if item else None,
+            "qty": float(batch.qty),
+            "expiry_date": batch.expiry_date.isoformat(),
+            "status": status.value,
+        })
+    return results
 
 
 # ─── Aggregates for reporting ────────────────────────────────────────────────

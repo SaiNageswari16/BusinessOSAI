@@ -19,7 +19,7 @@ This document lists **every single backend file** in `c:\Users\abhil\Desktop\res
 
 | File Path | Purpose & Responsibility | Status |
 | :--- | :--- | :--- |
-| **[`shared/registry.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/shared/registry.py)** | Central plugin manifest. Registers all 14 microservices, their dedicated ports, database names, event topics published/subscribed, and module gating rules. | **DONE** |
+| **[`shared/registry.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/shared/registry.py)** | Central plugin manifest. Registers all 14 microservices, their dedicated ports, database names, event topics published/subscribed, and per-service `enforce_module_gate` flag. **9 of 14 services** set this `True` (menu, pos, kitchen, billing, inventory, purchase, staff, customers, loyalty); the gateway returns 404 for a tenant whose module state is suspended/archived on any of those 9. | **DONE** |
 | **[`shared/identity.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/shared/identity.py)** | Trusted identity extractor. Decodes `X-Identity-Tenant-Id`, `X-Identity-User-Id`, `X-Identity-Permissions`, and provides `.require()` for granular RBAC. | **DONE** |
 | **[`shared/service_factory.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/shared/service_factory.py)** | Standardized FastAPI application builder. Applies uniform CORS, JSON error handlers, database lifecycles, and health check endpoints. | **DONE** |
 | **[`shared/service_db.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/shared/service_db.py)** | Database session factory for microservices. Initializes independent SQLAlchemy connection pools and provides `get_db()` dependency injection. | **DONE** |
@@ -35,7 +35,7 @@ This document lists **every single backend file** in `c:\Users\abhil\Desktop\res
 
 | File Path | Purpose & Responsibility | Status |
 | :--- | :--- | :--- |
-| **[`gateway/app.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/gateway/app.py)** | Reverse Proxy API Gateway (Port 8000/8010). Intercepts incoming requests, validates JWTs, verifies per-tenant module gating licenses, and injects `X-Identity-*` headers. | **DONE** |
+| **[`gateway/app.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/gateway/app.py)** | Reverse Proxy API Gateway (Port **8000** — any `8010` reference is a stale legacy value). Intercepts incoming requests, validates tenant-realm and platform-realm JWTs, enforces per-tenant module gating (404 on the 9 gated services when suspended/archived; a missing `TenantModuleState` row means active-by-default, not 404), and injects `X-Identity-*` headers. | **DONE** |
 | **[`ai_service.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/ai_service.py)** | Multi-LLM provider cascade. Cascades requests across Google Gemini 2.0 (primary) $\to$ Anthropic Claude (failover) $\to$ OpenAI GPT-4o (fallback). Provides `generate_structured_json()` with multimodal image support. | **DONE** |
 
 ---
@@ -46,7 +46,7 @@ This document lists **every single backend file** in `c:\Users\abhil\Desktop\res
 - **[`auth/models.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/auth/models.py)**: ORM entities for `User`, `Role`, `Permission`, `TenantMembership`, `ApiKey`, and `RefreshToken`.
 - **[`auth/schemas.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/auth/schemas.py)**: Pydantic request/response validation schemas for login, register, password change, and token refresh.
 - **[`auth/service.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/auth/service.py)**: Business logic for credential checking, password salting, role assignment, and JWT issuance.
-- **[`auth/api.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/auth/api.py)**: Endpoints `/auth/login`, `/auth/register`, `/auth/refresh`, `/auth/tenants`, `/auth/users`.
+- **[`auth/api.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/auth/api.py)**: Endpoints `/auth/login`, `/auth/register`, `/auth/refresh`, `/auth/users`. **`/auth/tenants` is hardened**: it accepts either a **platform-realm token** (the platform service's internal roster call) or **no auth header at all** (a call on the internal mesh where the public gateway would already have demanded a token). Any tenant-realm caller — even a tenant owner with every permission — gets **403**; this closes the cross-tenant data-leak where listing *all* tenants was reachable by any authenticated tenant user.
 - **[`auth/util.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/auth/util.py)**: Cookie and bearer token extraction helpers.
 - **[`auth/main.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/auth/main.py)**: FastAPI entry point booting the Auth microservice on port 8100.
 
@@ -142,10 +142,18 @@ This document lists **every single backend file** in `c:\Users\abhil\Desktop\res
 - **[`reports/main.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/reports/main.py)**: FastAPI entry point on port 8112.
 
 ### 4.14. Platform Control Plane (`backend/src/services/platform/` — Port 8113)
-- **[`platform/models.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/platform/models.py)**: Tables for `PlatformTenant`, `TenantModuleLicense`, `PlatformAuditEntry`, `GlobalRole`.
-- **[`platform/schemas.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/platform/schemas.py)**: Onboarding payloads, license toggles, and breakglass audit requests.
-- **[`platform/service.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/platform/service.py)**: Super admin operations: onboarding organizations (e.g. Spice9), activating modules, granting global RBAC.
-- **[`platform/api.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/platform/api.py)**: Routes `/platform/tenants`, `/platform/tenants/{id}/modules`, `/platform/audit`.
+- **[`platform/models.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/platform/models.py)**: Tables for `TenantModuleState` (per-tenant module on/off state), `PlatformAuditEntry` (immutable control-plane log), `PlatformAdmin` (control-plane accounts), `PlatformAdminRole` (`super_admin`/`ops_admin`/`support_admin`/`billing_admin`), `PermissionCatalogue` (67+ RBAC keys), `AccessPolicy` (ABAC allow/deny/mask/limit rules), and `PluginManifest` (the six seeded verticals + auto-generated core-service rows).
+- **[`platform/schemas.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/platform/schemas.py)**: Onboarding payloads, module lifecycle requests, policy create/delete, admin account create/update, audit entry responses (`AuditEntryResponse`, `AuditListResponse`), tenant roster responses (`TenantRosterItem`, `TenantRosterResponse`), and plugin manifest responses (now carrying a `gated` boolean that reports whether the gateway actually enforces the per-tenant module check for that service).
+- **[`platform/service.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/platform/service.py)**: Super admin operations — tenant onboarding, module activate/suspend/archive (a plugin id naming a core service now gates that exact service; only `crm`→`customers` remains an alias), admin account CRUD with last-super-admin self-lockout guard, paged immutable audit trail (`list_audit`, 500-row cap, filterable by action/admin/target type), and the paged cross-service tenant roster (`list_all_tenants`, calls auth over the service mesh, enriches with `TenantModuleState`).
+- **[`platform/api.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/platform/api.py)**: Routes:
+  - `POST /platform/tenants`, `GET /platform/tenants`, `GET /platform/tenants/all` (full paged roster),
+  - `GET /platform/tenants/{id}/modules`, `POST .../activate`, `POST .../suspend`, `POST .../archive`,
+  - `GET /platform/plugins` (verticals + auto-generated core-service rows, each with a `gated` flag),
+  - `GET /platform/permissions`, `POST /platform/permissions`,
+  - `GET /platform/policies`, `POST /platform/policies`, **`DELETE /platform/policies/{id}`** (audit-logged),
+  - `GET /platform/admins`, `POST /platform/admins`, `PATCH /platform/admins/{id}` (self-deactivation guard),
+  - `GET /platform/audit` (paged, filterable),
+  - `GET /platform/fleet/health` (14-service probe).
 - **[`platform/main.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/platform/main.py)**: FastAPI entry point on port 8113.
 
 ---

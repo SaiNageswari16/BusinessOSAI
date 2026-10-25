@@ -31,13 +31,25 @@ DbDep = Annotated[AsyncSession, Depends(get_db)]
 
 
 class CurrentUserContext:
-    """Compatibility context wrapper providing tenant and user identity."""
+    """Compatibility context wrapper providing tenant and user identity.
+
+    The HRMS/ERP routers were written against a legacy monolith that had a
+    per-tenant ``Company`` row as the org unit. In the microservice split the
+    tenant IS the company: there is no separate company table in the staff
+    database, so ``active_company_id`` always resolves to the tenant id.
+    Endpoints that take an optional ``company_id`` query/body parameter
+    therefore treat a missing/invalid value as "the tenant itself" rather
+    than 404/500.
+    """
 
     def __init__(self, identity: Identity):
         self.identity = identity
         self.tenant_id = identity.tenant_id
         self.user_id = identity.user_id
         self.outlet_id = identity.active_outlet_id
+        # Legacy monolith had a per-tenant Company; the service split keeps
+        # the tenant as the org unit, so "active company" == the tenant.
+        self.active_company_id = identity.tenant_id
         self.user = SimpleNamespace(
             id=identity.user_id,
             email=identity.email,

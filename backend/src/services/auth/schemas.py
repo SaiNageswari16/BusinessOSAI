@@ -132,6 +132,13 @@ class LoginRequest(BaseModel):
     outlet_id: uuid.UUID | None = Field(
         default=None, description="Sets the token's active outlet."
     )
+    mfa_code: str | None = Field(
+        default=None,
+        min_length=6,
+        max_length=6,
+        pattern=r"^\d{6}$",
+        description="Required when MFA is enabled for this user.",
+    )
 
 
 class TokenPair(BaseModel):
@@ -163,3 +170,46 @@ class TokenClaims(BaseModel):
     active_outlet_id: uuid.UUID | None = None
     allowed_outlet_ids: list[uuid.UUID] = Field(default_factory=list)
     exp: datetime | None = None
+
+
+# ─── MFA ────────────────────────────────────────────────────────────────────
+
+class MfaEnrollResponse(BaseModel):
+    """First half of a two-step MFA enable. ``secret`` is shown once —
+    present it as a QR code to the user; it is not re-fetchable from
+    anywhere else in the system. ``provisioning_uri`` is a ``otpauth://``
+    link an authenticator app can deep-link-import directly."""
+    secret: str
+    provisioning_uri: str
+    mfa_enabled: bool = False  # stays off until /me/mfa/verify succeeds
+
+
+class MfaVerifyRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
+class MfaDisableRequest(BaseModel):
+    current_code: str | None = Field(
+        default=None,
+        min_length=6,
+        max_length=6,
+        pattern=r"^\d{6}$",
+        description="A valid current TOTP code; required to turn MFA off while it is on.",
+    )
+
+
+class MfaStatusResponse(BaseModel):
+    mfa_enabled: bool
+    has_secret: bool
+    last_verified_at: datetime | None = None
+
+
+# ─── Sessions ───────────────────────────────────────────────────────────────
+
+class SessionResponse(BaseModel):
+    id: uuid.UUID
+    user_agent: str | None = None
+    ip_address: str | None = None
+    created_at: datetime
+    expires_at: datetime
+    active: bool

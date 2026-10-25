@@ -4,10 +4,10 @@
  * Microservice: menu (:8104) via API Gateway (:8000)
  * Mount: /api/v1/menu
  *
- * AI recipe flow (canonical — matches /api/v1/menu/ai/recipe-* endpoints):
- *  - aiRecipeSearch:    POST /api/v1/menu/ai/recipe-search    (global LLM + catalog + multimodal)
- *  - aiRecipeReconcile: POST /api/v1/menu/ai/recipe-reconcile (BOM vs live inventory)
- *  - aiRecipeReorder:   POST /api/v1/menu/ai/recipe-reorder   (draft PO for missing/low lines)
+ * AI recipe flow (canonical — matches /api/v1/menu/ai-recipe-* endpoints):
+ *  - aiRecipeSearch:    POST /api/v1/menu/ai-recipe-search    (global LLM + catalog + multimodal)
+ *  - aiRecipeReconcile: POST /api/v1/menu/ai-recipe-reconcile (BOM vs live inventory)
+ *  - aiRecipeReorder:   POST /api/v1/menu/ai-recipe-reorder   (draft PO for missing/low lines)
  *
  * These methods re-expose the same client methods as menuService (identical
  * http wrapper + type style) for consumers that prefer the "purchase"
@@ -16,7 +16,7 @@
 
 import { apiClient } from "../lib/api-client";
 
-// ── Shared types (mirror of the /api/v1/menu/ai/* contract) ─────────────────
+// ── Shared types (mirror of the /api/v1/menu/ai-recipe-* contract) ───────────
 
 export type AiRecipeSource = "catalog" | "llm" | (string & {});
 
@@ -96,7 +96,7 @@ export const purchaseService = {
     p: AiRecipeSearchParams,
   ): Promise<AiRecipeSearchResponse> {
     return apiClient.post<AiRecipeSearchResponse>(
-      "/api/v1/menu/ai/recipe-search",
+      "/api/v1/menu/ai-recipe-search",
       p,
     );
   },
@@ -108,7 +108,7 @@ export const purchaseService = {
     portions: number;
   }): Promise<AiReconcileResult> {
     return apiClient.post<AiReconcileResult>(
-      "/api/v1/menu/ai/recipe-reconcile",
+      "/api/v1/menu/ai-recipe-reconcile",
       p,
     );
   },
@@ -119,7 +119,7 @@ export const purchaseService = {
     outlet_id: string | null;
   }): Promise<AiReorderResponse> {
     return apiClient.post<AiReorderResponse>(
-      "/api/v1/menu/ai/recipe-reorder",
+      "/api/v1/menu/ai-recipe-reorder",
       p,
     );
   },

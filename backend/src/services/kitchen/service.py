@@ -8,16 +8,18 @@ menu or the order changes after the fact.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.services.kitchen.models import (
+    KDSDevice,
     KOT,
     KOTItem,
     KOTItemStatus,
+    KOTPriority,
     KOTStatus,
     KOTStatusLog,
     KitchenStation,
@@ -54,8 +56,11 @@ class KitchenError(Exception):
 
 # The pass moves a ticket forward only. Jumping a ticket from pending straight
 # to ready would record food as done that was never started, which corrupts
-# every prep-time metric downstream.
-ALLOWED_FROM_PENDING = {KOTStatus.ACKNOWLEDGED, KOTStatus.PREPARING, KOTStatus.READY, KOTStatus.CANCELLED}
+# every prep-time metric downstream (and the station-metrics endpoint the
+# kitchen board uses to flag a slow station). READY is therefore NOT in the
+# pending set, even though CANCELLED is — a pending ticket can be killed, but
+# it cannot be faked as finished without an acknowledgement in between.
+ALLOWED_FROM_PENDING = {KOTStatus.ACKNOWLEDGED, KOTStatus.PREPARING, KOTStatus.CANCELLED}
 ALLOWED_FROM_ACKNOWLEDGED = {KOTStatus.PREPARING, KOTStatus.READY, KOTStatus.CANCELLED}
 ALLOWED_FROM_PREPARING = {KOTStatus.PREPARING, KOTStatus.READY, KOTStatus.SERVED, KOTStatus.CANCELLED}
 ALLOWED_FROM_READY = {KOTStatus.SERVED}
@@ -419,3 +424,232 @@ async def cancel_kots_for_order(
     if kots:
         await db.flush()
     return len(kots)
+
+
+# ─── Bump / rush / station transfer ─────────────────────────────────────────
+
+_PRIORITY_RANK = {KOTPriority.NORMAL: 0, KOTPriority.VIP: 1, KOTPriority.RUSH: 2}
+
+
+async def bump_kot(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    kot: KOT,
+    *,
+    priority: KOTPriority | None = None,
+    station_id: uuid.UUID | None = None,
+    changed_by: uuid.UUID | None = None,
+    reason: str | None = None,
+) -> KOT:
+    """Raise a ticket's urgency and/or move it to another station.
+
+    Bumping alone just re-stamps the log — no status change, no timestamp
+    field touched. A station transfer re-points ``station_id`` on the KOT and
+    its own items (which snapshot the station they were cooked on), so the
+    next fire/print goes to the new station. Both are append-only to the
+    status log: the "why" is exactly what a kitchen manager wants to audit
+    after a customer complaint about a dropped dish.
+    """
+    if priority is None and station_id is None:
+        raise KitchenError("Nothing to bump: set priority, station_id, or both")
+
+    if priority is not None and priority != status_value(kot.priority):
+        old = status_value(kot.priority)
+        kot.priority = priority
+        db.add(KOTStatusLog(
+            tenant_id=tenant_id,
+            kot_id=kot.id,
+            from_status=old,
+            to_status=status_value(priority),
+            changed_by=changed_by,
+            reason=reason or f"priority {old} -> {status_value(priority)}",
+        ))
+
+    if station_id is not None and station_id != kot.station_id:
+        old_station = kot.station_id
+        target = await load_station(db, tenant_id, station_id)
+        if target is None:
+            raise KitchenError(f"Station {station_id} not found for transfer")
+        kot.station_id = station_id
+        items = (await db.execute(
+            select(KOTItem).where(KOTItem.kot_id == kot.id)
+        )).scalars().all()
+        for item in items:
+            item.station_id = station_id
+        db.add(KOTStatusLog(
+            tenant_id=tenant_id,
+            kot_id=kot.id,
+            from_status=None,
+            to_status=f"station {old_station} -> {station_id}",
+            changed_by=changed_by,
+            reason=reason or "transferred between stations",
+        ))
+
+    await db.flush()
+    return kot
+
+
+# ─── Re-fire ────────────────────────────────────────────────────────────────
+
+async def refire_kot(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    kot: KOT,
+    *,
+    changed_by: uuid.UUID | None = None,
+    reason: str = "refire",
+) -> KOT:
+    """Reset a cancelled ticket back to PENDING so the pass cooks it again.
+
+    Only CANCELLED tickets can be re-fired — re-opening a SERVED one would
+    mean "cook food the guest already ate," which is never the intent. Item
+    statuses reset to PENDING too, so a dish that was half done when the
+    ticket got cancelled does not keep its partial progress across the
+    re-fire.
+    """
+    cur = status_value(kot.status)
+    if cur != KOTStatus.CANCELLED.value:
+        raise KitchenError(f"Only a cancelled KOT can be re-fired (currently {cur})")
+
+    stamp = _now()
+    kot.status = KOTStatus.PENDING
+    kot.fired_at = stamp
+    # Items are re-fetched explicitly rather than trusting the eager-loaded
+    # ``kot.items`` collection — the KOT may have been loaded from a
+    # different session/transaction than this one, and a lazy load here is
+    # the MissingGreenlet trap this whole file's docstrings warn about.
+    items = (await db.execute(
+        select(KOTItem).where(KOTItem.kot_id == kot.id)
+    )).scalars().all()
+    for item in items:
+        item.status = KOTItemStatus.PENDING
+        item.prepared_at = None
+    db.add(KOTStatusLog(
+        tenant_id=tenant_id,
+        kot_id=kot.id,
+        from_status=cur,
+        to_status=status_value(KOTStatus.PENDING),
+        changed_by=changed_by,
+        reason=reason,
+    ))
+    await db.flush()
+    return kot
+
+
+# ─── Station metrics ─────────────────────────────────────────────────────────
+
+async def station_metrics(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    station_id: uuid.UUID,
+    *,
+    window_hours: int = 24,
+) -> dict:
+    """Observed fired_at -> ready_at performance over a rolling window.
+
+    This is the live answer to "how is this station actually running today,"
+    as opposed to the static ``avg_prep_minutes`` someone set when the
+    station was created. Tickets that never reached READY (still open, or
+    cancelled) are excluded — a ticket that is still cooking is not a slow
+    ticket, it is an in-progress one.
+    """
+    since = _now() - timedelta(hours=window_hours)
+    rows = (
+        await db.execute(
+            select(KOT)
+            .where(
+                KOT.tenant_id == tenant_id,
+                KOT.station_id == station_id,
+                KOT.status == KOTStatus.READY,
+                KOT.fired_at.isnot(None),
+                KOT.ready_at.isnot(None),
+                KOT.fired_at >= since,
+            )
+        )
+    ).scalars().all()
+
+    deltas_min = [
+        (kot.ready_at - kot.fired_at).total_seconds() / 60.0
+        for kot in rows
+        if kot.ready_at and kot.fired_at
+    ]
+    if not deltas_min:
+        return {
+            "station_id": station_id,
+            "window_hours": window_hours,
+            "tickets_completed": 0,
+            "avg_prep_minutes": None,
+            "slowest_minutes": None,
+            "fastest_minutes": None,
+        }
+
+    return {
+        "station_id": station_id,
+        "window_hours": window_hours,
+        "tickets_completed": len(deltas_min),
+        "avg_prep_minutes": round(sum(deltas_min) / len(deltas_min), 1),
+        "slowest_minutes": round(max(deltas_min), 1),
+        "fastest_minutes": round(min(deltas_min), 1),
+    }
+
+
+# ─── KDS device polling ─────────────────────────────────────────────────────
+
+async def resolve_device(
+    db: AsyncSession, tenant_id: uuid.UUID, device_token: str
+) -> KDSDevice | None:
+    """Look up a KDS screen by its one-time token, scoped to one tenant.
+
+    A KDS screen is not a user account — it has no email, no JWT, no role
+    grant. It authenticates with the token minted when the screen was
+    registered, scoped to exactly one station. ``last_seen_at`` is the board's
+    heartbeat: a screen that stops polling is a dead screen, and the kitchen
+    needs that signal, not a silent board.
+    """
+    device = await db.scalar(
+        select(KDSDevice).where(
+            KDSDevice.tenant_id == tenant_id,
+            KDSDevice.device_token == device_token,
+            KDSDevice.is_active.is_(True),
+        )
+    )
+    if device is None:
+        return None
+    device.last_seen_at = _now()
+    await db.flush()
+    return device
+
+
+async def resolve_device_global(db: AsyncSession, device_token: str) -> KDSDevice | None:
+    """Tenant-agnostic device lookup, for the polling endpoint.
+
+    The token is unique across the whole system (one constraint, no
+    tenant prefix in the model), so a poll with a bare token cannot be
+    scoped to a tenant up front — the device row *is* the authorization,
+    and it carries the tenant with it. This is how the KDS screen passes
+    through the gateway without a user JWT.
+    """
+    device = await db.scalar(
+        select(KDSDevice).where(
+            KDSDevice.device_token == device_token,
+            KDSDevice.is_active.is_(True),
+        )
+    )
+    if device is None:
+        return None
+    device.last_seen_at = _now()
+    await db.flush()
+    return device
+
+
+# ─── History ────────────────────────────────────────────────────────────────
+
+async def kot_history(
+    db: AsyncSession, tenant_id: uuid.UUID, kot: KOT
+) -> list[KOTStatusLog]:
+    """The full append-only state log for one ticket, oldest first.
+
+    ``kot.status_logs`` is already eager-loaded on ``load_kot``; this is just
+    the sort the UI wants (time order, not insert order, which are only the
+    same thing when a human is the one appending)."""
+    return sorted(kot.status_logs or [], key=lambda log: log.created_at)

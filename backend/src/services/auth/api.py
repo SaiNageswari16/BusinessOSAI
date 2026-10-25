@@ -25,12 +25,17 @@ from src.services.auth.permissions import (
 from src.services.auth.schemas import (
     LoginRequest,
     LogoutRequest,
+    MfaDisableRequest,
+    MfaEnrollResponse,
+    MfaStatusResponse,
+    MfaVerifyRequest,
     PasswordChange,
     RefreshRequest,
     RoleAssign,
     RoleCreate,
     RoleResponse,
     RoleUpdate,
+    SessionResponse,
     TenantRegister,
     TenantResponse,
     TokenPair,
@@ -38,6 +43,7 @@ from src.services.auth.schemas import (
     UserResponse,
     UserUpdate,
 )
+from src.services.auth.outbox import record_event
 from src.services.event_bus.bus import Event, bus
 from src.services.shared.identity import CurrentIdentity, client_ip
 
@@ -88,13 +94,10 @@ async def register(payload: TenantRegister, request: Request, db: DbDep):
         full_name=payload.full_name,
     )
 
-    await bus.publish(_ev(
-        "tenant.created", tenant.id, data={"slug": tenant.slug, "name": tenant.name}
-    ))
-    await bus.publish(_ev(
-        "user.created", tenant.id,
-        data={"user_id": str(user.id), "email": user.email},
-    ))
+    await record_event(db, type="tenant.created", tenant_id=tenant.id,
+                       data={"slug": tenant.slug, "name": tenant.name})
+    await record_event(db, type="user.created", tenant_id=tenant.id,
+                       data={"user_id": str(user.id), "email": user.email})
 
     return await service.issue_tokens(
         db, user, user_agent=_ua(request), ip_address=client_ip(request)
@@ -111,6 +114,7 @@ async def login(payload: LoginRequest, request: Request, db: DbDep):
         email=payload.email,
         password=payload.password,
         tenant_slug=payload.tenant_slug,
+        mfa_code=payload.mfa_code,
     )
     return await service.issue_tokens(
         db,
@@ -176,6 +180,66 @@ async def change_own_password(
     )
 
 
+# ─── MFA ────────────────────────────────────────────────────────────────────
+
+@router.get("/me/mfa", response_model=MfaStatusResponse, tags=["session"])
+async def mfa_status(identity: CurrentIdentity, db: DbDep):
+    user = await db.get(User, identity.user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return MfaStatusResponse(
+        mfa_enabled=bool(user.mfa_enabled),
+        has_secret=user.mfa_secret is not None,
+    )
+
+
+@router.post("/me/mfa/enroll", response_model=MfaEnrollResponse, tags=["session"],
+             summary="Begin enabling MFA — returns a one-time secret to scan")
+async def mfa_enroll(identity: CurrentIdentity, db: DbDep):
+    user = await db.get(User, identity.user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    result = await service.enable_mfa(db, user)
+    return MfaEnrollResponse(
+        secret=result["secret"],
+        provisioning_uri=result["provisioning_uri"],
+    )
+
+
+@router.post("/me/mfa/verify", status_code=status.HTTP_204_NO_CONTENT, tags=["session"],
+             summary="Confirm a valid code and switch MFA on permanently")
+async def mfa_verify(payload: MfaVerifyRequest, identity: CurrentIdentity, db: DbDep):
+    user = await db.get(User, identity.user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    await service.verify_mfa(db, user, payload.code)
+
+
+@router.post("/me/mfa/disable", status_code=status.HTTP_204_NO_CONTENT,
+             tags=["session"], summary="Turn MFA off (and discard the secret)")
+async def mfa_disable(payload: MfaDisableRequest, identity: CurrentIdentity, db: DbDep):
+    user = await db.get(User, identity.user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    await service.disable_mfa(db, user, payload.current_code)
+
+
+# ─── Sessions ───────────────────────────────────────────────────────────────
+
+@router.get("/me/sessions", response_model=list[SessionResponse], tags=["session"],
+            summary="Active login sessions for the caller (refresh tokens)")
+async def my_sessions(identity: CurrentIdentity, db: DbDep):
+    return [SessionResponse(**s) for s in await service.list_sessions(db, identity.user_id)]
+
+
+@router.delete("/me/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT,
+               tags=["session"], summary="Revoke one session by its refresh-token id")
+async def revoke_my_session(
+    session_id: uuid.UUID, identity: CurrentIdentity, db: DbDep
+):
+    await service.revoke_session(db, identity.user_id, session_id)
+
+
 # ─── Users ──────────────────────────────────────────────────────────────────
 
 @router.get("/users", response_model=list[UserResponse], tags=["users"])
@@ -208,10 +272,8 @@ async def create_user(payload: UserCreate, identity: CurrentIdentity, db: DbDep)
         role_slugs=payload.role_slugs,
         is_tenant_owner=payload.is_tenant_owner,
     )
-    await bus.publish(_ev(
-        "user.created", identity.tenant_id,
-        data={"user_id": str(user.id), "email": user.email},
-    ))
+    await record_event(db, type="user.created", tenant_id=identity.tenant_id,
+                       data={"user_id": str(user.id), "email": user.email})
     return user
 
 
@@ -252,17 +314,18 @@ async def update_user(
             )
         user.status = new_status
         if new_status != UserStatus.ACTIVE:
-            # A deactivated user must not keep a working session.
+            # A deactivated user must not keep a working session — and a
+            # stolen access JWT must not survive the deactivation either.
             await service.revoke_all_for_user(db, user.id)
+            await service.revoke_all_access_tokens(db, user)
 
     if payload.full_name is not None:
         user.full_name = payload.full_name
     if payload.phone is not None:
         user.phone = payload.phone
 
-    await bus.publish(_ev(
-        "user.updated", identity.tenant_id, data={"user_id": str(user.id)}
-    ))
+    await record_event(db, type="user.updated", tenant_id=identity.tenant_id,
+                       data={"user_id": str(user.id)})
     return user
 
 
@@ -433,15 +496,33 @@ async def current_tenant(identity: CurrentIdentity, db: DbDep):
 
 
 @router.get("/tenants", response_model=list[TenantResponse], tags=["registration"])
-async def list_tenants(db: DbDep):
+async def list_tenants(request: Request, db: DbDep):
     """Platform-scoped tenant listing.
 
-    Intentionally unauthenticated at the route level: this endpoint is called
-    by the platform service over the internal service-to-service path, where
-    the gateway has already verified the caller holds a platform-realm token.
-    Exposing this through the public gateway would list every tenant's basic
-    details to any unauthenticated caller, so the gateway must block this
-    route for tenant-realm callers. The platform service is the only caller.
+    Restricted to two callers:
+
+    * a **platform-realm token** — the platform service enriching its own
+      tenant summary (it is called over the internal service-to-service path);
+    * **no auth header at all** — service-to-service calls on the internal
+      mesh, where the public gateway would already have demanded a token.
+
+    Anything else gets 403: a tenant-realm caller (even an owner, even with
+    every permission) listing *all* tenants is a cross-tenant data leak, and
+    an anonymous public request reaching this route would list the fleet to
+    anyone who can address the service.
     """
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        token = auth_header[7:] if auth_header.lower().startswith("bearer ") else None
+        if not token:
+            raise HTTPException(status_code=401, detail="Invalid Authorization header")
+        from src.utils.security import decode_access_token
+
+        claims = decode_access_token(token)  # raises on any bad token
+        if claims.get("auth_realm") != "platform":
+            raise HTTPException(
+                status_code=403,
+                detail="Tenant-realm callers cannot list all tenants",
+            )
     res = await db.execute(select(Tenant).order_by(Tenant.created_at.desc()))
     return list(res.scalars().all())

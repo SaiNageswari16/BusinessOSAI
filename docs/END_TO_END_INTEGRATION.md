@@ -8,7 +8,7 @@ This document details how the **RestaurantOS Frontend and Backend connect**, the
 
 ### 1.1. Network & Reverse Proxy Architecture
 
-All frontend API calls are routed through the **API Gateway** (`http://127.0.0.1:8000` / `:8010`). The browser never talks directly to individual microservice ports.
+All frontend API calls are routed through the **API Gateway** (`http://127.0.0.1:8000`). The browser never talks directly to individual microservice ports.
 
 ```
 ┌────────────────────────────────────────────────────────┐

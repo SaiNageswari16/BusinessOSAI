@@ -19,23 +19,30 @@ This document provides a comprehensive, file-by-file breakdown of the **Restaura
 
 ## 2. Port & Service Directory
 
-| Service Name | Port | Database Name | Primary Responsibility |
-| :--- | :--- | :--- | :--- |
-| **API Gateway** | `8000` / `8010` | N/A | Reverse proxy, JWT authentication, per-tenant module gating |
-| **Auth** | `8100` | `restaurantos_auth` | User accounts, credentials, RBAC roles, tenant memberships |
-| **Organization** | `8101` | `restaurantos_organization` | Multi-outlet setup, sections, dining tables, number series |
-| **Menu & AI** | `8102` | `restaurantos_menu` | Dishes, categories, pricing, recipe catalog, AI Recipe engine |
-| **POS** | `8103` | `restaurantos_pos` | Table sessions, cart, live order placement, status tracking |
-| **Kitchen (KDS)** | `8104` | `restaurantos_kitchen` | Kitchen display stations, KOT tickets, line-item cooking status |
-| **Billing** | `8105` | `restaurantos_billing` | Invoicing, payments, tax calculations, discounts, refunds |
-| **Inventory** | `8106` | `restaurantos_inventory` | Central stock, outlet sub-inventory, cost-lookup, wastage |
-| **Purchase** | `8107` | `restaurantos_purchase` | Vendors, Purchase Requests (PR), Purchase Orders (PO), GRN |
-| **Staff** | `8108` | `restaurantos_staff` | Employees, roles, shifts, attendance, tips |
-| **Customers** | `8109` | `restaurantos_customers` | CRM customer profiles, visit history, total spend |
-| **Loyalty** | `8110` | `restaurantos_loyalty` | Wallets, points ledger, earn/redeem rules |
-| **Accounting** | `8111` | `restaurantos_accounting` | Double-entry journal entries, chart of accounts, GST |
-| **Reports** | `8112` | `restaurantos_reports` | Read-model reporting projections, financial summaries |
-| **Platform** | `8113` | `restaurantos_platform_admin` | Super Admin control plane, tenant onboarding, module licenses |
+14 services total; **9 of them are module-gated at the gateway** (their `ServiceDescriptor.enforce_module_gate` is `True`) — those are the ones the Platform Control Plane can switch on/off per tenant, and the gateway returns `404` for requests to a tenant whose module state is suspended/archived.
+
+| Service Name | Port | Database Name | Module-Gated | Primary Responsibility |
+| :--- | :--- | :--- | :--- | :--- |
+| **API Gateway** | `8000` | N/A | — | Reverse proxy, JWT auth, per-tenant module gating, identity forwarding |
+| **Auth** | `8100` | `restaurantos_auth` | No | User accounts, credentials, RBAC roles, tenant memberships |
+| **Organization** | `8101` | `restaurantos_organization` | No | Multi-outlet setup, sections, dining tables, number series |
+| **Menu & AI** | `8102` | `restaurantos_menu` | **Yes** | Dishes, categories, pricing, recipe catalog, AI Recipe engine |
+| **POS** | `8103` | `restaurantos_pos` | **Yes** | Table sessions, cart, live order placement, status tracking |
+| **Kitchen (KDS)** | `8104` | `restaurantos_kitchen` | **Yes** | Kitchen display stations, KOT tickets, line-item cooking status |
+| **Billing** | `8105` | `restaurantos_billing` | **Yes** | Invoicing, payments, tax calculations, discounts, refunds |
+| **Inventory** | `8106` | `restaurantos_inventory` | **Yes** | Central stock, outlet sub-inventory, cost-lookup, wastage |
+| **Purchase** | `8107` | `restaurantos_purchase` | **Yes** | Vendors, Purchase Requests (PR), Purchase Orders (PO), GRN |
+| **Staff** | `8108` | `restaurantos_staff` | **Yes** | Employees, roles, shifts, attendance, tips |
+| **Customers** | `8109` | `restaurantos_customers` | **Yes** | CRM customer profiles, visit history, total spend |
+| **Loyalty** | `8110` | `restaurantos_loyalty` | **Yes** | Wallets, points ledger, earn/redeem rules |
+| **Accounting** | `8111` | `restaurantos_accounting` | No | Double-entry journal entries, chart of accounts, GST |
+| **Reports** | `8112` | `restaurantos_reports` | No | Read-model reporting projections, financial summaries |
+| **Platform** | `8113` | `restaurantos_platform_admin` | No | Super Admin control plane, tenant roster, module lifecycle, RBAC/ABAC, audit trail, admin accounts |
+
+> The `enforce_module_gate` flag lives in `backend/src/services/shared/registry.py` on each `ServiceDescriptor`. Only the 9 flagged services check `TenantModuleState` per request; the other 5 (auth, organization, accounting, reports, platform) are always reachable for an authenticated tenant regardless of module state.
+
+**Note on gateway porting**: A stray legacy reference to port `8010` exists in a few places; the live gateway runs on `8000`.
+
 
 ---
 
@@ -45,7 +52,7 @@ This document provides a comprehensive, file-by-file breakdown of the **Restaura
 
 #### [`shared/registry.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/shared/registry.py)
 - **Role**: The centralized plugin manifest. Defines the `ServiceDescriptor` data class and registers all 14 microservices.
-- **Key Details**: Stores service ports, database names, required permissions, published topics, subscribed topics, and per-tenant module gating settings (`kind="core"` vs `kind="plugin"`).
+- **Key Details**: Stores service ports, database names, required permissions, published topics, subscribed topics, and per-tenant module gating settings. `kind="core"` vs `kind="plugin"`; and the `enforce_module_gate` flag — **9 of the 14** services set this `True` (menu, pos, kitchen, billing, inventory, purchase, staff, customers, loyalty); the remaining 5 (auth, organization, accounting, reports, platform) are always reachable regardless of module state.
 - **Status**: **DONE**.
 
 #### [`shared/identity.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/shared/identity.py)
@@ -148,12 +155,31 @@ Each outbox file contains:
 ### 3.5. Platform Control Plane (`backend/src/services/platform/`)
 
 #### [`platform/service.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/platform/service.py) & [`platform/api.py`](file:///c:/Users/abhil/Desktop/restaurant/backend/src/services/platform/api.py)
-- **Role**: Super Admin multi-tenant management.
+- **Role**: Super Admin multi-tenant control plane — the entry point for onboarding, license lifecycle, and cross-tenant governance at SaaS scale.
 - **Key Details**:
-  - `POST /api/v1/platform/tenants`: Onboards an enterprise tenant (e.g. Spice9) with custom slug and settings.
-  - `GET /api/v1/platform/tenants/{id}/modules`: Lists active/suspended plug-in modules (POS, Kitchen, Inventory, CRM, Salon, etc.).
-  - `POST /api/v1/platform/tenants/{id}/modules/{mod}/activate`: Dynamically activates an enterprise module license.
-  - `GET /api/v1/platform/tenants`: Uses internal HTTP calls to the Auth service rather than direct database peering, preserving microservice isolation.
+  - **Tenant Onboarding & Roster**
+    - `POST /api/v1/platform/tenants`: Onboards an enterprise tenant (e.g. Spice9) with custom slug, plan, initial modules, and owner credentials.
+    - `GET /api/v1/platform/tenants`: Lists platform-managed tenants (those with `TenantModuleState` rows).
+    - `GET /api/v1/platform/tenants/all`: **Full auth-service tenant roster, paged** (500-row server-side cap, offset pagination). Calls `auth/tenants` over the service mesh, then enriches each row with the tenant's active modules and `module_versions` from the platform DB, and flags `is_managed`. This is the "thousands of tenants" view — the control plane sees every tenant the auth service knows, not just the ones it has onboarded.
+  - **Module Lifecycle** (the on/off switch)
+    - `GET /api/v1/platform/tenants/{id}/modules`: Lists active/suspended/archived plug-in modules (POS, Kitchen, Inventory, CRM, Salon, etc.).
+    - `POST /api/v1/platform/tenants/{id}/modules/{mod}/activate`: Dynamically activates an enterprise module license.
+    - `POST /api/v1/platform/tenants/{id}/modules/{mod}/suspend`: Suspends a module — the gateway's per-tenant module gate then returns 404 for that tenant within its 5-second cache window.
+    - `POST /api/v1/platform/tenants/{id}/modules/{mod}/archive`: Retires a module permanently for that tenant.
+    - `GET /api/v1/platform/plugins`: The full module catalog, including one row per **core service** (menu, pos, kitchen, ... reports) auto-generated from the registry so the gateway's module gate has something to toggle against.
+  - **RBAC & ABAC**
+    - `GET /api/v1/platform/permissions`: The 67+ fine-grained permission catalogue.
+    - `POST /api/v1/platform/permissions`: Register a new permission key.
+    - `GET /api/v1/platform/policies`: ABAC policy rules.
+    - `POST /api/v1/platform/policies`: Create a policy (allow/deny/mask/limit).
+    - `DELETE /api/v1/platform/policies/{policy_id}`: Retire a policy — the action is audit-logged with the rule's content so "what was enforced" is reconstructable after deletion.
+  - **Admin Accounts**
+    - `GET /api/v1/platform/admins`: List platform-realm admin accounts.
+    - `POST /api/v1/platform/admins`: Provision a new admin (role: super_admin / ops_admin / support_admin / billing_admin).
+    - `PATCH /api/v1/platform/admins/{admin_id}`: Update role / name / active state. A super admin **cannot deactivate their own account** — last-super-admin self-lockout guard.
+  - **Audit Trail**
+    - `GET /api/v1/platform/audit`: The immutable control-plane log, paged (500-row cap) and filterable by action / admin email / target type. Every module lifecycle change, policy write, and admin account action lands here.
+  - **Cross-service isolation**: all tenant-roster reads go through the Auth service over the service mesh; the platform service never directly peering into another service's database.
 - **Status**: **DONE**.
 
 ---
@@ -170,13 +196,15 @@ Each outbox file contains:
 
 ### ✅ What is Done:
 1. Complete 14 microservice domain models and REST APIs.
-2. API Gateway with JWT claims verification and per-tenant dynamic module gating.
+2. API Gateway with JWT claims verification and per-tenant dynamic module gating on 9 module-gated services.
 3. Multi-LLM provider cascade (Gemini + Claude + OpenAI) with multimodal image parsing and strict JSON schemas.
 4. AI Recipe Search, Catalog fallback, and Inventory BOM reconciliation.
 5. Automated idempotent Purchase Order and Purchase Request creation.
 6. Transactional Outbox pattern implemented across Billing, POS, Kitchen, and Inventory.
 7. Deduplication ledger (`consumed_events`) preventing duplicate event handling.
 8. Cross-service HTTP identity forwarding (`X-Identity-*`).
+9. **Platform Control Plane full surface**: paged tenant roster (`/tenants/all`), admin account CRUD with self-lockout guard, paged immutable audit trail, policy deletion with audit capture, and per-tenant module on/off lifecycle.
+10. **Auth service tenant endpoint hardening**: `GET /tenants` now requires a platform-realm token or an unauthenticated internal-mesh call; tenant-realm callers (even owners with every permission) get 403 — cross-tenant data leak closed.
 
 ### ⏳ What Needs to Be Done:
 1. **Redis Server Startup**:

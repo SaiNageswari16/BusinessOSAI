@@ -25,6 +25,7 @@ from sqlalchemy.orm import selectinload
 
 from src.services.event_bus.bus import Event, bus
 from src.services.purchase import service as svc
+from src.services.purchase.service import _member, _money
 from src.services.purchase.models import (
     GoodsReceiptNote,
     GRNStatus,
@@ -573,6 +574,43 @@ async def cancel_order(po_id: uuid.UUID, identity: CurrentIdentity, db: DbDep):
 
 # ─── Goods receipt notes ────────────────────────────────────────────────────
 
+@router.post("/grns/{grn_id}/cancel", response_model=GRNResponse, tags=["purchase"],
+             summary="Cancel a GRN before QC — received goods that will not be kept")
+async def cancel_grn(grn_id: uuid.UUID, identity: CurrentIdentity, db: DbDep):
+    """Only a DRAFT/RECEIVED GRN (pre-QC) can be cancelled — a QC-passed one
+    has already posted stock and the bill cycle may have started, and
+    silently undoing that is not a cancel, that is a ledger correction with
+    its own, separate approval."""
+    identity.require("manage:purchase")
+    grn = await svc.load_grn(db, identity.tenant_id, grn_id)
+    if grn is None:
+        raise HTTPException(status_code=404, detail="GRN not found")
+    await svc.set_grn_status(db, identity.tenant_id, grn, GRNStatus.CANCELLED,
+                            notes="cancelled before QC")
+    return grn
+
+
+@router.get("/grns/{grn_id}/three-way-match", tags=["purchase"],
+            summary="Check PO vs GRN vs bill amounts against a tolerance")
+async def three_way_match(
+    grn_id: uuid.UUID,
+    identity: CurrentIdentity,
+    db: DbDep,
+    tolerance_pct: float = Query(default=0.0, ge=0, le=100,
+                                 description="Variance tolerance, as a percentage of the PO line's expected amount"),
+):
+    """The "we only pay for what we actually got" check, run on demand —
+    a procurement manager's review step before approving a bill that looks
+    too large to be explained by the original order."""
+    identity.require("manage:purchase")
+    try:
+        return await svc.three_way_match(
+            db, identity.tenant_id, grn_id, tolerance_pct=tolerance_pct
+        )
+    except svc.PurchaseError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
 @router.get("/grns", response_model=list[GRNResponse], tags=["purchase"])
 async def list_grns(identity: CurrentIdentity, db: DbDep,
                     status_filter: str | None = None,
@@ -687,6 +725,79 @@ async def create_bill(payload: VendorBillCreate, identity: CurrentIdentity, db: 
               "grand_total": float(bill.grand_total)},
     ))
     return bill
+
+
+@router.post("/vendor-bills/{bill_id}/cancel", response_model=VendorBillResponse,
+             tags=["purchase"],
+             summary="Cancel a bill before payment — only DRAFT/UNPAID bills can be cancelled")
+async def cancel_bill(bill_id: uuid.UUID, identity: CurrentIdentity, db: DbDep):
+    """A bill with even one payment on it is not cancellable, that is a
+    reversal with its own approval — cancel only reaches the pre-payment
+    states where nothing has moved money yet."""
+    identity.require("manage:purchase")
+    bill = await db.scalar(
+        select(VendorBill).where(
+            VendorBill.id == bill_id, VendorBill.tenant_id == identity.tenant_id))
+    if bill is None:
+        raise HTTPException(status_code=404, detail="Vendor bill not found")
+    current = _member(bill.status, VendorBillStatus)
+    if current not in (VendorBillStatus.DRAFT, VendorBillStatus.UNPAID):
+        raise HTTPException(
+            status_code=409,
+            detail=f"A bill in {current.value} state cannot be cancelled")
+    bill.status = VendorBillStatus.CANCELLED
+    await db.flush()
+    return bill
+
+
+@router.post("/vendor-bills/{bill_id}/credit-note", response_model=VendorBillResponse,
+             status_code=http_status.HTTP_201_CREATED, tags=["purchase"],
+             summary="Issue a credit note against a paid/partially-paid bill")
+async def credit_note(
+    bill_id: uuid.UUID,
+    identity: CurrentIdentity,
+    db: DbDep,
+    amount: float = Query(..., gt=0, description="Credit amount, must not exceed the bill balance"),
+    reason: str | None = Query(default=None, max_length=500),
+):
+    """A negative-amount bill against the same vendor — the correction path
+    when a bill was over-issued or paid and money must come back. Linked to
+    the original so the audit trail stays one document chain, not two
+    unexplained numbers that happen to reference the same vendor."""
+    identity.require("manage:purchase")
+    bill = await db.scalar(
+        select(VendorBill).where(
+            VendorBill.id == bill_id, VendorBill.tenant_id == identity.tenant_id))
+    if bill is None:
+        raise HTTPException(status_code=404, detail="Vendor bill not found")
+    if amount > float(bill.balance):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Credit note ₹{amount} exceeds the open balance ₹{bill.balance}")
+
+    credit = VendorBill(
+        tenant_id=identity.tenant_id,
+        outlet_id=bill.outlet_id,
+        vendor_id=bill.vendor_id,
+        bill_number=f"CN-{uuid.uuid4().hex[:8].upper()}",
+        status=VendorBillStatus.PAID,
+        invoice_date=svc._now().date(),
+        subtotal=0.0,
+        tax_total=0.0,
+        grand_total=-amount,
+        paid_amount=amount,
+        balance=0.0,
+        notes=(reason or "credit note") + f" against bill {bill.bill_number}",
+    )
+    db.add(credit)
+    bill.balance = _money(float(bill.balance) - amount)
+    bill.paid_amount = _money(float(bill.paid_amount) + amount)
+    if bill.balance <= 0:
+        bill.status = VendorBillStatus.PAID
+    else:
+        bill.status = VendorBillStatus.PARTIALLY_PAID
+    await db.flush()
+    return credit
 
 
 @router.post("/vendor-bills/{bill_id}/payments",

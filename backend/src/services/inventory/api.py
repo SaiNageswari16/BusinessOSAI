@@ -18,6 +18,7 @@ order placement would shrink stock for orders that were later cancelled.
 from __future__ import annotations
 
 import uuid
+from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status as http_status
@@ -27,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.event_bus.bus import Event, bus
 from src.services.inventory import service as svc
 from src.services.inventory.models import (
+    InventoryBatch,
     InventoryItem,
     InventoryStock,
     MovementType,
@@ -37,9 +39,13 @@ from src.services.inventory.schemas import (
     AdjustmentApprove,
     AdjustmentRequest,
     AdjustmentResponse,
+    BatchListResponse,
+    BatchResponse,
     CategoryCreate,
     CategoryResponse,
     DeductionResult,
+    ExpiryScanEntry,
+    ExpiryScanResponse,
     InventoryItemCreate,
     InventoryItemResponse,
     InventoryItemUpdate,
@@ -48,7 +54,11 @@ from src.services.inventory.schemas import (
     OpeningStockIn,
     QuickAdjustmentCreate,
     RecipeLineSnapshot,
+    StockInRequest,
+    StockInResponse,
     StockResponse,
+    StockTransferCreate,
+    StockTransferResponse,
     StorageLocationCreate,
     StorageLocationResponse,
     WastageIn,
@@ -236,6 +246,111 @@ async def _on_order_cancelled(event: Event) -> None:
     """
 
 
+@bus.on("grn.posted")
+async def _on_grn_posted(event: Event) -> None:
+    """The last link in the P2P chain: received goods add stock.
+
+    Without this handler, a QC-passed GRN in the purchase service changes
+    nothing here — the received quantity never reaches the stock ledger and
+    no batch row is created, so an item that tracks batches/expiry has no
+    lot to pick from on its next FEFO gate. This is the missing piece the
+    gap analysis flagged: the chain was stockout → PR → PO → GRN, and stock-in
+    simply was not wired.
+
+    Idempotent on ``grn_id``: a re-delivered event must not add stock twice.
+    """
+    data = event.data or {}
+    tenant = _tenant(event)
+    grn_id = _coerce_uuid(data.get("grn_id"))
+    outlet = _coerce_uuid(data.get("outlet_id"))
+    if tenant is None or grn_id is None or outlet is None:
+        return
+
+    already = await _grn_already_recorded(grn_id, tenant)
+    if already:
+        return
+
+    db = _handler_db()
+    try:
+        lines = data.get("lines") or []
+        for line in lines:
+            item_id = _coerce_uuid(line.get("inventory_item_id"))
+            if item_id is None:
+                continue
+            item = await svc.load_item(db, tenant, item_id)
+            if item is None:
+                continue
+
+            accepted = float(line.get("accepted_qty") or 0)
+            if accepted <= 0:
+                continue
+
+            location_id = _coerce_uuid(line.get("location_id")) or item.default_location_id
+            unit_cost = float(line.get("unit_price") or item.standard_cost or 0)
+
+            await svc.record_movement(
+                db, tenant, outlet, item, accepted,
+                MovementType.PURCHASE,
+                location_id=location_id,
+                unit_cost=unit_cost,
+                reference_type="grn",
+                reference_id=str(grn_id),
+                notes=f"GRN {data.get('grn_number', '')} — {line.get('batch_number') or ''}".strip(),
+                check_negative=False,
+            )
+
+            # A batch row only makes sense when the item actually tracks
+            # batches — creating one for an item that does not is noise.
+            if item.track_batch or item.track_expiry:
+                await svc.create_batch(
+                    db, tenant, outlet, item,
+                    batch_number=str(line.get("batch_number") or "") or None,
+                    qty=accepted,
+                    expiry_date=_parse_date(line.get("expiry_date")),
+                    cost=unit_cost,
+                    location_id=location_id,
+                    grn_id=grn_id,
+                )
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    finally:
+        await db.close()
+
+
+def _parse_date(value) -> "date | None":
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    try:
+        return date.fromisoformat(str(value))
+    except (ValueError, TypeError):
+        return None
+
+
+async def _grn_already_recorded(grn_id, tenant) -> bool:
+    """Has this GRN already added stock, in a previous (possibly crashed) run?
+
+    Checked against the movement ledger, not a flag on the event: a process
+    that died between the stock commit and the outbox ack redelivers the same
+    event, and the ledger is the only thing that survives that restart."""
+    db = _handler_db()
+    try:
+        found = await db.scalar(
+            select(StockMovement.id).where(
+                StockMovement.reference_type == "grn",
+                StockMovement.reference_id == str(grn_id),
+                StockMovement.tenant_id == tenant,
+            ).limit(1)
+        )
+        return found is not None
+    finally:
+        await db.close()
+
+
 async def _recipe_for(menu_item_id: uuid.UUID) -> list[dict] | None:
     """Fetch a menu item's recipe lines from the menu service over HTTP.
 
@@ -258,6 +373,38 @@ async def _recipe_for(menu_item_id: uuid.UUID) -> list[dict] | None:
         return resp.json().get("lines") or None
     except Exception:
         return None
+
+
+async def _emit_low_stock_if_needed(
+    db: AsyncSession,
+    tenant: uuid.UUID,
+    outlet: uuid.UUID,
+    item_id: uuid.UUID,
+) -> None:
+    """After a stock-reducing movement, check whether the item just crossed
+    below its reorder level and emit ``stock.low`` — the proactive signal the
+    purchase service's auto-PR subscription is waiting on.
+
+    Without this check, the only low-stock signal anywhere was the *pull*
+    endpoint (``GET /items/low``), which means a tenant that never opens the
+    reorder board never gets an auto purchase request — the whole
+    stockout→PR chain stays silent by default.
+    """
+    item = await svc.load_item(db, tenant, item_id)
+    if item is None:
+        return
+    items = await svc.low_stock(db, tenant, outlet)
+    if any(i.id == item_id for i in items):
+        event = _ev(
+            "stock.low", tenant, outlet,
+            data={
+                "inventory_item_id": str(item_id),
+                "reorder_level": float(item.reorder_level or 0),
+            },
+        )
+        _outbox(db, event)
+        await db.commit()
+        await bus.publish(event, local=True)
 
 
 # ─── Items ───────────────────────────────────────────────────────────────────
@@ -667,3 +814,116 @@ async def deduct_manual(lines: list[RecipeLineSnapshot],
         created_by=identity.user_id,
     )
     return results
+
+
+# ─── Manual stock-in (no GRN) ────────────────────────────────────────────────
+
+@router.post("/items/{item_id}/stock-in", response_model=StockInResponse,
+             status_code=http_status.HTTP_201_CREATED, tags=["inventory"],
+             summary="Record a walk-in receipt with no purchase document behind it")
+async def stock_in(
+    item_id: uuid.UUID,
+    payload: StockInRequest,
+    identity: CurrentIdentity,
+    db: DbDep,
+    outlet_id: uuid.UUID,
+):
+    """A delivery that was never ordered, an emergency top-up — distinct from
+    opening stock (the very first load) and from a GRN receipt (which has a
+    vendor and a paper trail)."""
+    identity.require("manage:inventory")
+    item = await svc.load_item(db, identity.tenant_id, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    movement = await svc.record_stock_in(
+        db, identity.tenant_id, outlet_id, item, payload.qty,
+        location_id=payload.location_id,
+        unit_cost=payload.unit_cost,
+        notes=payload.notes,
+        created_by=identity.user_id,
+    )
+    return StockInResponse(
+        movement_id=movement.id,
+        qty=float(movement.qty),
+        location_id=movement.location_id,
+        reference_type="manual_stock_in",
+    )
+
+
+# ─── Transfers (hub & spoke) ────────────────────────────────────────────────
+
+@router.post("/transfers", response_model=StockTransferResponse,
+             status_code=http_status.HTTP_201_CREATED, tags=["inventory"],
+             summary="Move stock between locations, atomic two-movement pair")
+async def transfer(
+    payload: StockTransferCreate,
+    identity: CurrentIdentity,
+    db: DbDep,
+):
+    """Central warehouse -> module store, or any two named locations. The
+    two movements commit or roll back together, so a transfer that fails
+    halfway cannot leave source and destination stock out of sync."""
+    identity.require("manage:inventory")
+    item = await svc.load_item(db, identity.tenant_id, payload.inventory_item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    try:
+        result = await svc.transfer_stock(
+            db, identity.tenant_id, payload.outlet_id,
+            payload.source_location_id, payload.destination_location_id,
+            item, payload.qty,
+            notes=payload.notes,
+            created_by=identity.user_id,
+        )
+    except svc.InventoryError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return result
+
+
+# ─── Batches & expiry ───────────────────────────────────────────────────────
+
+@router.get("/batches", response_model=BatchListResponse, tags=["inventory"],
+            summary="List lots for an item, soonest-expiring first (FEFO order)")
+async def list_batches(
+    identity: CurrentIdentity,
+    db: DbDep,
+    outlet_id: uuid.UUID | None = None,
+    item_id: uuid.UUID | None = None,
+):
+    """The FEFO view: what lots do I have, in the order I'd pick them."""
+    identity.require("view:inventory")
+    stmt = select(InventoryBatch).where(
+        InventoryBatch.tenant_id == identity.tenant_id
+    )
+    if outlet_id:
+        stmt = stmt.where(InventoryBatch.outlet_id == outlet_id)
+    if item_id:
+        stmt = stmt.where(InventoryBatch.inventory_item_id == item_id)
+    stmt = stmt.order_by(
+        InventoryBatch.expiry_date.asc().nulls_last(),
+        InventoryBatch.created_at.asc(),
+    )
+    rows = list((await db.execute(stmt)).scalars().all())
+    return {"items": rows, "total": len(rows)}
+
+
+@router.get("/expiry-scan", response_model=ExpiryScanResponse, tags=["inventory"],
+            summary="Every lot expired or expiring within N days, this outlet")
+async def expiry_scan(
+    identity: CurrentIdentity,
+    db: DbDep,
+    outlet_id: uuid.UUID,
+    within_days: int = Query(default=7, ge=0, le=365),
+):
+    """The 'what do I throw out today' check — nothing in the current code
+    looked at batches at all, so an item flagged ``track_expiry`` could be
+    consumed past its date with zero signal."""
+    identity.require("view:inventory")
+    results = await svc.expiry_scan(
+        db, identity.tenant_id, outlet_id, within_days=within_days
+    )
+    return ExpiryScanResponse(
+        items=[ExpiryScanEntry(**r) for r in results],
+        total=len(results),
+        within_days=within_days,
+    )

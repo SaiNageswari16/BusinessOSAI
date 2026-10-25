@@ -1079,7 +1079,10 @@ export async function addMenuItem(item: Omit<MenuItem, "id">): Promise<MenuItem>
         name: item.name,
         code: `M${menuItems.length}`,
         base_price: item.price,
-        item_type: item.veg ? "veg" : "non_veg",
+        // The menu service's create payload models the coarse category
+        // (dish/beverage/retail/service); veg/non-veg is tracked on the
+        // menu item's own flags, not the create payload.
+        item_type: "dish",
         is_available: item.available ?? true,
       });
     }

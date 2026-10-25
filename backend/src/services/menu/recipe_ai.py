@@ -163,9 +163,11 @@ def _resolve_from_index(
 
     Resolution order:
       1. explicit client override (``overrides`` by name or code),
-      2. the ingredient's ``inventory_code`` matched against the live item
+      2. the ingredient's own ``inventory_item_id`` (menu DB recipe lines
+         already carry a real UUID — the highest-confidence source),
+      3. the ingredient's ``inventory_code`` matched against the live item
          list's ``code`` field,
-      3. fuzzy name: exact, then substring, against the live item list.
+      4. fuzzy name: exact, then substring, against the live item list.
     Unknown ingredients come back ``None`` — they show as
     ``inventory_item_id: null`` and reconcile as ``missing``.
     """
@@ -178,6 +180,8 @@ def _resolve_from_index(
             ):
                 target = val
                 break
+    if target is None and ing.inventory_item_id is not None:
+        target = ing.inventory_item_id
     if target is None and ing.inventory_code:
         target = code_index.get(ing.inventory_code.lower())
     if target is None:
@@ -1034,7 +1038,7 @@ def _catalog_to_recipe_result(spec) -> AiRecipeResult:
 
 
 async def _resolve_recipe_ref(
-    db, identity, ref: str
+    db, identity, ref: str, outlet_id: uuid.UUID | None = None
 ) -> AiRecipeResult | None:
     """Resolve a 'recipe_name_or_id' string to a normalized recipe.
 
@@ -1042,7 +1046,12 @@ async def _resolve_recipe_ref(
     (tenant-scoped, with an active recipe). None when nothing matches — the
     caller turns that into a 404 with a helpful detail. Async because it
     reads the menu DB; the pure parts stay testable by passing a real or
-    fake db session."""
+    fake db session.
+
+    ``outlet_id`` narrows the menu-item lookup when the caller is working in
+    a single-outlet context (the recipes page always is), so a tenant with
+    the same dish on two outlets doesn't hit the wrong one.
+    """
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
     from src.services.menu.models import MenuItem, Recipe
@@ -1051,20 +1060,28 @@ async def _resolve_recipe_ref(
     if spec is not None:
         return _catalog_to_recipe_result(spec)
 
-    # Menu item by id or by name (tenant-scoped).
+    # Menu item by id or by name (tenant-scoped, optionally outlet-scoped).
     item = None
+    item_stmt = select(MenuItem).where(MenuItem.tenant_id == identity.tenant_id)
+    if outlet_id is not None:
+        item_stmt = item_stmt.where(MenuItem.outlet_id == outlet_id)
     try:
         parsed_ref = uuid.UUID(ref)
         item = await db.scalar(
-            select(MenuItem).where(MenuItem.id == parsed_ref,
-                                  MenuItem.tenant_id == identity.tenant_id)
+            item_stmt.where(MenuItem.id == parsed_ref)
         )
+        # The caller may hold an item id from a *different* outlet scope
+        # (e.g. an org-wide menu item); retry tenant-wide before giving up.
+        if item is None:
+            item = await db.scalar(
+                select(MenuItem).where(
+                    MenuItem.id == parsed_ref,
+                    MenuItem.tenant_id == identity.tenant_id,
+                )
+            )
     except (ValueError, TypeError):
         item = await db.scalar(
-            select(MenuItem).where(
-                MenuItem.tenant_id == identity.tenant_id,
-                MenuItem.name.ilike(ref),
-            )
+            item_stmt.where(MenuItem.name.ilike(ref)).limit(1)
         )
     if item is not None:
         recipe = await db.scalar(
@@ -1077,7 +1094,7 @@ async def _resolve_recipe_ref(
         )
         if recipe is not None:
             # Recipe lines carry no names — the inventory item ids are what
-            # matters; reconcile resolves each against the live item list to
+            # matter; reconcile resolves each against the live item list to
             # get names/units for display.
             yield_qty = float(recipe.yield_qty or 1) or 1.0
             raw_type = str(item.item_type or "non_veg")
@@ -1087,6 +1104,7 @@ async def _resolve_recipe_ref(
                 item_type=raw_type if raw_type in ("veg", "non_veg", "beverage") else "non_veg",
                 yield_qty=yield_qty,
                 source="catalog",
+                instructions=recipe.instructions or None,
                 ingredients=[
                     AiRecipeSearchIngredient(
                         name="",
@@ -1103,7 +1121,8 @@ async def _resolve_recipe_ref(
 
 
 async def ai_recipe_reconcile_endpoint(
-    payload: AiReconcileRequest, identity, db
+    payload: AiReconcileRequest, identity, db,
+    outlet_id: uuid.UUID | None = None,
 ) -> AiReconcileResponse:
     """POST /ai/recipe-reconcile — reconcile a recipe against live inventory.
 
@@ -1127,7 +1146,7 @@ async def ai_recipe_reconcile_endpoint(
                        "menu-item name), 'recipe_id', or a full 'recipe' "
                        "object.",
             )
-        recipe = await _resolve_recipe_ref(db, identity, ref)
+        recipe = await _resolve_recipe_ref(db, identity, ref, outlet_id)
         if recipe is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -1144,13 +1163,14 @@ async def ai_recipe_reconcile_endpoint(
         items = await _inventory_items(client, identity)
         code_index, name_index = _item_indexes(items)
 
-        resolved: list[tuple[AiRecipeSearchIngredient, uuid.UUID | None]] = [
+        resolved: list[tuple[AiRecipeSearchIngredient, uuid.UUID | None, str]] = [
             (ing, _resolve_from_index(ing, payload.inventory_item_ids,
-                                      code_index, name_index))
+                                     code_index, name_index),
+             ing.name or (ing.inventory_code or ""))
             for ing in recipe.ingredients
         ]
 
-        ids = [iid for _i, iid in resolved if iid is not None]
+        ids = [iid for _i, iid, _n in resolved if iid is not None]
         lookup = await _inventory_cost_lookup(client, identity, ids)
 
         # Vendor + suggested qty per resolved item, so each line can carry
@@ -1162,7 +1182,7 @@ async def ai_recipe_reconcile_endpoint(
     cost_known = True
     low_count = 0
     missing_count = 0
-    for ing, iid in resolved:
+    for ing, iid, ing_name in resolved:
         per_portion = float(ing.qty_per_portion or 0)
         wastage = float(ing.wastage_pct or 0)
         required = per_portion / yield_qty * portions * (1 + wastage / 100.0)
@@ -1215,9 +1235,10 @@ async def ai_recipe_reconcile_endpoint(
             line_cost = round(required * float(unit_cost), 4)
             total_cost += required * float(unit_cost)
 
-        # A nameless ingredient (menu-DB recipe) falls back to the live
-        # inventory item's name/unit, when the lookup carries them.
-        name = ing.name or (entry.get("name") if entry else None) or str(iid or "")
+        # A nameless ingredient (menu-DB recipe, where recipe lines carry a
+        # bare UUID) falls back to the caller-supplied ingredient name, then
+        # to the live inventory item's name/unit from the cost-lookup.
+        name = ing_name or (entry.get("name") if entry else None) or str(iid or "")
         unit = ing.unit or (entry.get("code") if entry else "") or ""
         vrow = vendor_rows.get(iid) if iid else None
         vendor_id = (
@@ -1287,7 +1308,7 @@ async def _reconcile_to_reorder_lines(
             (ing, _resolve_from_index(ing, None, code_index, name_index))
             for ing in recipe.ingredients
         ]
-        ids = [iid for _i, iid in resolved if iid is not None]
+        ids = [iid for _ing, iid in resolved if iid is not None]
         lookup = await _inventory_cost_lookup(client, identity, ids)
         for ing, iid in resolved:
             per_portion = float(ing.qty_per_portion or 0)
@@ -1296,14 +1317,31 @@ async def _reconcile_to_reorder_lines(
             entry = lookup.get(str(iid)) if iid else None
             available = float(entry.get("total_available", 0.0)) if entry else 0.0
             reorder = float(entry.get("reorder_level", 0.0)) if entry else 0.0
-            if iid is None or available <= 0:
+            # A nameless ingredient (menu-DB recipe) falls back to the live
+            # inventory item's name from the cost-lookup, then to the raw
+            # UUID as a last resort so the line is never blank.
+            ing_name = ing.name or (entry.get("name") if entry else None) or str(iid or "")
+            if iid is None:
+                # Unknown ingredient — report it so the caller sees what's
+                # unmatched; it will be skipped at PO-creation time (no item
+                # to order) but is visible in the idempotent/skipped list.
+                lines.append(AiReorderLineIn(
+                    inventory_item_id=None,
+                    name=ing_name or "unknown",
+                    status="missing",
+                    suggested_po_qty=0.0,
+                    shortfall=round(required, 4),
+                    reorder_level=0.0,
+                    available_stock=0.0,
+                    required_for_n=round(required, 4),
+                ))
+                continue
+            if available <= 0:
                 st = "missing"
             elif available <= reorder or available < required:
                 st = "low"
             else:
                 continue  # in stock — not a reorder line
-            if st == "in_stock":
-                continue
             if st == "low":
                 suggested = 0.0
             else:
@@ -1311,7 +1349,7 @@ async def _reconcile_to_reorder_lines(
                 suggested = round(max(0.0, target - available), 4)
             lines.append(AiReorderLineIn(
                 inventory_item_id=iid,
-                name=ing.name,
+                name=ing_name,
                 status=st,  # type: ignore[arg-type]
                 suggested_po_qty=suggested,
                 shortfall=round(max(0.0, required - available), 4),

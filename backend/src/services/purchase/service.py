@@ -285,7 +285,27 @@ async def create_grn(
     Accepted quantity is what enters the store; rejected is what goes back to
     the vendor and is never billed. Recording both at receipt is what makes the
     "we paid for what we kept" check possible at month end.
+
+    This function is also where the P2P chain closes on the purchase side:
+    the accepted quantity is accumulated back onto the PO line's
+    ``received_qty`` — the single source of truth for "how much of this PO
+    has actually arrived so far" — and the PO's header status is advanced to
+    PARTIAL or RECEIVED accordingly. Without that, multiple partial receipts
+    against one PO are impossible to track, and the PO can never move off
+    DRAFT/SENT on real data.
     """
+    # Load the PO's lines so we can accumulate received_qty onto the right row.
+    po_lines = (
+        await db.execute(
+            select(PurchaseOrderLine).where(
+                PurchaseOrderLine.purchase_order_id == po.id
+            )
+        )
+    ).scalars().all()
+    po_lines_by_item = {
+        row.inventory_item_id: row for row in po_lines
+    }
+
     grn = GoodsReceiptNote(
         tenant_id=tenant_id,
         outlet_id=po.outlet_id,
@@ -300,8 +320,29 @@ async def create_grn(
     db.add(grn)
     await db.flush()
 
+    fully_received_count = 0
+    total_po_lines = 0
+
     for line in lines:
         accepted = float(line.accepted_qty)
+        po_line = po_lines_by_item.get(line.inventory_item_id)
+        total_po_lines += 1
+
+        # Over-receipt guard: you cannot accept more than what was ordered,
+        # minus what has already been received on a previous partial GRN.
+        if po_line is not None:
+            already = float(po_line.received_qty)
+            ordered = float(po_line.ordered_qty)
+            if accepted > ordered - already:
+                raise PurchaseError(
+                    f"Over-receipt on {line.inventory_item_id}: "
+                    f"ordered {ordered}, already received {already}, "
+                    f"accepted {accepted}"
+                )
+            po_line.received_qty = already + accepted
+            if po_line.received_qty >= ordered:
+                fully_received_count += 1
+
         db.add(GRNLine(
             tenant_id=tenant_id,
             grn_id=grn.id,
@@ -317,8 +358,13 @@ async def create_grn(
             expiry_date=getattr(line, "expiry_date", None),
         ))
 
-    # Receipt moves the order, but only to RECEIVED if every line was received
-    # in full. A partial delivery must show PARTIAL so the balance is visible.
+    # Receipt moves the order forward: every line received in full = RECEIVED,
+    # any line still short = PARTIAL. The balance stays visible either way.
+    if po_lines_by_item and fully_received_count >= len(po_lines_by_item):
+        await set_po_status(db, tenant_id, po, POStatus.RECEIVED)
+    else:
+        await set_po_status(db, tenant_id, po, POStatus.PARTIAL)
+
     await db.flush()
     return grn
 
@@ -446,3 +492,79 @@ def total_for(bill: VendorBill) -> float:
     """
     return _money((float(bill.subtotal) if bill.subtotal else 0)
                   + (float(bill.tax_total) if bill.tax_total else 0))
+
+
+# ─── Three-way match ───────────────────────────────────────────────────────
+
+async def three_way_match(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    grn_id: uuid.UUID,
+    *,
+    tolerance_pct: float = 0.0,
+) -> dict:
+    """PO vs GRN vs bill, per line, against a declared tolerance.
+
+    This is the "we only pay for what we actually got" check, made concrete:
+    for every GRN line, compare the accepted quantity × agreed price against
+    what the PO line said we ordered and agreed to pay. A variance beyond
+    tolerance means the bill and the order disagree — that is the moment to
+    flag it, not after the money is already gone.
+
+    ``tolerance_pct`` is a percentage of the PO line's expected amount, not
+    a flat number — a ₹2 slip on a ₹2000 order is noise, on a ₹20 order it
+    is not, and a flat threshold would need to be re-tuned per vendor.
+    """
+    grn = await load_grn(db, tenant_id, grn_id)
+    if grn is None:
+        raise PurchaseError("GRN not found")
+
+    po = await load_order(db, tenant_id, grn.po_id)
+    if po is None:
+        raise PurchaseError("Source purchase order not found")
+
+    po_lines_by_item = {
+        row.inventory_item_id: row
+        for row in (
+            await db.execute(
+                select(PurchaseOrderLine).where(
+                    PurchaseOrderLine.purchase_order_id == po.id
+                )
+            )
+        ).scalars().all()
+    }
+
+    mismatches: list[dict] = []
+    for grn_line in grn.lines:
+        po_line = po_lines_by_item.get(grn_line.inventory_item_id)
+        if po_line is None:
+            mismatches.append({
+                "inventory_item_id": str(grn_line.inventory_item_id),
+                "issue": "GRN line has no matching PO line",
+                "po_amount": 0.0,
+                "grn_amount": float(grn_line.line_total),
+                "variance": float(grn_line.line_total),
+            })
+            continue
+
+        expected = _money(float(po_line.ordered_qty) * float(po_line.unit_price))
+        actual = float(grn_line.line_total)
+        variance = _money(actual - expected)
+        within = abs(variance) <= _money(expected * (float(tolerance_pct) / 100.0))
+        if not within:
+            mismatches.append({
+                "inventory_item_id": str(grn_line.inventory_item_id),
+                "issue": f"Variance ₹{variance} exceeds {float(tolerance_pct):g}%",
+                "po_amount": expected,
+                "grn_amount": actual,
+                "variance": variance,
+            })
+
+    return {
+        "grn_id": str(grn_id),
+        "po_id": str(po.id),
+        "tolerance_pct": tolerance_pct,
+        "match": not mismatches,
+        "mismatches": mismatches,
+    }
+

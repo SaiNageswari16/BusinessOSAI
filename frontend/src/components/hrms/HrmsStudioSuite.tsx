@@ -16,6 +16,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { modulesApi } from "@/lib/api-client";
 
 import { EmployeeManagement } from "./EmployeeManagement";
 import { AttendanceManagement } from "./AttendanceManagement";
@@ -210,6 +211,29 @@ export const HRMS_STUDIOS: StudioTab[] = [
   },
 ];
 
+/**
+ * Studio visibility groups for the staff module gate. The whole suite is
+ * served by the "staff" service (URL aliases /hrms and /erp), so when the
+ * tenant's staff module is suspended or archived the ribbon shows only the
+ * "core" studios — the advanced ATS / AI add-on tabs disappear with the
+ * suspended feature flags, while the core suite stays reachable so the
+ * module's data (shadowed for other modules' use) still has a UI.
+ */
+const STAFF_STUDIO_GROUPS: Record<string, "core" | "ats" | "ai"> = {
+  employees: "core",
+  attendance: "core",
+  travel_routes: "core",
+  leaves: "core",
+  payroll: "core",
+  payslip_templates: "core",
+  recruitment: "ats",
+  performance: "core",
+  learning: "core",
+  ess: "core",
+  exit: "core",
+  intelligence: "ai",
+};
+
 export function HrmsStudioSuite() {
   const routerState = useRouterState();
   const searchStr = routerState.location.searchStr;
@@ -229,6 +253,37 @@ export function HrmsStudioSuite() {
 
   const [activeStudioId, setActiveStudioId] = useState(getInitialTab().studioId);
   const [activeSubtabId, setActiveSubtabId] = useState(getInitialTab().subtabId);
+  const [staffModuleState, setStaffModuleState] = useState<string | null>(null);
+  const [statusChecked, setStatusChecked] = useState(false);
+
+  // Ask the platform for this tenant's module rows. The gateway forwards
+  // this probe with the caller's identity (never the gate) so a suspended
+  // module still reports its own state — the UI is what has to hide.
+  useEffect(() => {
+    let cancelled = false;
+    modulesApi
+      .me()
+      .then((res) => {
+        if (cancelled) return;
+        const row = res.modules.find((m) => m.module_key === "staff");
+        setStaffModuleState(row ? row.state : "active");
+      })
+      .catch(() => {
+        if (!cancelled) setStaffModuleState("active");
+      })
+      .finally(() => {
+        if (!cancelled) setStatusChecked(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const moduleRestrictsStudios = statusChecked && staffModuleState !== "active";
+
+  const visibleStudios = HRMS_STUDIOS.filter(
+    (s) => !moduleRestrictsStudios || STAFF_STUDIO_GROUPS[s.id] === "core"
+  );
 
   useEffect(() => {
     if (searchStr.includes("tab=")) {
@@ -244,8 +299,26 @@ export function HrmsStudioSuite() {
     }
   }, [searchStr]);
 
+  // If the tenant suspended a studio we had open (or came here with it in
+  // the URL), fall back to the first visible studio.
+  useEffect(() => {
+    if (statusChecked && !visibleStudios.some((s) => s.id === activeStudioId)) {
+      const fallback = visibleStudios[0];
+      if (fallback) {
+        setActiveStudioId(fallback.id);
+        setActiveSubtabId(fallback.defaultSubtab);
+        if (typeof window !== "undefined") {
+          const url = new URL(window.location.href);
+          url.searchParams.set("tab", fallback.defaultSubtab);
+          window.history.replaceState({}, "", url.toString());
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusChecked, staffModuleState]);
+
   const currentStudio =
-    HRMS_STUDIOS.find((s) => s.id === activeStudioId) || HRMS_STUDIOS[0];
+    visibleStudios.find((s) => s.id === activeStudioId) || visibleStudios[0] || HRMS_STUDIOS[0];
 
   const handleStudioSelect = (studio: StudioTab) => {
     setActiveStudioId(studio.id);
@@ -267,7 +340,7 @@ export function HrmsStudioSuite() {
     }
   };
 
-  const ActiveComponent = currentStudio.component;
+  const ActiveComponent = currentStudio?.component ?? EmployeeManagement;
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
@@ -275,7 +348,7 @@ export function HrmsStudioSuite() {
       <div className="sticky top-0 z-30 border-b border-border bg-card/95 backdrop-blur-md px-4 py-2.5 shadow-sm">
         <div className="flex items-center justify-between gap-4 overflow-x-auto no-scrollbar">
           <div className="flex items-center gap-1.5 min-w-max">
-            {HRMS_STUDIOS.map((studio) => {
+            {visibleStudios.map((studio) => {
               const Icon = studio.icon;
               const isActive = studio.id === activeStudioId;
               return (
@@ -309,13 +382,23 @@ export function HrmsStudioSuite() {
           </div>
 
           <div className="hidden lg:flex items-center gap-2 text-xs text-muted-foreground whitespace-nowrap pl-2 border-l border-border">
+            {statusChecked && staffModuleState !== "active" && visibleStudios.length < HRMS_STUDIOS.length && (
+              <>
+                <span className="rounded-full bg-amber-500/15 text-amber-600 px-2 py-0.5 font-medium">
+                  {staffModuleState === "archived" ? "Module archived" : "Module suspended"}
+                </span>
+                <span className="text-muted-foreground/70">
+                  advanced studios hidden for this tenant
+                </span>
+              </>
+            )}
             <Sparkles className="h-3.5 w-3.5 text-primary animate-pulse" />
             <span className="font-semibold text-foreground">RestaurantOS HRMS Suite</span>
           </div>
         </div>
 
         {/* Sub-Tabs Ribbon */}
-        {currentStudio.subtabs && currentStudio.subtabs.length > 1 && (
+        {currentStudio?.subtabs && currentStudio.subtabs.length > 1 && (
           <div className="flex items-center gap-1 pt-2.5 mt-2 border-t border-border/50 overflow-x-auto no-scrollbar">
             {currentStudio.subtabs.map((subtab) => {
               const isSubActive = subtab.id === activeSubtabId;
@@ -340,7 +423,7 @@ export function HrmsStudioSuite() {
 
       {/* Main Studio Viewport */}
       <main className="flex-1 p-4 md:p-6 max-w-[1600px] w-full mx-auto">
-        <StudioErrorBoundary studioName={currentStudio.label}>
+        <StudioErrorBoundary studioName={currentStudio?.label ?? "Studio"}>
           <ActiveComponent tab={activeSubtabId} subtab={activeSubtabId} />
         </StudioErrorBoundary>
       </main>
@@ -352,14 +435,14 @@ class StudioErrorBoundary extends React.Component<
   { studioName: string; children: React.ReactNode },
   { error: Error | null }
 > {
-  state = { error: null as Error | null };
+  override state = { error: null as Error | null };
   static getDerivedStateFromError(error: Error) {
     return { error };
   }
-  componentDidCatch(error: Error, info: React.ErrorInfo) {
+  override componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error(`[HRMS Studio Error: ${this.props.studioName}]`, error, info);
   }
-  render() {
+  override render() {
     if (this.state.error) {
       return (
         <div className="p-8 rounded-2xl bg-destructive/10 border border-destructive/20 text-center space-y-4">

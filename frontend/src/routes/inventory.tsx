@@ -346,7 +346,8 @@ function InventoryPage() {
                 const rest = locations.find((l) => l.module === "restaurant");
                 if (central) setSourceLocId(central.id);
                 if (rest) setDestLocId(rest.id);
-                if (allItems.length > 0) setSelectedItemId(allItems[0].id);
+                const firstItem = allItems[0];
+                if (firstItem) setSelectedItemId(firstItem.id);
                 setTransferModalOpen(true);
               }}
               className="gap-1.5 border border-primary/20 bg-primary/10 text-primary hover:bg-primary/20"

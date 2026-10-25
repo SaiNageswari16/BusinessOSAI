@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   Boxes,
@@ -6,6 +6,8 @@ import {
   CheckCircle2,
   ChevronRight,
   Filter,
+  PauseCircle,
+  PlayCircle,
   Plus,
   RefreshCw,
   Search,
@@ -15,12 +17,25 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { platformService, type TenantSummary, type TenantOnboardPayload } from "@/services/platformService";
+import {
+  platformService,
+  type TenantModuleState,
+  type TenantOnboardPayload,
+  type TenantRosterItem,
+} from "@/services/platformService";
+import { ALL_MODULE_KEYS, moduleLabel } from "@/lib/platform-modules";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -44,13 +59,22 @@ const VERTICAL_OPTIONS = [
   { value: "carwash", label: "Auto Care & Car Wash", icon: "🚗" },
 ];
 
+const PAGE_SIZE = 50;
+
 function PlatformTenantsPage() {
-  const [tenants, setTenants] = useState<TenantSummary[]>([]);
+  const [roster, setRoster] = useState<TenantRosterItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [verticalFilter, setVerticalFilter] = useState("all");
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // Per-tenant module state panel
+  const [selectedTenant, setSelectedTenant] = useState<TenantRosterItem | null>(null);
+  const [tenantModuleStates, setTenantModuleStates] = useState<TenantModuleState[]>([]);
+  const [moduleLoading, setModuleLoading] = useState(false);
+  const [moduleBusy, setModuleBusy] = useState<string | null>(null);
 
   // Form State
   const [form, setForm] = useState<TenantOnboardPayload>({
@@ -68,23 +92,78 @@ function PlatformTenantsPage() {
     owner_password: "",
   });
 
-  const fetchTenants = async () => {
+  const fetchRoster = useCallback(async (nextPage: number, searchQuery: string) => {
     try {
       setLoading(true);
-      const data = await platformService.getTenants();
-      setTenants(data);
+      const res = await platformService.listAllTenants({
+        limit: PAGE_SIZE,
+        offset: nextPage * PAGE_SIZE,
+        search: searchQuery || undefined,
+      });
+      setRoster(res.items);
+      setTotal(res.total);
+      setPage(nextPage);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to load tenants";
+      const message = err instanceof Error ? err.message : "Failed to load tenant roster";
       toast.error(message);
-      setTenants([]);
+      setRoster([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchTenants();
-  }, []);
+    fetchRoster(0, "");
+  }, [fetchRoster]);
+
+  // Debounced search — a fleet of thousands of tenants cannot round-trip
+  // on every keystroke; the server owns the filter, so the debounce decides
+  // when to ask it.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      fetchRoster(0, search);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [search, fetchRoster]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const openModulePanel = async (tenant: TenantRosterItem) => {
+    if (!tenant.id) return; // never-onboarded row without an auth id — nothing to gate
+    setSelectedTenant(tenant);
+    try {
+      setModuleLoading(true);
+      const states = await platformService.getTenantModules(tenant.id);
+      setTenantModuleStates(states);
+    } catch {
+      setTenantModuleStates([]);
+    } finally {
+      setModuleLoading(false);
+    }
+  };
+
+  const handleModuleAction = async (action: "activate" | "suspend" | "archive", pluginId: string) => {
+    if (!selectedTenant?.id) return;
+    try {
+      setModuleBusy(`${action}-${pluginId}`);
+      if (action === "activate") await platformService.activateTenantModule(selectedTenant.id, pluginId);
+      else if (action === "suspend") await platformService.suspendTenantModule(selectedTenant.id, pluginId);
+      else await platformService.archiveTenantModule(selectedTenant.id, pluginId);
+      toast.success(
+        `${pluginId} ${action === "activate" ? "activated" : action === "suspend" ? "suspended" : "archived"} for ${selectedTenant.name}`
+      );
+      const states = await platformService.getTenantModules(selectedTenant.id);
+      setTenantModuleStates(states);
+      // Refresh the roster page so the module chips stay accurate.
+      fetchRoster(page, debouncedSearch);
+    } catch (err: unknown) {
+      toast.error((err as Error).message || `Module ${action} failed`);
+    } finally {
+      setModuleBusy(null);
+    }
+  };
 
   const handleNameChange = (name: string) => {
     const slug = name
@@ -110,24 +189,14 @@ function PlatformTenantsPage() {
       const res = await platformService.onboardTenant(form);
       toast.success(`Tenant '${res.name}' provisioned successfully across Auth, Org, & Platform databases!`);
       setModalOpen(false);
-      fetchTenants();
+      // Jump the roster to page 1 where the new tenant will land (newest first).
+      fetchRoster(0, debouncedSearch);
     } catch (err) {
       toast.error((err as Error).message || "Tenant onboarding failed");
     } finally {
       setSubmitting(false);
     }
   };
-
-  const filtered = tenants.filter((t) => {
-    const matchesSearch =
-      t.name.toLowerCase().includes(search.toLowerCase()) ||
-      t.slug.toLowerCase().includes(search.toLowerCase()) ||
-      (t.contact_email && t.contact_email.toLowerCase().includes(search.toLowerCase()));
-    const matchesVertical =
-      verticalFilter === "all" ||
-      t.active_modules.some((m) => m.toLowerCase().includes(verticalFilter));
-    return matchesSearch && matchesVertical;
-  });
 
   return (
     <div className="space-y-6">
@@ -186,6 +255,55 @@ function PlatformTenantsPage() {
                     );
                   })}
                 </div>
+              </div>
+
+              {/* Module Agreement — the enable/disable set per contract */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-slate-700 font-medium">
+                  Enable Modules for This Tenant (agreement)
+                </Label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                  {ALL_MODULE_KEYS.map((mod) => {
+                    const checked = form.enabled_modules.includes(mod) || form.vertical === mod;
+                    return (
+                      <button
+                        type="button"
+                        key={mod}
+                        onClick={() =>
+                          setForm((prev) => {
+                            const has = prev.enabled_modules.includes(mod);
+                            return {
+                              ...prev,
+                              enabled_modules: has
+                                ? prev.enabled_modules.filter((m) => m !== mod)
+                                : [...prev.enabled_modules, mod],
+                            };
+                          })
+                        }
+                        className={cn(
+                          "flex items-center gap-2 p-2 rounded-lg border text-[11px] font-mono transition-all",
+                          checked
+                            ? "bg-emerald-50 border-emerald-300 text-emerald-800 font-medium"
+                            : "bg-slate-50 border-slate-200 text-slate-500 hover:text-slate-800"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "size-3.5 rounded border flex items-center justify-center shrink-0",
+                            checked ? "bg-emerald-500 border-emerald-500" : "bg-white border-slate-300"
+                          )}
+                        >
+                          {checked && <CheckCircle2 className="size-3 text-white" />}
+                        </span>
+                        <span className="truncate">{mod}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  Unchecked modules are switched off at onboarding; the gateway's per-tenant
+                  module gate then blocks them (404) within the 5s cache window.
+                </p>
               </div>
 
               {/* Organization Info */}
@@ -347,25 +465,13 @@ function PlatformTenantsPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Select value={verticalFilter} onValueChange={setVerticalFilter}>
-            <SelectTrigger className="w-[180px] bg-white border-slate-200 text-xs h-9 text-slate-700 shadow-xs">
-              <SelectValue placeholder="All Verticals" />
-            </SelectTrigger>
-            <SelectContent className="bg-white border-slate-200 text-slate-900 shadow-md">
-              <SelectItem value="all">All Verticals</SelectItem>
-              <SelectItem value="restaurant">Restaurant OS</SelectItem>
-              <SelectItem value="salon">Salon & Spa</SelectItem>
-              <SelectItem value="gym">Gym & Fitness</SelectItem>
-              <SelectItem value="retail">Retail Store</SelectItem>
-              <SelectItem value="clinic">Clinic Care</SelectItem>
-              <SelectItem value="carwash">Auto Care</SelectItem>
-            </SelectContent>
-          </Select>
-
+          <span className="text-xs text-slate-500 font-mono">
+            {total} tenants • page {page + 1} of {totalPages}
+          </span>
           <Button
             variant="outline"
             size="icon"
-            onClick={fetchTenants}
+            onClick={() => fetchRoster(page, debouncedSearch)}
             disabled={loading}
             className="border-slate-200 bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 size-9 shadow-xs"
           >
@@ -386,23 +492,37 @@ function PlatformTenantsPage() {
                 <th className="py-3 px-4">Contact</th>
                 <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4">Created</th>
+                <th className="py-3 px-4 text-right">Modules</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
-              {filtered.length === 0 ? (
+              {roster.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-500 text-xs">
-                    No enterprise tenants found matching the filter.
+                  <td colSpan={7} className="py-12 text-center text-slate-500 text-xs">
+                    {loading ? "Loading tenant roster..." : "No tenants found matching the filter."}
                   </td>
                 </tr>
               ) : (
-                filtered.map((tenant) => (
-                  <tr key={tenant.tenant_id} className="hover:bg-slate-50/80 transition-colors">
+                roster.map((tenant) => (
+                  <tr
+                    key={tenant.id ?? tenant.slug}
+                    onClick={() => openModulePanel(tenant)}
+                    className="hover:bg-indigo-50/40 transition-colors cursor-pointer"
+                    title="Click to manage this tenant's modules"
+                  >
                     <td className="py-3 px-4">
                       <div className="space-y-0.5">
                         <div className="font-semibold text-slate-900 flex items-center gap-1.5">
                           <Building2 className="size-3.5 text-indigo-600" />
                           <span>{tenant.name}</span>
+                          {!tenant.is_managed && (
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] font-mono border-amber-200 bg-amber-50 text-amber-700 px-1 py-0"
+                            >
+                              unmanaged
+                            </Badge>
+                          )}
                         </div>
                         <div className="text-[10px] font-mono text-slate-500">
                           {tenant.slug}
@@ -411,17 +531,21 @@ function PlatformTenantsPage() {
                     </td>
 
                     <td className="py-3 px-4">
-                      <div className="flex flex-wrap gap-1 max-w-xs">
-                        {tenant.active_modules.map((mod) => (
-                          <Badge
-                            key={mod}
-                            variant="outline"
-                            className="text-[10px] bg-slate-100 border-slate-200 text-indigo-700 font-mono px-1.5 py-0"
-                          >
-                            {mod}
-                          </Badge>
-                        ))}
-                      </div>
+                      {tenant.active_modules.length === 0 ? (
+                        <span className="text-[10px] text-slate-400">none managed yet</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1 max-w-xs">
+                          {tenant.active_modules.map((mod) => (
+                            <Badge
+                              key={mod}
+                              variant="outline"
+                              className="text-[10px] bg-slate-100 border-slate-200 text-indigo-700 font-mono px-1.5 py-0"
+                            >
+                              {mod}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
                     </td>
 
                     <td className="py-3 px-4">
@@ -432,16 +556,12 @@ function PlatformTenantsPage() {
                           tenant.plan === "enterprise"
                             ? "border-violet-200 text-violet-700 bg-violet-50"
                             : tenant.plan === "pro"
-                            ? "border-indigo-200 text-indigo-700 bg-indigo-50"
-                            : "border-slate-200 text-slate-600 bg-slate-100"
+                              ? "border-indigo-200 text-indigo-700 bg-indigo-50"
+                              : "border-slate-200 text-slate-600 bg-slate-100"
                         )}
                       >
                         {tenant.plan}
                       </Badge>
-                    </td>
-
-                    <td className="py-3 px-4 text-slate-600 text-[11px]">
-                      {tenant.contact_email || "—"}
                     </td>
 
                     <td className="py-3 px-4">
@@ -454,13 +574,145 @@ function PlatformTenantsPage() {
                     <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">
                       {new Date(tenant.created_at).toLocaleDateString()}
                     </td>
+
+                    <td className="py-3 px-4 text-right">
+                      <span className="text-indigo-600 text-[11px] font-medium flex items-center gap-1 justify-end">
+                        Manage Modules
+                        <ChevronRight className="size-3.5" />
+                      </span>
+                    </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {total > PAGE_SIZE && (
+          <div className="px-4 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page === 0 || loading}
+              onClick={() => fetchRoster(page - 1, debouncedSearch)}
+              className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs h-8 shadow-xs"
+            >
+              ← Previous
+            </Button>
+            <span className="text-[11px] font-mono text-slate-500">
+              Page {page + 1} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page + 1 >= totalPages || loading}
+              onClick={() => fetchRoster(page + 1, debouncedSearch)}
+              className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs h-8 shadow-xs"
+            >
+              Next →
+            </Button>
+          </div>
+        )}
       </div>
+
+      {/* Per-Tenant Module On/Off Panel */}
+      <Dialog open={!!selectedTenant} onOpenChange={(open) => !open && setSelectedTenant(null)}>
+        <DialogContent className="max-w-2xl bg-white border-slate-200 text-slate-900 max-h-[90vh] overflow-y-auto shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <Boxes className="size-5 text-indigo-600" />
+              Module Lifecycle — {selectedTenant?.name}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Toggle each module on/off per the agreement. Suspended or archived modules
+              are blocked by the gateway's per-tenant module gate within the 5s cache window.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2.5 pt-2">
+            {moduleLoading ? (
+              <div className="py-8 text-center text-xs text-slate-500 font-mono">Loading module states...</div>
+            ) : (
+              ALL_MODULE_KEYS.map((key) => {
+                const state = tenantModuleStates.find((s) => s.plugin_id === key)?.state;
+                // No row = active by default (the "never onboarded" case).
+                const effective = state ?? "active";
+
+                return (
+                  <div
+                    key={key}
+                    className={cn(
+                      "p-3 rounded-xl border flex items-center justify-between gap-3 transition-colors",
+                      effective === "active"
+                        ? "bg-white border-slate-200"
+                        : "bg-slate-50 border-slate-200 opacity-90"
+                    )}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className={cn("size-2 rounded-full shrink-0",
+                        effective === "active" ? "bg-emerald-500" : effective === "suspended" ? "bg-amber-500" : "bg-slate-400")} />
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold text-slate-900 truncate">{moduleLabel(key)}</div>
+                        <div className="text-[10px] font-mono text-slate-400 truncate">{key}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {effective !== "active" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleModuleAction("activate", key)}
+                          disabled={moduleBusy !== null}
+                          className="text-xs h-7 gap-1 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
+                        >
+                          <PlayCircle className="size-3.5" /> Activate
+                        </Button>
+                      )}
+                      {effective === "active" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleModuleAction("suspend", key)}
+                          disabled={moduleBusy !== null}
+                          className="text-xs h-7 gap-1 text-amber-700 hover:text-amber-800 hover:bg-amber-50"
+                        >
+                          <PauseCircle className="size-3.5" /> Suspend
+                        </Button>
+                      )}
+                      {effective !== "archived" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleModuleAction("archive", key)}
+                          disabled={moduleBusy !== null}
+                          className="text-xs h-7 gap-1 text-rose-700 hover:text-rose-800 hover:bg-rose-50"
+                        >
+                          <X className="size-3.5" /> Archive
+                        </Button>
+                      )}
+                      {moduleBusy && moduleBusy.endsWith(`-${key}`) && (
+                        <span className="text-[10px] font-mono text-slate-400 animate-pulse">working…</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <div className="pt-2 flex justify-end">
+            <Button
+              variant="outline"
+              onClick={() => setSelectedTenant(null)}
+              className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs h-8 shadow-xs"
+            >
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

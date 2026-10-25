@@ -275,6 +275,58 @@ class StockTransferResponse(BaseModel):
     transferred_at: datetime
 
 
+# ─── Batches & FEFO ─────────────────────────────────────────────────────────
+
+class BatchResponse(OrmModel):
+    id: uuid.UUID
+    outlet_id: uuid.UUID
+    inventory_item_id: uuid.UUID
+    location_id: uuid.UUID | None
+    batch_number: str
+    expiry_date: date | None
+    qty: float
+    cost: float
+    grn_id: uuid.UUID | None
+    created_at: datetime
+
+
+class BatchListResponse(BaseModel):
+    items: list[BatchResponse]
+    total: int
+
+
+class ExpiryScanEntry(BaseModel):
+    batch_id: uuid.UUID
+    batch_number: str
+    inventory_item_id: uuid.UUID
+    item_name: str | None = None
+    qty: float
+    expiry_date: str
+    status: str  # "expired" | "expiring" | "ok"
+
+
+class ExpiryScanResponse(BaseModel):
+    items: list[ExpiryScanEntry]
+    total: int
+    within_days: int
+
+
+# ─── Manual stock-in (no GRN) ────────────────────────────────────────────────
+
+class StockInRequest(BaseModel):
+    qty: float = Field(gt=0)
+    unit_cost: float | None = Field(default=None, ge=0)
+    location_id: uuid.UUID | None = None
+    notes: str | None = None
+
+
+class StockInResponse(BaseModel):
+    movement_id: uuid.UUID
+    qty: float
+    location_id: uuid.UUID | None
+    reference_type: str
+
+
 # ─── Global & Module Multi-Tier Inventory Rollup ─────────────────────────────
 
 class ModuleStockBreakdown(BaseModel):

@@ -903,6 +903,32 @@ export function clearApiCache(prefix?: string) {
   }
 }
 
+/**
+ * Tenant-side module lifecycle status.
+ *
+ * Returns the platform's TenantModuleState rows for the caller's tenant
+ * (or impersonation target). Modules absent from the list are "active by
+ * default" — the same convention as the gateway's module gate — so callers
+ * treat a missing entry as allowed. Used to hide ribbon studios (e.g. the
+ * Staff/HRMS suite) when the tenant has that module suspended or archived.
+ *
+ * Fail-open: a control-plane outage or a backend that doesn't have this
+ * endpoint yet returns an empty list, i.e. "all modules active".
+ */
+export const modulesApi = {
+  me: async (): Promise<{ tenant_id: string | null; modules: { module_key: string; state: string }[] }> => {
+    try {
+      return await request<{ tenant_id: string | null; modules: { module_key: string; state: string }[] }>(
+        "GET",
+        "/platform/tenants/me/modules",
+      );
+    } catch (e) {
+      console.warn("modulesApi.me: status unavailable, defaulting to all modules active", e);
+      return { tenant_id: null, modules: [] };
+    }
+  },
+};
+
 export async function request<T>(
   method: string,
   path: string,

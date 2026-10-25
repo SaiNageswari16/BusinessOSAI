@@ -84,6 +84,22 @@ function getAuthUserTenantId(): string | null {
   }
 }
 
+/**
+ * In the microservice split the tenant IS the company: the staff service has
+ * no `companies` table, and every HRMS/ERP endpoint scopes data by
+ * `tenant_id` (the gateway forwards it in X-Identity-Tenant-Id). The
+ * frontend's legacy "company_id" is therefore always the tenant id — using
+ * anything else (a mock company id, "c1", an empty string) sends a value
+ * that fails `uuid.UUID` validation and 422s on the backend.
+ */
+function getAuthCompanyId(): string | null {
+  return getAuthUserTenantId();
+}
+
+function getAuthCompanyName(): string | null {
+  return getAuthUserTenantName();
+}
+
 function getAuthUserTenantName(): string | null {
   try {
     const stored = localStorage.getItem("bos-auth");
@@ -95,26 +111,15 @@ function getAuthUserTenantName(): string | null {
   }
 }
 
+// The tenant is the company in the microservice architecture — see
+// getAuthCompanyId above. These legacy helpers exist for any code that
+// still references them; they must not return mock or undefined values.
 function getAuthUserCompanyId(): string | null {
-  try {
-    const stored = localStorage.getItem("bos-auth");
-    if (!stored) return null;
-    const parsed = JSON.parse(stored) as { user?: any };
-    return parsed.user?.companyId || parsed.user?.company_id || null;
-  } catch {
-    return null;
-  }
+  return getAuthCompanyId();
 }
 
 function getAuthUserCompanyName(): string | null {
-  try {
-    const stored = localStorage.getItem("bos-auth");
-    if (!stored) return null;
-    const parsed = JSON.parse(stored) as { user?: any };
-    return parsed.user?.companyName || parsed.user?.company_name || null;
-  } catch {
-    return null;
-  }
+  return getAuthCompanyName();
 }
 
 function getAuthCanSwitchWorkspaces(): boolean {

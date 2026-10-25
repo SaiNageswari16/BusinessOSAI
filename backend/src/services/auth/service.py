@@ -25,6 +25,15 @@ from src.services.auth.models import (
     status_value,
 )
 from src.services.auth.permissions import DEFAULT_ROLES, derived_permissions
+
+try:
+    import pyotp
+except ImportError:
+    # pyotp is required for MFA; a missing install must not crash the whole
+    # auth service (login/register/onboarding all import this module at startup).
+    # The MFA endpoints will return a clear 503 instead of the service dying.
+    pyotp = None
+
 from src.utils.security import (
     create_access_token,
     create_refresh_token,
@@ -311,6 +320,115 @@ async def issue_tokens(
     }
 
 
+# ─── MFA (TOTP) ─────────────────────────────────────────────────────────────
+
+def _totp(settings, secret: str, code: str) -> bool:
+    """Check a 6-digit TOTP code against the user's secret.
+
+    A 1-step window on either side of "now" is accepted so a client clock a
+    few seconds off (the overwhelmingly common cause of 'wrong code') does
+    not read as a lockout.
+    """
+    if pyotp is None:
+        raise HTTPException(status_code=503, detail="MFA unavailable: pyotp not installed")
+    totp = pyotp.TOTP(secret, digits=6)
+    return totp.verify(code, valid_window=1)
+
+
+async def enable_mfa(db: AsyncSession, user: User) -> dict:
+    """Generate a fresh TOTP secret and hand the user everything they need to
+    add it to an authenticator app. ``mfa_enabled`` stays False until
+    ``verify_mfa`` succeeds — enabling is deliberately two-step so a half-
+    finished flow can't leave a user unable to log in with only a password."""
+    if pyotp is None:
+        raise HTTPException(status_code=503, detail="MFA unavailable: pyotp not installed")
+    user.mfa_secret = pyotp.random_base32()
+    user.mfa_enabled = False
+    await db.flush()
+
+    totp = pyotp.TOTP(user.mfa_secret, digits=6)
+    provisioning = totp.provisioning_uri(name=f"{user.email}", issuer_name="RestaurantOS")
+    return {
+        "secret": user.mfa_secret,
+        "provisioning_uri": provisioning,
+    }
+
+
+async def verify_mfa(db: AsyncSession, user: User, code: str) -> bool:
+    """First use of a TOTP code after enable: confirm it and flip
+    ``mfa_enabled`` on. Wrong code leaves the user where they were — no
+    lockout, no half-state."""
+    if not user.mfa_secret:
+        raise HTTPException(status_code=400, detail="MFA not initialised")
+    if not _totp(get_settings(), user.mfa_secret, code):
+        raise HTTPException(status_code=400, detail="Invalid code")
+    user.mfa_enabled = True
+    await db.flush()
+    return True
+
+
+async def disable_mfa(db: AsyncSession, user: User, current_code: str | None) -> None:
+    """Turn MFA off. Requires a valid current code when MFA is on (so a
+    stolen session can't strip the second factor); skips the check if
+    ``mfa_enabled`` is already off — the secret is still discarded."""
+    if user.mfa_enabled and current_code is None:
+        raise HTTPException(status_code=400, detail="Current MFA code required")
+    if user.mfa_enabled and not _totp(get_settings(), user.mfa_secret, current_code):
+        raise HTTPException(status_code=400, detail="Invalid code")
+    user.mfa_enabled = False
+    user.mfa_secret = None
+    await db.flush()
+
+
+# ─── Sessions ───────────────────────────────────────────────────────────────
+
+async def list_sessions(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
+    rows = (await db.execute(
+        select(RefreshToken).where(
+            RefreshToken.user_id == user_id, RefreshToken.revoked.is_(False)
+        ).order_by(RefreshToken.created_at.desc())
+    )).scalars().all()
+    now = _utcnow()
+    return [
+        {
+            "id": str(r.id),
+            "user_agent": r.user_agent,
+            "ip_address": r.ip_address,
+            "created_at": r.created_at,
+            "expires_at": r.expires_at,
+            "active": _as_utc(r.expires_at) >= now,
+        }
+        for r in rows
+    ]
+
+
+async def revoke_session(db: AsyncSession, user_id: uuid.UUID, session_id: uuid.UUID) -> bool:
+    row = await db.scalar(
+        select(RefreshToken).where(
+            RefreshToken.id == session_id, RefreshToken.user_id == user_id
+        )
+    )
+    if row is None:
+        return False
+    row.revoked = True
+    await db.flush()
+    return True
+
+
+# ─── Kill-switch ────────────────────────────────────────────────────────────
+
+async def revoke_all_access_tokens(db: AsyncSession, user: User) -> None:
+    """Invalidate every access token issued before this instant.
+
+    Access tokens are stateless JWTs; the only way to kill one mid-life
+    without a per-token revocation table is a timestamp floor checked at
+    decode time (see ``shared/identity.py`` — the caller is expected to
+    apply it). Cheap to store, exact to enforce.
+    """
+    user.token_revoked_before = _utcnow()
+    await db.flush()
+
+
 # ─── Login ──────────────────────────────────────────────────────────────────
 
 async def authenticate(
@@ -319,8 +437,9 @@ async def authenticate(
     email: str,
     password: str,
     tenant_slug: str | None = None,
+    mfa_code: str | None = None,
 ) -> User:
-    """Resolve a user by credentials, or raise 401.
+    """Resolve a user by credentials (+ optional TOTP), or raise 401/403.
 
     Every failure returns the same message. Distinguishing "no such user" from
     "wrong password" would let anyone probe which emails are registered.
@@ -363,6 +482,18 @@ async def authenticate(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Tenant is {status_value(tenant.status)}",
         )
+
+    if user.mfa_enabled:
+        if not mfa_code:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="MFA code required",
+            )
+        if not _totp(get_settings(), user.mfa_secret, mfa_code):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid MFA code",
+            )
 
     return user
 
@@ -470,3 +601,7 @@ async def change_password(
     user.hashed_password = hash_password(new_password)
     await db.flush()
     await revoke_all_for_user(db, user.id)
+    # A password change is exactly the "compromised credential" moment the
+    # kill-switch exists for — drop every access token minted before now too,
+    # not just the refresh family.
+    await revoke_all_access_tokens(db, user)

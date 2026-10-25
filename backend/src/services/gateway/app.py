@@ -32,6 +32,7 @@ from src.services.shared.base import ErrorDetail, ErrorEnvelope
 from src.services.shared.identity import Identity, bearer_scheme, _decode, dev_fallback_enabled, build_dev_fallback_identity
 from src.services.shared.registry import (
     all_services,
+    alias_target,
     base_url,
     enabled_services,
     get_descriptor,
@@ -320,6 +321,13 @@ def _register_service_proxy(gateway: FastAPI) -> None:
     )
     async def proxy(request: Request, service: str, path: str):
         descriptor = get_descriptor(service)
+        # An aliased prefix (e.g. /hrms, /erp) has its descriptor resolved to
+        # the owning service (staff) so identity + module gate evaluate against
+        # the owner's module_key, but the request is forwarded using the alias
+        # path verbatim — the owning service mounts its routers under that
+        # exact prefix (staff exposes /api/v1/hrms/... and /api/v1/erp/...
+        # directly), so no rewrite is needed.
+        forward_service = service
         if descriptor is None or not descriptor.enabled:
             return JSONResponse(
                 status_code=404,
@@ -352,6 +360,54 @@ def _register_service_proxy(gateway: FastAPI) -> None:
         # safe without an edge check because the service validates the actual
         # credentials (email+password) and issues the token; the gateway adds
         # nothing here.
+        # Tenant-side module status (GET /platform/tenants/me/modules) mirrors
+        # the gateway's own gate check, but for the browser: the UI needs to
+        # know *which* modules are active so it can hide suspended ribbon
+        # studios instead of rendering a page of 404s. It must resolve
+        # identity for a normal user token AND skip the module gate — a
+        # suspended staff module must not hide its own status endpoint, or
+        # the ribbon could never re-activate its UI.
+        is_module_status_probe = (
+            service == "platform"
+            and path.startswith("tenants/me/modules")
+            and request.method == "GET"
+        )
+        if is_module_status_probe:
+            # Not bootstrap: it must still authenticate (the endpoint decodes
+            # the user token itself), but it rides through the module gate
+            # untouched, with the caller's identity forwarded.
+            if identity is None:
+                if not dev_fallback_enabled():
+                    return JSONResponse(
+                        status_code=401,
+                        content=ErrorEnvelope(
+                            error=ErrorDetail(
+                                code="UNAUTHENTICATED",
+                                message="Not authenticated",
+                            ),
+                            service="gateway",
+                            request_id=request.state.request_id,
+                        ).model_dump(mode="json"),
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+                from src.services.shared.identity import build_dev_fallback_identity
+                identity = await build_dev_fallback_identity(request)
+            client_probe: httpx.AsyncClient = gateway.state.http
+            target = f"{base_url(descriptor)}/api/v1/{forward_service}/{path}"
+            if request.url.query:
+                target += f"?{request.url.query}"
+            upstream = await client_probe.request(
+                request.method,
+                target,
+                content=(await request.body()) or None,
+                headers=_forwarded_headers(request, identity),
+            )
+            return Response(
+                content=upstream.content,
+                status_code=upstream.status_code,
+                headers={k: v for k, v in upstream.headers.items()
+                         if k.lower() not in _HOP_BY_HOP and k.lower() != "content-length"},
+            )
         is_token_bootstrap = (
             (service == "auth" and path.startswith("login") and request.method == "POST")
             or (service == "auth" and path.startswith("refresh") and request.method == "POST")
@@ -361,7 +417,7 @@ def _register_service_proxy(gateway: FastAPI) -> None:
         if is_token_bootstrap:
             # Forward as-is; the downstream service handles authentication.
             client: httpx.AsyncClient = gateway.state.http
-            target = f"{base_url(descriptor)}/api/v1/{service}/{path}"
+            target = f"{base_url(descriptor)}/api/v1/{forward_service}/{path}"
             if request.url.query:
                 target += f"?{request.url.query}"
             body = await request.body()
@@ -398,14 +454,17 @@ def _register_service_proxy(gateway: FastAPI) -> None:
 
             identity = await build_dev_fallback_identity(request)
 
-        # Per-tenant module gate. Only runs for services that opted in via
-        # the registry's enforce_module_gate flag; that list is currently empty
-        # (see task #12), so this is a no-op today but the enforcement point
-        # is in place. When a service is flagged, a request whose tenant has
-        # that module suspended/archived in the platform DB gets a 404 with
-        # the standard "not found" envelope — no hint that the module exists
-        # for a different tenant.
-        if descriptor.enforce_module_gate and identity is not None:
+        # Per-tenant module gate. Runs for every service that opted in via
+        # the registry's enforce_module_gate flag — currently all the
+        # industry verticals (menu, pos, kitchen, billing, inventory,
+        # purchase, staff, customers, loyalty, accounting, reports), each
+        # with its own module_key. A request whose tenant has that module
+        # suspended/archived in the platform DB gets a 404 with the standard
+        # "not found" envelope — no hint that the module exists for a
+        # different tenant. A tenant with no module-state row at all is
+        # allowed, so turning the flag on for a service never breaks a
+        # tenant that was never put under module management.
+        if descriptor.enforce_module_gate and identity is not None and not is_module_status_probe:
             module_key = descriptor.module_key or descriptor.name
             client_for_gate: httpx.AsyncClient = gateway.state.http
             if not await _module_gate_allows(
@@ -424,7 +483,7 @@ def _register_service_proxy(gateway: FastAPI) -> None:
                 )
 
         client: httpx.AsyncClient = gateway.state.http
-        target = f"{base_url(descriptor)}/api/v1/{service}/{path}"
+        target = f"{base_url(descriptor)}/api/v1/{forward_service}/{path}"
         if request.url.query:
             target += f"?{request.url.query}"
 

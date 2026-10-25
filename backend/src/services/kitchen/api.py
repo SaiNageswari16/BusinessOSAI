@@ -39,16 +39,20 @@ from src.services.kitchen.models import (
 from src.services.kitchen.schemas import (
     DeviceCreate,
     DeviceResponse,
+    KOTBumpRequest,
     KOTCancelRequest,
     KOTCreate,
     KOTItemStatusRequest,
     KOTListResponse,
     KOTListResponseModel,
+    KOTRefireRequest,
     KOTResponse,
     KOTStatusUpdate,
     StationCreate,
+    StationMetricsResponse,
     StationResponse,
     StationUpdate,
+    StatusLogResponse,
 )
 from src.services.shared.identity import CurrentIdentity
 
@@ -338,6 +342,29 @@ async def update_station(station_id: uuid.UUID, payload: StationUpdate,
     return resp.model_copy(update={"open_ticket_count": count})
 
 
+@router.get("/stations/{station_id}/metrics", response_model=StationMetricsResponse,
+            tags=["kitchen"],
+            summary="Observed prep-time performance over a rolling window")
+async def station_metrics(
+    station_id: uuid.UUID,
+    identity: CurrentIdentity,
+    db: DbDep,
+    window_hours: int = Query(default=24, ge=1, le=24 * 14),
+):
+    """Live answer to 'how is this station actually running' — replaces the
+    static ``avg_prep_minutes`` set at creation time. Excludes tickets still
+    open or cancelled; only fired->ready completions in the window count."""
+    identity.require("prepare:kot")
+    station = await svc.load_station(db, identity.tenant_id, station_id)
+    if station is None:
+        raise HTTPException(status_code=404, detail="Station not found")
+    if not identity.can_access_outlet(station.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+    return await svc.station_metrics(
+        db, identity.tenant_id, station_id, window_hours=window_hours
+    )
+
+
 # ─── KDS devices ─────────────────────────────────────────────────────────────
 
 @router.post("/kds-devices", response_model=DeviceResponse,
@@ -377,8 +404,69 @@ async def list_devices(identity: CurrentIdentity, db: DbDep,
 
 # ─── KOT tickets ─────────────────────────────────────────────────────────────
 
+@router.get("/kots/poll", response_model=KOTListResponseModel, tags=["kds"],
+            summary="KDS screen board poll, authenticated by device token")
+async def kds_poll(
+    request: Request,
+    db: DbDep,
+    station_id: uuid.UUID,
+    outlet_id: uuid.UUID | None = None,
+    include_closed: bool = False,
+    limit: int = Query(default=100, le=500),
+):
+    """The pass screen's polling endpoint.
+
+    A KDS screen is not a user account: it has no email, no JWT, no role
+    grant. It authenticates with the one-time token minted when it was
+    registered, scoped to exactly one station. A screen that polls an
+    endpoint it is not registered for — or with a wrong/decommissioned
+    token — gets a clean 401, and the screen can say "offline" rather than
+    "stuck."
+
+    The tenant scope is derived from the device row itself, not passed in:
+    the token *is* the authorization. This is the same trust model the
+    shared identity layer already uses for service-to-service
+    ``X-Identity-*`` headers — here applied to a machine, not a person.
+    """
+    token = request.headers.get("X-KDS-Token", "").strip()
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing KDS device token",
+            headers={"WWW-Authenticate": "X-KDS-Token"},
+        )
+
+    # Device lookup needs a tenant_id to stay in-scope. The token is unique
+    # globally (see the model's constraint), but the DB partition key is
+    # (tenant, token) — so this first pass looks the device up by token
+    # alone via a helper that does not require a tenant.
+    device = await svc.resolve_device_global(db, token)
+    if device is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Unknown or decommissioned KDS device",
+            headers={"WWW-Authenticate": "X-KDS-Token"},
+        )
+
+    if not device.station_id or device.station_id != station_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Device is not registered for this station",
+        )
+
+    stmt = select(KOT).where(
+        KOT.tenant_id == device.tenant_id,
+        KOT.station_id == station_id,
+    )
+    if not include_closed:
+        stmt = stmt.where(KOT.status.not_in([KOTStatus.SERVED, KOTStatus.CANCELLED]))
+    stmt = stmt.order_by(KOT.priority, KOT.fired_at).limit(limit)
+    tickets = list((await db.execute(stmt)).scalars().all())
+    return KOTListResponseModel(tickets=tickets, total=len(tickets))
+
+
 @router.get("/kots", response_model=KOTListResponseModel, tags=["kds"],
-            summary="Board view: open tickets for one station")
+            summary="Board view: open tickets for one station (JWT)")
 async def list_kots(identity: CurrentIdentity, db: DbDep,
                     station_id: uuid.UUID,
                     outlet_id: uuid.UUID | None = None,
@@ -519,6 +607,88 @@ async def cancel_kot(kot_id: uuid.UUID, body: KOTCancelRequest,
     # supposed to be idempotent, but that is insurance, not something to test.
     await _emit_kot_event(kot, KOTStatus.CANCELLED, db=db)
     return kot
+
+
+@router.post("/kots/{kot_id}/bump", response_model=KOTResponse, tags=["kds"],
+             summary="Raise a ticket's urgency and/or move it to another station")
+async def bump_kot(
+    kot_id: uuid.UUID,
+    payload: KOTBumpRequest,
+    identity: CurrentIdentity,
+    db: DbDep,
+):
+    """The pass screen's 'rush this' / 'send to the other station' control.
+
+    Priority changes and station transfers are both audited in the status
+    log — a kitchen manager wants the "why" after a customer complaint, and
+    a bare status change gives none.
+    """
+    identity.require("prepare:kot")
+    kot = await svc.load_kot(db, identity.tenant_id, kot_id)
+    if kot is None:
+        raise HTTPException(status_code=404, detail="KOT not found")
+    if not identity.can_access_outlet(kot.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+    try:
+        await svc.bump_kot(
+            db, identity.tenant_id, kot,
+            priority=payload.priority,
+            station_id=payload.station_id,
+            changed_by=identity.user_id,
+            reason=payload.reason,
+        )
+    except svc.KitchenError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return kot
+
+
+@router.post("/kots/{kot_id}/refire", response_model=KOTResponse, tags=["kds"],
+             summary="Re-open a cancelled ticket for a second pass through the kitchen")
+async def refire_kot(
+    kot_id: uuid.UUID,
+    payload: KOTRefireRequest,
+    identity: CurrentIdentity,
+    db: DbDep,
+):
+    """The 'guest's dish came back' case.
+
+    A ticket that was cancelled — food dropped on the way to the table, a
+    course fired too early — comes back as a re-fire, not a new order line.
+    Only cancelled tickets can be re-fired, and the reason is mandatory: a
+    silent re-fire of an already-served dish would read as a double order at
+    the pass.
+    """
+    identity.require("prepare:kot")
+    kot = await svc.load_kot(db, identity.tenant_id, kot_id)
+    if kot is None:
+        raise HTTPException(status_code=404, detail="KOT not found")
+    if not identity.can_access_outlet(kot.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+    try:
+        await svc.refire_kot(
+            db, identity.tenant_id, kot,
+            changed_by=identity.user_id,
+            reason=payload.reason,
+        )
+    except svc.KitchenError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    await _emit_kot_event(kot, KOTStatus.PENDING, db=db)
+    return kot
+
+
+@router.get("/kots/{kot_id}/history", response_model=list[StatusLogResponse],
+            tags=["kds"],
+            summary="Full append-only state log for one ticket")
+async def kot_history(
+    kot_id: uuid.UUID, identity: CurrentIdentity, db: DbDep
+):
+    identity.require("prepare:kot")
+    kot = await svc.load_kot(db, identity.tenant_id, kot_id)
+    if kot is None:
+        raise HTTPException(status_code=404, detail="KOT not found")
+    if not identity.can_access_outlet(kot.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+    return await svc.kot_history(db, identity.tenant_id, kot)
 
 
 @router.patch("/kots/{kot_id}/items/{item_id}", response_model=KOTResponse, tags=["kds"],

@@ -51,6 +51,22 @@ class StationResponse(OrmModel):
     created_at: datetime
 
 
+class StationMetricsResponse(BaseModel):
+    """Observed prep performance for a station over a rolling window, instead
+    of the static ``avg_prep_minutes`` set at creation time."""
+
+    station_id: uuid.UUID
+    window_hours: int
+    tickets_completed: int
+    """KOTs that reached READY within the window (fired_at -> ready_at)."""
+    avg_prep_minutes: float | None
+    """Mean fired_at -> ready_at in minutes, over the completed tickets. None
+    if the station has had no completions in the window — the caller decides
+    whether to fall back to the station's configured value."""
+    slowest_minutes: float | None
+    fastest_minutes: float | None
+
+
 # ─── KDS devices ─────────────────────────────────────────────────────────────
 
 class DeviceCreate(BaseModel):
@@ -163,6 +179,32 @@ class KOTStatusUpdate(BaseModel):
 
     to_status: KOTStatus
     reason: str | None = Field(default=None, max_length=300)
+
+
+class KOTBumpRequest(BaseModel):
+    """Move a ticket to the front of the queue / change its urgency.
+
+    ``priority`` is the KOT's urgency (RUSH beats VIP beats NORMAL in board
+    ordering). ``station_id`` moves it to a different station — the pass
+    screen's "send this ticket to the fry station instead" case. At least one
+    must be set; a bump with neither is a no-op, not an error.
+    """
+
+    priority: KOTPriority | None = None
+    station_id: uuid.UUID | None = None
+    reason: str | None = Field(default=None, max_length=300)
+
+
+class KOTRefireRequest(BaseModel):
+    """Re-open a cancelled/served ticket for a second trip through the pass.
+
+    A dish that dropped on the way to the table, or a course fired too early
+    before the guest was ready, comes back to the kitchen as a re-fire rather
+    than a brand-new order line. The ticket keeps its items; only its status
+    and fire timestamps reset.
+    """
+
+    reason: str = Field(min_length=1, max_length=300)
 
 
 class KOTCancelRequest(BaseModel):

@@ -43,9 +43,14 @@ from src.services.pos.schemas import (
     OrderCreate,
     OrderCreateResponse,
     OrderDetailResponse,
+    OrderHoldResponse,
     OrderListResponse,
     OrderLineCreate,
     OrderLineUpdate,
+    OrderMergeRequest,
+    OrderResumeRequest,
+    OrderSplitRequest,
+    OrderTipUpdate,
     OrderUpdate,
     ReservationCreate,
     ReservationResponse,
@@ -54,6 +59,7 @@ from src.services.pos.schemas import (
     TableSessionResponse,
     WaitlistCreate,
     WaitlistResponse,
+    WaitlistSeatRequest,
     WaitlistUpdate,
 )
 from src.services.shared.identity import CurrentIdentity
@@ -498,6 +504,201 @@ async def update_item(order_id: uuid.UUID, item_id: uuid.UUID, payload: OrderLin
     return order
 
 
+@router.post("/orders/{order_id}/hold", response_model=OrderHoldResponse,
+             tags=["orders"],
+             summary="Park a live order — the guest stepped out, the food was already fired")
+async def hold_order(order_id: uuid.UUID, identity: CurrentIdentity, db: DbDep):
+    """A hold is a pause, not a cancel: the KOT already fired, the table is
+    still occupied, and resuming must not re-fire the kitchen. Distinct from
+    DRAFT because this order's food is already committed; distinct from
+    CANCELLED because the guest is coming back."""
+    identity.require("manage:orders")
+    order = await svc.load_order(db, identity.tenant_id, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if not identity.can_access_outlet(order.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+    try:
+        await svc.hold_order(db, identity.tenant_id, order)
+    except svc.PosError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return order
+
+
+@router.post("/orders/{order_id}/resume", response_model=OrderDetailResponse,
+             tags=["orders"],
+             summary="Un-park a held order, optionally into a specific state")
+async def resume_order(order_id: uuid.UUID, payload: OrderResumeRequest,
+                       identity: CurrentIdentity, db: DbDep):
+    identity.require("manage:orders")
+    order = await svc.load_order(db, identity.tenant_id, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if not identity.can_access_outlet(order.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+    try:
+        await svc.resume_order(db, identity.tenant_id, order, to=payload.to_status)
+    except svc.PosError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    await _emit_status_change(db, identity.tenant_id, order, payload.to_status)
+    return order
+
+
+@router.post("/orders/{order_id}/void", response_model=OrderDetailResponse,
+             tags=["orders"],
+             summary="Full void of a pre-bill order — every line cancelled")
+async def void_order(order_id: uuid.UUID, identity: CurrentIdentity, db: DbDep):
+    """The POS attendant's 'guest never actually ordered this' case, pre-bill.
+    Void is the clean version of cancel: it only works while nothing has been
+    committed to the kitchen, so no stock was ever deducted and no KOT was
+    ever fired — the order disappears without leaving a paper trail in the
+    kitchen or the ledger."""
+    identity.require("manage:orders")
+    order = await svc.load_order(db, identity.tenant_id, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if not identity.can_access_outlet(order.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+    try:
+        await svc.void_order(db, identity.tenant_id, order)
+    except svc.PosError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    event = _ev(
+        "order.cancelled", identity.tenant_id, outlet_id=order.outlet_id,
+        data={"order_id": str(order.id), "reason": "voided pre-bill",
+              "grand_total": float(order.grand_total)},
+    )
+    _outbox(db, event)
+    await bus.publish(event, local=True)
+    return order
+
+
+@router.post("/orders/{order_id}/split", response_model=list[OrderDetailResponse],
+             tags=["orders"],
+             summary="Split one order into N, each with a fresh order number")
+async def split_order(order_id: uuid.UUID, payload: OrderSplitRequest,
+                      identity: CurrentIdentity, db: DbDep):
+    """A group of 4 splitting a check into 2 groups of 2 — the case this
+    exists for, and the one that has no alternative: without it, each new
+    check means re-ordering, which means the kitchen fires each dish again.
+    """
+    identity.require("manage:orders")
+    order = await svc.load_order(db, identity.tenant_id, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if not identity.can_access_outlet(order.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+    try:
+        new_orders = await svc.split_order(db, identity.tenant_id, order, payload.buckets)
+    except svc.PosError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    # Every new order is a real order in its own right: place it, fire the
+    # kitchen for its share of the lines, and the bill service will settle
+    # them independently.
+    for new_order in new_orders:
+        new_order = await svc.reload_order(db, new_order)
+        if status_value(new_order.status) == OrderStatus.DRAFT.value:
+            await svc.place_order(db, identity.tenant_id, new_order)
+        event = _ev(
+            "order.placed", identity.tenant_id, outlet_id=new_order.outlet_id,
+            data={
+                "order_id": str(new_order.id),
+                "order_number": new_order.order_number,
+                "order_type": status_value(new_order.order_type),
+                "outlet_id": str(new_order.outlet_id),
+                "table_id": str(new_order.table_id) if new_order.table_id else None,
+                "covers": new_order.covers,
+                "item_count": svc.item_count(new_order),
+                "subtotal": float(new_order.subtotal),
+                "grand_total": float(new_order.grand_total),
+                "lines": svc.order_lines_payload(new_order),
+            },
+        )
+        _outbox(db, event)
+        await bus.publish(event, local=True)
+
+    return [await svc.reload_order(db, o) for o in new_orders]
+
+
+@router.post("/orders/{order_id}/merge", response_model=OrderDetailResponse,
+             tags=["orders"],
+             summary="Merge two open, same-table orders into one check")
+async def merge_orders(order_id: uuid.UUID, payload: OrderMergeRequest,
+                       identity: CurrentIdentity, db: DbDep):
+    """The reverse of split: two checks that should have been one get
+    reconciled before settlement. order_a (this route's param) survives;
+    order_b is cancelled with a note, not deleted, so the merge stays
+    auditable."""
+    identity.require("manage:orders")
+    order_a = await svc.load_order(db, identity.tenant_id, order_id)
+    if order_a is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if not identity.can_access_outlet(order_a.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+    order_b = await svc.load_order(db, identity.tenant_id, payload.order_b_id)
+    if order_b is None:
+        raise HTTPException(status_code=404, detail="Second order not found")
+    try:
+        merged = await svc.merge_orders(db, identity.tenant_id, order_a, order_b)
+        merged = await svc.reload_order(db, merged)
+        await svc.recalculate_order(db, merged)
+    except svc.PosError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return merged
+
+
+@router.post("/orders/{order_id}/tip", response_model=OrderDetailResponse,
+             tags=["orders"],
+             summary="Set the gratuity on a live order — additive to the check total")
+async def set_order_tip(order_id: uuid.UUID, payload: OrderTipUpdate,
+                       identity: CurrentIdentity, db: DbDep):
+    """Tip is a separate, additive amount — not a line, not a discount —
+    and it is the staff service's tip-pool feed. The bill shows it; the
+    pool distributes it."""
+    identity.require("manage:orders")
+    order = await svc.load_order(db, identity.tenant_id, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if not identity.can_access_outlet(order.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+    order.tip_total = svc._money(svc._d(payload.tip_total))
+    await svc.recalculate_order(db, order)
+    return order
+
+
+@router.delete("/orders/{order_id}/items/{item_id}",
+               response_model=OrderDetailResponse, tags=["orders"],
+               summary="Remove a line from a pre-bill order")
+async def delete_order_item(order_id: uuid.UUID, item_id: uuid.UUID,
+                            identity: CurrentIdentity, db: DbDep):
+    """Pre-bill line removal. The line is marked CANCELLED, not deleted,
+    for the same reason cancel_order works that way: a bill still has to be
+    explainable after the fact, and a hard delete would make that
+    impossible."""
+    identity.require("manage:orders")
+    order = await svc.load_order(db, identity.tenant_id, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if not identity.can_access_outlet(order.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+    if status_value(order.status) in (OrderStatus.SETTLED.value, OrderStatus.CANCELLED.value):
+        raise HTTPException(status_code=409, detail="Lines can only be removed before billing")
+
+    item = None
+    for candidate in order.items or []:
+        if candidate.id == item_id:
+            item = candidate
+            break
+    if item is None:
+        raise HTTPException(status_code=404, detail="Order item not found")
+    item.status = OrderItemStatus.CANCELLED
+    await svc._sync_position(db, identity.tenant_id, order)
+    await svc.ensure_courses(db, identity.tenant_id, order)
+    await svc.recalculate_order(db, order)
+    return order
+
+
 @router.post("/orders/{order_id}/cancel", response_model=OrderDetailResponse,
              tags=["orders"], summary="Cancel an order and notify consumers")
 async def cancel_order(order_id: uuid.UUID, identity: CurrentIdentity, db: DbDep,
@@ -622,6 +823,20 @@ async def create_reservation(payload: ReservationCreate, identity: CurrentIdenti
     await _resolve_outlet(identity, payload.outlet_id)
     if payload.reserved_to and payload.reserved_to <= payload.reserved_from:
         raise HTTPException(status_code=422, detail="reserved_to must be after reserved_from")
+    if payload.table_id:
+        conflict = await svc.find_reservation_conflict(
+            db, identity.tenant_id, payload.outlet_id, payload.table_id,
+            payload.reserved_from, payload.reserved_to,
+        )
+        if conflict is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Table {payload.table_id} already has booking "
+                    f"{conflict.reservation_number or conflict.id} for an "
+                    f"overlapping window"
+                ),
+            )
     reservation = Reservation(
         tenant_id=identity.tenant_id,
         **payload.model_dump(),
@@ -708,4 +923,50 @@ async def update_waitlist(entry_id: uuid.UUID, payload: WaitlistUpdate,
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(entry, field, value)
     await db.flush()
+    return entry
+
+
+@router.post("/waitlist/{entry_id}/seat", response_model=WaitlistResponse,
+             tags=["waitlist"],
+             summary="Seat a waiting party at a table — one atomic step")
+async def seat_from_waitlist(entry_id: uuid.UUID, payload: WaitlistSeatRequest,
+                             identity: CurrentIdentity, db: DbDep):
+    """The host's 'your table is ready' moment, done as one transaction:
+    close the waitlist entry AND open the table session together. Doing
+    them as two separate calls is the exact failure mode this exists to
+    prevent — a guest moved to a table with no order started, or a table
+    marked occupied with no one in it."""
+    identity.require("manage:orders")
+    entry = await db.scalar(
+        select(Waitlist).where(
+            Waitlist.id == entry_id,
+            Waitlist.tenant_id == identity.tenant_id,
+        )
+    )
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Waitlist entry not found")
+    if not identity.can_access_outlet(entry.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+    if status_value(entry.status) != WaitlistStatus.WAITING.value:
+        raise HTTPException(status_code=409, detail="Entry is no longer waiting")
+
+    entry.status = WaitlistStatus.SEATED
+    entry.table_id = payload.table_id
+    session = TableSession(
+        tenant_id=identity.tenant_id,
+        outlet_id=entry.outlet_id,
+        table_id=payload.table_id,
+        status=TableSessionStatus.ACTIVE,
+        covers=entry.covers,
+        started_at=_stamp(),
+    )
+    db.add(session)
+    await db.flush()
+    event = _ev(
+        "table_session.opened", identity.tenant_id, outlet_id=entry.outlet_id,
+        data={"session_id": str(session.id), "table_id": str(payload.table_id),
+              "order_id": None, "covers": entry.covers},
+    )
+    _outbox(db, event)
+    await bus.publish(event, local=True)
     return entry

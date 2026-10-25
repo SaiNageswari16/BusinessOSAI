@@ -242,7 +242,10 @@ function Reservations() {
             </Button>
             <Button
               onClick={() => {
-                if (!d.name || !d.phone) return toast.error("Name and phone number required");
+                if (!d.name || !d.phone) {
+                  toast.error("Name and phone number required");
+                  return;
+                }
                 createReservation({
                   name: d.name,
                   phone: d.phone,

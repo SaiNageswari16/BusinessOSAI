@@ -132,6 +132,13 @@ _MANAGER_GRANTS = [
     "manage:orders", "fire:kot", "view:kot", "cancel:kot",
     "manage:users", "view:roles",
     "manage:settings", "view:audit",
+    # HRMS / staff-management (run payroll, manage employees, leaves, ATS).
+    "view:hrms", "manage:hrms", "edit:hrms", "delete:hrms",
+    "manage:hrms_employees",
+    "view:hrms_attendance", "manage:hrms_attendance",
+    "view:hrms_leaves", "manage:hrms_leaves",
+    "view:hrms_payroll", "manage:hrms_payroll",
+    "view:staff", "manage:staff",
 ]
 
 _CASHIER_GRANTS = [

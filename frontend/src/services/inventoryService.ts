@@ -116,6 +116,7 @@ export interface CreateItemPayload {
   reorder_qty?: number;
   allow_negative_stock?: boolean;
   outlet_id?: string;
+  default_location_id?: string;
 }
 
 export interface StockConsumptionPayload {

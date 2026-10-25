@@ -24,11 +24,13 @@ from src.services.menu.models import (
     Recipe,
     RecipeLine,
 )
+from src.services.menu.outbox import record_event
 from src.services.menu.schemas import (
     AddonCreate,
     AddonGroupCreate,
     AddonGroupResponse,
     AddonResponse,
+    AddonUpdate,
     AiReconcileRequest,
     AiReconcileResponse,
     AiRecipeSearchRequest,
@@ -41,6 +43,7 @@ from src.services.menu.schemas import (
     ComboCreate,
     ComboItemCreate,
     ComboResponse,
+    ComboUpdate,
     ItemCreate,
     ItemDetailResponse,
     ItemResponse,
@@ -49,11 +52,15 @@ from src.services.menu.schemas import (
     ModifierGroupCreate,
     ModifierGroupResponse,
     ModifierResponse,
+    ModifierUpdate,
     PricingRuleCreate,
     PricingRuleResponse,
+    PricingRuleUpdate,
     RecipeCreate,
     RecipeBreakdownLine,
     RecipeBreakdownResponse,
+    RecipeUpdate,
+    VariantUpdate,
     RecipeLineCreate,
     RecipeLineResponse,
     RecipeResponse,
@@ -366,8 +373,11 @@ async def create_item(payload: ItemCreate, identity: CurrentIdentity, db: DbDep)
     item = MenuItem(tenant_id=identity.tenant_id, **payload.model_dump())
     db.add(item)
     await db.flush()
-    await bus.publish(_ev("menu.item.created", identity.tenant_id, outlet_id=item.outlet_id,
-                          data={"code": item.code, "name": item.name}))
+    await record_event(
+        db, type="menu.item.created", tenant_id=identity.tenant_id,
+        outlet_id=item.outlet_id,
+        data={"code": item.code, "name": item.name, "item_id": str(item.id)},
+    )
     return item
 
 
@@ -404,8 +414,11 @@ async def update_item(
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
     await db.flush()
-    await bus.publish(_ev("menu.item.updated", identity.tenant_id, outlet_id=item.outlet_id,
-                          data={"code": item.code, "name": item.name}))
+    await record_event(
+        db, type="menu.item.updated", tenant_id=identity.tenant_id,
+        outlet_id=item.outlet_id,
+        data={"code": item.code, "name": item.name, "item_id": str(item.id)},
+    )
     return item
 
 
@@ -421,6 +434,11 @@ async def delete_item(item_id: uuid.UUID, identity: CurrentIdentity, db: DbDep):
         raise HTTPException(status_code=404, detail="Item not found")
     item.is_active = False
     await db.flush()
+    await record_event(
+        db, type="menu.item.deactivated", tenant_id=identity.tenant_id,
+        outlet_id=item.outlet_id,
+        data={"code": item.code, "name": item.name, "item_id": str(item.id)},
+    )
 
 
 @router.get("/items/{item_id}/price", tags=["items"])
@@ -430,11 +448,17 @@ async def compute_price(
     db: DbDep,
     variant_id: uuid.UUID | None = None,
     addon_ids: list[uuid.UUID] = Query(default_factory=list),
+    qty: int = Query(default=1, ge=1),
 ):
-    """Unit price for a configured item.
+    """Unit price for a configured item, after all applicable pricing rules.
 
-    POS calls this instead of reimplementing the variant/addon arithmetic.
+    POS calls this instead of reimplementing the variant/addon/rule arithmetic.
+    ``qty`` matters because BULK rules only apply above a threshold.
     """
+    from datetime import datetime, timezone
+
+    from src.services.menu import pricing as pricing_engine
+
     item = await db.scalar(
         select(MenuItem)
         .where(MenuItem.id == item_id, MenuItem.tenant_id == identity.tenant_id)
@@ -471,7 +495,31 @@ async def compute_price(
             chosen.append({"group": group.name, "addon": addon.name,
                            "price": float(addon.price)})
 
-    return {"item_id": str(item.id), "unit_price": round(price, 2), "addons": chosen}
+    # Pricing rules (happy hour / day part / seasonal / bulk) discount the
+    # computed base+variant+addon price. The rule set depends on outlet and
+    # the current time — same inputs POS has at the moment it prices the cart.
+    rules = list((await db.execute(
+        select(PricingRule).where(
+            PricingRule.tenant_id == identity.tenant_id,
+            PricingRule.is_active.is_(True),
+            or_(PricingRule.outlet_id.is_(None),
+                 PricingRule.outlet_id == item.outlet_id),
+        ).order_by(PricingRule.priority.desc())
+    )).scalars().all())
+
+    priced = pricing_engine.apply_pricing_rules(
+        price, rules, item=item, at=datetime.now(timezone.utc),
+        outlet_id=item.outlet_id, qty=qty,
+    )
+
+    return {
+        "item_id": str(item.id),
+        "unit_price": priced["final_price"],
+        "unit_price_before_rules": round(price, 2),
+        "discount_total": priced["discount_total"],
+        "applied_rules": priced["applied_rules"],
+        "addons": chosen,
+    }
 
 
 @router.get("/items/{item_id}/recipe-lines", tags=["recipes"])
@@ -669,8 +717,14 @@ async def ai_recipe_search(
 async def ai_recipe_reconcile(
     payload: AiReconcileRequest, identity: CurrentIdentity, db: DbDep
 ) -> AiReconcileResponse:
-    """Reconcile a recipe against live inventory — see recipe_ai."""
-    return await ai_recipe_reconcile_endpoint(payload, identity, db)
+    """Reconcile a recipe against live inventory — see recipe_ai.
+
+    ``outlet_id`` on the payload narrows the menu-item lookup to one outlet
+    when the tenant runs the same dish on several; empty = tenant-wide.
+    """
+    return await ai_recipe_reconcile_endpoint(
+        payload, identity, db, outlet_id=payload.outlet_id
+    )
 
 
 @router.post("/ai-recipe-reorder", response_model=AiReorderResponse,
@@ -794,6 +848,36 @@ async def create_variant(
     return variant
 
 
+@router.put("/variants/{variant_id}", response_model=VariantResponse, tags=["items"])
+async def update_variant(
+    variant_id: uuid.UUID, payload: VariantUpdate, identity: CurrentIdentity, db: DbDep
+):
+    """Edit a variant in place — name, price_delta, default flag, active state.
+    Live price editing is a hard POS requirement, not delete-and-recreate."""
+    identity.require("manage:menu")
+    variant = await db.scalar(
+        select(MenuItemVariant).where(
+            MenuItemVariant.id == variant_id,
+            MenuItemVariant.tenant_id == identity.tenant_id,
+        )
+    )
+    if variant is None:
+        raise HTTPException(status_code=404, detail="Variant not found")
+
+    data = payload.model_dump(exclude_unset=True)
+    if data.pop("is_default", None):
+        await db.execute(
+            update(MenuItemVariant)
+            .where(MenuItemVariant.menu_item_id == variant.menu_item_id,
+                   MenuItemVariant.is_default.is_(True))
+            .values(is_default=False)
+        )
+    for field, value in data.items():
+        setattr(variant, field, value)
+    await db.flush()
+    return variant
+
+
 @router.delete("/variants/{variant_id}", status_code=status.HTTP_204_NO_CONTENT,
                tags=["items"])
 async def delete_variant(
@@ -853,6 +937,25 @@ async def create_addon(
     data["group_id"] = group.id
     addon = MenuItemAddon(tenant_id=identity.tenant_id, **data)
     db.add(addon)
+    await db.flush()
+    return addon
+
+
+@router.put("/addons/{addon_id}", response_model=AddonResponse, tags=["items"])
+async def update_addon(
+    addon_id: uuid.UUID, payload: AddonUpdate, identity: CurrentIdentity, db: DbDep
+):
+    identity.require("manage:menu")
+    addon = await db.scalar(
+        select(MenuItemAddon).where(
+            MenuItemAddon.id == addon_id,
+            MenuItemAddon.tenant_id == identity.tenant_id,
+        )
+    )
+    if addon is None:
+        raise HTTPException(status_code=404, detail="Addon not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(addon, field, value)
     await db.flush()
     return addon
 
@@ -918,6 +1021,26 @@ async def create_modifier(
     data["group_id"] = group.id
     modifier = Modifier(tenant_id=identity.tenant_id, **data)
     db.add(modifier)
+    await db.flush()
+    return modifier
+
+
+@router.put("/modifiers/{modifier_id}", response_model=ModifierResponse,
+            tags=["modifiers"])
+async def update_modifier(
+    modifier_id: uuid.UUID, payload: ModifierUpdate, identity: CurrentIdentity, db: DbDep
+):
+    identity.require("manage:menu")
+    modifier = await db.scalar(
+        select(Modifier).where(
+            Modifier.id == modifier_id,
+            Modifier.tenant_id == identity.tenant_id,
+        )
+    )
+    if modifier is None:
+        raise HTTPException(status_code=404, detail="Modifier not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(modifier, field, value)
     await db.flush()
     return modifier
 
@@ -1021,8 +1144,11 @@ async def create_recipe(
 
     item.track_inventory = True
     await db.flush()
-    await bus.publish(_ev("menu.item.updated", identity.tenant_id, outlet_id=item.outlet_id,
-                          data={"item_id": str(item.id), "code": item.code}))
+    await record_event(
+        db, type="menu.item.updated", tenant_id=identity.tenant_id,
+        outlet_id=item.outlet_id,
+        data={"item_id": str(item.id), "code": item.code},
+    )
     return recipe
 
 
@@ -1059,6 +1185,29 @@ async def active_recipe(
         if match is not None:
             return match
     return recipes[0]
+
+
+@router.put("/recipes/{recipe_id}", response_model=RecipeResponse, tags=["recipes"])
+async def update_recipe_meta(
+    recipe_id: uuid.UUID,
+    payload: RecipeUpdate,
+    identity: CurrentIdentity,
+    db: DbDep,
+):
+    """Edit a recipe's metadata (name/yield/instructions/active). BOM lines
+    have their own replace route — a full BOM swap, not a metadata field."""
+    identity.require("manage:menu")
+    recipe = await db.scalar(
+        select(Recipe)
+        .where(Recipe.id == recipe_id, Recipe.tenant_id == identity.tenant_id)
+        .options(selectinload(Recipe.lines))
+    )
+    if recipe is None:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(recipe, field, value)
+    await db.flush()
+    return recipe
 
 
 @router.put("/recipes/{recipe_id}/lines", response_model=RecipeResponse,
@@ -1129,6 +1278,26 @@ async def create_combo(payload: ComboCreate, identity: CurrentIdentity, db: DbDe
     return combo
 
 
+@router.put("/combos/{combo_id}", response_model=ComboResponse, tags=["combos"])
+async def update_combo(
+    combo_id: uuid.UUID, payload: ComboUpdate, identity: CurrentIdentity, db: DbDep
+):
+    """Edit a combo in place — price, description, validity window, active
+    state. Item list changes go through add/delete, not this route."""
+    identity.require("manage:menu")
+    combo = await db.scalar(
+        select(Combo)
+        .where(Combo.id == combo_id, Combo.tenant_id == identity.tenant_id)
+        .options(selectinload(Combo.items))
+    )
+    if combo is None:
+        raise HTTPException(status_code=404, detail="Combo not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(combo, field, value)
+    await db.flush()
+    return combo
+
+
 @router.delete("/combos/{combo_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["combos"])
 async def delete_combo(combo_id: uuid.UUID, identity: CurrentIdentity, db: DbDep):
     identity.require("manage:menu")
@@ -1172,6 +1341,25 @@ async def create_pricing_rule(
     identity.require("manage:menu")
     rule = PricingRule(tenant_id=identity.tenant_id, **payload.model_dump())
     db.add(rule)
+    await db.flush()
+    return rule
+
+
+@router.put("/pricing-rules/{rule_id}", response_model=PricingRuleResponse,
+            tags=["pricing"])
+async def update_pricing_rule(
+    rule_id: uuid.UUID, payload: PricingRuleUpdate, identity: CurrentIdentity, db: DbDep
+):
+    identity.require("manage:menu")
+    rule = await db.scalar(
+        select(PricingRule).where(
+            PricingRule.id == rule_id, PricingRule.tenant_id == identity.tenant_id
+        )
+    )
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Pricing rule not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(rule, field, value)
     await db.flush()
     return rule
 

@@ -1,9 +1,18 @@
-"""Department, Designation, Team, and Work Calendar endpoints for HRMS."""
+"""Department, Designation, Team, Work Calendar, and ERP Company/Branch
+compatibility endpoints for HRMS.
+
+``companies`` and ``branches`` do not exist as tables in the microservice
+split — the tenant *is* the company, and outlets (owned by the organization
+service) are the branches. The legacy frontend's ``/erp/companies`` and
+``/erp/branches`` calls are served here as read-only compatibility aliases
+so the HRMS UI keeps working without any frontend changes.
+"""
 from __future__ import annotations
 
 import uuid
 from typing import Annotated, Sequence
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -301,3 +310,96 @@ async def create_work_calendar(
     db.add(cal)
     await db.flush()
     return WorkCalendarResponse.model_validate(cal)
+
+
+# ─── ERP Company / Branch (read-only compatibility aliases) ─────────────────
+
+def _erp_identity_headers(ctx: CurrentUserContext) -> dict[str, str]:
+    """Forward the caller's identity to the organization service over the mesh."""
+    return {
+        "X-Identity-User-Id": str(ctx.user_id),
+        "X-Identity-Tenant-Id": str(ctx.tenant_id),
+        "X-Identity-Email": ctx.identity.email or "",
+        "X-Identity-Full-Name": ctx.identity.full_name or "",
+        "X-Identity-Permissions": ",".join(sorted(ctx.identity.permissions)),
+        "X-Identity-Roles": ",".join(sorted(ctx.identity.roles)),
+        "X-Identity-Is-Owner": "true" if ctx.identity.is_tenant_owner else "false",
+        "X-Identity-Tenant-Slug": ctx.identity.tenant_slug or "",
+    }
+
+
+async def _outlets_for_tenant(ctx: CurrentUserContext) -> list[dict]:
+    from src.services.shared.registry import base_url, get_descriptor
+
+    descriptor = get_descriptor("organization")
+    if descriptor is None:
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.get(
+                f"{base_url(descriptor)}/api/v1/organization/outlets",
+                headers=_erp_identity_headers(ctx),
+            )
+        if res.status_code != 200:
+            return []
+        body = res.json()
+        return body if isinstance(body, list) else []
+    except Exception:
+        return []
+
+
+@router.get("/companies", response_model=PaginatedResponse[dict])
+async def list_companies_compat(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    search: str | None = None,
+):
+    """The tenant is the company in the microservice split. Return a single-row
+    view of the active tenant so the HRMS UI's company-scoped UI has data."""
+    row = {
+        "id": str(ctx.tenant_id),
+        "tenant_id": str(ctx.tenant_id),
+        "name": ctx.identity.tenant_slug or "My Workspace",
+        "industry": None,
+        "status": "active",
+    }
+    if search and search.lower() not in row["name"].lower():
+        return paginate([], 0, page, page_size)
+    return paginate([row], 1, page, page_size)
+
+
+@router.get("/branches", response_model=PaginatedResponse[dict])
+async def list_branches_compat(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    search: str | None = None,
+    company_id: uuid.UUID | None = None,
+):
+    """Outlets in the organization service, exposed as branches for HRMS UI."""
+    items = await _outlets_for_tenant(ctx)
+    if search:
+        items = [o for o in items if search.lower() in (o.get("name") or "").lower()]
+    total = len(items)
+    sliced = items[(page - 1) * page_size : page * page_size]
+    # Normalize outlet field names to the Branch shape the frontend expects.
+    normalized = [
+        {
+            "id": str(o.get("id") or ""),
+            "tenant_id": str(ctx.tenant_id),
+            "company_id": str(ctx.tenant_id),
+            "code": o.get("code") or "",
+            "name": o.get("name") or "",
+            "address": o.get("address_line1"),
+            "city": o.get("city"),
+            "state": o.get("state"),
+            "country": o.get("country") or "IN",
+            "phone": o.get("phone"),
+            "email": o.get("email"),
+            "has_warehouse": False,
+            "status": "active" if o.get("is_active", True) else "inactive",
+        }
+        for o in sliced
+    ]
+    return paginate(normalized, total, page, page_size)

@@ -382,3 +382,34 @@ class PricingRule(ServiceBase, TimestampMixin):
     discount_pct: Mapped[float] = mapped_column(Float, default=0)
     priority: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class OutboxMessage(ServiceBase, TimestampMixin):
+    """Transactional outbox row — one per event this service would emit.
+
+    Written in the same transaction as the domain change so the two commit
+    or roll back together. A relay marks rows published or dead; pending
+    rows are what the relay picks up on crash-recovery. ``event_id`` is
+    the bus dedupe key, so a re-delivered event is a no-op on the consumer
+    side even if the relay over-publishes it.
+    """
+
+    __tablename__ = "outbox_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    type: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    outlet_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    source_service: Mapped[str] = mapped_column(String(50), default="menu")
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False, index=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

@@ -157,6 +157,64 @@ class Settings(BaseSettings):
     magicpin_enabled: bool = Field(default=False, alias="MAGICPIN_ENABLED")
     dotpe_enabled: bool = Field(default=False, alias="DOTPE_ENABLED")
 
+    # OAuth2 / email + maps (platform-wide fallback; tenant overrides live in
+    # the SystemSetting table — see staff/api/travel_routes.py)
+    google_client_id: str = Field(default="", alias="GOOGLE_CLIENT_ID")
+    google_client_secret: str = Field(default="", alias="GOOGLE_CLIENT_SECRET")
+    google_redirect_uri: str = Field(
+        default="http://127.0.0.1:8100/api/v1/auth/oauth/google/callback",
+        alias="GOOGLE_REDIRECT_URI",
+    )
+    google_maps_api_key: str = Field(default="", alias="GOOGLE_MAPS_API_KEY")
+
+    # Zoho Recruit integration
+    zoho_client_id: str = Field(default="", alias="ZOHO_CLIENT_ID")
+    zoho_client_secret: str = Field(default="", alias="ZOHO_CLIENT_SECRET")
+    zoho_redirect_uri: str = Field(
+        default="http://127.0.0.1:8108/api/v1/integrations/zoho/callback",
+        alias="ZOHO_REDIRECT_URI",
+    )
+    zoho_region: str = Field(default="IN", alias="ZOHO_REGION")
+
+    # LiveKit / SIP telephony
+    livekit_url: str = Field(default="", alias="LIVEKIT_URL")
+    livekit_api_key: str = Field(default="", alias="LIVEKIT_API_KEY")
+    livekit_api_secret: str = Field(default="", alias="LIVEKIT_API_SECRET")
+    sip_trunk_id: str = Field(default="", alias="SIP_TRUNK_ID")
+
+    # Plivo (human fallback / DID numbers)
+    plivo_auth_id: str = Field(default="", alias="PLIVO_AUTH_ID")
+    plivo_auth_token: str = Field(default="", alias="PLIVO_AUTH_TOKEN")
+    plivo_termination_domain: str = Field(default="", alias="PLIVO_TERMINATION_DOMAIN")
+
+    # Facebook (ad account / pages)
+    facebook_app_id: str = Field(default="", alias="FACEBOOK_APP_ID")
+    facebook_app_secret: str = Field(default="", alias="FACEBOOK_APP_SECRET")
+    facebook_page_id: str = Field(default="", alias="FACEBOOK_PAGE_ID")
+    facebook_ad_account_id: str = Field(default="", alias="FACEBOOK_AD_ACCOUNT_ID")
+    facebook_access_token: str = Field(default="", alias="FACEBOOK_ACCESS_TOKEN")
+
+    # Whitebooks GSP module keys (e-Way, GST returns, e-Invoice) — the legacy
+    # GSP_* fields above remain the primary switch.
+    whitebooks_ewb_client_id: str = Field(default="", alias="WHITEBOOKS_EWB_CLIENT_ID")
+    whitebooks_ewb_client_secret: str = Field(default="", alias="WHITEBOOKS_EWB_CLIENT_SECRET")
+    whitebooks_ewb_username: str = Field(default="", alias="WHITEBOOKS_EWB_USERNAME")
+    whitebooks_ewb_password: str = Field(default="", alias="WHITEBOOKS_EWB_PASSWORD")
+    whitebooks_ewb_gstin: str = Field(default="", alias="WHITEBOOKS_EWB_GSTIN")
+    whitebooks_gst_client_id: str = Field(default="", alias="WHITEBOOKS_GST_CLIENT_ID")
+    whitebooks_gst_client_secret: str = Field(default="", alias="WHITEBOOKS_GST_CLIENT_SECRET")
+    whitebooks_gst_username: str = Field(default="", alias="WHITEBOOKS_GST_USERNAME")
+    whitebooks_gst_password: str = Field(default="", alias="WHITEBOOKS_GST_PASSWORD")
+    whitebooks_gst_gstin: str = Field(default="", alias="WHITEBOOKS_GST_GSTIN")
+    whitebooks_einv_client_id: str = Field(default="", alias="WHITEBOOKS_EINV_CLIENT_ID")
+    whitebooks_einv_client_secret: str = Field(default="", alias="WHITEBOOKS_EINV_CLIENT_SECRET")
+    whitebooks_einv_username: str = Field(default="", alias="WHITEBOOKS_EINV_USERNAME")
+    whitebooks_einv_password: str = Field(default="", alias="WHITEBOOKS_EINV_PASSWORD")
+    whitebooks_einv_gstin: str = Field(default="", alias="WHITEBOOKS_EINV_GSTIN")
+
+    # Razorpay webhook
+    razorpay_webhook_secret: str = Field(default="", alias="RAZORPAY_WEBHOOK_SECRET")
+
     # Locale
     default_timezone: str = Field(default="Asia/Kolkata", alias="DEFAULT_TIMEZONE")
     default_currency: str = Field(default="INR", alias="DEFAULT_CURRENCY")

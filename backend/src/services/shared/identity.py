@@ -109,6 +109,24 @@ def _decode(credentials: HTTPAuthorizationCredentials | None) -> Identity:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Kill-switch: the auth service can set ``token_revoked_before`` on a user
+    # (password change, deactivation, security incident). Since access tokens
+    # are stateless JWTs, "revoked" means "issued before this instant" — a
+    # floor, not a per-token list. Checked in the shared decode path so every
+    # service enforcing a bearer token honours it, not just auth itself.
+    from datetime import datetime, timezone
+    revoked_before = claims.get("token_revoked_before")
+    iat = claims.get("iat")
+    if revoked_before and iat:
+        floor = datetime.fromtimestamp(revoked_before, tz=timezone.utc)
+        token_minted = datetime.fromtimestamp(iat, tz=timezone.utc)
+        if token_minted < floor:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
     try:
         return _identity_from_claims(claims)
     except (KeyError, ValueError) as exc:

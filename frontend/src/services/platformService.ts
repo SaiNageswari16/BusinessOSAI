@@ -50,7 +50,49 @@ export interface TenantSummary {
   status: string;
   plan: string;
   contact_email?: string;
+  contact_phone?: string;
   active_modules: string[];
+  module_versions?: Record<string, string>;
+  created_at: string;
+}
+
+export interface TenantRosterItem {
+  id: string | null;
+  name: string;
+  slug: string;
+  status: string;
+  plan: string;
+  created_at: string;
+  active_modules: string[];
+  module_versions?: Record<string, string>;
+  is_managed: boolean;
+}
+
+export interface AuditEntry {
+  id: string;
+  admin_id: string | null;
+  admin_email: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  details: Record<string, unknown>;
+  ip_address?: string | null;
+  created_at: string;
+}
+
+export interface AuditList {
+  items: AuditEntry[];
+  total: number;
+  has_more: boolean;
+}
+
+export interface PlatformAdminRecord {
+  id: string;
+  email: string;
+  full_name: string;
+  role: string;
+  is_active: boolean;
+  last_login_at?: string | null;
   created_at: string;
 }
 
@@ -95,6 +137,8 @@ export interface PluginManifest {
   settings_schema?: Record<string, unknown>;
   is_system: boolean;
   is_active: boolean;
+  /** Whether the API gateway enforces this module's per-tenant state. */
+  gated: boolean;
 }
 
 export interface TenantModuleState {
@@ -122,11 +166,11 @@ export interface PermissionCatalogueItem {
 export interface AccessPolicyItem {
   id: string;
   tenant_id?: string | null;
-  subject: string;
+  subject: Record<string, unknown> | string;
   module: string;
   resource: string;
   operation: string;
-  effect: "allow" | "deny";
+  effect: "allow" | "deny" | "mask" | "limit";
   params?: Record<string, unknown>;
   condition?: Record<string, unknown>;
   priority: number;
@@ -134,6 +178,22 @@ export interface AccessPolicyItem {
 }
 
 export const platformService = {
+  // ── Tenants (full auth-service roster, not just platform-managed rows) ──
+  async listAllTenants(params: {
+    search?: string;
+    limit?: number;
+    offset?: number;
+  } = {}): Promise<{ items: TenantRosterItem[]; total: number }> {
+    const cleanParams: Record<string, string | number | boolean | undefined> = {};
+    if (params.search) cleanParams["search"] = params.search;
+    if (params.limit !== undefined) cleanParams["limit"] = params.limit;
+    if (params.offset !== undefined) cleanParams["offset"] = params.offset;
+    return apiClient.get<{ items: TenantRosterItem[]; total: number }>(
+      "/api/v1/platform/tenants/all",
+      { params: cleanParams, isPlatform: true }
+    );
+  },
+
   // Auth
   async login(email: string, password: string): Promise<PlatformLoginResponse> {
     const res = await apiClient.post<PlatformLoginResponse>(
@@ -242,14 +302,71 @@ export const platformService = {
 
   async createPolicy(data: {
     tenant_id?: string;
-    subject: string;
+    subject: Record<string, unknown>;
     module: string;
     resource: string;
     operation: string;
-    effect: "allow" | "deny";
+    effect: "allow" | "deny" | "mask" | "limit";
     priority?: number;
     condition?: Record<string, unknown>;
+    params?: Record<string, unknown>;
   }): Promise<AccessPolicyItem> {
     return apiClient.post<AccessPolicyItem>("/api/v1/platform/policies", data, { isPlatform: true });
+  },
+
+  async deletePolicy(policyId: string): Promise<void> {
+    await apiClient.delete(`/api/v1/platform/policies/${policyId}`, { isPlatform: true });
+  },
+
+  // Audit Trail
+  async getAudit(params?: {
+    limit?: number;
+    offset?: number;
+    action?: string;
+    admin_email?: string;
+    target_type?: string;
+  }): Promise<AuditList> {
+    const cleanParams: Record<string, string | number | boolean | undefined> = {};
+    if (params?.limit !== undefined) cleanParams["limit"] = params.limit;
+    if (params?.offset !== undefined) cleanParams["offset"] = params.offset;
+    if (params?.action) cleanParams["action"] = params.action;
+    if (params?.admin_email) cleanParams["admin_email"] = params.admin_email;
+    if (params?.target_type) cleanParams["target_type"] = params.target_type;
+    return apiClient.get<AuditList>("/api/v1/platform/audit", {
+      params: cleanParams,
+      isPlatform: true,
+    });
+  },
+
+  // Admin Users
+  async getAdmins(): Promise<{ items: PlatformAdminRecord[]; total: number }> {
+    return apiClient.get<{ items: PlatformAdminRecord[]; total: number }>(
+      "/api/v1/platform/admins",
+      { isPlatform: true }
+    );
+  },
+
+  async createAdmin(data: {
+    email: string;
+    password: string;
+    full_name: string;
+    role: string;
+  }): Promise<PlatformAdminRecord> {
+    return apiClient.post<PlatformAdminRecord>(
+      "/api/v1/platform/admins",
+      data,
+      { isPlatform: true }
+    );
+  },
+
+  async updateAdmin(
+    adminId: string,
+    data: { is_active?: boolean; full_name?: string; role?: string }
+  ): Promise<PlatformAdminRecord> {
+    return apiClient.patch<PlatformAdminRecord>(
+      `/api/v1/platform/admins/${adminId}`,
+      data,
+      { isPlatform: true }
+    );
   },
 };

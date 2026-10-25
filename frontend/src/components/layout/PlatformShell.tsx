@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Database,
+  FileClock,
   Globe,
   KeyRound,
   Layers,
@@ -15,9 +16,11 @@ import {
   Menu,
   Moon,
   RefreshCw,
+  ScrollText,
   Server,
   Shield,
   ShieldAlert,
+  ShieldCheck,
   Sparkles,
   Sun,
   Users,
@@ -33,30 +36,57 @@ interface PlatformShellProps {
   children: ReactNode;
 }
 
-const NAV_ITEMS = [
+const NAV_GROUPS = [
   {
-    to: "/platform",
-    label: "Fleet & Health",
-    icon: Activity,
-    badge: "14 Services",
+    label: "Overview",
+    items: [
+      {
+        to: "/platform",
+        label: "Fleet & Health",
+        icon: Activity,
+        badge: "14 Services",
+      },
+    ],
   },
   {
-    to: "/platform/tenants",
-    label: "Tenant Provisioning",
-    icon: Users,
-    badge: "Multitenancy",
+    label: "Tenants & Modules",
+    items: [
+      {
+        to: "/platform/tenants",
+        label: "Tenant Provisioning",
+        icon: Users,
+        badge: "Multitenancy",
+      },
+      {
+        to: "/platform/modules",
+        label: "Module Lifecycle",
+        icon: Boxes,
+        badge: "Kill-Switch",
+      },
+    ],
   },
   {
-    to: "/platform/modules",
-    label: "Plugin Marketplace",
-    icon: Boxes,
-    badge: "Plug & Play",
-  },
-  {
-    to: "/platform/permissions",
-    label: "RBAC & Permissions",
-    icon: KeyRound,
-    badge: "67+ Keys",
+    label: "Access & Control",
+    items: [
+      {
+        to: "/platform/permissions",
+        label: "RBAC & Policies",
+        icon: KeyRound,
+        badge: "Granular",
+      },
+      {
+        to: "/platform/admins",
+        label: "Admin Users",
+        icon: ShieldCheck,
+        badge: "Control Plane",
+      },
+      {
+        to: "/platform/audit",
+        label: "Audit Trail",
+        icon: FileClock,
+        badge: "Immutable",
+      },
+    ],
   },
 ];
 
@@ -191,43 +221,47 @@ export function PlatformShell({ children }: PlatformShellProps) {
           )}
         >
           <div className="space-y-6">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 px-3 mb-2 font-mono">
-                Management Domains
-              </p>
-              <nav className="space-y-1">
-                {NAV_ITEMS.map((item) => {
-                  const isActive = location.pathname === item.to || (item.to !== "/platform" && location.pathname.startsWith(item.to));
-                  const Icon = item.icon;
-                  return (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      onClick={() => setMobileOpen(false)}
-                      className={cn(
-                        "flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all group",
-                        isActive
-                          ? "bg-indigo-50 text-indigo-700 border border-indigo-200/80 font-semibold shadow-xs"
-                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-transparent"
-                      )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Icon className={cn("size-4 transition-colors", isActive ? "text-indigo-600" : "text-slate-400 group-hover:text-slate-600")} />
-                        <span>{item.label}</span>
-                      </div>
-                      <span className={cn(
-                        "text-[10px] font-mono px-1.5 py-0.5 rounded border",
-                        isActive
-                          ? "bg-indigo-100 text-indigo-700 border-indigo-200"
-                          : "bg-slate-100 text-slate-500 border-slate-200"
-                      )}>
-                        {item.badge}
-                      </span>
-                    </Link>
-                  );
-                })}
-              </nav>
-            </div>
+            {NAV_GROUPS.map((group) => (
+              <div key={group.label}>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 px-3 mb-2 font-mono">
+                  {group.label}
+                </p>
+                <nav className="space-y-1">
+                  {group.items.map((item) => {
+                    const isActive =
+                      location.pathname === item.to ||
+                      (item.to !== "/platform" && location.pathname.startsWith(item.to));
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        onClick={() => setMobileOpen(false)}
+                        className={cn(
+                          "flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all group",
+                          isActive
+                            ? "bg-indigo-50 text-indigo-700 border border-indigo-200/80 font-semibold shadow-xs"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-transparent"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Icon className={cn("size-4 transition-colors", isActive ? "text-indigo-600" : "text-slate-400 group-hover:text-slate-600")} />
+                          <span>{item.label}</span>
+                        </div>
+                        <span className={cn(
+                          "text-[10px] font-mono px-1.5 py-0.5 rounded border",
+                          isActive
+                            ? "bg-indigo-100 text-indigo-700 border-indigo-200"
+                            : "bg-slate-100 text-slate-500 border-slate-200"
+                        )}>
+                          {item.badge}
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </nav>
+              </div>
+            ))}
 
             {/* Architecture Card */}
             <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2">

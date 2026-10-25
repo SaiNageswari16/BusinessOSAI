@@ -32,6 +32,8 @@ import { Route as SalonRouteImport } from './routes/salon'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as StaffRouteImport } from './routes/staff'
 import { Route as PlatformIndexRouteImport } from './routes/platform/index'
+import { Route as PlatformAdminsRouteImport } from './routes/platform/admins'
+import { Route as PlatformAuditRouteImport } from './routes/platform/audit'
 import { Route as PlatformModulesRouteImport } from './routes/platform/modules'
 import { Route as PlatformPermissionsRouteImport } from './routes/platform/permissions'
 import { Route as PlatformTenantsRouteImport } from './routes/platform/tenants'
@@ -153,6 +155,16 @@ const PlatformIndexRoute = PlatformIndexRouteImport.update({
   path: '/',
   getParentRoute: () => PlatformRoute,
 } as any)
+const PlatformAdminsRoute = PlatformAdminsRouteImport.update({
+  id: '/admins',
+  path: '/admins',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformAuditRoute = PlatformAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => PlatformRoute,
+} as any)
 const PlatformModulesRoute = PlatformModulesRouteImport.update({
   id: '/modules',
   path: '/modules',
@@ -202,6 +214,8 @@ export interface FileRoutesByFullPath {
   '/salon': typeof SalonRoute
   '/settings': typeof SettingsRoute
   '/staff': typeof StaffRoute
+  '/platform/admins': typeof PlatformAdminsRoute
+  '/platform/audit': typeof PlatformAuditRoute
   '/platform/modules': typeof PlatformModulesRoute
   '/platform/permissions': typeof PlatformPermissionsRoute
   '/platform/tenants': typeof PlatformTenantsRoute
@@ -231,6 +245,8 @@ export interface FileRoutesByTo {
   '/salon': typeof SalonRoute
   '/settings': typeof SettingsRoute
   '/staff': typeof StaffRoute
+  '/platform/admins': typeof PlatformAdminsRoute
+  '/platform/audit': typeof PlatformAuditRoute
   '/platform/modules': typeof PlatformModulesRoute
   '/platform/permissions': typeof PlatformPermissionsRoute
   '/platform/tenants': typeof PlatformTenantsRoute
@@ -262,6 +278,8 @@ export interface FileRoutesById {
   '/salon': typeof SalonRoute
   '/settings': typeof SettingsRoute
   '/staff': typeof StaffRoute
+  '/platform/admins': typeof PlatformAdminsRoute
+  '/platform/audit': typeof PlatformAuditRoute
   '/platform/modules': typeof PlatformModulesRoute
   '/platform/permissions': typeof PlatformPermissionsRoute
   '/platform/tenants': typeof PlatformTenantsRoute
@@ -294,6 +312,8 @@ export interface FileRouteTypes {
     | '/salon'
     | '/settings'
     | '/staff'
+    | '/platform/admins'
+    | '/platform/audit'
     | '/platform/modules'
     | '/platform/permissions'
     | '/platform/tenants'
@@ -323,6 +343,8 @@ export interface FileRouteTypes {
     | '/salon'
     | '/settings'
     | '/staff'
+    | '/platform/admins'
+    | '/platform/audit'
     | '/platform/modules'
     | '/platform/permissions'
     | '/platform/tenants'
@@ -353,6 +375,8 @@ export interface FileRouteTypes {
     | '/salon'
     | '/settings'
     | '/staff'
+    | '/platform/admins'
+    | '/platform/audit'
     | '/platform/modules'
     | '/platform/permissions'
     | '/platform/tenants'
@@ -551,6 +575,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlatformIndexRouteImport
       parentRoute: typeof PlatformRoute
     }
+    '/platform/admins': {
+      id: '/platform/admins'
+      path: '/admins'
+      fullPath: '/platform/admins'
+      preLoaderRoute: typeof PlatformAdminsRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/audit': {
+      id: '/platform/audit'
+      path: '/audit'
+      fullPath: '/platform/audit'
+      preLoaderRoute: typeof PlatformAuditRouteImport
+      parentRoute: typeof PlatformRoute
+    }
     '/platform/modules': {
       id: '/platform/modules'
       path: '/modules'
@@ -590,6 +628,8 @@ declare module '@tanstack/react-router' {
 }
 
 interface PlatformRouteChildren {
+  PlatformAdminsRoute: typeof PlatformAdminsRoute
+  PlatformAuditRoute: typeof PlatformAuditRoute
   PlatformModulesRoute: typeof PlatformModulesRoute
   PlatformPermissionsRoute: typeof PlatformPermissionsRoute
   PlatformTenantsRoute: typeof PlatformTenantsRoute
@@ -597,6 +637,8 @@ interface PlatformRouteChildren {
 }
 
 const PlatformRouteChildren: PlatformRouteChildren = {
+  PlatformAdminsRoute: PlatformAdminsRoute,
+  PlatformAuditRoute: PlatformAuditRoute,
   PlatformModulesRoute: PlatformModulesRoute,
   PlatformPermissionsRoute: PlatformPermissionsRoute,
   PlatformTenantsRoute: PlatformTenantsRoute,

@@ -9,6 +9,7 @@ import {
   Shield,
   ShieldCheck,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import {
   platformService,
@@ -103,6 +104,17 @@ function PlatformPermissionsPage() {
       toast.error((err as Error).message || "Failed to create permission");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDeletePolicy = async (policyId: string) => {
+    try {
+      await platformService.deletePolicy(policyId);
+      toast.success("Policy retired (audit-logged)");
+      const polData = await platformService.getPolicies();
+      setPolicies(polData);
+    } catch (err) {
+      toast.error((err as Error).message || "Failed to retire policy");
     }
   };
 
@@ -379,6 +391,7 @@ function PlatformPermissionsPage() {
                   <th className="py-3 px-4">Operation</th>
                   <th className="py-3 px-4">Effect</th>
                   <th className="py-3 px-4">Priority</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -391,7 +404,16 @@ function PlatformPermissionsPage() {
                 ) : (
                   policies.map((pol) => (
                     <tr key={pol.id} className="hover:bg-slate-50/80">
-                      <td className="py-3 px-4 font-mono text-slate-800">{pol.subject}</td>
+                      <td className="py-3 px-4">
+                        <div className="font-mono text-slate-800">
+                          {typeof pol.subject === "string" ? pol.subject : JSON.stringify(pol.subject)}
+                        </div>
+                        {pol.tenant_id && (
+                          <div className="text-[10px] font-mono text-slate-400">
+                            tenant: {pol.tenant_id.slice(0, 8)}
+                          </div>
+                        )}
+                      </td>
                       <td className="py-3 px-4 uppercase font-mono">{pol.module}</td>
                       <td className="py-3 px-4 font-mono text-slate-500">{pol.resource}</td>
                       <td className="py-3 px-4 font-mono">{pol.operation}</td>
@@ -408,6 +430,17 @@ function PlatformPermissionsPage() {
                         </Badge>
                       </td>
                       <td className="py-3 px-4 font-mono text-slate-500">{pol.priority}</td>
+                      <td className="py-3 px-4 text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeletePolicy(pol.id)}
+                          className="text-rose-700 hover:text-rose-800 hover:bg-rose-50 h-7 gap-1 text-xs"
+                          title="Retire policy (audit-logged)"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </td>
                     </tr>
                   ))
                 )}

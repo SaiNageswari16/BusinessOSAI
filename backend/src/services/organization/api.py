@@ -9,26 +9,47 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.services.event_bus.bus import Event, bus
+from src.services.organization import service as svc
+from src.services.organization.outbox import record_event
 from src.services.organization.models import (
     CostCenter,
+    EnterpriseBrand,
+    FloorPlan,
     Outlet,
     RestaurantTable,
+    RoyaltyAgreement,
+    RoyaltySettlement,
     Section,
     TableStatus,
     Tenant,
     UnitOfMeasure,
 )
 from src.services.organization.schemas import (
+    BrandCreate,
+    BrandResponse,
+    BrandUpdate,
+    BulkDeleteResponse,
     CostCentreCreate,
     CostCentreResponse,
+    CostCentreUpdate,
     FloorPlanResponse,
     FloorPlanUpdate,
+    NamedFloorPlanCreate,
+    NamedFloorPlanRestore,
+    NamedFloorPlanResponse,
     OutletCreate,
     OutletResponse,
     OutletUpdate,
+    RoyaltyAgreementCreate,
+    RoyaltyAgreementResponse,
+    RoyaltyAgreementUpdate,
+    RoyaltySettleListResponse,
+    RoyaltySettleRequest,
+    RoyaltySettleResponse,
     SectionCreate,
     SectionResponse,
     SectionUpdate,
+    TableBulkStatusUpdate,
     TableCreate,
     TableResponse,
     TableStatusUpdate,
@@ -38,6 +59,7 @@ from src.services.organization.schemas import (
     TenantUpdate,
     UomCreate,
     UomResponse,
+    UomUpdate,
 )
 from src.services.shared.identity import CurrentIdentity
 
@@ -74,15 +96,9 @@ async def _require_outlet(
     the caller gets a clean 404 instead. Deactivated outlets are hidden unless
     the caller explicitly asks for them.
     """
-    stmt = select(Outlet).where(
-        Outlet.id == outlet_id, Outlet.tenant_id == identity.tenant_id
+    return await svc.get_outlet(
+        db, identity.tenant_id, outlet_id, include_inactive=include_inactive
     )
-    if not include_inactive:
-        stmt = stmt.where(Outlet.is_active.is_(True))
-    outlet = await db.scalar(stmt)
-    if outlet is None:
-        raise HTTPException(status_code=404, detail="Outlet not found")
-    return outlet
 
 
 # ─── Tenants ────────────────────────────────────────────────────────────────
@@ -117,6 +133,64 @@ async def create_tenant(
     return tenant
 
 
+# ─── Brands (enterprise) ────────────────────────────────────────────────────
+
+@router.get("/brands", response_model=list[BrandResponse], tags=["brands"])
+async def list_brands(identity: CurrentIdentity, db: DbDep):
+    stmt = select(EnterpriseBrand).where(
+        EnterpriseBrand.tenant_id == identity.tenant_id,
+        EnterpriseBrand.is_active.is_(True),
+    ).order_by(EnterpriseBrand.name)
+    return list((await db.execute(stmt)).scalars().all())
+
+
+@router.post("/brands", response_model=BrandResponse,
+             status_code=status.HTTP_201_CREATED, tags=["brands"])
+async def create_brand(payload: BrandCreate, identity: CurrentIdentity, db: DbDep):
+    identity.require("manage:outlets")
+    return await svc.create_brand(db, tenant_id=identity.tenant_id,
+                                  data=payload.model_dump())
+
+
+@router.put("/brands/{brand_id}", response_model=BrandResponse, tags=["brands"])
+async def update_brand(
+    brand_id: uuid.UUID, payload: BrandUpdate, identity: CurrentIdentity, db: DbDep
+):
+    identity.require("manage:outlets")
+    brand = await db.scalar(
+        select(EnterpriseBrand).where(
+            EnterpriseBrand.id == brand_id, EnterpriseBrand.tenant_id == identity.tenant_id
+        )
+    )
+    if brand is None:
+        raise HTTPException(status_code=404, detail="Brand not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(brand, field, value)
+    await db.flush()
+    return brand
+
+
+@router.delete("/brands/{brand_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["brands"])
+async def deactivate_brand(brand_id: uuid.UUID, identity: CurrentIdentity, db: DbDep):
+    identity.require("manage:outlets")
+    brand = await db.scalar(
+        select(EnterpriseBrand).where(
+            EnterpriseBrand.id == brand_id, EnterpriseBrand.tenant_id == identity.tenant_id
+        )
+    )
+    if brand is None:
+        raise HTTPException(status_code=404, detail="Brand not found")
+    still_used = await db.scalar(
+        select(Outlet.id).where(Outlet.brand_id == brand.id, Outlet.is_active.is_(True)).limit(1)
+    )
+    if still_used:
+        raise HTTPException(
+            status_code=409,
+            detail="Brand is still assigned to active outlets — reassign them first",
+        )
+    brand.is_active = False
+
+
 # ─── Outlets ────────────────────────────────────────────────────────────────
 
 @router.get("/outlets", response_model=list[OutletResponse], tags=["outlets"])
@@ -136,20 +210,12 @@ async def list_outlets(
              tags=["outlets"])
 async def create_outlet(payload: OutletCreate, identity: CurrentIdentity, db: DbDep):
     identity.require("manage:outlets")
-    clash = await db.scalar(
-        select(Outlet.id).where(
-            Outlet.tenant_id == identity.tenant_id,
-            Outlet.code == payload.code,
-        )
+    outlet = await svc.create_outlet(
+        db, tenant_id=identity.tenant_id, data=payload.model_dump()
     )
-    if clash:
-        raise HTTPException(status_code=409, detail=f"Outlet code '{payload.code}' already exists")
-
-    outlet = Outlet(tenant_id=identity.tenant_id, **payload.model_dump())
-    db.add(outlet)
-    await db.flush()
-    await bus.publish(_ev("outlet.created", identity.tenant_id, outlet_id=outlet.id,
-                          data={"code": outlet.code, "name": outlet.name}))
+    await record_event(db, type="outlet.created", tenant_id=identity.tenant_id,
+                       outlet_id=outlet.id,
+                       data={"code": outlet.code, "name": outlet.name})
     return outlet
 
 
@@ -178,7 +244,8 @@ async def update_outlet(
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(outlet, field, value)
     await db.flush()
-    await bus.publish(_ev("outlet.updated", identity.tenant_id, outlet_id=outlet.id))
+    await record_event(db, type="outlet.updated", tenant_id=identity.tenant_id,
+                       outlet_id=outlet.id)
     return outlet
 
 
@@ -191,7 +258,8 @@ async def delete_outlet(outlet_id: uuid.UUID, identity: CurrentIdentity, db: DbD
     outlet = await _require_outlet(db, identity, outlet_id, include_inactive=True)
     outlet.is_active = False
     await db.flush()
-    await bus.publish(_ev("outlet.deactivated", identity.tenant_id, outlet_id=outlet.id))
+    await record_event(db, type="outlet.deactivated", tenant_id=identity.tenant_id,
+                       outlet_id=outlet.id)
 
 
 # ─── Sections ───────────────────────────────────────────────────────────────
@@ -214,17 +282,7 @@ async def list_sections(
 async def create_section(payload: SectionCreate, identity: CurrentIdentity, db: DbDep):
     identity.require("manage:outlets")
     outlet = await _require_outlet(db, identity, payload.outlet_id)
-    section = Section(
-        tenant_id=outlet.tenant_id,
-        outlet_id=outlet.id,
-        name=payload.name,
-        section_type=payload.section_type,
-        capacity=payload.capacity,
-        is_active=payload.is_active,
-        sort_order=payload.sort_order,
-    )
-    db.add(section)
-    await db.flush()
+    section = await svc.create_section(db, outlet=outlet, data=payload.model_dump())
     return section
 
 
@@ -251,7 +309,14 @@ async def update_section(
 
 @router.delete("/sections/{section_id}", status_code=status.HTTP_204_NO_CONTENT,
                tags=["sections"])
-async def delete_section(section_id: uuid.UUID, identity: CurrentIdentity, db: DbDep):
+async def delete_section(
+    section_id: uuid.UUID,
+    identity: CurrentIdentity,
+    db: DbDep,
+    force: bool = False,
+):
+    """Delete a section. Refuses with 409 while tables still reference it,
+    unless ``force=true`` (which unassigns them)."""
     identity.require("manage:outlets")
     section = await db.scalar(
         select(Section).where(
@@ -260,7 +325,7 @@ async def delete_section(section_id: uuid.UUID, identity: CurrentIdentity, db: D
     )
     if section is None:
         raise HTTPException(status_code=404, detail="Section not found")
-    await db.delete(section)
+    await svc.delete_section(db, section, force=force)
 
 
 # ─── Tables ─────────────────────────────────────────────────────────────────
@@ -287,56 +352,47 @@ async def list_tables(
              tags=["tables"])
 async def create_table(payload: TableCreate, identity: CurrentIdentity, db: DbDep):
     identity.require("manage:tables")
-    target_outlet_id = payload.outlet_id or identity.active_outlet_id or uuid.UUID("11111111-2222-3333-4444-555555555555")
+    target_outlet_id = (
+        payload.outlet_id
+        or identity.active_outlet_id
+        or uuid.UUID("11111111-2222-3333-4444-555555555555")
+    )
     outlet = await _require_outlet(db, identity, target_outlet_id)
-    clash = await db.scalar(
-        select(RestaurantTable.id).where(
-            RestaurantTable.tenant_id == identity.tenant_id,
-            RestaurantTable.outlet_id == target_outlet_id,
-            RestaurantTable.code == payload.code,
-        )
+    table = await svc.create_table(
+        db, outlet=outlet, data=payload.model_dump(exclude={"outlet_id"})
     )
-    if clash:
-        raise HTTPException(status_code=409, detail=f"Table '{payload.code}' already exists")
-
-    table = RestaurantTable(
-        tenant_id=outlet.tenant_id,
-        outlet_id=outlet.id,
-        section_id=payload.section_id,
-        name=payload.name,
-        code=payload.code,
-        seats=payload.seats,
-        shape=payload.shape,
-        min_covers=payload.min_covers,
-        max_covers=payload.max_covers,
-        is_active=payload.is_active,
-        position_x=payload.position_x,
-        position_y=payload.position_y,
-    )
-    db.add(table)
-    await db.flush()
     return table
 
 
-def _table_filter(identifier: str, tenant_id: uuid.UUID):
+def _table_filter(identifier: str):
     try:
         uid = uuid.UUID(str(identifier))
-        return (RestaurantTable.id == uid) | (RestaurantTable.code == identifier) | (RestaurantTable.name == identifier)
+        return (
+            (RestaurantTable.id == uid)
+            | (RestaurantTable.code == identifier)
+            | (RestaurantTable.name == identifier)
+        )
     except ValueError:
         return (RestaurantTable.code == identifier) | (RestaurantTable.name == identifier)
 
 
-@router.get("/tables/{table_id}", response_model=TableResponse, tags=["tables"])
-async def get_table(table_id: str, identity: CurrentIdentity, db: DbDep):
+async def _get_table_or_404(
+    db: AsyncSession, identity, table_id: str
+) -> RestaurantTable:
     table = await db.scalar(
         select(RestaurantTable).where(
-            _table_filter(table_id, identity.tenant_id),
+            _table_filter(table_id),
             RestaurantTable.tenant_id == identity.tenant_id,
         )
     )
     if table is None:
         raise HTTPException(status_code=404, detail="Table not found")
     return table
+
+
+@router.get("/tables/{table_id}", response_model=TableResponse, tags=["tables"])
+async def get_table(table_id: str, identity: CurrentIdentity, db: DbDep):
+    return await _get_table_or_404(db, identity, table_id)
 
 
 @router.put("/tables/{table_id}", response_model=TableResponse, tags=["tables"])
@@ -347,58 +403,31 @@ async def update_table(
     db: DbDep,
 ):
     identity.require("manage:tables")
-    table = await db.scalar(
-        select(RestaurantTable).where(
-            _table_filter(table_id, identity.tenant_id),
-            RestaurantTable.tenant_id == identity.tenant_id,
-        )
-    )
-    if table is None:
-        raise HTTPException(status_code=404, detail="Table not found")
+    table = await _get_table_or_404(db, identity, table_id)
     old_status = table.status
     update_data = payload.model_dump(exclude_unset=True)
     if "status" in update_data and update_data["status"] is not None:
         raw_status = update_data.pop("status")
-        status_map = {
-            "available": TableStatus.FREE,
-            "free": TableStatus.FREE,
-            "occupied": TableStatus.OCCUPIED,
-            "reserved": TableStatus.RESERVED,
-            "billing": TableStatus.BILLING,
-            "billed": TableStatus.BILLING,
-            "cleaning": TableStatus.CLEANING,
-            "dirty": TableStatus.CLEANING,
-            "blocked": TableStatus.BLOCKED,
-            "out_of_service": TableStatus.BLOCKED,
-        }
-        table.status = status_map.get(str(raw_status).lower(), TableStatus.FREE)
+        table.status = svc._coerce_status(raw_status)
     for field, value in update_data.items():
         setattr(table, field, value)
     await db.flush()
     if table.status != old_status:
-        await bus.publish(_ev(
-            "table.status.changed", identity.tenant_id,
-            outlet_id=table.outlet_id,
-            data={
-                "table_id": str(table.id),
-                "from": str(getattr(old_status, "value", old_status)),
-                "to": str(getattr(table.status, "value", table.status)),
-            },
-        ))
+        await record_event(db, type="table.status.changed",
+                           tenant_id=identity.tenant_id,
+                           outlet_id=table.outlet_id,
+                           data={
+                               "table_id": str(table.id),
+                               "from": str(getattr(old_status, "value", old_status)),
+                               "to": str(getattr(table.status, "value", table.status)),
+                           })
     return table
 
 
 @router.delete("/tables/{table_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["tables"])
 async def delete_table(table_id: str, identity: CurrentIdentity, db: DbDep):
     identity.require("manage:tables")
-    table = await db.scalar(
-        select(RestaurantTable).where(
-            _table_filter(table_id, identity.tenant_id),
-            RestaurantTable.tenant_id == identity.tenant_id,
-        )
-    )
-    if table is None:
-        raise HTTPException(status_code=404, detail="Table not found")
+    table = await _get_table_or_404(db, identity, table_id)
     await db.delete(table)
 
 
@@ -411,40 +440,35 @@ async def set_table_status(
 ):
     """Called by POS when a session opens or closes. Publishes an event so
     other services can react without polling this one."""
-    table = await db.scalar(
-        select(RestaurantTable).where(
-            _table_filter(table_id, identity.tenant_id),
-            RestaurantTable.tenant_id == identity.tenant_id,
-        )
-    )
-    if table is None:
-        raise HTTPException(status_code=404, detail="Table not found")
+    table = await _get_table_or_404(db, identity, table_id)
     old = table.status
-    status_map = {
-        "available": TableStatus.FREE,
-        "free": TableStatus.FREE,
-        "occupied": TableStatus.OCCUPIED,
-        "reserved": TableStatus.RESERVED,
-        "billing": TableStatus.BILLING,
-        "billed": TableStatus.BILLING,
-        "cleaning": TableStatus.CLEANING,
-        "dirty": TableStatus.CLEANING,
-        "blocked": TableStatus.BLOCKED,
-        "out_of_service": TableStatus.BLOCKED,
-    }
-    table.status = status_map.get(payload.status.lower(), TableStatus.FREE)
+    table.status = svc._coerce_status(payload.status)
     await db.flush()
     if old != table.status:
-        await bus.publish(_ev(
-            "table.status.changed", identity.tenant_id,
-            outlet_id=table.outlet_id,
-            data={
-                "table_id": str(table.id),
-                "from": str(getattr(old, "value", old)),
-                "to": table.status.value,
-            },
-        ))
+        await record_event(db, type="table.status.changed",
+                           tenant_id=identity.tenant_id,
+                           outlet_id=table.outlet_id,
+                           data={
+                               "table_id": str(table.id),
+                               "from": str(getattr(old, "value", old)),
+                               "to": table.status.value,
+                           })
     return table
+
+
+@router.post("/tables/bulk-status", tags=["tables"],
+             summary="Set status on many tables in one call")
+async def bulk_table_status(
+    payload: TableBulkStatusUpdate,
+    identity: CurrentIdentity,
+    db: DbDep,
+):
+    """The floor-manager's 'clear this whole section to free' case."""
+    identity.require("manage:tables")
+    result = await svc.bulk_set_table_status(
+        db, identity.tenant_id, payload.table_ids, payload.status
+    )
+    return result
 
 
 # ─── Floor plan ─────────────────────────────────────────────────────────────
@@ -488,15 +512,58 @@ async def update_floor_plan(
         )
         if table is None:
             continue
-        if entry.position_x is not None:
-            table.position_x = entry.position_x
-        if entry.position_y is not None:
-            table.position_y = entry.position_y
-        if entry.section_id is not None:
-            table.section_id = entry.section_id
+        for field in ("shape", "size_w", "size_h", "rotation", "label",
+                      "position_x", "position_y", "section_id"):
+            value = getattr(entry, field)
+            if value is not None:
+                setattr(table, field, value)
         updated += 1
     await db.flush()
     return {"detail": "Floor plan updated", "updated": updated}
+
+
+# ─── Named floor plans (versioned snapshots) ──────────────────────────────
+
+@router.get("/outlets/{outlet_id}/floor-plans",
+            response_model=list[NamedFloorPlanResponse], tags=["tables"],
+            summary="List saved floor-plan variants for an outlet")
+async def list_floor_plans(outlet_id: uuid.UUID, identity: CurrentIdentity, db: DbDep):
+    stmt = select(FloorPlan).where(
+        FloorPlan.outlet_id == outlet_id,
+        FloorPlan.tenant_id == identity.tenant_id,
+    ).order_by(FloorPlan.created_at.desc())
+    return list((await db.execute(stmt)).scalars().all())
+
+
+@router.post("/outlets/{outlet_id}/floor-plans",
+             response_model=NamedFloorPlanResponse,
+             status_code=status.HTTP_201_CREATED, tags=["tables"],
+             summary="Snapshot the outlet's current layout under a name")
+async def create_floor_plan(
+    outlet_id: uuid.UUID,
+    payload: NamedFloorPlanCreate,
+    identity: CurrentIdentity,
+    db: DbDep,
+):
+    identity.require("manage:tables")
+    outlet = await _require_outlet(db, identity, outlet_id)
+    plan = await svc.snapshot_floor_plan(db, outlet, name=payload.name)
+    return plan
+
+
+@router.post("/outlets/{outlet_id}/floor-plans/restore",
+             tags=["tables"],
+             summary="Write a saved floor plan's geometry back onto live tables")
+async def restore_floor_plan(
+    outlet_id: uuid.UUID,
+    payload: NamedFloorPlanRestore,
+    identity: CurrentIdentity,
+    db: DbDep,
+):
+    identity.require("manage:tables")
+    return await svc.restore_floor_plan(
+        db, identity.tenant_id, payload.outlet_id, payload.floor_plan_id
+    )
 
 
 # ─── Cost centres ───────────────────────────────────────────────────────────
@@ -531,6 +598,44 @@ async def list_cost_centres(
     return list((await db.execute(stmt)).scalars().all())
 
 
+@router.put("/cost-centres/{cost_centre_id}", response_model=CostCentreResponse,
+            tags=["cost-centres"])
+async def update_cost_centre(
+    cost_centre_id: uuid.UUID,
+    payload: CostCentreUpdate,
+    identity: CurrentIdentity,
+    db: DbDep,
+):
+    identity.require("manage:organization")
+    cc = await db.scalar(
+        select(CostCenter).where(
+            CostCenter.id == cost_centre_id, CostCenter.tenant_id == identity.tenant_id
+        )
+    )
+    if cc is None:
+        raise HTTPException(status_code=404, detail="Cost centre not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(cc, field, value)
+    await db.flush()
+    return cc
+
+
+@router.delete("/cost-centres/{cost_centre_id}", status_code=status.HTTP_204_NO_CONTENT,
+               tags=["cost-centres"])
+async def delete_cost_centre(
+    cost_centre_id: uuid.UUID, identity: CurrentIdentity, db: DbDep
+):
+    identity.require("manage:organization")
+    cc = await db.scalar(
+        select(CostCenter).where(
+            CostCenter.id == cost_centre_id, CostCenter.tenant_id == identity.tenant_id
+        )
+    )
+    if cc is None:
+        raise HTTPException(status_code=404, detail="Cost centre not found")
+    cc.is_active = False
+
+
 # ─── UoM ────────────────────────────────────────────────────────────────────
 
 @router.post("/uom", response_model=UomResponse, status_code=status.HTTP_201_CREATED,
@@ -543,7 +648,7 @@ async def create_uom(payload: UomCreate, identity: CurrentIdentity, db: DbDep):
         )
     )
     if clash:
-        raise HTTPException(status_code=409, detail=f"UoM '{payload.code}' already exists")
+        raise HTTPException(409, detail=f"UoM '{payload.code}' already exists")
     uom = UnitOfMeasure(
         tenant_id=identity.tenant_id,
         name=payload.name,
@@ -563,3 +668,119 @@ async def list_uom(identity: CurrentIdentity, db: DbDep):
             UnitOfMeasure.tenant_id == identity.tenant_id
         )
     )).scalars().all())
+
+
+@router.put("/uom/{uom_id}", response_model=UomResponse, tags=["uom"])
+async def update_uom(
+    uom_id: uuid.UUID, payload: UomUpdate, identity: CurrentIdentity, db: DbDep
+):
+    uom = await db.scalar(
+        select(UnitOfMeasure).where(
+            UnitOfMeasure.id == uom_id, UnitOfMeasure.tenant_id == identity.tenant_id
+        )
+    )
+    if uom is None:
+        raise HTTPException(status_code=404, detail="UoM not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(uom, field, value)
+    await db.flush()
+    return uom
+
+
+@router.delete("/uom/{uom_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["uom"])
+async def delete_uom(uom_id: uuid.UUID, identity: CurrentIdentity, db: DbDep):
+    uom = await db.scalar(
+        select(UnitOfMeasure).where(
+            UnitOfMeasure.id == uom_id, UnitOfMeasure.tenant_id == identity.tenant_id
+        )
+    )
+    if uom is None:
+        raise HTTPException(status_code=404, detail="UoM not found")
+    uom.is_active = False
+
+
+# ─── Royalty (franchise) ────────────────────────────────────────────────────
+
+@router.get("/royalty/agreements", response_model=list[RoyaltyAgreementResponse],
+            tags=["royalty"])
+async def list_royalty_agreements(
+    identity: CurrentIdentity,
+    db: DbDep,
+    outlet_id: uuid.UUID | None = None,
+):
+    stmt = select(RoyaltyAgreement).where(
+        RoyaltyAgreement.tenant_id == identity.tenant_id
+    )
+    if outlet_id:
+        stmt = stmt.where(RoyaltyAgreement.outlet_id == outlet_id)
+    return list((await db.execute(stmt)).scalars().all())
+
+
+@router.post("/royalty/agreements", response_model=RoyaltyAgreementResponse,
+             status_code=status.HTTP_201_CREATED, tags=["royalty"],
+             summary="Create a franchise royalty agreement (rate- or fixed-fee based)")
+async def create_royalty_agreement(
+    payload: RoyaltyAgreementCreate, identity: CurrentIdentity, db: DbDep
+):
+    identity.require("manage:outlets")
+    return await svc.create_royalty_agreement(
+        db, tenant_id=identity.tenant_id, data=payload.model_dump()
+    )
+
+
+@router.put("/royalty/agreements/{agreement_id}", response_model=RoyaltyAgreementResponse,
+            tags=["royalty"])
+async def update_royalty_agreement(
+    agreement_id: uuid.UUID,
+    payload: RoyaltyAgreementUpdate,
+    identity: CurrentIdentity,
+    db: DbDep,
+):
+    identity.require("manage:outlets")
+    agreement = await db.scalar(
+        select(RoyaltyAgreement).where(
+            RoyaltyAgreement.id == agreement_id,
+            RoyaltyAgreement.tenant_id == identity.tenant_id,
+        )
+    )
+    if agreement is None:
+        raise HTTPException(status_code=404, detail="Agreement not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(agreement, field, value)
+    await db.flush()
+    return agreement
+
+
+@router.post("/royalty/settle", response_model=RoyaltySettleResponse, tags=["royalty"],
+             summary="Record one royalty settlement against an active agreement")
+async def settle_royalty(
+    payload: RoyaltySettleRequest, identity: CurrentIdentity, db: DbDep
+):
+    identity.require("manage:outlets")
+    settlement = await svc.settle_royalty(
+        db,
+        tenant_id=identity.tenant_id,
+        agreement_id=payload.agreement_id,
+        period_start=payload.period_start,
+        period_end=payload.period_end,
+        base_amount=payload.base_amount,
+        notes=payload.notes,
+    )
+    return settlement
+
+
+@router.get("/royalty/settlements", response_model=RoyaltySettleListResponse,
+            tags=["royalty"])
+async def list_royalty_settlements(
+    identity: CurrentIdentity,
+    db: DbDep,
+    agreement_id: uuid.UUID | None = None,
+):
+    stmt = select(RoyaltySettlement).where(
+        RoyaltySettlement.tenant_id == identity.tenant_id
+    )
+    if agreement_id:
+        stmt = stmt.where(RoyaltySettlement.agreement_id == agreement_id)
+    stmt = stmt.order_by(RoyaltySettlement.period_start.desc())
+    rows = list((await db.execute(stmt)).scalars().all())
+    return {"items": rows, "total": len(rows)}

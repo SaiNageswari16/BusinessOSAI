@@ -61,7 +61,7 @@ import { billingService } from "@/services/billingService";
 
 export const Route = createFileRoute("/pos")({
   validateSearch: (search: Record<string, unknown>): { table?: string } => ({
-    table: typeof search.table === "string" ? search.table : undefined,
+    table: typeof search["table"] === "string" ? search["table"] : undefined,
   }),
   head: () => ({
     meta: [
@@ -206,7 +206,10 @@ function Pos() {
   };
 
   const onItem = (m: MenuItem) => {
-    if (!m.available) return toast.error(`${m.name} is currently sold out`);
+    if (!m.available) {
+      toast.error(`${m.name} is currently sold out`);
+      return;
+    }
     if (modifiersForCategory(m.category).length) setPicking(m);
     else addLine(m);
   };
@@ -251,7 +254,10 @@ function Pos() {
   };
 
   const submit = async (paid: boolean, method: PaymentMethod = "UPI") => {
-    if (!lines.length) return toast.error("Please add dishes to order first");
+    if (!lines.length) {
+      toast.error("Please add dishes to order first");
+      return;
+    }
     const activeCustName = selectedCustomer ? selectedCustomer.name : customer;
 
     const o = createOrder({
@@ -946,9 +952,11 @@ function ModifierDialog({
       [g]: single ? [o] : s[g]?.includes(o) ? s[g].filter((x) => x !== o) : [...(s[g] ?? []), o],
     }));
   const chosen = groups.flatMap((g) =>
-    g.options.filter((o) =>
-      (sel[g.id] ?? (g.type === "single" ? [g.options[0].id] : [])).includes(o.id),
-    ),
+    g.options.filter((o) => {
+      const firstOption = g.options[0];
+      const defaultForSingle = g.type === "single" && firstOption ? [firstOption.id] : [];
+      return (sel[g.id] ?? defaultForSingle).includes(o.id);
+    }),
   );
   const extra = chosen.reduce((s, o) => s + o.price, 0);
 

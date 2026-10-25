@@ -141,11 +141,10 @@ function ReportsPage() {
     const counts: Record<string, { qty: number; revenue: number; station: string }> = {};
     orders.forEach((o) => {
       o.lines.forEach((l) => {
-        if (!counts[l.name]) {
-          counts[l.name] = { qty: 0, revenue: 0, station: l.station };
-        }
-        counts[l.name].qty += l.qty;
-        counts[l.name].revenue += l.qty * l.unitPrice;
+        const entry = counts[l.name] ?? { qty: 0, revenue: 0, station: l.station };
+        if (!counts[l.name]) counts[l.name] = entry;
+        entry.qty += l.qty;
+        entry.revenue += l.qty * l.unitPrice;
       });
     });
 

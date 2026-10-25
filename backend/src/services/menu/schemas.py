@@ -61,6 +61,14 @@ class VariantCreate(BaseModel):
     sort_order: int = 0
 
 
+class VariantUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=100)
+    price_delta: float | None = None
+    is_default: bool | None = None
+    is_active: bool | None = None
+    sort_order: int | None = None
+
+
 class VariantResponse(OrmModel):
     id: uuid.UUID
     menu_item_id: uuid.UUID
@@ -94,6 +102,13 @@ class AddonCreate(BaseModel):
     name: str = Field(max_length=100)
     price: float = 0
     sort_order: int = 0
+
+
+class AddonUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=100)
+    price: float | None = None
+    is_active: bool | None = None
+    sort_order: int | None = None
 
 
 class AddonResponse(OrmModel):
@@ -209,6 +224,13 @@ class ModifierCreate(BaseModel):
     sort_order: int = 0
 
 
+class ModifierUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=100)
+    price_delta: float | None = None
+    is_active: bool | None = None
+    sort_order: int | None = None
+
+
 class ModifierResponse(OrmModel):
     id: uuid.UUID
     group_id: uuid.UUID
@@ -244,6 +266,17 @@ class RecipeCreate(BaseModel):
     yield_uom_id: uuid.UUID | None = None
     instructions: str | None = None
     lines: list[RecipeLineCreate] = Field(default_factory=list)
+
+
+class RecipeUpdate(BaseModel):
+    """Metadata-only update; BOM lines are replaced via the separate
+    ``PUT /recipes/{id}/lines`` route, which is the only way lines change."""
+
+    name: str | None = Field(default=None, max_length=200)
+    yield_qty: float | None = Field(default=None, gt=0)
+    yield_uom_id: uuid.UUID | None = None
+    instructions: str | None = None
+    is_active: bool | None = None
 
 
 class RecipeResponse(OrmModel):
@@ -366,6 +399,17 @@ class ComboCreate(BaseModel):
     description: str | None = None
     combo_price: float = Field(ge=0)
     items: list[ComboItemCreate] = Field(default_factory=list)
+    valid_from: str | None = None
+    valid_to: str | None = None
+
+
+class ComboUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=200)
+    description: str | None = None
+    combo_price: float | None = Field(default=None, ge=0)
+    is_active: bool | None = None
+    valid_from: str | None = None
+    valid_to: str | None = None
 
 
 class ComboItemResponse(OrmModel):
@@ -394,6 +438,15 @@ class PricingRuleCreate(BaseModel):
     conditions: dict = Field(default_factory=dict)
     discount_pct: float = Field(default=0, ge=0, le=100)
     priority: int = 0
+
+
+class PricingRuleUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=150)
+    rule_type: PricingRuleType | None = None
+    conditions: dict | None = None
+    discount_pct: float | None = Field(default=None, ge=0, le=100)
+    priority: int | None = None
+    is_active: bool | None = None
 
 
 class PricingRuleResponse(OrmModel):
@@ -542,6 +595,10 @@ class AiReconcileRequest(BaseModel):
     inventory_item_ids: dict[str, uuid.UUID] | None = None
     """Optional name-or-code -> inventory item id overrides, resolved by the
     client. Takes precedence over the server-side code/name resolution."""
+    outlet_id: uuid.UUID | None = None
+    """Narrows the menu-item lookup to one outlet when the tenant runs the
+    same dish on several outlets. Empty = tenant-wide, matching the
+    identity's own outlet scope."""
 
 
 class AiReconcileLine(BaseModel):

@@ -13,7 +13,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -127,6 +127,18 @@ class User(ServiceBase, TimestampMixin):
     is_platform_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    # TOTP MFA — RFC 6238. A base32 secret (32 chars); only present once the
+    # user has enabled MFA. ``mfa_enabled`` is a deliberate separate flag
+    # rather than "mfa_secret is not null" so a user can suspend MFA without
+    # destroying the secret (e.g. to switch auth apps).
+    mfa_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Access-token kill-switch: any access token issued strictly before this
+    # instant is treated as dead at decode time. Set on password change /
+    # security events so a leaked JWT doesn't outlive the incident.
+    token_revoked_before: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -219,4 +231,35 @@ class UserRole(ServiceBase, TimestampMixin):
         back_populates="roles",
         primaryjoin="UserRole.user_id == User.id",
         foreign_keys="UserRole.user_id",
+    )
+
+
+class OutboxMessage(ServiceBase, TimestampMixin):
+    """Transactional outbox row — one per event this service would emit.
+
+    Written in the same transaction as the domain change so the two commit
+    or roll back together. A relay marks rows published or dead; pending
+    rows are what the relay picks up on crash-recovery. ``event_id`` is
+    the bus dedupe key, so a re-delivered event is a no-op on the consumer
+    side even if the relay over-publishes it.
+    """
+
+    __tablename__ = "outbox_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    type: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    outlet_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    source_service: Mapped[str] = mapped_column(String(50), default="auth")
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False, index=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )

@@ -15,6 +15,7 @@ logging.basicConfig(
 
 from src.services.organization.api import router
 from src.services.organization import models  # noqa: F401  (registers on this service's base)
+from src.services.organization.outbox import OutboxRelay
 from src.services.shared.registry import get_descriptor
 from src.services.shared.service_app import create_service_app
 
@@ -34,6 +35,9 @@ from src.services.shared.service_db import ServiceDatabase
 
 db = ServiceDatabase("organization", _dsn)
 
+_relay = OutboxRelay(db)
+
+
 async def _on_startup(app):
     async with db.engine.begin() as conn:
         try:
@@ -42,12 +46,19 @@ async def _on_startup(app):
             )
         except Exception as e:
             logging.warning("Organization startup migration check: %s", e)
+    await _relay.start()
+
+
+async def _on_shutdown(app):
+    await _relay.stop()
+
 
 app = create_service_app(
     descriptor=_descriptor,
     db=db,
     routers=[router],
     on_startup=_on_startup,
+    on_shutdown=_on_shutdown,
 )
 
 if __name__ == "__main__":

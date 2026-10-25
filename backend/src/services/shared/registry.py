@@ -44,7 +44,16 @@ class ServiceDescriptor:
     # service name, which is what makes a self-contained vertical gate itself
     # with no extra configuration.
     kind: str = "core"
+    # module_key: the switch this service is gated behind. Defaults to the
+    # service's own name, so a vertical is its own module with no extra
+    # configuration; only a service that shares one switch with others
+    # (several services behind a single "pos" module, say) needs to set it.
     module_key: str | None = None
+    # Gating is opt-in: turning it on is a policy change made consciously,
+    # one line at a time. It blocks only a tenant with an explicit
+    # non-active row for this module key; a tenant with no row at all is
+    # allowed, so flipping the flag on can never break a tenant that has
+    # never been under module management.
     enforce_module_gate: bool = False
 
     @property
@@ -66,6 +75,7 @@ def _port(name: str, base: int, offset: int) -> int:
 # multiple instances of one service without port collisions.
 
 _REGISTRY: dict[str, ServiceDescriptor] = {}
+_ALIASES: dict[str, str] = {}
 
 
 def _register(d: ServiceDescriptor) -> None:
@@ -97,10 +107,9 @@ _register(ServiceDescriptor(
     description="Categories, items, variants, addons, modifiers, combos, pricing rules",
     permissions=("view:menu", "manage:menu", "view:recipes", "manage:recipes"),
     publishes=("menu.item.created", "menu.item.updated", "menu.item.deactivated"),
-    # Gating the menu service would 404 every POS request in a tenant that has
-    # no menu module row — POS and menu are inextricably linked (POS reads the
-    # menu on every order). Only kitchen is gated: a tenant without a kitchen
-    # (e.g. a pure-delivery cloud kitchen) genuinely should not reach KDS.
+    kind="plugin",
+    module_key="menu",
+    enforce_module_gate=True,
 ))
 
 _register(ServiceDescriptor(
@@ -115,6 +124,7 @@ _register(ServiceDescriptor(
                 "table.status.changed", "customer.updated"),
     kind="plugin",
     module_key="pos",
+    enforce_module_gate=True,
 ))
 
 _register(ServiceDescriptor(
@@ -128,9 +138,10 @@ _register(ServiceDescriptor(
     subscribes=("order.placed", "order.status.changed"),
     kind="plugin",
     module_key="kitchen",
-    # A tenant that has explicitly suspended its kitchen (e.g. a pure retail
-    # or delivery-only branch) should not reach the KDS screens. Gating only
-    # kitchen keeps POS/menu/billing reachable for every tenant.
+    # A tenant that has explicitly suspended its kitchen (e.g. a pure
+    # delivery-only branch with no in-house prep) should not reach KDS.
+    # Gating here — as with every other vertical — blocks only a tenant
+    # with an explicit non-active row; a never-onboarded tenant passes.
     enforce_module_gate=True,
 ))
 
@@ -143,6 +154,9 @@ _register(ServiceDescriptor(
                  "process:payments", "manage:refunds"),
     publishes=("bill.created", "bill.paid", "bill.refunded", "payment.received"),
     subscribes=("order.placed", "order.status.changed", "kot.item.status.changed"),
+    kind="plugin",
+    module_key="billing",
+    enforce_module_gate=True,
 ))
 
 _register(ServiceDescriptor(
@@ -155,6 +169,9 @@ _register(ServiceDescriptor(
                "adjustment.approved", "wastage.recorded"),
     subscribes=("order.placed", "order.cancelled", "kot.item.status.changed",
                 "grn.posted"),
+    kind="plugin",
+    module_key="inventory",
+    enforce_module_gate=True,
 ))
 
 _register(ServiceDescriptor(
@@ -165,6 +182,9 @@ _register(ServiceDescriptor(
     permissions=("view:purchase", "manage:purchase"),
     publishes=("po.created", "po.approved", "grn.posted", "vendor_bill.created"),
     subscribes=("stock.out", "stock.low"),
+    kind="plugin",
+    module_key="purchase",
+    enforce_module_gate=True,
 ))
 
 _register(ServiceDescriptor(
@@ -174,7 +194,9 @@ _register(ServiceDescriptor(
     description="Employees, HRMS studios, rosters, attendance, leaves, payroll, ATS, tips",
     permissions=(
         "view:staff", "manage:staff",
-        "view:hrms", "manage:hrms", "manage:hrms_employees",
+        "view:hrms", "manage:hrms", "edit:hrms", "delete:hrms",
+        "manage:hrms_employees",
+        "view:hrms_salary_structure", "manage:hrms_salary_structure",
         "view:hrms_attendance", "manage:hrms_attendance",
         "view:hrms_leaves", "manage:hrms_leaves",
         "view:hrms_payroll", "manage:hrms_payroll",
@@ -186,6 +208,9 @@ _register(ServiceDescriptor(
     ),
     publishes=("attendance.marked", "tip.recorded"),
     subscribes=("bill.paid",),
+    kind="plugin",
+    module_key="staff",
+    enforce_module_gate=True,
 ))
 
 
@@ -197,6 +222,9 @@ _register(ServiceDescriptor(
     permissions=("view:customers", "manage:customers"),
     publishes=("customer.created", "customer.updated", "customer.deleted"),
     subscribes=("bill.paid",),
+    kind="plugin",
+    module_key="customers",
+    enforce_module_gate=True,
 ))
 
 _register(ServiceDescriptor(
@@ -207,6 +235,9 @@ _register(ServiceDescriptor(
     permissions=("view:loyalty", "manage:loyalty"),
     publishes=("loyalty.points.earned", "loyalty.points.redeemed"),
     subscribes=("customer.created", "bill.paid"),
+    kind="plugin",
+    module_key="loyalty",
+    enforce_module_gate=True,
 ))
 
 _register(ServiceDescriptor(
@@ -218,6 +249,9 @@ _register(ServiceDescriptor(
     publishes=("journal_entry.posted",),
     subscribes=("bill.paid", "grn.posted", "adjustment.approved",
                 "wastage.recorded", "payment.received"),
+    kind="plugin",
+    module_key="accounting",
+    enforce_module_gate=True,
 ))
 
 _register(ServiceDescriptor(
@@ -228,6 +262,9 @@ _register(ServiceDescriptor(
     permissions=("view:reports",),
     subscribes=("order.placed", "bill.paid", "stock.movement.created",
                 "kot.ready", "attendance.marked"),
+    kind="plugin",
+    module_key="reports",
+    enforce_module_gate=True,
 ))
 
 
@@ -271,14 +308,30 @@ def all_services() -> list[ServiceDescriptor]:
     return list(_REGISTRY.values())
 
 
+# URL-prefix aliases → owning service. ``hrms`` and ``erp`` are both served
+# by the staff service (it mounts the HRMS studio + ERP org routers under both
+# /api/v1/hrms and /api/v1/erp as well as the canonical /api/v1/staff). They
+# are not separate services: same port, same database, same module gate.
 _ALIASES: dict[str, str] = {
     "hrms": "staff",
+    "erp": "staff",
 }
 
 
 def get_descriptor(name: str) -> ServiceDescriptor | None:
     canonical = _ALIASES.get(name, name)
     return _REGISTRY.get(canonical)
+
+
+def alias_target(name: str) -> str | None:
+    """Return the canonical service an alias forwards to, or None.
+
+    The gateway uses this to rewrite an aliased inbound prefix (e.g. ``/hrms``
+    or ``/erp``) onto the owning service's canonical route prefix (``/staff``)
+    before the hop, while still resolving identity + module gate from the
+    owning service's descriptor.
+    """
+    return _ALIASES.get(name)
 
 
 

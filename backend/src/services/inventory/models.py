@@ -86,6 +86,15 @@ class WastageReason(str, enum.Enum):
     OTHER = "other"
 
 
+class ExpiryStatus(str, enum.Enum):
+    """Where a batch stands against its expiry date at check time — this is
+    what a FEFO gate reports, not just whether an item has expiry tracking
+    on at all."""
+    OK = "ok"
+    EXPIRING = "expiring"
+    EXPIRED = "expired"
+
+
 class AdjustmentStatus(str, enum.Enum):
     PENDING = "pending"
     APPROVED = "approved"

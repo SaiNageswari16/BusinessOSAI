@@ -65,6 +65,11 @@ class OrderStatus(str, enum.Enum):
     BILL_REQUESTED = "bill_requested"
     SETTLED = "settled"
     CANCELLED = "cancelled"
+    """The guest parked the table (stepped out, waiting for a companion) —
+    the order is live but not progressing through the kitchen until it is
+    resumed. Distinct from DRAFT: the food was already ordered and the KOT
+    fired; this is a pause, not a not-started."""
+    HOLD = "hold"
 
 
 class OrderItemStatus(str, enum.Enum):
@@ -194,6 +199,7 @@ class Order(ServiceBase, TimestampMixin):
     discount_total: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
     tax_total: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
     service_charge: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    tip_total: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
     grand_total: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
 
     # No ForeignKey constraints exist on these columns, so SQLAlchemy cannot
@@ -422,6 +428,11 @@ class Waitlist(ServiceBase, TimestampMixin):
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
     quoted_wait_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Set the moment the party is actually seated, not while they are waiting —
+    # a waiting entry has no table to point at.
+    table_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
     status: Mapped[WaitlistStatus] = mapped_column(
         String(20), default=WaitlistStatus.WAITING
     )

@@ -780,7 +780,7 @@ function OperationsPage() {
       const sourceTable = tables.find((t) => t.id === selectedTableId);
       const destTable = tables.find((t) => t.id === targetTransferTableId);
       await Promise.all([
-        organizationService.setTableStatus(sourceTable?.backendId || selectedTableId, "cleaning"),
+        organizationService.setTableStatus(sourceTable?.backendId || selectedTableId, "dirty"),
         organizationService.setTableStatus(destTable?.backendId || targetTransferTableId, "occupied"),
       ]);
 

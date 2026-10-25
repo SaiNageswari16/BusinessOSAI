@@ -154,6 +154,40 @@ class OrderUpdate(BaseModel):
     customer_phone: str | None = Field(default=None, max_length=30)
     token_number: int | None = None
     table_id: uuid.UUID | None = None
+    tip_total: float | None = Field(default=None, ge=0)
+
+
+class OrderHoldResponse(OrmModel):
+    id: uuid.UUID
+    order_number: str
+    status: OrderStatus
+
+
+class OrderResumeRequest(BaseModel):
+    """Which state a held order comes back to — PLACED is the usual case
+    (cook it now), but a ticket already at the pass can resume to SERVED."""
+    to_status: OrderStatus = OrderStatus.PLACED
+
+
+class OrderSplitRequest(BaseModel):
+    """One entry per new order; each is the list of source-order line
+    positions that belong to it. Every line must land in exactly one entry."""
+    buckets: list[list[int]] = Field(min_length=2)
+
+
+class OrderMergeRequest(BaseModel):
+    order_b_id: uuid.UUID
+    """The order being absorbed. The route's own ``order_id`` is order_a —
+    the surviving one. Keeping it a field, not a path param, makes the
+    asymmetric direction of a merge explicit in the payload."""
+
+
+class OrderTipUpdate(BaseModel):
+    tip_total: float = Field(ge=0)
+    """A gratuity is not a line item and not a discount: it is a separate,
+    additive amount the bill shows, and the tip-pool service keys off it.
+    Settable here, not derived, because the amount is a decision the
+    customer makes, not a function of the menu."""
 
 
 class OrderCreateResponse(OrmModel):
@@ -306,6 +340,14 @@ class WaitlistCreate(BaseModel):
     customer_phone: str = Field(min_length=1, max_length=30)
     covers: int = Field(ge=1, default=2)
     quoted_wait_minutes: int | None = Field(default=None, ge=0)
+
+
+class WaitlistSeatRequest(BaseModel):
+    table_id: uuid.UUID
+    """The table the waiting party is being moved to. Closing the waitlist
+    entry and opening the table session must be one atomic step — a gap
+    between them is a guest standing at the host stand with no order
+    started, or a table marked occupied with no one in it."""
 
 
 class WaitlistUpdate(BaseModel):

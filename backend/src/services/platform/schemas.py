@@ -107,6 +107,10 @@ class PluginManifestResponse(BaseModel):
     settings_schema: dict[str, Any]
     is_system: bool
     is_active: bool
+    # Whether the API gateway enforces this module's per-tenant state.
+    # Core verticals without a descriptor entry report False: a kill-switch
+    # row exists, but nothing gates on it until a gateway descriptor is added.
+    gated: bool = False
 
 
 # ─── Permissions & Policies ─────────────────────────────────────────────────
@@ -152,6 +156,74 @@ class AccessPolicyResponse(BaseModel):
     condition: dict[str, Any] | None
     priority: int
     created_at: datetime
+
+
+# ─── Audit Trail ─────────────────────────────────────────────────────────────
+
+class AuditEntryResponse(BaseModel):
+    id: uuid.UUID
+    admin_id: uuid.UUID | None
+    admin_email: str
+    action: str
+    target_type: str
+    target_id: str
+    details: dict[str, Any]
+    ip_address: str | None = None
+    created_at: datetime
+
+
+class AuditListResponse(BaseModel):
+    items: list[AuditEntryResponse]
+    total: int
+    has_more: bool
+
+
+# ─── Admin Users ────────────────────────────────────────────────────────────
+
+class AdminCreateRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8)
+    full_name: str = Field(..., min_length=1, max_length=200)
+    role: str = Field(
+        "ops_admin",
+        description="super_admin | ops_admin | support_admin | billing_admin",
+    )
+
+
+class AdminUpdateRequest(BaseModel):
+    is_active: bool | None = None
+    full_name: str | None = Field(default=None, min_length=1, max_length=200)
+    role: str | None = Field(
+        default=None,
+        description="super_admin | ops_admin | support_admin | billing_admin",
+    )
+
+
+class AdminListResponse(BaseModel):
+    items: list[PlatformAdminResponse]
+    total: int
+
+
+# ─── Tenant Roster ───────────────────────────────────────────────────────────
+
+class TenantRosterItem(BaseModel):
+    """One row of the full tenant roster, enriched with platform-managed state."""
+    id: uuid.UUID
+    name: str
+    slug: str
+    status: str
+    plan: str
+    created_at: datetime
+    # Set when this tenant is under platform module management: active_modules
+    # reflects the platform DB's TenantModuleState rows.
+    active_modules: list[str] = Field(default_factory=list)
+    module_versions: dict[str, str] = Field(default_factory=dict)
+    is_managed: bool = False
+
+
+class TenantRosterResponse(BaseModel):
+    items: list[TenantRosterItem]
+    total: int
 
 
 # ─── Fleet Telemetry ────────────────────────────────────────────────────────

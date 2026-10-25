@@ -145,7 +145,16 @@ export const organizationService = {
     return apiClient.put<RestaurantTable>(`/api/v1/organization/tables/${tableId}`, data);
   },
 
-  async setTableStatus(tableId: string, status: RestaurantTable["status"]): Promise<RestaurantTable> {
+  /**
+   * Table status accepted by the organization service (loose by design —
+   * the backend validates the actual enum and returns a 422 on a typo):
+   * free | available | occupied | reserved | billing | billed | cleaning |
+   * dirty | blocked | out_of_service.
+   */
+  async setTableStatus(
+    tableId: string,
+    status: string
+  ): Promise<RestaurantTable> {
     return apiClient.put<RestaurantTable>(`/api/v1/organization/tables/${tableId}/status`, { status });
   },
 

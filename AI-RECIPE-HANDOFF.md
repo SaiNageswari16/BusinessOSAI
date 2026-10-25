@@ -181,9 +181,20 @@ sub-routes on the backend — more code, more churn.)
 | inventory `reorder_level` in cost-lookup | ✅ done |
 | purchase `/vendor-items/recommend` | ✅ done |
 | Frontend `purchaseService.ts` + `recipes.tsx` AI tab | ✅ done (reported clean tsc + build) |
-| **Path mismatch (frontend `/ai/recipe-*` vs backend `/ai-recipe-*`)** | ❌ **the one bug** |
-| LLM keys in `.env` | ⬜ empty (feature degrades to catalog until set — by design) |
-| End-to-end HTTP smoke test | ⬜ pending (needs services up + path fix) |
+| **Path mismatch (frontend `/ai/recipe-*` vs backend `/ai-recipe-*`)** | ✅ **fixed** — 3 URLs in `purchaseService.ts` AND 3 in `menuService.ts` (handoff had missed the second file) now both point at `/api/v1/menu/ai-recipe-*` |
+| LLM keys in `.env` | ⬜ empty (feature degrades to catalog-only — by design; `provider_used: "none"` + note in response) |
+| End-to-end HTTP smoke test | ✅ done 2026-10-23 — all 3 endpoints return HTTP 200 (see §6) |
+
+## 6. SESSION 2 — what was done (2026-10-23)
+
+- Fixed the 6 URL strings above (`purchaseService.ts` + `menuService.ts` both had the bug; handoff only listed the former).
+- Added `IDENTITY_DEV_FALLBACK=true` to `backend/.env` (with a comment). Without it, every request through the gateway without a valid Bearer token hard-401s — the service-level dev fallback in `shared/identity.py` is deliberately off unless this flag is set. This unblocks unauthenticated local API testing / the frontend in dev.
+- Smoke-tested all 3 endpoints end-to-end (gateway :8000, menu :8102, inventory :8106, purchase :8107) via `backend/ai_recipe_smoke.py` (new, mirrors the `ro_test.py` pattern):
+  - `/ai-recipe-search` → 200, catalog results, `provider_used: "none"` + "no LLM keys" note (expected, keys empty).
+  - `/ai-recipe-reconcile` → 200, real live inventory numbers (stock, reorder_level, shortfall computed correctly; scaling math verified by hand).
+  - `/ai-recipe-reorder` → 200, created a real purchase request (idempotent, skipped lines already covered by an open PR).
+- Left `IDENTITY_DEV_FALLBACK=true` in place since the app runs in `APP_ENV=development` locally and the whole point of the fallback is exactly this kind of unauthenticated dev/test flow. If you want it off for "closer to prod" behavior, remove that one line from `.env` and restart the services.
+- Known data-quality observation: seeded inventory `standard_cost` values are wildly large (e.g. ₹37,800/kg for chicken), which makes `total_cost` in a reconcile look unrealistic — this is a seed-data problem, not a code bug in `recipe_ai.py`.
 
 **Bottom line for the new session: the work is ~95% done. Fix the 3 URL
 strings in `frontend/src/services/purchaseService.ts` to match

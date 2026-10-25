@@ -154,8 +154,8 @@ export function ReceiptDialog({
                 {template.showCustomerInfo && (
                   <div className="col-span-2 pt-1 border-t border-dotted border-slate-300">
                     <div>Customer: <strong className="font-bold">{order.customer || "Walk-in Guest"}</strong></div>
-                    {(customerPhone || order.customerPhone) && (
-                      <div>Phone: {customerPhone || order.customerPhone}</div>
+                    {(customerPhone || order.phone) && (
+                      <div>Phone: {customerPhone || order.phone}</div>
                     )}
                   </div>
                 )}

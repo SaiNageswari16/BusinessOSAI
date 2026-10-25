@@ -60,7 +60,8 @@ function PlatformModulesPage() {
       setPlugins(pluginsData);
       setTenants(tenantsData);
       if (!selectedTenantId && tenantsData.length > 0) {
-        setSelectedTenantId(tenantsData[0].tenant_id);
+        const first = tenantsData[0];
+        if (first) setSelectedTenantId(first.tenant_id);
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to load catalog";
@@ -209,6 +210,11 @@ function PlatformModulesPage() {
                       </div>
                       <span className="text-[10px] font-mono text-indigo-600 uppercase tracking-wider font-medium">
                         {plugin.category}
+                        {plugin.gated && (
+                          <span className="ml-1.5 text-emerald-600" title="The gateway enforces this module's per-tenant state">
+                            · gateway-gated
+                          </span>
+                        )}
                       </span>
                     </div>
 

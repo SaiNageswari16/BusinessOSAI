@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.services.platform.models import (
@@ -371,17 +371,17 @@ class PlatformService:
         admin_email: str,
         config: dict | None = None,
     ) -> TenantModuleState:
-        # ── Alias resolution: plugin ids that name an internal core service
-        #    (e.g. "pos", "kitchen") resolve to the "restaurant" vertical,
-        #    since that is the only plugin that owns those services today.
-        #    This is a compatibility shim, not a general mechanism — the
-        #    alias table grows only when a new vertical genuinely adds a
-        #    service that should be toggleable under that name.
+        # ── Core-service resolution: a plugin id that names an internal
+        #    service (e.g. "pos", "kitchen", "inventory") gates exactly that
+        #    service, because the gateway's per-tenant module check keys on
+        #    the service's own module_key. A state row written here must use
+        #    the same key, or the toggle does nothing in the data plane.
+        #
+        #    The only remaining alias is "crm" -> "customers": the catalog's
+        #    vertical name for the customers service. Compatibility shim,
+        #    not a general mechanism — it grows only when a new vertical
+        #    genuinely needs a name different from its service.
         _SERVICE_ALIASES: dict[str, str] = {
-            "pos": "restaurant",
-            "kitchen": "restaurant",
-            "menu": "restaurant",
-            "billing": "restaurant",
             "crm": "customers",
         }
         resolved_plugin_id = _SERVICE_ALIASES.get(plugin_id, plugin_id)
@@ -622,6 +622,208 @@ class PlatformService:
         session.add(audit)
         await session.commit()
         return policy
+
+    @staticmethod
+    async def delete_policy(
+        session: AsyncSession, policy_id: uuid.UUID, admin_email: str
+    ) -> None:
+        """Retire a policy with an audit row carrying the rule's content —
+        an auditor reconstructs *what was enforced* from the log, not just
+        that something was deleted."""
+        res = await session.execute(
+            select(AccessPolicy).where(AccessPolicy.id == policy_id)
+        )
+        policy = res.scalar_one_or_none()
+        if policy is None:
+            raise ValueError("Policy not found")
+        await session.delete(policy)
+        session.add(PlatformAuditEntry(
+            admin_email=admin_email,
+            action="policy.deleted",
+            target_type="policy",
+            target_id=str(policy_id),
+            details={"rule": {
+                "module": policy.module,
+                "resource": policy.resource,
+                "operation": policy.operation,
+                "effect": policy.effect,
+            }},
+        ))
+        await session.commit()
+
+    # ─── Tenant Roster (cross-service, read-only) ─────────────────────────
+
+    @staticmethod
+    async def list_all_tenants(
+        session: AsyncSession,
+        search: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[dict], int]:
+        """The full tenant roster from the auth service, paged and filterable.
+
+        The platform DB only holds tenants it has managed (TenantModuleState
+        rows), so a super admin looking at a fleet of thousands needs the
+        auth service's complete roster. This is read-only enrichment — the
+        platform never writes to the auth DB; the module switch (activate /
+        suspend) remains the platform's own operation on its own rows.
+        """
+        import httpx
+
+        from src.services.shared.registry import base_url, get_descriptor
+
+        auth_descriptor = get_descriptor("auth")
+        if auth_descriptor is None:
+            raise ValueError("Auth service is not registered in the platform")
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            res = await client.get(f"{base_url(auth_descriptor)}/api/v1/auth/tenants")
+        if res.status_code != 200:
+            raise ValueError(f"Auth service returned {res.status_code} for tenant roster")
+        items: list[dict] = res.json()
+        total = len(items)
+
+        if search:
+            needle = search.lower()
+            items = [
+                t for t in items
+                if needle in str(t.get("slug", "")).lower()
+                or needle in str(t.get("name", "")).lower()
+            ]
+
+        return items[offset : offset + limit], total
+
+    # ─── Audit Trail ────────────────────────────────────────────────────────
+
+    @staticmethod
+    async def list_audit(
+        session: AsyncSession,
+        limit: int = 100,
+        offset: int = 0,
+        action: str | None = None,
+        admin_email: str | None = None,
+        target_type: str | None = None,
+    ) -> tuple[list[PlatformAuditEntry], int]:
+        """Page through the immutable platform audit log.
+
+        The log grows with every control-plane action; at 1000s of tenants
+        and admins it is the first place a compliance question gets answered,
+        so it gets real filtering (by action / admin / target type) and a
+        hard page cap rather than a single unbounded dump.
+        """
+        base = select(PlatformAuditEntry)
+        if action:
+            base = base.where(PlatformAuditEntry.action == action)
+        if admin_email:
+            base = base.where(PlatformAuditEntry.admin_email == admin_email)
+        if target_type:
+            base = base.where(PlatformAuditEntry.target_type == target_type)
+
+        count_res = await session.execute(select(func.count()).select_from(base.subquery()))
+        total = int(count_res.scalar_one() or 0)
+
+        items = list((await session.execute(
+            base.order_by(PlatformAuditEntry.created_at.desc())
+            .limit(min(limit, 500))
+            .offset(offset)
+        )).scalars().all())
+        return items, total
+
+    # ─── Admin Users ───────────────────────────────────────────────────────
+
+    @staticmethod
+    async def list_admins(session: AsyncSession) -> list[PlatformAdmin]:
+        return list((await session.execute(
+            select(PlatformAdmin).order_by(PlatformAdmin.created_at.asc())
+        )).scalars().all())
+
+    @staticmethod
+    async def create_admin(
+        session: AsyncSession,
+        email: str,
+        password: str,
+        full_name: str,
+        role: str,
+        admin_email: str,
+    ) -> PlatformAdmin:
+        """Provision a new control-plane user.
+
+        Never self-served: this endpoint sits behind the platform realm, and
+        every creation lands an audit row so "who gave this account power"
+        is always answerable."""
+        existing = await session.scalar(
+            select(PlatformAdmin).where(PlatformAdmin.email == email)
+        )
+        if existing:
+            raise ValueError(f"Platform admin with email '{email}' already exists")
+        valid_roles = {r.value for r in PlatformAdminRole}
+        if role not in valid_roles:
+            raise ValueError(f"Role '{role}' is not a platform admin role")
+
+        admin = PlatformAdmin(
+            email=email,
+            hashed_password=hash_password(password),
+            full_name=full_name,
+            role=role,
+            is_active=True,
+        )
+        session.add(admin)
+        session.add(PlatformAuditEntry(
+            admin_email=admin_email,
+            action="admin.created",
+            target_type="platform_admin",
+            target_id=email,
+            details={"role": role, "full_name": full_name},
+        ))
+        await session.commit()
+        return admin
+
+    @staticmethod
+    async def update_admin(
+        session: AsyncSession,
+        admin_id: uuid.UUID,
+        data: dict,
+        admin_email: str,
+    ) -> PlatformAdmin:
+        """Patch an admin user. Deactivation (``is_active=False``) is how an
+        account is retired — the login check refuses inactive rows, so this
+        is a real kill-switch, not just a label.
+
+        A super_admin cannot deactivate themselves: the last-active-super
+        self-lockout is the classic control-plane foot-gun, and at 1000s of
+        tenants an unreachable platform realm means no module switches work
+        anywhere."""
+        admin = await session.scalar(
+            select(PlatformAdmin).where(PlatformAdmin.id == admin_id)
+        )
+        if admin is None:
+            raise ValueError("Platform admin not found")
+
+        if "role" in data and data["role"] is not None:
+            valid_roles = {r.value for r in PlatformAdminRole}
+            if data["role"] not in valid_roles:
+                raise ValueError(f"Role '{data['role']}' is not a platform admin role")
+            admin.role = data["role"]
+        if "full_name" in data and data["full_name"] is not None:
+            admin.full_name = data["full_name"]
+        if "is_active" in data and data["is_active"] is not None:
+            if (
+                admin.email == admin_email
+                and data["is_active"] is False
+                and admin.role == PlatformAdminRole.SUPER_ADMIN.value
+            ):
+                raise ValueError("A super admin cannot deactivate their own account")
+            admin.is_active = data["is_active"]
+
+        session.add(PlatformAuditEntry(
+            admin_email=admin_email,
+            action="admin.updated",
+            target_type="platform_admin",
+            target_id=str(admin.id),
+            details=data,
+        ))
+        await session.commit()
+        return admin
 
     @staticmethod
     async def probe_fleet_health() -> dict:

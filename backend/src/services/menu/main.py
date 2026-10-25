@@ -15,6 +15,7 @@ from sqlalchemy import func, select  # noqa: F401
 
 from src.services.menu import models  # noqa: F401  (registers on this service's base)
 from src.services.menu.api import router
+from src.services.menu.outbox import OutboxRelay
 from src.services.menu.seed_catalog import seed_catalog
 from src.services.shared.registry import get_descriptor
 from src.services.shared.service_factory import build_service
@@ -60,7 +61,38 @@ async def _on_startup(app) -> None:
         logger.warning("Catalog seed failed (service will start regardless): %s", exc)
 
 
-app, db = build_service("menu", [router], on_startup=_on_startup, tags=TAGS)
+_relay = OutboxRelay(None)  # db handle bound below
+
+
+async def _on_startup_outbox(app) -> None:
+    _relay._db = app.state.db
+    install = True
+    if install:
+        from src.services.event_bus.dedupe import install_service_ledger
+        install_service_ledger(app.state.db)
+    await _relay.start()
+
+
+async def _on_shutdown_outbox(app) -> None:
+    await _relay.stop()
+
+
+async def _startup_all(app) -> None:
+    await _on_startup(app)
+    await _on_startup_outbox(app)
+
+
+async def _shutdown_all(app) -> None:
+    await _on_shutdown_outbox(app)
+
+
+app, db = build_service(
+    "menu", [router],
+    on_startup=_startup_all,
+    on_shutdown=_shutdown_all,
+    tags=TAGS,
+)
+_relay._db = db
 
 
 if __name__ == "__main__":

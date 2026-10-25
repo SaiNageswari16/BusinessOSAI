@@ -1,7 +1,7 @@
 /**
  * Menu Service Client (Native Fetch).
  *
- * Microservice: menu (:8104) via API Gateway (:8000)
+ * Microservice: menu (:8102) via API Gateway (:8000)
  * Mount: /api/v1/menu
  */
 
@@ -174,13 +174,20 @@ export interface AiRecipeResult {
 
 export interface AiReconcileLine {
   name: string;
+  unit?: string;
   inventory_item_id: string | null;
+  qty_per_portion?: number;
+  wastage_pct?: number;
   required_for_n: number;
   available_stock: number;
-  reorder_level: number;
+  reorder_level?: number;
   standard_cost: number | null;
+  line_cost?: number | null;
   status: "in_stock" | "low" | "missing";
   shortfall: number;
+  suggested_po_qty?: number | null;
+  vendor_id?: string | null;
+  suggested_qty?: number | null;
 }
 
 export interface AiReconcileResult {
@@ -188,6 +195,17 @@ export interface AiReconcileResult {
   portions: number;
   lines: AiReconcileLine[];
   total_cost: number | null;
+  cost_known?: boolean;
+  low_count?: number;
+  missing_count?: number;
+  total?: {
+    lines: number;
+    in_stock: number;
+    low: number;
+    missing: number;
+    total_cost: number | null;
+    cost_known: boolean;
+  };
 }
 
 export interface AiRecipeSearchParams {
@@ -205,15 +223,31 @@ export interface AiRecipeSearchResponse {
 }
 
 export interface AiReorderLine {
-  inventory_item_id: string;
-  suggested_qty: number;
-  name: string;
+  inventory_item_id: string | null;
+  name: string | null;
+  status: "in_stock" | "low" | "missing";
+  suggested_po_qty?: number;
+  shortfall?: number;
+  reorder_level?: number;
+  available_stock?: number;
+  required_for_n?: number;
+}
+
+export interface AiReorderCreated {
+  id: string;
+  number: string;
+  lines: number;
 }
 
 export interface AiReorderResponse {
-  po_ids: string[];
-  created: number;
-  skipped: { inventory_item_id: string; reason: string }[];
+  created: boolean;
+  po_id: string | null;
+  po_number: string | null;
+  lines: { inventory_item_id: string; ordered_qty: number; unit_price: number; notes?: string | null }[];
+  reason: string | null;
+  po_created: AiReorderCreated[];
+  pr_created: AiReorderCreated[];
+  idempotent: { inventory_item_id: string | null; reason: string }[];
   note: string;
 }
 
@@ -339,28 +373,37 @@ export const menuService = {
     p: AiRecipeSearchParams,
   ): Promise<AiRecipeSearchResponse> {
     return apiClient.post<AiRecipeSearchResponse>(
-      "/api/v1/menu/ai/recipe-search",
+      "/api/v1/menu/ai-recipe-search",
       p,
     );
   },
 
   /** Reconcile a recipe's ingredient BOM against CURRENT live inventory,
-   *  scaled to `portions`. */
+   *  scaled to `portions`. Pass `outlet_id` to narrow the menu-item lookup
+   *  when the tenant runs the same dish on several outlets. */
   async aiRecipeReconcile(p: {
     recipe_id: string;
     portions: number;
+    outlet_id?: string | null;
   }): Promise<AiReconcileResult> {
     return apiClient.post<AiReconcileResult>(
-      "/api/v1/menu/ai/recipe-reconcile",
+      "/api/v1/menu/ai-recipe-reconcile",
       p,
     );
   },
 
-  /** Create purchase orders for missing/low ingredient lines. */
+  /** Create purchase orders for missing/low ingredient lines.
+   *  Either pass the `lines` (reconcile pass-through) OR a
+   *  `recipe_name_or_id` + `portions` and the server derives the lines
+   *  itself. Missing lines become draft POs; low lines become purchase
+   *  requests. Idempotent against open POs/PRs. */
   async aiRecipeReorder(p: {
-    lines: AiReorderLine[];
+    recipe_name_or_id?: string;
+    portions?: number;
+    lines?: AiReorderLine[];
     outlet_id: string | null;
+    recipe_name?: string;
   }): Promise<AiReorderResponse> {
-    return apiClient.post<AiReorderResponse>("/api/v1/menu/ai/recipe-reorder", p);
+    return apiClient.post<AiReorderResponse>("/api/v1/menu/ai-recipe-reorder", p);
   },
 };

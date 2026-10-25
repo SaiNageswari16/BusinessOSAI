@@ -186,7 +186,7 @@ export function UnifiedGatewayPage() {
   const [rememberMe, setRememberMe] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const activePortal: BusinessPortal = INTEGRATED_PORTALS[selectedRoleIndex] ?? defaultPortal;
+  const activePortal = INTEGRATED_PORTALS[selectedRoleIndex] ?? INTEGRATED_PORTALS[0]!;
   const { login: authLogin } = useAuth();
   const navigate = useNavigate();
 

@@ -220,11 +220,15 @@ function Crm() {
             </Button>
             <Button
               onClick={() => {
-                if (!d.name || !d.phone) return toast.error("Name and phone number required");
+                if (!d.name || !d.phone) {
+                  toast.error("Name and phone number required");
+                  return;
+                }
                 const newC = addCustomer({
                   name: d.name,
                   phone: d.phone,
                   email: d.email || "guest@sunrise.in",
+                  favourite: "—",
                   tags: ["Regular"],
                 });
                 setD({ name: "", phone: "", email: "" });

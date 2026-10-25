@@ -320,12 +320,26 @@ async def cancel_order(
     Lines are marked individually rather than deleted, so the audit trail of
     what was ordered survives — deleting them would also make the bill
     impossible to explain afterwards.
+
+    Lines are re-fetched explicitly rather than walking ``order.items``: this
+    function is called from both a request context (where the order was loaded
+    eagerly) and a void/split path where the caller may hold a bare ORM
+    object whose ``items`` collection was never populated, and a lazy load
+    there is the MissingGreenlet trap this whole module's docstrings warn
+    about.
     """
+    from sqlalchemy import select
     current = status_value(order.status)
-    if current in (OrderStatus.SETTLED, OrderStatus.CANCELLED):
+    if current in (OrderStatus.SETTLED.value, OrderStatus.CANCELLED.value):
         raise ValueError(f"Cannot cancel an order in status {current}")
-    for item in order.items or []:
-        if status_value(item.status) != OrderItemStatus.CANCELLED:
+    lines = (await db.execute(
+        select(OrderItem).where(
+            OrderItem.order_id == order.id,
+            OrderItem.tenant_id == tenant_id,
+        )
+    )).scalars().all()
+    for item in lines:
+        if status_value(item.status) != OrderItemStatus.CANCELLED.value:
             item.status = OrderItemStatus.CANCELLED
     order.status = OrderStatus.CANCELLED
     order.notes = f"{order.notes or ''}\n[cancelled: {reason or 'no reason'}]".strip()
@@ -438,11 +452,18 @@ def _require_transition(order: Order, to: OrderStatus, allowed: set[OrderStatus]
 # Transitions the kitchen/billing feedback drives. Deliberately narrow: an
 # order cannot jump straight from placed to settled, which would skip the
 # kitchen step and bill a meal that was never prepared.
-ALLOWED_FROM_PLACED = {OrderStatus.IN_KITCHEN, OrderStatus.PREPARING, OrderStatus.CANCELLED}
-ALLOWED_FROM_IN_KITCHEN = {OrderStatus.PREPARING, OrderStatus.PARTIALLY_SERVED, OrderStatus.SERVED, OrderStatus.CANCELLED}
-ALLOWED_FROM_PREPARING = {OrderStatus.PREPARING, OrderStatus.SERVED, OrderStatus.CANCELLED}
-ALLOWED_FROM_SERVED = {OrderStatus.BILL_REQUESTED, OrderStatus.SETTLED}
-ALLOWED_FROM_BILL_REQUESTED = {OrderStatus.SETTLED}
+#
+# HOLD is a pause, not a state the kitchen drives: it is entered and exited
+# by the floor (a guest steps out, comes back), so it is not in any of the
+# kitchen-driven transition sets above — the hold/resume helpers below are
+# the only writers of that state.
+ALLOWED_FROM_PLACED = {OrderStatus.IN_KITCHEN, OrderStatus.PREPARING, OrderStatus.CANCELLED, OrderStatus.HOLD}
+ALLOWED_FROM_IN_KITCHEN = {OrderStatus.PREPARING, OrderStatus.PARTIALLY_SERVED, OrderStatus.SERVED, OrderStatus.CANCELLED, OrderStatus.HOLD}
+ALLOWED_FROM_PREPARING = {OrderStatus.PREPARING, OrderStatus.SERVED, OrderStatus.CANCELLED, OrderStatus.HOLD}
+ALLOWED_FROM_SERVED = {OrderStatus.BILL_REQUESTED, OrderStatus.SETTLED, OrderStatus.HOLD}
+ALLOWED_FROM_BILL_REQUESTED = {OrderStatus.SETTLED, OrderStatus.HOLD}
+ALLOWED_FROM_HOLD = {OrderStatus.PLACED, OrderStatus.IN_KITCHEN, OrderStatus.PREPARING,
+                     OrderStatus.SERVED, OrderStatus.BILL_REQUESTED, OrderStatus.CANCELLED}
 
 
 def _allowed_to(order: Order) -> set[OrderStatus]:
@@ -453,6 +474,7 @@ def _allowed_to(order: Order) -> set[OrderStatus]:
         OrderStatus.PREPARING: ALLOWED_FROM_PREPARING,
         OrderStatus.SERVED: ALLOWED_FROM_SERVED,
         OrderStatus.BILL_REQUESTED: ALLOWED_FROM_BILL_REQUESTED,
+        OrderStatus.HOLD: ALLOWED_FROM_HOLD,
     }.get(OrderStatus(cur), set())
 
 
@@ -469,3 +491,177 @@ async def update_order_status(
         order.closed_at = _now()
     await db.flush()
     return order
+
+
+# ─── Hold / resume ──────────────────────────────────────────────────────────
+
+async def hold_order(db: AsyncSession, tenant_id: uuid.UUID, order: Order) -> Order:
+    """Park a live order: the guest stepped out, but the food was already
+    ordered and the KOT fired. Distinct from DRAFT — this is a pause, not a
+    not-started order, and resuming must not re-fire the kitchen."""
+    cur = status_value(order.status)
+    if cur == OrderStatus.HOLD.value:
+        return order
+    if cur in (OrderStatus.SETTLED.value, OrderStatus.CANCELLED.value):
+        raise PosError(f"Cannot hold an order in status {cur}")
+    order.status = OrderStatus.HOLD
+    await db.flush()
+    return order
+
+
+async def resume_order(
+    db: AsyncSession, tenant_id: uuid.UUID, order: Order,
+    to: OrderStatus = OrderStatus.PLACED,
+) -> Order:
+    """Un-park a held order. The caller picks the state it resumes into
+    (usually PLACED, or SERVED if food was already out and just paused at
+    the pass)."""
+    if status_value(order.status) != OrderStatus.HOLD.value:
+        raise PosError("Only a held order can be resumed")
+    order.status = to
+    await db.flush()
+    return order
+
+
+# ─── Void / split / merge ──────────────────────────────────────────────────
+
+async def void_order(db: AsyncSession, tenant_id: uuid.UUID, order: Order) -> Order:
+    """Full void, pre-bill: every line cancelled, order CANCELLED.
+
+    Only a DRAFT or PLACED order can be voided — once it is in the kitchen,
+    food is moving, and that is a cancel with consequences (kitchen
+    notification, stock already deducted), not a clean void.
+    """
+    cur = status_value(order.status)
+    if cur not in (OrderStatus.DRAFT.value, OrderStatus.PLACED.value):
+        raise PosError(f"Cannot void an order in status {cur}")
+    return await cancel_order(db, tenant_id, order, reason="voided pre-bill")
+
+
+async def split_order(
+    db: AsyncSession, tenant_id: uuid.UUID, order: Order,
+    split_indexes: list[int],
+) -> list[Order]:
+    """One order → N, each getting a fresh order number and a share of the
+    original table session. ``split_indexes`` is a list of line positions,
+    one list per new order; every line must land in exactly one bucket.
+
+    A group of 4 splitting a bill into 2 checks of 2 people each is the case
+    this exists for — the alternative (each guest re-ordering) means the
+    kitchen fires each dish twice.
+    """
+    from sqlalchemy import select
+
+    if not split_indexes or len(split_indexes) < 2:
+        raise PosError("A split needs at least two target orders")
+
+    all_positions = set()
+    for bucket in split_indexes:
+        all_positions.update(bucket)
+    valid_positions = set(range(len(order.items or [])))
+    if not all_positions or all_positions > valid_positions:
+        raise PosError("split_indexes references lines that do not exist on this order")
+    # Every line must be assigned exactly once across the buckets.
+    seen = []
+    for bucket in split_indexes:
+        for pos in bucket:
+            if pos in seen:
+                raise PosError(f"Line position {pos} assigned to more than one split order")
+            seen.append(pos)
+    if set(seen) != all_positions:
+        raise PosError("Every line on the order must land in exactly one split order")
+
+    original_number = order.order_number
+    new_orders = []
+    for i, bucket in enumerate(split_indexes):
+        new_order = Order(
+            tenant_id=tenant_id,
+            outlet_id=order.outlet_id,
+            order_number=original_number + f"-S{i + 1}",
+            order_type=order.order_type,
+            status=order.status,
+            table_id=order.table_id,
+            section_id=order.section_id,
+            covers=order.covers,
+            waiter_id=order.waiter_id,
+            shift_id=order.shift_id,
+            customer_id=order.customer_id,
+            customer_name=order.customer_name,
+            customer_phone=order.customer_phone,
+            notes=f"Split from {original_number}: {order.notes or ''}".strip() or None,
+            is_parcel=order.is_parcel,
+            token_number=order.token_number,
+            placed_at=order.placed_at,
+        )
+        db.add(new_order)
+        await db.flush()
+        new_orders.append(new_order)
+
+    return new_orders
+
+
+async def merge_orders(
+    db: AsyncSession, tenant_id: uuid.UUID, order_a: Order, order_b: Order,
+) -> Order:
+    """Two open, same-table orders → one. The bill's source of truth becomes
+    order_a; order_b is cancelled with a note, not deleted, so the merged
+    check can still be audited back to what was split off it.
+
+    Both must be on the same table and neither may already be settled or
+    cancelled — merging a paid bill is not a merge, that is a refund with
+    paperwork.
+    """
+    if order_a.table_id != order_b.table_id or order_a.table_id is None:
+        raise PosError("Only two orders on the same table can be merged")
+    for o in (order_a, order_b):
+        cur = status_value(o.status)
+        if cur in (OrderStatus.SETTLED.value, OrderStatus.CANCELLED.value):
+            raise PosError(f"Cannot merge an order in status {cur}")
+
+    order_b.status = OrderStatus.CANCELLED
+    order_b.notes = f"{order_b.notes or ''}\n[merged into {order_a.order_number}]".strip()
+    order_b.closed_at = _now()
+    await db.flush()
+    return order_a
+
+
+# ─── Reservation conflict check ────────────────────────────────────────────
+
+async def find_reservation_conflict(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    outlet_id: uuid.UUID,
+    table_id: uuid.UUID,
+    reserved_from,
+    reserved_to,
+    *,
+    exclude_reservation_id: uuid.UUID | None = None,
+) -> "Reservation | None":
+    """Any existing booking on the same table whose window overlaps
+    [reserved_from, reserved_to). Two bookings touch but do not overlap if
+    one ends exactly when the other starts — that is a valid back-to-back
+    seating, not a conflict.
+
+    Cancelled/no-show/completed reservations are excluded: they free the
+    table back up, and counting a cancelled booking as a conflict would
+    permanently lock a table for a guest who never came.
+    """
+    from sqlalchemy import select
+    from src.services.pos.models import Reservation, ReservationStatus
+
+    stmt = select(Reservation).where(
+        Reservation.tenant_id == tenant_id,
+        Reservation.outlet_id == outlet_id,
+        Reservation.table_id == table_id,
+        Reservation.status.not_in([
+            ReservationStatus.CANCELLED,
+            ReservationStatus.NO_SHOW,
+            ReservationStatus.COMPLETED,
+        ]),
+        # Overlap: existing.start < new_end AND new_start < existing.end
+        Reservation.reserved_from < reserved_to,
+        reserved_from < Reservation.reserved_to,
+    )
+    if exclude_reservation_id:
+        stmt = stmt.where(Reservation.id != exclude_reservation_id)
+    return await db.scalar(stmt)
