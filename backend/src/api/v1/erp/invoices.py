@@ -1069,17 +1069,50 @@ async def create_invoice(
             or old_inv_num.startswith("EST-")
         )
 
-        # If previous version had deducted stock, revert it before applying updated lines to prevent double-deductions
+        # If previous version had deducted stock, revert it before applying updated lines to prevent double-deductions.
+        # Revert is COMPLETE: restore initial_stock, on_hand_stock AND the specific batch's remaining_quantity.
+        # (The deduction path at ~L1295/1344 mutates all three; reverting only initial_stock silently
+        # double-deducts batch + on_hand_stock on every re-save.)
         if not was_non_depleting:
             old_lines_res = await db.execute(select(InvoiceLine).where(InvoiceLine.invoice_id == existing_inv.id))
             old_lines = old_lines_res.scalars().all()
             for ol in old_lines:
+                # POS-origin invoices already had stock deducted at POS checkout; their ERP lines
+                # must NOT be reverted here or total stock would be over-restored.
+                is_pos_origin = str(existing_inv.reference_number or "").startswith("REC-") or \
+                                 str(existing_inv.invoice_number or "").startswith("REC-")
+                if is_pos_origin:
+                    continue
+                old_qty = float(ol.quantity or 0)
+                if old_qty <= 0:
+                    continue
+                old_prod = None
                 if ol.product_id:
                     old_prod = await db.scalar(
                         select(Product).where(Product.id == ol.product_id, Product.tenant_id == ctx.tenant_id).with_for_update()
                     )
-                    if old_prod:
-                        old_prod.initial_stock = int((old_prod.initial_stock or 0) + float(ol.quantity or 0))
+                if not old_prod and ol.product_name:
+                    old_prod = await db.scalar(
+                        select(Product).where(
+                            Product.name.ilike(ol.product_name.strip()),
+                            Product.tenant_id == ctx.tenant_id
+                        ).with_for_update()
+                    )
+                if old_prod:
+                    # 1. Restore product-level counters (both initial_stock + on_hand_stock)
+                    old_prod.initial_stock = int((old_prod.initial_stock or 0) + old_qty)
+                    old_on_hand = old_prod.on_hand_stock if old_prod.on_hand_stock is not None else old_prod.initial_stock
+                    old_prod.on_hand_stock = int(old_on_hand + old_qty)
+                    # 2. Restore the specific batch that was deducted (if recorded on the line)
+                    if getattr(ol, "batch_number", None):
+                        b_revert = await db.scalar(
+                            select(InventoryBatch).where(
+                                InventoryBatch.batch_number == ol.batch_number,
+                                InventoryBatch.tenant_id == ctx.tenant_id
+                            ).with_for_update()
+                        )
+                        if b_revert:
+                            b_revert.remaining_quantity = int((b_revert.remaining_quantity or 0) + old_qty)
 
         await db.execute(delete(InvoiceLine).where(InvoiceLine.invoice_id == existing_inv.id))
         for k, v in inv_data.items():

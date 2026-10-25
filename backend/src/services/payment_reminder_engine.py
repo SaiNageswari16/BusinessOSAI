@@ -9,11 +9,12 @@ from __future__ import annotations
 import logging
 import os
 import uuid
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import httpx
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -623,6 +624,56 @@ async def evaluate_and_send_reminders(
     now_utc = datetime.now(timezone.utc)
     today = date.today()
 
+    # Exclusive advisory lock: only ONE evaluation cycle (across all processes/workers)
+    # may run at a time. A concurrent cycle (app restart with the old loop still alive, or
+    # a duplicate worker) returns "skipped_lock" instead of double-dispatching. The lock is
+    # released in a finally so no pooled connection is left holding it.
+    async with _advisory_cycle_lock(db) as lock_acquired:
+        if not lock_acquired:
+            logger.info("Payment reminder cycle skipped: another cycle holds the advisory lock")
+            return _lock_skip_result(now_utc)
+        return await _run_reminder_cycle(db, now_utc, today, tenant_id, company_id, force_invoice_id)
+
+
+def _lock_skip_result(now_utc: datetime) -> dict:
+    return {
+        "status": "skipped_lock",
+        "invoices_evaluated": 0,
+        "reminders_sent": 0,
+        "penalties_applied": 0,
+        "message": "Another reminder cycle is in progress; this run was skipped to prevent duplicate sends.",
+        "timestamp": now_utc.isoformat(),
+        "dispatched": [],
+    }
+
+
+@asynccontextmanager
+async def _advisory_cycle_lock(db: AsyncSession):
+    """Yield True if the cycle-level advisory lock was acquired, else False.
+
+    Always releases on exit so the pooled connection is not left locked.
+    """
+    lock_hash = await db.scalar(text("SELECT ABS(hashtext('businessosai_payment_reminder_cycle'))::bigint"))
+    h = int(lock_hash) if lock_hash is not None else 0
+    acquired = await db.scalar(text("SELECT pg_try_advisory_lock(:h)"), {"h": h})
+    try:
+        yield bool(acquired)
+    finally:
+        try:
+            await db.scalar(text("SELECT pg_advisory_unlock(:h)"), {"h": h})
+        except Exception as rel_err:
+            logger.warning("Failed to release payment reminder advisory lock: %s", rel_err)
+
+
+async def _run_reminder_cycle(
+    db: AsyncSession,
+    now_utc: datetime,
+    today: date,
+    tenant_id: uuid.UUID | None,
+    company_id: uuid.UUID | None,
+    force_invoice_id: uuid.UUID | None,
+) -> None:
+    """Execute one payment-reminder evaluation cycle (call only while holding the advisory lock)."""
     query = (
         select(Invoice)
         .options(selectinload(Invoice.company))

@@ -7,6 +7,33 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models import NumberSeries, Company
 
 
+async def _number_exists(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    candidate: str,
+    is_receipt: bool,
+    is_invoice: bool,
+) -> int:
+    """Tenant-scoped existence check for a candidate document number (receipts or invoices)."""
+    if is_receipt:
+        from src.models import POSTransaction
+        return await db.scalar(
+            select(func.count()).select_from(POSTransaction).where(
+                POSTransaction.tenant_id == tenant_id,
+                POSTransaction.receipt_number == candidate,
+            )
+        ) or 0
+    if is_invoice:
+        from src.models.erp import Invoice
+        return await db.scalar(
+            select(func.count()).select_from(Invoice).where(
+                Invoice.tenant_id == tenant_id,
+                Invoice.invoice_number == candidate,
+            )
+        ) or 0
+    return 0
+
+
 def get_module_aliases(module: str) -> list[str]:
     """Map common module synonyms so 'invoice', 'invoices', 'tax_invoice' all match."""
     clean = module.strip().lower().replace("-", "_").replace(" ", "_")
@@ -133,27 +160,17 @@ async def generate_number(
     if series:
         prefix = series.prefix or fallback_prefix or "INV-"
         padding = series.padding or 5
-        # Check collision and increment
+        # Check collision and increment (tenant-scoped existence checks; the FOR UPDATE lock on
+        # the series row serializes concurrent callers, so the first free candidate is the winner)
         for _ in range(50):
             series.current_number += 1
             candidate = f"{prefix}{str(series.current_number).zfill(padding)}"
             if "receipt" in module.lower() or "pos" in module.lower():
-                from src.models import POSTransaction
-                exists = await db.scalar(
-                    select(func.count()).select_from(POSTransaction).where(
-                        POSTransaction.receipt_number == candidate
-                    )
-                )
+                exists = await _number_exists(db, tenant_id, candidate, True, False)
                 if not exists:
                     return candidate
             elif "invoice" in module.lower():
-                from src.models.erp import Invoice
-                exists = await db.scalar(
-                    select(func.count()).select_from(Invoice).where(
-                        Invoice.tenant_id == tenant_id,
-                        Invoice.invoice_number == candidate
-                    )
-                )
+                exists = await _number_exists(db, tenant_id, candidate, False, True)
                 if not exists:
                     return candidate
             else:
@@ -178,14 +195,20 @@ async def generate_number(
         else:
             clean_prefix = "INV-"
 
+    is_receipt = "receipt" in module.lower() or "pos" in module.lower()
+    is_invoice = "invoice" in module.lower()
+
     start_num = 1
-    if "receipt" in module.lower() or "pos" in module.lower():
+    if is_receipt:
+        # Tenant-scoped count (previously global — cross-tenant skew under concurrency)
         from src.models import POSTransaction
         count = await db.scalar(
-            select(func.count()).select_from(POSTransaction)
+            select(func.count()).select_from(POSTransaction).where(
+                POSTransaction.tenant_id == tenant_id
+            )
         ) or 0
         start_num = count + 1
-    elif "invoice" in module.lower():
+    elif is_invoice:
         from src.models.erp import Invoice
         count = await db.scalar(
             select(func.count()).select_from(Invoice).where(Invoice.tenant_id == tenant_id)
@@ -196,28 +219,18 @@ async def generate_number(
     for offset in range(100):
         candidate_num = start_num + offset
         candidate = f"{clean_prefix}{str(candidate_num).zfill(padding)}"
-        if "receipt" in module.lower() or "pos" in module.lower():
+        if is_receipt:
             from src.models import POSTransaction
             exists = await db.scalar(
                 select(func.count()).select_from(POSTransaction).where(
+                    POSTransaction.tenant_id == tenant_id,
                     POSTransaction.receipt_number == candidate
                 )
             )
             if not exists:
                 start_num = candidate_num
                 break
-        elif "invoice" in module.lower():
-            from src.models.erp import Invoice
-            exists = await db.scalar(
-                select(func.count()).select_from(Invoice).where(
-                    Invoice.tenant_id == tenant_id,
-                    Invoice.invoice_number == candidate
-                )
-            )
-            if not exists:
-                start_num = candidate_num
-                break
-        elif "invoice" in module.lower():
+        elif is_invoice:
             from src.models.erp import Invoice
             exists = await db.scalar(
                 select(func.count()).select_from(Invoice).where(
@@ -232,7 +245,10 @@ async def generate_number(
             start_num = candidate_num
             break
 
-    # Auto-initialize NumberSeries record for this org/module so subsequent requests stay synchronized
+    # Auto-initialize NumberSeries record for this org/module so subsequent requests stay synchronized.
+    # Wrapped in begin_nested(): under a concurrent first-invoice race, one writer commits the
+    # series row and the other hits a unique/insert conflict, rolls back the savepoint, re-reads
+    # the now-existing series, and falls through to the serialized path below.
     if valid_cid:
         try:
             async with db.begin_nested():
@@ -248,6 +264,32 @@ async def generate_number(
                 db.add(new_series)
                 await db.flush()
                 return f"{clean_prefix}{str(start_num).zfill(padding)}"
+        except Exception:
+            pass
+        # Fallback: the series row may now exist (concurrent writer won the race). Re-read it and
+        # serialize on that row so two simultaneous callers cannot return the same number.
+        try:
+            series_now = await db.scalar(
+                select(NumberSeries)
+                .where(
+                    NumberSeries.tenant_id == tenant_id,
+                    func.lower(NumberSeries.module_name).in_([a.lower() for a in aliases]),
+                    NumberSeries.status == "active",
+                )
+                .order_by(NumberSeries.updated_at.desc(), NumberSeries.created_at.desc())
+                .with_for_update()
+                .limit(1)
+            )
+            if series_now:
+                # Bump past any number a concurrent caller may have already handed out.
+                for bump in range(100):
+                    candidate_num = series_now.current_number + 1
+                    candidate = f"{series_now.prefix or clean_prefix}{str(candidate_num).zfill(series_now.padding or 5)}"
+                    exists = await _number_exists(db, tenant_id, candidate, is_receipt, is_invoice)
+                    if not exists:
+                        series_now.current_number = candidate_num
+                        await db.flush()
+                        return candidate
         except Exception:
             pass
 

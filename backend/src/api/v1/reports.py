@@ -2098,6 +2098,135 @@ async def generate_custom_report(
     # ══════════════════════════════════════════════════════════════════════════
     # 2. PURCHASE REPORTS SUITE (6 Distinct Reports)
     # ══════════════════════════════════════════════════════════════════════════
+    elif report_id == "vendor_outstanding":
+        # ── VENDOR OUTSTANDING (Payables Register, mirrors "Party Outstanding") ──
+        result["title"] = "Vendor Outstanding Register (Payables)"
+        result["tableColumns"] = [
+            {"header": "Vendor / Supplier", "key": "name"},
+            {"header": "Category / Type", "key": "category"},
+            {"header": "Contact Number", "key": "contact"},
+            {"header": "GSTIN", "key": "gstin"},
+            {"header": "Open Bills", "key": "bills"},
+            {"header": "Closing Payable (₹)", "key": "balance"},
+        ]
+        vb_stmt = select(VendorBill).where(VendorBill.tenant_id == ctx.tenant_id).order_by(VendorBill.created_at.desc())
+        if ctx.active_company_id:
+            vb_stmt = vb_stmt.where(or_(VendorBill.company_id == ctx.active_company_id, VendorBill.company_id == None))
+        vb_list = (await db.execute(vb_stmt)).scalars().all()
+
+        po_stmt = select(PurchaseOrder).where(PurchaseOrder.tenant_id == ctx.tenant_id, PurchaseOrder.supplier_id.isnot(None)).order_by(PurchaseOrder.created_at.desc())
+        if ctx.active_company_id:
+            po_stmt = po_stmt.where(or_(PurchaseOrder.company_id == ctx.active_company_id, PurchaseOrder.company_id == None))
+        po_rows = (await db.execute(po_stmt)).scalars().all()
+        po_by_id: Dict[uuid.UUID, Any] = {po.id: po for po in po_rows}
+        supplier_ids = {po.supplier_id for po in po_rows if po.supplier_id}
+
+        # Load ALL real supplier master records for this tenant (dedup by normalized
+        # GSTIN so that duplicate supplier rows for the same vendor collapse into one)
+        all_suppliers = (await db.execute(
+            select(Supplier).where(Supplier.tenant_id == ctx.tenant_id).order_by(Supplier.created_at.asc())
+        )).scalars().all()
+
+        # Map supplier_id -> supplier record
+        supplier_map: Dict[uuid.UUID, Any] = {s.id: s for s in all_suppliers}
+
+        # Dedup suppliers: prefer the record that carries the richest info (GSTIN/phone)
+        dedup_key = lambda s: (
+            (s.gst_number or "").strip().upper() or
+            ((s.name or "").strip().upper()) or
+            str(s.id)
+        )
+        deduped_suppliers: Dict[str, Any] = {}
+        for s in all_suppliers:
+            key = dedup_key(s)
+            if key not in deduped_suppliers:
+                deduped_suppliers[key] = s
+            else:
+                existing = deduped_suppliers[key]
+                # Merge: keep whichever has GSTIN / phone if the other lacks it
+                if not getattr(existing, "gst_number", None) and getattr(s, "gst_number", None):
+                    existing.gst_number = s.gst_number
+                if not getattr(existing, "phone", None) and getattr(s, "phone", None):
+                    existing.phone = s.phone
+                # Remember the merged duplicate ID so we can group bills under the
+                # primary record's ID
+                if not hasattr(existing, "_merged_duplicate_ids"):
+                    existing._merged_duplicate_ids = []
+                existing._merged_duplicate_ids.append(s.id)
+
+        # Reverse map: any supplier ID -> its deduped primary record
+        supplier_id_to_primary: Dict[uuid.UUID, Any] = {}
+        for s in all_suppliers:
+            key = dedup_key(s)
+            primary = deduped_suppliers[key]
+            supplier_id_to_primary[s.id] = primary
+
+        # Group unpaid vendor bills by PRIMARY supplier record
+        outstanding: Dict[uuid.UUID, Dict[str, Any]] = {}
+        for b in vb_list:
+            st = str(getattr(b, "status", "") or "").lower()
+            if st in ("cancelled", "voided"):
+                continue
+            payable = float(b.total_amount or 0) - float(b.paid_amount or 0)
+            if payable <= 0.01:
+                continue
+            # Resolve supplier: bill.supplier_id (if present) or via linked PO
+            sup_id: Optional[uuid.UUID] = getattr(b, "supplier_id", None)
+            if sup_id is None and b.purchase_order_id:
+                po = po_by_id.get(b.purchase_order_id)
+                if po:
+                    sup_id = po.supplier_id
+            if sup_id is None:
+                continue
+            primary = supplier_id_to_primary.get(sup_id)
+            if primary is None:
+                continue
+            entry = outstanding.setdefault(primary.id, {
+                "supplier": primary,
+                "payable": 0.0,
+                "bills": 0,
+            })
+            entry["payable"] += payable
+            entry["bills"] += 1
+
+        # Build one row per primary supplier (duplicate supplier rows collapsed)
+        rows = []
+        for sid, info in outstanding.items():
+            sup = info["supplier"]
+            rows.append({
+                "name": sup.name or f"Supplier #{str(sid)[:8]}",
+                "category": sup.type or "Manufacturer",
+                "contact": sup.phone or "—",
+                "gstin": sup.gst_number or "—",
+                "bills": info["bills"],
+                "balance": f"₹{info['payable']:,.2f}",
+            })
+        rows.sort(key=lambda r: float(r["balance"].replace("₹", "").replace(",", "")), reverse=True)
+
+        # Fallback: if no supplier-linked bills exist, use PO-level payables
+        if not rows:
+            for po in po_rows[:50]:
+                st = str(getattr(po, "status", "") or "").lower()
+                if st in ("cancelled", "voided"):
+                    continue
+                primary = supplier_id_to_primary.get(po.supplier_id)
+                rows.append({
+                    "name": (primary.name if primary else f"Supplier #{str(po.supplier_id)[:8]}"),
+                    "category": (primary.type if primary and getattr(primary, "type", None) else "Supplier"),
+                    "contact": (primary.phone if primary and getattr(primary, "phone", None) else "—"),
+                    "gstin": (primary.gst_number if primary and getattr(primary, "gst_number", None) else "—"),
+                    "bills": 1,
+                    "balance": f"₹{float(po.total_amount or 0):,.2f}",
+                })
+
+        result["tableData"] = rows
+        total_payable = sum(float(r["balance"].replace("₹", "").replace(",", "")) for r in rows)
+        result["summaryTotals"] = {
+            "total_vendors": len(rows),
+            "total_payable_due": f"₹{total_payable:,.2f}",
+            "outstanding_vendor_bills": f"{sum(r['bills'] for r in rows)} Bills",
+        }
+
     elif report_id in ["purchase_summary", "purchase_invoice", "purchase_return", "purchase_debit_note", "purchase_supplierwise", "purchase_itemwise", "purchase_gst"]:
         po_stmt = select(PurchaseOrder).options(selectinload(PurchaseOrder.supplier)).where(PurchaseOrder.tenant_id == ctx.tenant_id).order_by(PurchaseOrder.created_at.desc()).limit(250)
         if search:
@@ -2341,6 +2470,147 @@ async def generate_custom_report(
                 "total_itc_taxable": f"₹{(total_po_val / 1.18):,.2f}",
                 "total_itc_credit": f"₹{(total_po_val - (total_po_val / 1.18)):,.2f}",
             }
+
+    elif report_id == "bill_wise_pnl":
+        # ── BILL-WISE PROFIT & LOSS STATEMENT (per bill: revenue, COGS, gross profit) ──
+        result["title"] = "Bill-wise Profit & Loss Statement"
+        result["tableColumns"] = [
+            {"header": "Bill / Invoice No.", "key": "invoice_no"},
+            {"header": "Date", "key": "date"},
+            {"header": "Party / Vendor", "key": "party"},
+            {"header": "Bill Type", "key": "bill_type"},
+            {"header": "Net Revenue (₹)", "key": "revenue"},
+            {"header": "Cost of Goods (₹)", "key": "cogs"},
+            {"header": "Gross Profit (₹)", "key": "gross_profit"},
+            {"header": "Margin %", "key": "margin"},
+            {"header": "Status", "key": "status"},
+        ]
+
+        # Load product cost reference (purchase_price -> mrp) for COGS estimation
+        prod_stmt = select(Product).where(Product.tenant_id == ctx.tenant_id)
+        if ctx.active_company_id:
+            prod_stmt = prod_stmt.where(or_(Product.company_id == ctx.active_company_id, Product.company_id == None))
+        prod_rows = (await db.execute(prod_stmt)).scalars().all()
+        cost_by_product: Dict[uuid.UUID, float] = {}
+        for p in prod_rows:
+            c = float(p.purchase_price or 0)
+            if c <= 0:
+                c = float(p.mrp or 0)
+            cost_by_product[p.id] = c
+
+        bills_data: List[Dict[str, Any]] = []
+
+        # 1) Sales invoices (revenue side) — from POS + ERP + Marketplace
+        sales_tx = await _get_all_sales_invoices(db, start_dt, end_dt, search, tenant_id=ctx.tenant_id, company_id=ctx.active_company_id)
+        for tx in sales_tx:
+            if tx.get("is_cancelled"):
+                continue
+            st = str(tx.get("status") or tx.get("payment_status") or "completed").lower()
+            revenue = float(tx.get("subtotal") or 0)
+            # Use total revenue if subtotal not present
+            if revenue <= 0:
+                revenue = float(tx.get("total_amount") or 0)
+            # COGS from line items (match product_id -> cost)
+            items = tx.get("items") or []
+            cogs = 0.0
+            for it in items:
+                pid = it.get("product_id")
+                qty = float(it.get("qty") or it.get("quantity") or 1)
+                unit_cost = cost_by_product.get(pid, 0.0) if pid else 0.0
+                # If no cost in catalog, use 80% of line price as a COGS proxy
+                if unit_cost <= 0:
+                    line_price = 0
+                    try:
+                        line_price = float(str(it.get("price", "0")).replace("₹", "").replace(",", ""))
+                    except Exception:
+                        line_price = 0.0
+                    unit_cost = line_price * 0.8 if line_price > 0 else 0.0
+                cogs += unit_cost * qty
+            bills_data.append({
+                "invoice_no": tx.get("invoice_no") or tx.get("receipt_number") or "—",
+                "date": (tx.get("date") or ""),
+                "party": tx.get("customer") or "Walk-in Customer",
+                "bill_type": "Sales",
+                "revenue": revenue,
+                "cogs": cogs,
+                "status": (st.title() if st else "Completed"),
+            })
+
+        # 2) Vendor bills / purchase invoices (cost side)
+        vb_stmt2 = select(VendorBill).where(VendorBill.tenant_id == ctx.tenant_id).order_by(VendorBill.created_at.desc())
+        if ctx.active_company_id:
+            vb_stmt2 = vb_stmt2.where(or_(VendorBill.company_id == ctx.active_company_id, VendorBill.company_id == None))
+        vb_list2 = (await db.execute(vb_stmt2)).scalars().all()
+        # Map PO -> supplier for bill labeling
+        po_by_id: Dict[uuid.UUID, Any] = {}
+        po_stmt2 = select(PurchaseOrder).where(PurchaseOrder.tenant_id == ctx.tenant_id)
+        po_list2 = (await db.execute(po_stmt2)).scalars().all()
+        for po in po_list2:
+            po_by_id[po.id] = po
+        sup_by_id: Dict[uuid.UUID, Any] = {}
+        if po_list2:
+            sid_set = {po.supplier_id for po in po_list2 if po.supplier_id}
+            if sid_set:
+                s2 = (await db.execute(select(Supplier).where(Supplier.id.in_(sid_set)))).scalars().all()
+                sup_by_id = {s.id: s for s in s2}
+
+        for b in vb_list2:
+            st = str(getattr(b, "status", "") or "").lower()
+            if st in ("cancelled", "voided"):
+                continue
+            total_amt = float(b.total_amount or 0)
+            # COGS = the full purchase cost (taxable portion)
+            taxable = total_amt / 1.18
+            po = po_by_id.get(b.purchase_order_id) if b.purchase_order_id else None
+            sup = sup_by_id.get(po.supplier_id) if po and po.supplier_id else None
+            bills_data.append({
+                "invoice_no": b.bill_number,
+                "date": (b.bill_date or b.created_at).strftime("%d/%m/%Y") if (b.bill_date or b.created_at) else "—",
+                "party": (sup.name if sup else "Procurement"),
+                "bill_type": "Purchase / Vendor Bill",
+                "revenue": 0.0,
+                "cogs": total_amt,
+                "status": (b.status or "Unpaid"),
+            })
+
+        # Sort by date descending
+        bills_data.sort(key=lambda x: x.get("date") or "", reverse=True)
+
+        rows = []
+        tot_rev = 0.0
+        tot_cogs = 0.0
+        for bd in bills_data:
+            rev = bd["revenue"]
+            cg = bd["cogs"]
+            if bd["bill_type"] == "Sales":
+                gp = rev - cg
+                margin = (gp / rev * 100) if rev > 0 else 0.0
+            else:
+                gp = -cg
+                margin = 0.0
+            tot_rev += rev
+            tot_cogs += cg
+            rows.append({
+                "invoice_no": bd["invoice_no"],
+                "date": bd["date"],
+                "party": bd["party"],
+                "bill_type": bd["bill_type"],
+                "revenue": f"₹{rev:,.2f}",
+                "cogs": f"₹{cg:,.2f}",
+                "gross_profit": f"{gp:+,.2f}",
+                "margin": f"{margin:.1f}%",
+                "status": bd["status"],
+            })
+
+        result["tableData"] = rows
+        net_profit = tot_rev - tot_cogs
+        result["summaryTotals"] = {
+            "total_bills": len(rows),
+            "total_revenue": f"₹{tot_rev:,.2f}",
+            "total_cogs": f"₹{tot_cogs:,.2f}",
+            "net_gross_profit": f"₹{net_profit:,.2f}",
+            "overall_margin": f"{(net_profit / tot_rev * 100) if tot_rev > 0 else 0:.1f}%",
+        }
 
     # ══════════════════════════════════════════════════════════════════════════
     # 3. STOCK / INVENTORY REPORTS SUITE (12 Reports)
