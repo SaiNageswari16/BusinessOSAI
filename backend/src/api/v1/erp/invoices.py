@@ -1055,22 +1055,35 @@ async def create_invoice(
             if matched_cust:
                 inv_data["customer_id"] = matched_cust.id
             else:
-                new_cust = Customer(
-                    tenant_id=ctx.tenant_id,
-                    company_id=active_cid,
-                    name=cust_name_clean,
-                    phone=cust_phone_clean or None,
-                    email=str(inv_data.get("customer_email") or "").strip() or None,
-                    gst_number=str(inv_data.get("customer_gstin") or "").strip() or None,
-                    billing_address=str(inv_data.get("billing_address") or "").strip() or None,
-                    shipping_address=str(inv_data.get("shipping_address") or "").strip() or None,
-                    address=str(inv_data.get("billing_address") or inv_data.get("shipping_address") or "").strip() or None,
-                    customer_type=str(getattr(payload, "customer_type", None) or "Retail"),
-                    status="Active",
-                )
-                db.add(new_cust)
-                await db.flush()
-                inv_data["customer_id"] = new_cust.id
+                raw_inv_email = str(inv_data.get("customer_email") or "").strip().lower()
+                clean_inv_email = None
+                if raw_inv_email:
+                    email_taken = await db.scalar(
+                        select(Customer.id).where(
+                            Customer.tenant_id == ctx.tenant_id,
+                            func.lower(Customer.email) == raw_inv_email
+                        )
+                    )
+                    if not email_taken:
+                        clean_inv_email = raw_inv_email
+
+                async with db.begin_nested():
+                    new_cust = Customer(
+                        tenant_id=ctx.tenant_id,
+                        company_id=active_cid,
+                        name=cust_name_clean,
+                        phone=cust_phone_clean or None,
+                        email=clean_inv_email,
+                        gst_number=str(inv_data.get("customer_gstin") or "").strip() or None,
+                        billing_address=str(inv_data.get("billing_address") or "").strip() or None,
+                        shipping_address=str(inv_data.get("shipping_address") or "").strip() or None,
+                        address=str(inv_data.get("billing_address") or inv_data.get("shipping_address") or "").strip() or None,
+                        customer_type=str(getattr(payload, "customer_type", None) or "Retail"),
+                        status="Active",
+                    )
+                    db.add(new_cust)
+                    await db.flush()
+                    inv_data["customer_id"] = new_cust.id
         except Exception as auto_cust_err:
             logger.warning(f"Could not auto-link or auto-create customer from invoice: {auto_cust_err}")
 

@@ -111,18 +111,34 @@ async def list_customers(
             select(func.lower(Customer.name)).where(Customer.tenant_id == ctx.tenant_id)
         )
         existing_names = {r[0] for r in existing_names_res.all() if r[0]}
+
+        existing_emails_res = await db.execute(
+            select(func.lower(Customer.email)).where(
+                Customer.tenant_id == ctx.tenant_id,
+                Customer.email.isnot(None)
+            )
+        )
+        existing_emails = {r[0] for r in existing_emails_res.all() if r[0]}
+
         synced_count = 0
         for inv_row in unregistered_invs.all():
             c_name = str(inv_row.customer_name or "").strip()
             if not c_name or c_name.lower() in existing_names:
                 continue
             existing_names.add(c_name.lower())
+
+            raw_email = str(inv_row.customer_email or "").strip().lower()
+            clean_email = None
+            if raw_email and raw_email not in existing_emails:
+                clean_email = raw_email
+                existing_emails.add(raw_email)
+
             new_c = Customer(
                 tenant_id=ctx.tenant_id,
                 company_id=inv_row.company_id or ctx.active_company_id,
                 name=c_name,
                 phone=str(inv_row.customer_phone).strip() if inv_row.customer_phone else None,
-                email=str(inv_row.customer_email).strip() if inv_row.customer_email else None,
+                email=clean_email,
                 gst_number=str(inv_row.customer_gstin).strip() if inv_row.customer_gstin else None,
                 billing_address=str(inv_row.billing_address).strip() if inv_row.billing_address else None,
                 shipping_address=str(inv_row.shipping_address).strip() if inv_row.shipping_address else None,
@@ -135,6 +151,7 @@ async def list_customers(
         if synced_count > 0:
             await db.commit()
     except Exception as sync_e:
+        await db.rollback()
         logger.warning(f"Failed to auto-sync customers from invoices: {sync_e}")
 
     if ctx.active_company_id:
