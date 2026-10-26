@@ -122,11 +122,17 @@ async def list_customers(
 
         tenant_email = None
         if hasattr(ctx, "user") and getattr(ctx.user, "tenant", None):
-            tenant_email = str(getattr(ctx.user.tenant, "email", None) or "").strip().lower()
+            tenant_email = str(getattr(ctx.user.tenant, "email", None) or "").strip().lower() or None
         if not tenant_email:
             tenant_obj = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
-            if tenant_obj and tenant_obj.email:
-                tenant_email = str(tenant_obj.email).strip().lower()
+            if tenant_obj:
+                t_settings = tenant_obj.settings if isinstance(tenant_obj.settings, dict) else {}
+                tenant_email = str(getattr(tenant_obj, "email", None) or t_settings.get("email") or "").strip().lower() or None
+        if not tenant_email:
+            from src.models import Company
+            comp_email = await db.scalar(select(Company.email).where(Company.tenant_id == ctx.tenant_id, Company.email.isnot(None)))
+            if comp_email:
+                tenant_email = str(comp_email).strip().lower()
 
         synced_count = 0
         for inv_row in unregistered_invs.all():
