@@ -150,6 +150,22 @@ export const DEFAULT_WORD_COLUMNS: WordStudioColumnConfig[] = [
   { id: "col_amt", fieldKey: "total_amount", headerTitle: "Amount (₹)", widthPercent: 10, align: "right", enabled: true },
 ];
 
+export const PROCUREMENT_WORD_COLUMNS: WordStudioColumnConfig[] = [
+  { id: "col_sno", fieldKey: "sno", headerTitle: "#", widthPercent: 4, align: "center", enabled: true },
+  { id: "col_desc", fieldKey: "description", headerTitle: "ITEMS / SERVICES", widthPercent: 22, align: "left", enabled: true },
+  { id: "col_hsn", fieldKey: "hsn", headerTitle: "HSN/SAC", widthPercent: 8, align: "center", enabled: true },
+  { id: "col_uom", fieldKey: "uom", headerTitle: "UOM", widthPercent: 6, align: "center", enabled: true },
+  { id: "col_exp", fieldKey: "expiry_date", headerTitle: "EXP DATE", widthPercent: 9, align: "center", enabled: true },
+  { id: "col_mrp", fieldKey: "mrp", headerTitle: "MRP (₹)", widthPercent: 7, align: "right", enabled: true },
+  { id: "col_selling", fieldKey: "selling_price", headerTitle: "SELL PRICE (₹)", widthPercent: 8, align: "right", enabled: true },
+  { id: "col_qty", fieldKey: "quantity", headerTitle: "QTY", widthPercent: 6, align: "center", enabled: true },
+  { id: "col_rate", fieldKey: "unit_price", headerTitle: "PRICE/ITEM (₹)", widthPercent: 10, align: "right", enabled: true },
+  { id: "col_disc", fieldKey: "discount", headerTitle: "DISCOUNT", widthPercent: 7, align: "right", enabled: true },
+  { id: "col_tax", fieldKey: "tax_rate", headerTitle: "GST TAX %", widthPercent: 6, align: "right", enabled: true },
+  { id: "col_amt", fieldKey: "total_amount", headerTitle: "AMOUNT (₹)", widthPercent: 7, align: "right", enabled: true },
+];
+
+
 export const DEFAULT_WORD_SECTIONS: WordStudioSectionConfig[] = [
   { id: "company_header", title: "1. Organization Header & Logo", enabled: true, order: 1 },
   { id: "invoice_meta", title: "2. Invoice Meta & Custom References", enabled: true, order: 2 },

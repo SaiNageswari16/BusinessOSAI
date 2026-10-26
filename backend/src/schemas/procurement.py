@@ -282,6 +282,12 @@ class PurchaseOrderItemBase(BaseModel):
     uom: Optional[str] = None
     mrp: Optional[float] = None
     selling_price: Optional[float] = None
+    batch_number: Optional[str] = None
+    expiry_date: Optional[str] = None
+    discount_value: Optional[float] = None
+    discount_type: Optional[str] = None
+    is_free: Optional[bool] = False
+    tax_amount: Optional[float] = None
 
 
 class PurchaseOrderItemCreate(PurchaseOrderItemBase):
@@ -460,6 +466,13 @@ class VendorBillItemOverride(BaseModel):
     quantity: Optional[float] = None
     unit_price: Optional[float] = None
     tax_percent: Optional[float] = None
+    batch_number: Optional[str] = None
+    expiry_date: Optional[str] = None
+    discount_value: Optional[float] = None
+    discount_type: Optional[str] = None
+    is_free: Optional[bool] = False
+    is_tax_inclusive: Optional[bool] = False
+    sku: Optional[str] = None
 
 
 class VendorBillCreate(BaseModel):

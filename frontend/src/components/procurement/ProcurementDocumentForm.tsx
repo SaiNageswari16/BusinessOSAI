@@ -36,6 +36,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Gift,
+  Sliders,
 } from "lucide-react";
 import { useStoreLocations } from "@/hooks/use-store-locations";
 import { inventoryApi, posApi } from "@/lib/api-client";
@@ -45,6 +46,7 @@ import { cn } from "@/lib/utils";
 import { ProcurementShareModal } from "./ProcurementShareModal";
 import { AddVendorModal } from "./AddVendorModal";
 import { BatchSelectorModal } from "../inventory/BatchSelectorModal";
+import { PurchaseInvoiceQuickSettingsModal, loadStoredPurchaseInvoiceSettings, PurchaseInvoiceSettings } from "./PurchaseInvoiceQuickSettingsModal";
 
 export type ProcurementDocType = "PR" | "PO" | "PINV";
 
@@ -194,6 +196,26 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [multiProductPage, setMultiProductPage] = useState<number>(1);
   const [multiProductPageSize, setMultiProductPageSize] = useState<number>(15);
   const [shareModalDoc, setShareModalDoc] = useState<any | null>(null);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [purchaseSettings, setPurchaseSettings] = useState<PurchaseInvoiceSettings>(() => loadStoredPurchaseInvoiceSettings());
+
+  useEffect(() => {
+    const handleUpdate = (e: any) => {
+      if (e?.detail?.settings) {
+        setPurchaseSettings(e.detail.settings);
+      } else {
+        setPurchaseSettings(loadStoredPurchaseInvoiceSettings());
+      }
+    };
+    window.addEventListener("bos-purchase-settings-updated", handleUpdate);
+    window.addEventListener("bos-invoice-settings-changed", handleUpdate);
+    window.addEventListener("storage", handleUpdate);
+    return () => {
+      window.removeEventListener("bos-purchase-settings-updated", handleUpdate);
+      window.removeEventListener("bos-invoice-settings-changed", handleUpdate);
+      window.removeEventListener("storage", handleUpdate);
+    };
+  }, []);
 
   const [batches, setBatches] = useState<any[]>([]);
 
@@ -1061,18 +1083,34 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       // Tax mode is part of the document: carry it so the PDF template recomputes
       // totals with the same math as the form (tax-inclusive rate vs base rate).
       is_tax_inclusive: isTaxInclusive,
-      items: items.map((it) => ({
-        product_name: it.product_name || "Material Item",
-        hsn_code: it.hsn_code || "",
-        hsn: it.hsn_code || "",
-        uom: it.uom || "",
-        mrp: Number(it.mrp) || 0,
-        selling_price: Number(it.selling_price) || Number(it.mrp) || 0,
-        quantity: Number(it.quantity) || 1,
-        unit_price: Number(it.unit_price) || 0,
-        tax_percent: Number(it.tax_rate) || 0,
-        is_tax_inclusive: isTaxInclusive,
-      })),
+      items: items.map((it) => {
+        const qty = Number(it.quantity) || 1;
+        const rate = Number(it.unit_price) || 0;
+        const tr = Number(it.tax_rate) || 0;
+        const gross = Math.max(0, qty * rate - (Number(it.discount_value) || 0));
+        const lineTax = isTaxInclusive && tr > 0 ? (gross - gross / (1 + tr / 100)) : gross * (tr / 100);
+        return {
+          product_id: it.product_id,
+          product_name: it.product_name || "Material Item",
+          hsn_code: it.hsn_code || "",
+          hsn: it.hsn_code || "",
+          uom: it.uom || "",
+          sku: (it as any).sku || "",
+          mrp: Number(it.mrp) || 0,
+          selling_price: Number(it.selling_price) || Number(it.mrp) || 0,
+          quantity: qty,
+          unit_price: rate,
+          tax_percent: tr,
+          tax_amount: lineTax,
+          line_tax: lineTax,
+          batch_number: it.batch_number || "",
+          expiry_date: it.expiry_date || "",
+          discount_value: Number(it.discount_value) || 0,
+          discount_type: it.discount_type || "percent",
+          is_free: Boolean(it.is_free),
+          is_tax_inclusive: isTaxInclusive,
+        };
+      }),
     };
   };
 
@@ -1305,11 +1343,18 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
             product_name: it.product_name || undefined,
             hsn_code: it.hsn_code || undefined,
             uom: it.uom || undefined,
+            sku: (it as any).sku || undefined,
             mrp: Number(it.mrp) || 0,
             selling_price: Number(it.selling_price) || Number(it.mrp) || 0,
             quantity: Number(it.quantity) || 0,
             unit_price: Number(it.unit_price) || 0,
             tax_percent: Number(it.tax_rate) || 0,
+            batch_number: it.batch_number || undefined,
+            expiry_date: it.expiry_date || undefined,
+            discount_value: Number(it.discount_value) || 0,
+            discount_type: it.discount_type || "percent",
+            is_free: Boolean(it.is_free),
+            is_tax_inclusive: isTaxInclusive,
           })),
         });
         toast.success(`Purchase Invoice ${docNumber} recorded successfully (Status: ${billStatus})!`);
@@ -2299,8 +2344,18 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
             </div>
           </div>
 
-          {/* Barcode Search Box & Multi-Product Button */}
-          <div className="flex items-center gap-2 w-full md:w-auto">
+          {/* Barcode Search Box, Settings & Multi-Product Button */}
+          <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
+            <button
+              type="button"
+              onClick={() => setIsSettingsModalOpen(true)}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 shadow-xs flex items-center gap-1.5 shrink-0 transition-all cursor-pointer"
+              title="Configure Purchase Invoice Columns, Custom Columns & Sequence Series"
+            >
+              <Sliders className="w-3.5 h-3.5 text-blue-600" />
+              <span>Columns & Settings</span>
+            </button>
+
             <button
               type="button"
               onClick={() => {
@@ -2333,18 +2388,20 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
               <tr>
                 <th className="px-3 py-3 w-10 text-center">#</th>
                 <th className="px-3 py-3 min-w-[260px]">Items / Services</th>
-                <th className="px-3 py-3 w-24">HSN/SAC</th>
-                <th className="px-3 py-3 w-16">UOM</th>
-                <th className="px-3 py-3 w-24">Batch No</th>
-                <th className="px-3 py-3 w-28">Exp Date</th>
-                <th className="px-3 py-3 w-20 text-right">MRP ({currency.symbol})</th>
-                <th className="px-3 py-3 w-20 text-right">Sell Price ({currency.symbol})</th>
+                {(purchaseSettings?.showHsn ?? true) && <th className="px-3 py-3 w-24">HSN/SAC</th>}
+                {(purchaseSettings?.showUom ?? true) && <th className="px-3 py-3 w-16">UOM</th>}
+                {(purchaseSettings?.showBatchNo ?? true) && <th className="px-3 py-3 w-24">Batch No</th>}
+                {(purchaseSettings?.showExpDate ?? true) && <th className="px-3 py-3 w-28">Exp Date</th>}
+                {Boolean(purchaseSettings?.showMrp) && <th className="px-3 py-3 w-20 text-right">MRP ({currency.symbol})</th>}
+                {Boolean(purchaseSettings?.showSellPrice) && <th className="px-3 py-3 w-20 text-right">Sell Price ({currency.symbol})</th>}
                 <th className="px-3 py-3 w-20 text-right">Qty</th>
-                <th className="px-3 py-3 w-24 text-right">
-                  {docType === "PR" ? "Est. Price (₹)" : isTaxInclusive ? "Gross Rate (₹)" : "Price/Item (₹)"}
-                </th>
-                <th className="px-3 py-3 w-24 text-right">Discount</th>
-                <th className="px-3 py-3 w-24 text-right">GST Tax %</th>
+                {(purchaseSettings?.showRate ?? true) && (
+                  <th className="px-3 py-3 w-24 text-right">
+                    {docType === "PR" ? "Est. Price (₹)" : isTaxInclusive ? "Gross Rate (₹)" : "Price/Item (₹)"}
+                  </th>
+                )}
+                {(purchaseSettings?.showDiscount ?? true) && <th className="px-3 py-3 w-24 text-right">Discount</th>}
+                {(purchaseSettings?.showGstTax ?? true) && <th className="px-3 py-3 w-24 text-right">GST Tax %</th>}
                 <th className="px-3 py-3 w-28 text-right font-bold">Amount ({currency.symbol})</th>
                 <th className="px-3 py-3 w-12 text-center">Action</th>
               </tr>
@@ -2585,91 +2642,103 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
                       </td>
 
                       {/* HSN */}
-                      <td className="px-3 py-2">
-                        <input
-                          type="text"
-                          placeholder="2202"
-                          value={item.hsn_code || ""}
-                          onChange={(e) => updateItem(item.id, "hsn_code", e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-xs font-mono text-slate-700 outline-none"
-                        />
-                      </td>
-
-                      {/* UOM */}
-                      <td className="px-3 py-2">
-                        <input
-                          type="text"
-                          placeholder="PCS"
-                          value={item.uom || ""}
-                          onChange={(e) => updateItem(item.id, "uom", e.target.value.toUpperCase())}
-                          className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-xs font-bold text-slate-600 outline-none"
-                        />
-                      </td>
-
-                      {/* Batch */}
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-1 min-w-[130px]">
+                      {(purchaseSettings?.showHsn ?? true) && (
+                        <td className="px-3 py-2">
                           <input
                             type="text"
-                            placeholder="Batch #"
-                            value={item.batch_number || ""}
-                            onChange={(e) => updateItem(item.id, "batch_number", e.target.value)}
-                            className="w-full bg-white border border-slate-200 focus:border-indigo-500 rounded px-1.5 py-1 text-xs font-mono font-bold text-slate-800 outline-none"
+                            placeholder="2202"
+                            value={item.hsn_code || ""}
+                            onChange={(e) => updateItem(item.id, "hsn_code", e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-xs font-mono text-slate-700 outline-none"
                           />
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setBatchModalItem({
-                                id: item.id,
-                                productId: item.product_id,
-                                productName: item.product_name,
-                                currentBatch: item.batch_number,
-                              })
-                            }
-                            className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded-lg shrink-0 transition shadow-2xs cursor-pointer"
-                            title="Select Existing Batch or Create New Batch"
-                          >
-                            <Boxes className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
+                        </td>
+                      )}
+
+                      {/* UOM */}
+                      {(purchaseSettings?.showUom ?? true) && (
+                        <td className="px-3 py-2">
+                          <input
+                            type="text"
+                            placeholder="PCS"
+                            value={item.uom || ""}
+                            onChange={(e) => updateItem(item.id, "uom", e.target.value.toUpperCase())}
+                            className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-xs font-bold text-slate-600 outline-none"
+                          />
+                        </td>
+                      )}
+
+                      {/* Batch */}
+                      {(purchaseSettings?.showBatchNo ?? true) && (
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1 min-w-[130px]">
+                            <input
+                              type="text"
+                              placeholder="Batch #"
+                              value={item.batch_number || ""}
+                              onChange={(e) => updateItem(item.id, "batch_number", e.target.value)}
+                              className="w-full bg-white border border-slate-200 focus:border-indigo-500 rounded px-1.5 py-1 text-xs font-mono font-bold text-slate-800 outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setBatchModalItem({
+                                  id: item.id,
+                                  productId: item.product_id,
+                                  productName: item.product_name,
+                                  currentBatch: item.batch_number,
+                                })
+                              }
+                              className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded-lg shrink-0 transition shadow-2xs cursor-pointer"
+                              title="Select Existing Batch or Create New Batch"
+                            >
+                              <Boxes className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
 
                       {/* Expiry */}
-                      <td className="px-3 py-2">
-                        <input
-                          type="date"
-                          value={item.expiry_date || ""}
-                          onChange={(e) => updateItem(item.id, "expiry_date", e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-xs text-slate-700 outline-none"
-                        />
-                      </td>
+                      {(purchaseSettings?.showExpDate ?? true) && (
+                        <td className="px-3 py-2">
+                          <input
+                            type="date"
+                            value={item.expiry_date || ""}
+                            onChange={(e) => updateItem(item.id, "expiry_date", e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-xs text-slate-700 outline-none"
+                          />
+                        </td>
+                      )}
 
                       {/* MRP */}
-                      <td className="px-3 py-2 text-right">
-                        <input
-                          type="number"
-                          placeholder="0"
-                          value={item.mrp || ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => updateItem(item.id, "mrp", e.target.value === "" ? "" : Number(e.target.value))}
-                          className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-slate-700 outline-none"
-                        />
-                      </td>
+                      {Boolean(purchaseSettings?.showMrp) && (
+                        <td className="px-3 py-2 text-right">
+                          <input
+                            type="number"
+                            placeholder="0"
+                            value={item.mrp || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => updateItem(item.id, "mrp", e.target.value === "" ? "" : Number(e.target.value))}
+                            className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-slate-700 outline-none"
+                          />
+                        </td>
+                      )}
 
                       {/* Selling Price — defaults to MRP, user-editable */}
-                      <td className="px-3 py-2 text-right">
-                        <input
-                          type="number"
-                          placeholder={item.mrp ? String(item.mrp) : "0"}
-                          value={item.selling_price || ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => updateItem(item.id, "selling_price", e.target.value === "" ? "" : Number(e.target.value))}
-                          onBlur={(e) => {
-                            if (!item.selling_price && item.mrp) updateItem(item.id, "selling_price", item.mrp);
-                          }}
-                          className="w-full bg-white border border-emerald-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-emerald-700 outline-none focus:ring-1 focus:ring-emerald-400"
-                        />
-                      </td>
+                      {Boolean(purchaseSettings?.showSellPrice) && (
+                        <td className="px-3 py-2 text-right">
+                          <input
+                            type="number"
+                            placeholder={item.mrp ? String(item.mrp) : "0"}
+                            value={item.selling_price || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => updateItem(item.id, "selling_price", e.target.value === "" ? "" : Number(e.target.value))}
+                            onBlur={(e) => {
+                              if (!item.selling_price && item.mrp) updateItem(item.id, "selling_price", item.mrp);
+                            }}
+                            className="w-full bg-white border border-emerald-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-emerald-700 outline-none focus:ring-1 focus:ring-emerald-400"
+                          />
+                        </td>
+                      )}
 
                       {/* Qty */}
                       <td className="px-3 py-2 text-right">
@@ -2685,54 +2754,60 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
                       </td>
 
                       {/* Unit Price */}
-                      <td className="px-3 py-2 text-right">
-                        <input
-                          type="number"
-                          placeholder="0.00"
-                          value={item.unit_price || ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => updateItem(item.id, "unit_price", e.target.value === "" ? "" : Number(e.target.value))}
-                          className="w-full bg-white border border-slate-300 rounded px-1.5 py-1 text-xs text-right font-bold text-slate-900 outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                      </td>
-
-                      {/* Discount */}
-                      <td className="px-3 py-2 text-right">
-                        <div className="flex items-center gap-1">
+                      {(purchaseSettings?.showRate ?? true) && (
+                        <td className="px-3 py-2 text-right">
                           <input
                             type="number"
-                            placeholder="0"
-                            value={item.discount_value || ""}
+                            placeholder="0.00"
+                            value={item.unit_price || ""}
                             onFocus={(e) => e.target.select()}
-                            onChange={(e) => updateItem(item.id, "discount_value", e.target.value === "" ? "" : Number(e.target.value))}
-                            className="w-full bg-white border border-slate-200 rounded px-1 py-1 text-xs text-right text-slate-700 outline-none"
+                            onChange={(e) => updateItem(item.id, "unit_price", e.target.value === "" ? "" : Number(e.target.value))}
+                            className="w-full bg-white border border-slate-300 rounded px-1.5 py-1 text-xs text-right font-bold text-slate-900 outline-none focus:ring-1 focus:ring-blue-500"
                           />
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateItem(item.id, "discount_type", item.discount_type === "percent" ? "amount" : "percent")
-                            }
-                            className="px-1 py-0.5 bg-slate-100 text-[9px] font-black rounded text-slate-600 hover:bg-slate-200"
-                          >
-                            {item.discount_type === "percent" ? "%" : "₹"}
-                          </button>
-                        </div>
-                      </td>
+                        </td>
+                      )}
+
+                      {/* Discount */}
+                      {(purchaseSettings?.showDiscount ?? true) && (
+                        <td className="px-3 py-2 text-right">
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              placeholder="0"
+                              value={item.discount_value || ""}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => updateItem(item.id, "discount_value", e.target.value === "" ? "" : Number(e.target.value))}
+                              className="w-full bg-white border border-slate-200 rounded px-1 py-1 text-xs text-right text-slate-700 outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateItem(item.id, "discount_type", item.discount_type === "percent" ? "amount" : "percent")
+                              }
+                              className="px-1 py-0.5 bg-slate-100 text-[9px] font-black rounded text-slate-600 hover:bg-slate-200"
+                            >
+                              {item.discount_type === "percent" ? "%" : "₹"}
+                            </button>
+                          </div>
+                        </td>
+                      )}
 
                       {/* Tax Rate */}
-                      <td className="px-3 py-2 text-right">
-                        <select
-                          value={item.tax_rate}
-                          onChange={(e) => updateItem(item.id, "tax_rate", Number(e.target.value))}
-                          className="w-full bg-white border border-slate-200 rounded px-1 py-1 text-xs text-right font-bold text-slate-700 outline-none"
-                        >
-                          <option value="0">0%</option>
-                          <option value="5">5%</option>
-                          <option value="12">12%</option>
-                          <option value="18">18%</option>
-                          <option value="28">28%</option>
-                        </select>
-                      </td>
+                      {(purchaseSettings?.showGstTax ?? true) && (
+                        <td className="px-3 py-2 text-right">
+                          <select
+                            value={item.tax_rate}
+                            onChange={(e) => updateItem(item.id, "tax_rate", Number(e.target.value))}
+                            className="w-full bg-white border border-slate-200 rounded px-1 py-1 text-xs text-right font-bold text-slate-700 outline-none"
+                          >
+                            <option value="0">0%</option>
+                            <option value="5">5%</option>
+                            <option value="12">12%</option>
+                            <option value="18">18%</option>
+                            <option value="28">28%</option>
+                          </select>
+                        </td>
+                      )}
 
                       {/* Line Amount */}
                       <td className="px-3 py-2 text-right font-black text-slate-900 text-xs">
@@ -3978,6 +4053,12 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
         }}
         documentData={shareModalDoc}
         docType={docType}
+      />
+
+      {/* Purchase Invoice Quick Settings Modal */}
+      <PurchaseInvoiceQuickSettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
       />
     </div>
   );

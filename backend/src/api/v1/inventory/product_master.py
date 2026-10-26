@@ -1679,6 +1679,18 @@ async def master_import_products(
             if brand_id: existing_p.brand_id = brand_id
             if category_id: existing_p.category_id = category_id
             if uom_id: existing_p.uom_id = uom_id
+            if item_tax is not None: existing_p.tax_percent = item_tax
+            if item.is_tax_inclusive is not None: existing_p.is_tax_inclusive = item.is_tax_inclusive
+            specs = dict(existing_p.specifications or {})
+            if item.is_purchase_tax_inclusive is not None:
+                specs["purchase_tax_type"] = "Exclusive" if item.is_purchase_tax_inclusive is False else "Inclusive"
+            elif item.specifications and "purchase_tax_type" in item.specifications:
+                specs["purchase_tax_type"] = item.specifications["purchase_tax_type"]
+            if item.is_tax_inclusive is not None:
+                specs["sales_tax_type"] = "Inclusive" if item.is_tax_inclusive else "Exclusive"
+            elif item.specifications and "sales_tax_type" in item.specifications:
+                specs["sales_tax_type"] = item.specifications["sales_tax_type"]
+            existing_p.specifications = specs
             products_created += 1
             continue
 

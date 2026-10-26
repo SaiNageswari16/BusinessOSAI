@@ -5,12 +5,14 @@ import {
   WordInvoiceTemplateConfig,
   DEFAULT_WORD_COLUMNS,
   DEFAULT_WORD_SECTIONS,
+  PROCUREMENT_WORD_COLUMNS,
 } from "../WordInvoiceStudioModal";
 import { numberToIndianWords } from "@/lib/number-to-words";
 import { formatDisplayDate, formatPartyAddress, isInvoiceLineFree } from "@/lib/utils";
 import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
 import { computeGstBreakdown, checkIsInterstate } from "@/lib/gst-utils";
 import { getActiveBillingGst, getOrgSignatureSettings } from "@/lib/receipt-template-store";
+import { loadStoredPurchaseInvoiceSettings } from "@/components/procurement/PurchaseInvoiceQuickSettingsModal";
 
 export interface WordInvoiceDocumentProps {
   invoice: FullInvoiceData;
@@ -113,6 +115,20 @@ export function WordInvoiceDocument({
   const activeCompanyId = typeof window !== 'undefined' ? localStorage.getItem('bos_active_company_id') : undefined;
   const activeGst = getActiveBillingGst(undefined, activeCompanyId || undefined) as any;
   const activeSig = getOrgSignatureSettings() as any;
+
+  // Purchase-invoice detection (used to force the document title + procurement column set)
+  const isPurchaseDoc = Boolean(
+    invoice.doc_type === 'purchase_invoice' ||
+    invoice.doc_type === 'PO' ||
+    invoice.doc_type === 'PR' ||
+    invoice.doc_type === 'PINV' ||
+    invoice.doc_type === 'vendor_bill' ||
+    invoice.doc_type === 'bill' ||
+    invoice.invoice_type === 'PURCHASE_INVOICE' ||
+    String(invoice.invoice_number || '').toUpperCase().startsWith('BILL-') ||
+    String(invoice.invoice_number || '').toUpperCase().startsWith('PINV-') ||
+    String(invoice.header_title || '').toLowerCase().includes('purchase')
+  );
 
   // Resolve Word Config from props or template
   const config: WordInvoiceTemplateConfig = React.useMemo(() => {
@@ -222,8 +238,8 @@ export function WordInvoiceDocument({
       paperBgColor: raw?.paperBgColor || "#ffffff",
       watermarkText: raw?.watermarkText || template?.watermarkText || "",
       watermarkOpacity: raw?.watermarkOpacity || 0.04,
-      invoiceTitle: raw?.invoiceTitle || raw?.headerTitle || invoice?.header_title || (
-        (invoice.doc_type === 'purchase_invoice' || invoice.invoice_type === 'PURCHASE_INVOICE' || String(invoice.invoice_number || '').toUpperCase().startsWith('BILL-')) ? "PURCHASE INVOICE & BILL" :
+      invoiceTitle: isPurchaseDoc ? "PURCHASE INVOICE & BILL" : (
+        (raw?.invoiceTitle && raw?.invoiceTitle.toLowerCase().includes('purchase') ? raw.invoiceTitle : (raw?.invoiceTitle || raw?.headerTitle || invoice?.header_title)) ||
         (invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? "TAX QUOTATION / ESTIMATE" :
         (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? "TAX ESTIMATE / ESTIMATE" :
         (invoice.doc_type === 'proforma' || invoice.invoice_type === 'PROFORMA' || String(invoice.invoice_number || '').toUpperCase().startsWith('PI-')) ? "PROFORMA INVOICE" :
@@ -237,12 +253,12 @@ export function WordInvoiceDocument({
       companyEmail: resolvedCompanyEmail,
       companyGstin: resolvedCompanyGstin,
       companyPan: raw?.companyPan || activeGst?.pan || "",
-      customerTitle: raw?.customerTitle || (invoice.doc_type === 'purchase_invoice' || invoice.invoice_type === 'PURCHASE_INVOICE' || String(invoice.invoice_number || '').toUpperCase().startsWith('BILL-') ? "Supplier / Vendor Party:" : "Billed To (Customer):"),
+      customerTitle: isPurchaseDoc ? "Supplier / Vendor Party:" : (raw?.customerTitle || "Billed To (Customer):"),
       customerName: raw?.customerName || "Customer Name",
       customerAddress: raw?.customerAddress || "",
       customerGstin: raw?.customerGstin || "",
       customerPhone: raw?.customerPhone || "",
-      shippingTitle: raw?.shippingTitle || (invoice.doc_type === 'purchase_invoice' || invoice.invoice_type === 'PURCHASE_INVOICE' ? "Supplier Address:" : "Shipped To (Delivery):"),
+      shippingTitle: isPurchaseDoc ? "Supplier Address:" : (raw?.shippingTitle || "Shipped To (Delivery):"),
       shippingName: raw?.shippingName || "",
       shippingAddress: raw?.shippingAddress || "",
       invoiceNumberLabel: raw?.invoiceNumberLabel || (
@@ -341,6 +357,8 @@ export function WordInvoiceDocument({
         hsn: it.hsn_code || it.hsn || it.hsn_sac || (it as any).hsnCode || (it.product && (it.product.hsn_code || it.product.hsn)) || "",
         quantity: qty,
         unit: it.selected_uom || it.uom || it.measuring_unit || it.unit || "PCS",
+        batch: it.batch_number || it.batch || (it as any).batchNo || "",
+        expiry: it.expiry_date || it.exp_date || (it as any).expiryDate || "",
         unit_type: it.secondary_uom && it.selected_uom === it.secondary_uom ? "Secondary Unit" : "Primary Unit",
         unit_price: unitPrice,
         mrp,
@@ -537,7 +555,12 @@ export function WordInvoiceDocument({
     (isPureMockPreview ? config.customerPhone : "");
 
   // Determine Shipping Information
+  // Purchase invoices: the right-hand party block is OUR company (the purchaser),
+  // not the supplier again — so the document reads "Supplier | Our Company".
+  const purchaseShippingName = isPurchaseDoc ? (dynamicStoreName || customerName) : undefined;
+  const purchaseShippingAddress = isPurchaseDoc ? (dynamicAddress || undefined) : undefined;
   const shippingName =
+    purchaseShippingName ||
     invoice.customerShippingName ||
     (invoice as any).customer_shipping_name ||
     (invoice as any).shipping_name ||
@@ -552,6 +575,7 @@ export function WordInvoiceDocument({
     (invoice as any).shipping_address;
 
   const shippingAddress =
+    purchaseShippingAddress ||
     formatPartyAddress(rawCustomerShipping) ||
     formatPartyAddress({
       street: typeof rawCustomerShipping === "string" ? rawCustomerShipping : (rawCustomerShipping?.street || ""),
@@ -664,7 +688,67 @@ export function WordInvoiceDocument({
     return sampleVal;
   };
 
-  const enabledCols = (config?.columns || DEFAULT_WORD_COLUMNS).filter((c) => c.enabled);
+  const enabledCols = React.useMemo(() => {
+    const baseCols = (config?.columns || DEFAULT_WORD_COLUMNS).filter((c) => c.enabled);
+    if (!isPurchaseDoc) return baseCols;
+    const pSettings = loadStoredPurchaseInvoiceSettings();
+
+    const isFieldAllowed = (key: string) => {
+      if (key === 'hsn') return pSettings.showHsn ?? true;
+      if (key === 'uom') return pSettings.showUom ?? true;
+      if (key === 'batch') return pSettings.showBatchNo ?? true;
+      if (key === 'expiry_date') return pSettings.showExpDate ?? true;
+      if (key === 'mrp') return Boolean(pSettings.showMrp);
+      if (key === 'selling_price') return Boolean(pSettings.showSellPrice);
+      if (key === 'unit_price') return pSettings.showRate ?? true;
+      if (key === 'discount') return pSettings.showDiscount ?? true;
+      if (key === 'tax_rate') return pSettings.showGstTax ?? true;
+      if (key === 'is_free') return Boolean(pSettings.showFreeQty);
+      return true;
+    };
+
+    const filteredBase = baseCols.filter((c) => isFieldAllowed(c.fieldKey));
+    const existingKeys = new Set(filteredBase.map((c) => c.fieldKey));
+
+    const extraCandidateCols = [
+      ...PROCUREMENT_WORD_COLUMNS,
+      { id: "col_batch", fieldKey: "batch", headerTitle: "BATCH", widthPercent: 8, align: "center" as const, enabled: true },
+      { id: "col_free", fieldKey: "is_free", headerTitle: "FREE", widthPercent: 5, align: "center" as const, enabled: true },
+    ];
+
+    const extraCols = extraCandidateCols.filter(
+      (c) => c.enabled && isFieldAllowed(c.fieldKey) && !existingKeys.has(c.fieldKey)
+    );
+
+    const customCols = (pSettings.itemCustomColumns || [])
+      .filter((cc) => cc.enabled)
+      .map((cc) => ({
+        id: `custom_${cc.id}`,
+        fieldKey: cc.name,
+        headerTitle: cc.name.toUpperCase(),
+        widthPercent: 8,
+        align: "center" as const,
+        enabled: true,
+      }));
+
+    const amtIdx = filteredBase.findIndex((c) => c.fieldKey === "total_amount");
+    const insertAt = amtIdx >= 0 ? amtIdx : filteredBase.length;
+    const combined = [
+      ...filteredBase.slice(0, insertAt),
+      ...extraCols,
+      ...customCols,
+      ...filteredBase.slice(insertAt),
+    ];
+
+    const totalW = combined.reduce((acc, c) => acc + (c.widthPercent || 8), 0);
+    if (totalW > 0) {
+      return combined.map((c) => ({
+        ...c,
+        widthPercent: Math.max(3, Math.round(((c.widthPercent || 8) / totalW) * 1000) / 10),
+      }));
+    }
+    return combined;
+  }, [config, isPurchaseDoc]);
   const enabledSections = [...(config?.sections || DEFAULT_WORD_SECTIONS)].sort((a, b) => a.order - b.order).filter((s) => s.enabled);
 
   // Accent Color Helpers
@@ -1401,15 +1485,59 @@ export function WordInvoiceDocument({
                             );
                           }
 
-                          // Discount
+                          // UOM (procurement column)
+                          if (col.fieldKey === "uom") {
+                            return (
+                              <td key={col.id} className="py-3 px-1.5 text-center font-bold text-slate-700 text-[9.5px] uppercase">
+                                {item.unit || "PCS"}
+                              </td>
+                            );
+                          }
+
+                          // BATCH (procurement column)
+                          if (col.fieldKey === "batch") {
+                            const bv = String((item as any).batch || "").trim();
+                            return (
+                              <td key={col.id} className="py-3 px-1.5 text-center font-mono text-[9.5px] text-slate-600">
+                                {bv ? <span className="bg-slate-100/80 px-1 py-0.5 rounded border border-slate-200/50">{bv}</span> : <span className="text-slate-400">—</span>}
+                              </td>
+                            );
+                          }
+
+                          // Expiry Date (procurement column)
+                          if (col.fieldKey === "expiry_date" || col.fieldKey === "exp_date") {
+                            const ev = String((item as any).expiry || "").trim();
+                            return (
+                              <td key={col.id} className="py-3 px-1.5 text-center font-mono text-[9.5px] text-slate-600">
+                                {ev ? ev : <span className="text-slate-400">—</span>}
+                              </td>
+                            );
+                          }
+
+                          // FREE badge (procurement column)
+                          if (col.fieldKey === "is_free") {
+                            return (
+                              <td key={col.id} className="py-3 px-1.5 text-center">
+                                {item.isFree ? (
+                                  <span className="bg-emerald-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded uppercase">FREE</span>
+                                ) : (
+                                  <span className="text-slate-300">—</span>
+                                )}
+                              </td>
+                            );
+                          }
+
+                          // Discount — percent-aware (matches the extracted DISC % column)
                           if (col.fieldKey === "discount") {
+                            const discType = String((item as any).discount_type || "percent").toLowerCase();
+                            const isAmt = discType === "amount" || discType === "fixed" || discType === "rs";
                             return (
                               <td key={col.id} className="py-3 px-2 text-center font-mono text-[10.5px]">
                                 {item.isFree ? (
                                   <span className="text-slate-300">—</span>
                                 ) : Number(item.discount || 0) > 0 ? (
                                   <span className="text-emerald-600 font-semibold">
-                                    -{currency.symbol}{(Number(item.discount) || 0).toFixed(2)}
+                                    {isAmt ? `${currency.symbol}${Number(item.discount).toFixed(2)}` : `${Number(item.discount)}%`}
                                   </span>
                                 ) : (
                                   <span className="text-slate-300">—</span>

@@ -24,12 +24,14 @@ import {
   Ban,
   AlertTriangle,
   XCircle,
-  Trash2
+  Trash2,
+  Sliders
 } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { ProcurementDocumentForm } from "./ProcurementDocumentForm";
 import { ProcurementShareModal } from "./ProcurementShareModal";
+import { PurchaseInvoiceQuickSettingsModal } from "./PurchaseInvoiceQuickSettingsModal";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { formatDisplayDate } from "@/lib/utils";
@@ -46,6 +48,7 @@ export function VendorBills() {
   const [isCreateMode, setIsCreateMode] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
   const [shareDoc, setShareDoc] = useState<any | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [cancellingBill, setCancellingBill] = useState<any | null>(null);
   const [cancellationReason, setCancellationReason] = useState("");
@@ -354,12 +357,24 @@ export function VendorBills() {
             Manage supplier purchase invoices, track payment settlements, and review 3-way match verification.
           </p>
         </div>
-        <Button 
-          onClick={() => setIsCreateMode(true)} 
-          className="gradient-brand text-white border-0 font-bold px-5 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center gap-2"
-        >
-          <Plus className="size-4" /> Log Purchase Invoice
-        </Button>
+        <div className="flex items-center gap-2.5">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setIsSettingsOpen(true)}
+            className="font-semibold px-4 py-2.5 rounded-xl border border-border bg-card/60 hover:bg-accent/60 flex items-center gap-2 cursor-pointer shadow-xs"
+            title="Configure Purchase Invoice Columns, Custom Columns, Numbering Series & Layout"
+          >
+            <Sliders className="size-4 text-primary" />
+            <span>Invoice Settings</span>
+          </Button>
+          <Button 
+            onClick={() => setIsCreateMode(true)} 
+            className="gradient-brand text-white border-0 font-bold px-5 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center gap-2"
+          >
+            <Plus className="size-4" /> Log Purchase Invoice
+          </Button>
+        </div>
       </div>
 
       {/* KPI Metric Summary Cards */}
@@ -930,6 +945,12 @@ export function VendorBills() {
         onClose={() => setShareDoc(null)}
         documentData={shareDoc}
         docType="PINV"
+      />
+
+      {/* Purchase Invoice Quick Settings Modal */}
+      <PurchaseInvoiceQuickSettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
       />
     </div>
   );

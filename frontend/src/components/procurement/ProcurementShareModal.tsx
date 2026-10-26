@@ -76,6 +76,14 @@ export function ProcurementShareModal({
         hsn_code: ov.hsn_code,
         sku: ov.sku,
         uom: ov.uom,
+        batch_number: ov.batch_number,
+        expiry_date: ov.expiry_date,
+        discount_value: ov.discount_value,
+        discount_type: ov.discount_type,
+        is_free: ov.is_free,
+        mrp: ov.mrp,
+        selling_price: ov.selling_price,
+        is_tax_inclusive: ov.is_tax_inclusive,
       }))
     : [];
   const items = overrideItems.length > 0 ? overrideItems : billItems;
@@ -265,7 +273,7 @@ export function ProcurementShareModal({
       // 3) Resolve numeric fields: override → PO line → 0
       const qty = Number(ov?.quantity ?? it.quantity ?? 1) || 1;
       const unitPrice = Number(ov?.unit_price ?? it.unit_price ?? 0) || 0;
-      const taxPct = Number(ov?.tax_percent ?? it.tax_percent ?? 0) || 0;
+      const taxPct = Number(ov?.tax_percent ?? it.tax_percent ?? it.tax_rate ?? 0) || 0;
       const mrp = Number(ov?.mrp ?? it.mrp ?? 0) || 0;
       const sellPrice = Number(ov?.selling_price ?? it.selling_price ?? mrp ?? 0) || 0;
       const isTaxIncl = Boolean(ov?.is_tax_inclusive ?? it.is_tax_inclusive);
@@ -276,6 +284,9 @@ export function ProcurementShareModal({
       const lineTax = isTaxIncl && taxPct > 0 ? (grossAfterDisc - grossAfterDisc / (1 + taxPct / 100)) : grossAfterDisc * (taxPct / 100);
       const lineSubtotal = isTaxIncl ? grossAfterDisc : grossAfterDisc + lineTax;
 
+      const uomVal = ov?.uom || it.uom || (it as any).measuring_unit || (it as any).unit || 'Pcs';
+      const expDateVal = ov?.expiry_date || it.expiry_date || (it as any).exp_date || (it as any).expDate || '';
+
       return {
         product_id: it.product_id,
         product_name: it.product_name || it.name || 'Material Item',
@@ -283,15 +294,22 @@ export function ProcurementShareModal({
         hsn: hsnCode,
         sku: it.sku || it.product_sku || '',
         barcode: it.barcode || '',
-        uom: ov?.uom || it.uom || '',
+        uom: uomVal,
+        selected_uom: uomVal,
+        batch_number: ov?.batch_number || it.batch_number || '',
+        batch: ov?.batch_number || it.batch_number || '',
+        expiry_date: expDateVal,
+        exp_date: expDateVal,
+        is_free: Boolean(ov?.is_free ?? it.is_free),
         mrp,
         selling_price: sellPrice,
         quantity: qty,
         unit_price: unitPrice,
         tax_rate: taxPct,
         is_tax_inclusive: isTaxIncl,
-        discount_amount: Number(it.discount_amount ?? 0) || 0,
-        discount_type: 'amount',
+        discount_amount: Number(ov?.discount_value ?? it.discount_amount ?? it.discount_value ?? 0) || 0,
+        discount_value: Number(ov?.discount_value ?? it.discount_amount ?? it.discount_value ?? 0) || 0,
+        discount_type: ov?.discount_type || it.discount_type || 'fixed',
         subtotal: lineSubtotal,
       };
     }),

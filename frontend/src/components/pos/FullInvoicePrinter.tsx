@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useI18n } from "@/contexts/i18n-context";
 import { createPortal } from 'react-dom';
-import { Printer, X, Download, FileText, CheckCircle2, Upload, Sparkles, MessageCircle, Mail, Send, Loader2 } from 'lucide-react';
+import { Printer, X, Download, FileText, CheckCircle2, Upload, Sparkles, MessageCircle, Mail, Send, Loader2, Sliders, Settings } from 'lucide-react';
 import { toast } from "sonner";
 import { getActiveInvoicePrintTemplate, setActiveInvoicePrintTemplate, GLOBAL_INVOICE_TEMPLATES, getActiveBillingGst, getOrgPaymentQrSettings, getOrgSignatureSettings, getTenantTemplatesKey, getTenantIdFromStorage, getTenantDefaultsKey } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
@@ -17,7 +17,9 @@ import { PdfStationeryOverlayTemplate } from './invoice-templates/PdfStationeryO
 import { WordInvoiceDocument } from './invoice-templates/WordInvoiceDocument';
 import { PdfTemplateOverlayModal } from './PdfTemplateOverlayModal';
 import { computeGstBreakdown, extractGstState, INDIAN_GST_STATES } from '@/lib/gst-utils';
-import { loadStoredInvoiceSettings } from './InvoiceQuickSettingsModal';
+import { InvoiceQuickSettingsModal, loadStoredInvoiceSettings } from './InvoiceQuickSettingsModal';
+import { PurchaseInvoiceQuickSettingsModal, loadStoredPurchaseInvoiceSettings, PurchaseInvoiceSettings } from '../procurement/PurchaseInvoiceQuickSettingsModal';
+import { WordInvoiceStudioModal } from './WordInvoiceStudioModal';
 import { RealBarcodeSvg } from '@/lib/barcode-svg';
 
 export const isThermalReceiptId = (id: string | null | undefined): boolean => {
@@ -267,8 +269,45 @@ export function FullInvoicePrinter({
   const [isPdfOverlayModalOpen, setIsPdfOverlayModalOpen] = useState(false);
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
-  // Live company data from API – overrides stale localStorage snapshots
   const [liveCompanyData, setLiveCompanyData] = useState<any>(null);
+  const [isPurchaseSettingsOpen, setIsPurchaseSettingsOpen] = useState(false);
+  const [isSalesSettingsOpen, setIsSalesSettingsOpen] = useState(false);
+  const [isWordStudioOpen, setIsWordStudioOpen] = useState(false);
+  const [purchaseSettings, setPurchaseSettings] = useState<PurchaseInvoiceSettings>(() => loadStoredPurchaseInvoiceSettings(tenant?.id));
+  const [salesSettings, setSalesSettings] = useState<any>(() => loadStoredInvoiceSettings(tenant?.id));
+
+  const isPurchaseDoc = Boolean(
+    invoice?.doc_type === 'purchase_invoice' ||
+    invoice?.doc_type === 'PO' ||
+    invoice?.doc_type === 'PR' ||
+    invoice?.doc_type === 'PINV' ||
+    invoice?.doc_type === 'vendor_bill' ||
+    invoice?.doc_type === 'bill' ||
+    invoice?.header_title?.toLowerCase().includes('purchase') ||
+    invoice?.documentTitle?.toLowerCase().includes('purchase') ||
+    (invoice as any)?.isProcurement
+  );
+
+  useEffect(() => {
+    const handlePurchaseUpdate = (e: any) => {
+      if (e?.detail?.settings) {
+        setPurchaseSettings(e.detail.settings);
+      } else {
+        setPurchaseSettings(loadStoredPurchaseInvoiceSettings(tenant?.id));
+      }
+    };
+    const handleSalesUpdate = () => {
+      setSalesSettings(loadStoredInvoiceSettings(tenant?.id));
+    };
+    window.addEventListener('bos-purchase-settings-updated', handlePurchaseUpdate);
+    window.addEventListener('bos-invoice-settings-changed', handlePurchaseUpdate);
+    window.addEventListener('storage', handlePurchaseUpdate);
+    return () => {
+      window.removeEventListener('bos-purchase-settings-updated', handlePurchaseUpdate);
+      window.removeEventListener('bos-invoice-settings-changed', handlePurchaseUpdate);
+      window.removeEventListener('storage', handlePurchaseUpdate);
+    };
+  }, [tenant?.id]);
 
   const handleSendWhatsApp = async () => {
     if (!invoice) return;
@@ -706,6 +745,7 @@ export function FullInvoicePrinter({
     (template as any)?.isWordTemplate
   );
   const isCustomReplica = isWordTemplate || isMargPharma || isFmcg || isParle || isAgriSeeds || isPdfOverlay;
+
 
   const isLuxury = theme === 'luxury';
   const isTally = theme === 'tally';
@@ -1440,6 +1480,24 @@ export function FullInvoicePrinter({
 
             <div className="flex items-center gap-2">
               <button
+                type="button"
+                onClick={() => isPurchaseDoc ? setIsPurchaseSettingsOpen(true) : setIsSalesSettingsOpen(true)}
+                className="px-3 py-2 text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                title={isPurchaseDoc ? "Configure Purchase Invoice columns (add/remove), sequence series, terms & layout" : "Configure Sales Invoice columns, series & terms"}
+              >
+                <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                <span>{isPurchaseDoc ? "Columns & Settings" : "Invoice Settings"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsWordStudioOpen(true)}
+                className="px-3 py-2 text-xs font-bold bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-400/30 rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                title="Design invoice in visual studio: customize fonts, colors, sections, logo & layout"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-indigo-300" />
+                <span>Design Invoice</span>
+              </button>
+              <button
                 onClick={handleSendWhatsApp}
                 disabled={isSendingWhatsApp}
                 className="px-3 py-2 text-xs font-bold bg-emerald-700/80 hover:bg-emerald-600 text-white rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
@@ -1949,155 +2007,362 @@ export function FullInvoicePrinter({
                   })()}
 
                   {/* Line Items Table */}
-                  <div className="z-10 relative overflow-hidden rounded-xl border border-slate-200">
-                    <table className={`w-full border-collapse text-xs ${isTally ? 'border border-slate-900' : ''}`}>
-                      <thead>
-                        <tr
-                          className="text-white text-left font-bold"
-                          style={{ backgroundColor: isSimple ? '#1e293b' : primaryColor }}
-                        >
-                          <th className="py-2 px-3 print:py-1 print:px-2 w-8 text-center">#</th>
-                          <th className="py-2 px-3 print:py-1 print:px-2">Item Description</th>
-                          {f.showHSN && <th className="py-2 px-3 print:py-1 print:px-2 text-center">HSN/SAC</th>}
-                          <th className="py-2 px-3 print:py-1 print:px-2 text-center">Qty</th>
-                          <th className="py-2 px-3 print:py-1 print:px-2 text-right">Unit Rate</th>
-                          <th className="py-2 px-3 print:py-1 print:px-2 text-right">Discount</th>
-                          {f.showTaxSplit && <th className="py-2 px-3 print:py-1 print:px-2 text-right">Tax Rate</th>}
-                          <th className="py-2 px-3 print:py-1 print:px-2 text-right">Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody className={`divide-y ${isTally ? 'divide-slate-900' : 'divide-slate-100'} bg-white`}>
-                        {items.map((item, idx) => {
-                          const isFree = isInvoiceLineFree(item);
-                          const qty = Number(item.quantity || 0);
-                          const unitPrice = isFree ? 0 : Number(item.unit_price || 0);
-                          const originalRate = Number(item.unit_price || 0);
-                          const mrpPrice = Number(item.mrp || 0);
-                          const sellPrice = Number(item.selling_price || item.mrp || 0);
-                          const discVal = isFree ? 0 : Number(item.discount_value || 0);
-                          const taxRate = isFree ? 0 : Number(item.tax_rate || 0);
-                          const itemSub = isFree ? 0 : qty * unitPrice;
-                          const disc = isFree ? 0 : (item.discount_type === 'percent'
-                            ? (itemSub * discVal / 100)
-                            : discVal);
-                          const netAmount = isFree ? 0 : itemSub - disc;
+                  {(() => {
+                    const hasProcurementColumns = isPurchaseDoc || items.some((it) =>
+                      Boolean(it.uom || it.expiry_date || (it as any).exp_date || (it as any).expDate || Number(it.mrp || 0) > 0 || Number(it.selling_price || 0) > 0)
+                    );
 
-                          return (
-                            <tr key={idx} className={idx % 2 === 1 ? 'bg-slate-50/50' : ''}>
-                              <td className="py-2 px-3 print:py-1 print:px-2 text-center font-bold text-slate-400">{idx + 1}</td>
-                              <td className="py-2 px-3 print:py-1 print:px-2">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-bold text-slate-900">{item.product_name || 'Item'}</span>
-                                  {isFree && (
-                                    <span className="bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded uppercase tracking-wider">
-                                      FREE
-                                    </span>
+                    const formatExpDate = (raw: string | undefined | null) => {
+                      if (!raw || String(raw).trim() === '' || String(raw).toLowerCase().includes('dd-mm-yyyy')) return '—';
+                      try {
+                        const s = String(raw).trim().split('T')[0];
+                        if (s.includes('-')) {
+                          const parts = s.split('-');
+                          if (parts.length === 3 && parts[0].length === 4) {
+                            return `${parts[2]}-${parts[1]}-${parts[0]}`;
+                          }
+                        }
+                        return s;
+                      } catch {
+                        return String(raw);
+                      }
+                    };
+
+                    return (
+                      <div className="z-10 relative overflow-x-auto print:overflow-visible rounded-xl border border-slate-200 scrollbar-thin">
+                        <table className={`w-full border-collapse text-[11px] print:text-[10px] leading-tight ${isTally ? 'border border-slate-900' : ''}`}>
+                          <thead>
+                            <tr
+                              className="text-white text-left font-bold"
+                              style={{ backgroundColor: isSimple ? '#1e293b' : primaryColor }}
+                            >
+                              <th className="py-2 px-1.5 print:py-1 print:px-1 w-7 text-center">#</th>
+                              <th className="py-2 px-2 print:py-1 print:px-1.5 text-left">ITEMS / SERVICES</th>
+                              {hasProcurementColumns ? (
+                                <>
+                                  {(purchaseSettings?.showHsn ?? true) && (
+                                    <th className="py-2 px-1.5 print:py-1 print:px-1 text-center whitespace-nowrap">HSN/SAC</th>
                                   )}
-                                </div>
-                                {(item.description || item.custom_note || item.notes) && (
-                                  <span className="text-[10px] text-slate-600 block mt-0.5 whitespace-pre-line font-normal leading-tight">
-                                    {item.description || item.custom_note || item.notes}
-                                  </span>
-                                )}
-                                {((f.showSKU && (item.sku || (item as any).product_code)) || (f.showBarcode && (item as any).barcode)) && (
-                                  <span className="text-[9px] font-mono text-slate-500 block mt-0.5">
-                                    {f.showSKU && (item.sku || (item as any).product_code) && `SKU: ${item.sku || (item as any).product_code} `}
-                                    {f.showBarcode && (item as any).barcode && `| Barcode: ${(item as any).barcode}`}
-                                  </span>
-                                )}
-                                {(mrpPrice > 0 || sellPrice > 0) && !isFree && (
-                                  <span className="text-[9px] text-slate-500">
-                                    {mrpPrice > 0 && <span>MRP: {currency.symbol}{mrpPrice.toFixed(2)} </span>}
-                                    {sellPrice > 0 && <span>• Sell: {currency.symbol}{sellPrice.toFixed(2)}</span>}
-                                  </span>
-                                )}
-                              </td>
-                              {f.showHSN && <td className="py-2 px-3 print:py-1 print:px-2 text-center font-mono text-slate-600 text-[10px]">{item.hsn_code || (item as any).hsn || (item as any).hsn_sac || '—'}</td>}
-                              <td className="py-2 px-3 print:py-1 print:px-2 text-center font-extrabold text-slate-800">
-                                <div>
-                                  <span>{qty}</span>
-                                  {(item.selected_uom || item.uom || (item as any).measuring_unit) && (
-                                    <span className="ml-1 text-slate-700 font-bold">
-                                      {item.selected_uom || item.uom || (item as any).measuring_unit}
-                                    </span>
+                                  {(purchaseSettings?.showUom ?? true) && (
+                                    <th className="py-2 px-1.5 print:py-1 print:px-1 text-center whitespace-nowrap">UOM</th>
                                   )}
-                                </div>
-                                {item.secondary_uom ? (
-                                  <span className="block text-[8px] font-black uppercase tracking-tight text-indigo-700">
-                                    {item.selected_uom === item.secondary_uom ? "(Secondary Unit)" : "(Primary Unit)"}
-                                  </span>
-                                ) : (item.selected_uom || item.uom) ? (
-                                  <span className="block text-[8px] font-semibold text-slate-500 tracking-tight">
-                                    (Primary Unit)
-                                  </span>
-                                ) : null}
-                              </td>
-                              <td className="py-2 px-3 print:py-1 print:px-2 text-right font-medium text-slate-700">
-                                {isFree ? (
-                                  <span>
-                                    {originalRate > 0 && <span className="line-through text-slate-400 mr-1 text-[10px]">{currency.symbol}{originalRate.toFixed(2)}</span>}
-                                    <span className="text-emerald-700 font-bold">{currency.symbol}0.00</span>
-                                  </span>
-                                ) : (
-                                  <span>{currency.symbol}{unitPrice.toFixed(2)}</span>
-                                )}
-                              </td>
-                              <td className="py-2 px-3 print:py-1 print:px-2 text-right text-emerald-600 font-semibold">
-                                {isFree ? '—' : (disc > 0 ? `-₹${disc.toFixed(2)}` : '—')}
-                              </td>
-                              {f.showTaxSplit && (
-                                <td className="py-2 px-3 print:py-1 print:px-2 text-right text-slate-600 font-medium">
-                                  {isFree ? (
-                                    <span className="text-slate-400 font-normal">0%</span>
-                                  ) : !isInterState ? (
-                                    <div>
-                                      <span>{taxRate ? `${taxRate}%` : '0%'}</span>
-                                      {taxRate > 0 && <span className="text-[9px] text-slate-400 block font-normal leading-none mt-0.5">({(taxRate/2)}%+{(taxRate/2)}%)</span>}
-                                    </div>
-                                  ) : (
-                                    <div>
-                                      <span>{taxRate ? `${taxRate}%` : '0%'}</span>
-                                      {taxRate > 0 && <span className="text-[9px] text-indigo-500 block font-normal leading-none mt-0.5">IGST</span>}
-                                    </div>
+                                  {(purchaseSettings?.showBatchNo ?? true) && (
+                                    <th className="py-2 px-1.5 print:py-1 print:px-1 text-center whitespace-nowrap">BATCH</th>
                                   )}
-                                </td>
+                                  {(purchaseSettings?.showExpDate ?? true) && (
+                                    <th className="py-2 px-1.5 print:py-1 print:px-1 text-center whitespace-nowrap">EXP DATE</th>
+                                  )}
+                                  {Boolean(purchaseSettings?.showMfgDate) && (
+                                    <th className="py-2 px-1.5 print:py-1 print:px-1 text-center whitespace-nowrap">MFG DATE</th>
+                                  )}
+                                  {Boolean(purchaseSettings?.showMrp) && (
+                                    <th className="py-2 px-1.5 print:py-1 print:px-1 text-right whitespace-nowrap">MRP ({currency.symbol})</th>
+                                  )}
+                                  {Boolean(purchaseSettings?.showSellPrice) && (
+                                    <th className="py-2 px-1.5 print:py-1 print:px-1 text-right whitespace-nowrap">SELL PRICE ({currency.symbol})</th>
+                                  )}
+                                  <th className="py-2 px-1.5 print:py-1 print:px-1 text-center whitespace-nowrap">QTY</th>
+                                  {(purchaseSettings?.showRate ?? true) && (
+                                    <th className="py-2 px-1.5 print:py-1 print:px-1 text-right whitespace-nowrap">RATE ({currency.symbol})</th>
+                                  )}
+                                  {(purchaseSettings?.showDiscount ?? true) && (
+                                    <th className="py-2 px-1.5 print:py-1 print:px-1 text-right whitespace-nowrap">DISC</th>
+                                  )}
+                                  {(purchaseSettings?.showGstTax ?? true) && (
+                                    <th className="py-2 px-1.5 print:py-1 print:px-1 text-right whitespace-nowrap">GST TAX %</th>
+                                  )}
+                                  {Boolean(purchaseSettings?.showFreeQty) && (
+                                    <th className="py-2 px-1.5 print:py-1 print:px-1 text-center whitespace-nowrap">FREE</th>
+                                  )}
+                                  {(purchaseSettings?.itemCustomColumns || []).filter(c => c.enabled).map(cc => (
+                                    <th key={cc.id} className="py-2 px-1.5 print:py-1 print:px-1 text-center whitespace-nowrap uppercase">
+                                      {cc.name}
+                                    </th>
+                                  ))}
+                                  <th className="py-2 px-2 print:py-1 print:px-1.5 text-right whitespace-nowrap">AMOUNT ({currency.symbol})</th>
+                                </>
+                              ) : (
+                                <>
+                                  <th className="py-2 px-2 print:py-1 print:px-1.5 text-center">HSN/SAC</th>
+                                  <th className="py-2 px-3 print:py-1 print:px-2 text-center">Qty</th>
+                                  <th className="py-2 px-3 print:py-1 print:px-2 text-right">Unit Rate</th>
+                                  <th className="py-2 px-3 print:py-1 print:px-2 text-right">Discount</th>
+                                  {f.showTaxSplit && <th className="py-2 px-3 print:py-1 print:px-2 text-right">Tax Rate</th>}
+                                  <th className="py-2 px-3 print:py-1 print:px-2 text-right">Amount</th>
+                                </>
                               )}
-                              <td className="py-2 px-3 print:py-1 print:px-2 text-right font-bold text-slate-900">
-                                {isFree ? (
-                                  <span className="text-emerald-600 font-extrabold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[11px]">
-                                    FREE ({currency.symbol}0.00)
-                                  </span>
-                                ) : (
-                                  <span>{currency.symbol}{netAmount.toFixed(2)}</span>
-                                )}
-                              </td>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                      <tfoot className="border-t-2 border-slate-300 bg-slate-100/90 font-bold text-slate-900">
-                        <tr>
-                          <td className="py-2 px-3 print:py-1 print:px-2 text-center text-slate-500 font-bold text-[10px]">Total</td>
-                          <td className="py-2 px-3 print:py-1 print:px-2 font-extrabold text-slate-800 text-[11px]">
-                            Total Items: {items.length} {items.length === 1 ? 'Item' : 'Items'}
-                          </td>
-                          {f.showHSN && <td className="py-2 px-3 print:py-1 print:px-2 text-center text-slate-400">—</td>}
-                          <td className="py-1.5 px-3 print:py-1 print:px-2 text-center font-black text-slate-900 bg-slate-200/90">
-                            <span className="text-slate-500 text-[8px] uppercase block font-semibold leading-none">Total Qty</span>
-                            <span className="text-[11px] font-mono">{totalQtyBilled}</span>
-                          </td>
-                          <td className="py-2 px-3 print:py-1 print:px-2 text-right text-slate-400">—</td>
-                          <td className="py-2 px-3 print:py-1 print:px-2 text-right text-emerald-600 font-bold">
-                            {totalDiscount > 0 ? `-${currency.symbol}${Number(totalDiscount).toFixed(2)}` : '—'}
-                          </td>
-                          {f.showTaxSplit && <td className="py-2 px-3 print:py-1 print:px-2 text-right text-slate-400">—</td>}
-                          <td className="py-2 px-3 print:py-1 print:px-2 text-right font-black text-slate-900 text-[11px]">
-                            {currency.symbol}{Number(taxableSubtotal).toFixed(2)}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                          </thead>
+                          <tbody className={`divide-y ${isTally ? 'divide-slate-900' : 'divide-slate-100'} bg-white`}>
+                            {items.map((item, idx) => {
+                              const isFree = isInvoiceLineFree(item);
+                              const qty = Number(item.quantity || 0);
+                              const unitPrice = isFree ? 0 : Number(item.unit_price || 0);
+                              const originalRate = Number(item.unit_price || 0);
+                              const mrpPrice = Number(item.mrp || 0);
+                              const sellPrice = Number(item.selling_price || item.mrp || 0);
+                              const discVal = isFree ? 0 : Number(item.discount_value || 0);
+                              const taxRate = isFree ? 0 : Number(item.tax_rate || 0);
+                              const itemSub = isFree ? 0 : qty * unitPrice;
+                              const disc = isFree ? 0 : (item.discount_type === 'percent'
+                                ? (itemSub * discVal / 100)
+                                : discVal);
+                              const netAmount = isFree ? 0 : itemSub - disc;
+                              const hsnDisplay = item.hsn_code || (item as any).hsn || (item as any).hsn_sac || '—';
+                              const uomDisplay = item.selected_uom || item.uom || (item as any).measuring_unit || (item as any).unit || 'Pcs';
+                              const batchDisplay = String((item as any).batch_number || (item as any).batch || '').trim();
+                              const expDateDisplay = formatExpDate(item.expiry_date || (item as any).exp_date || (item as any).expDate);
+                              const mfgDateDisplay = formatExpDate((item as any).mfg_date || (item as any).mfgDate || (item as any).manufacturing_date);
+
+                              if (hasProcurementColumns) {
+                                return (
+                                  <tr key={idx} className={idx % 2 === 1 ? 'bg-slate-50/50' : ''}>
+                                    <td className="py-2 px-1.5 print:py-1 print:px-1 text-center font-bold text-slate-400">{idx + 1}</td>
+                                    <td className="py-2 px-2 print:py-1 print:px-1.5">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="font-bold text-slate-900">{item.product_name || 'Item'}</span>
+                                        {isFree && (
+                                          <span className="bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded uppercase tracking-wider">
+                                            FREE
+                                          </span>
+                                        )}
+                                      </div>
+                                      {(item.description || item.custom_note || item.notes) && (
+                                        <span className="text-[10px] text-slate-600 block mt-0.5 whitespace-pre-line font-normal leading-tight">
+                                          {item.description || item.custom_note || item.notes}
+                                        </span>
+                                      )}
+                                      {((f.showSKU && (item.sku || (item as any).product_code)) || (f.showBarcode && (item as any).barcode)) && (
+                                        <span className="text-[9px] font-mono text-slate-500 block mt-0.5">
+                                          {f.showSKU && (item.sku || (item as any).product_code) && `SKU: ${item.sku || (item as any).product_code} `}
+                                          {f.showBarcode && (item as any).barcode && `| Barcode: ${(item as any).barcode}`}
+                                        </span>
+                                      )}
+                                    </td>
+                                    {(purchaseSettings?.showHsn ?? true) && (
+                                      <td className="py-2 px-1.5 print:py-1 print:px-1 text-center font-mono text-slate-600 text-[10px] whitespace-nowrap">{hsnDisplay}</td>
+                                    )}
+                                    {(purchaseSettings?.showUom ?? true) && (
+                                      <td className="py-2 px-1.5 print:py-1 print:px-1 text-center font-bold text-slate-700 whitespace-nowrap">{uomDisplay}</td>
+                                    )}
+                                    {(purchaseSettings?.showBatchNo ?? true) && (
+                                      <td className="py-2 px-1.5 print:py-1 print:px-1 text-center font-mono text-slate-600 text-[10px] whitespace-nowrap">
+                                        {batchDisplay ? <span className="bg-slate-100 px-1 py-0.5 rounded border border-slate-200/50">{batchDisplay}</span> : <span className="text-slate-400">—</span>}
+                                      </td>
+                                    )}
+                                    {(purchaseSettings?.showExpDate ?? true) && (
+                                      <td className="py-2 px-1.5 print:py-1 print:px-1 text-center font-mono text-slate-600 text-[10px] whitespace-nowrap">{expDateDisplay}</td>
+                                    )}
+                                    {Boolean(purchaseSettings?.showMfgDate) && (
+                                      <td className="py-2 px-1.5 print:py-1 print:px-1 text-center font-mono text-slate-600 text-[10px] whitespace-nowrap">{mfgDateDisplay}</td>
+                                    )}
+                                    {Boolean(purchaseSettings?.showMrp) && (
+                                      <td className="py-2 px-1.5 print:py-1 print:px-1 text-right font-medium text-slate-700 whitespace-nowrap">
+                                        {mrpPrice > 0 ? mrpPrice.toFixed(2) : '—'}
+                                      </td>
+                                    )}
+                                    {Boolean(purchaseSettings?.showSellPrice) && (
+                                      <td className="py-2 px-1.5 print:py-1 print:px-1 text-right font-medium text-slate-700 whitespace-nowrap">
+                                        {sellPrice > 0 ? sellPrice.toFixed(2) : '—'}
+                                      </td>
+                                    )}
+                                    <td className="py-2 px-1.5 print:py-1 print:px-1 text-center font-extrabold text-slate-900 whitespace-nowrap">{qty}</td>
+                                    {(purchaseSettings?.showRate ?? true) && (
+                                      <td className="py-2 px-1.5 print:py-1 print:px-1 text-right font-medium text-slate-700 whitespace-nowrap">
+                                        {isFree ? (
+                                          <span>
+                                            {originalRate > 0 && <span className="line-through text-slate-400 mr-1 text-[10px]">{originalRate.toFixed(2)}</span>}
+                                            <span className="text-emerald-700 font-bold">0.00</span>
+                                          </span>
+                                        ) : (
+                                          <span>{unitPrice.toFixed(2)}</span>
+                                        )}
+                                      </td>
+                                    )}
+                                    {(purchaseSettings?.showDiscount ?? true) && (
+                                      <td className="py-2 px-1.5 print:py-1 print:px-1 text-right text-emerald-600 font-semibold whitespace-nowrap">
+                                        {isFree ? '—' : (disc > 0 ? (item.discount_type === 'percent' ? `${discVal}%` : `-${disc.toFixed(2)}`) : '0%')}
+                                      </td>
+                                    )}
+                                    {(purchaseSettings?.showGstTax ?? true) && (
+                                      <td className="py-2 px-1.5 print:py-1 print:px-1 text-right text-slate-600 font-medium whitespace-nowrap">
+                                        {isFree ? '0%' : `${taxRate}%`}
+                                      </td>
+                                    )}
+                                    {Boolean(purchaseSettings?.showFreeQty) && (
+                                      <td className="py-2 px-1.5 print:py-1 print:px-1 text-center whitespace-nowrap">
+                                        {isFree ? (
+                                          <span className="bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">FREE</span>
+                                        ) : (
+                                          <span className="text-slate-400">—</span>
+                                        )}
+                                      </td>
+                                    )}
+                                    {(purchaseSettings?.itemCustomColumns || []).filter(c => c.enabled).map(cc => {
+                                      const val = (item as any)[cc.name] || (item as any)[cc.id] || (item as any)?.custom_fields?.[cc.id] || (item as any)?.custom_fields?.[cc.name] || '—';
+                                      return (
+                                        <td key={cc.id} className="py-2 px-1.5 print:py-1 print:px-1 text-center font-medium text-slate-700 whitespace-nowrap">
+                                          {String(val)}
+                                        </td>
+                                      );
+                                    })}
+                                    <td className="py-2 px-2 print:py-1 print:px-1.5 text-right font-bold text-slate-900 whitespace-nowrap">
+                                      {isFree ? (
+                                        <span className="text-emerald-600 font-extrabold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[10px]">
+                                          FREE (0.00)
+                                        </span>
+                                      ) : (
+                                        <span>{currency.symbol}{netAmount.toFixed(2)}</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              return (
+                                <tr key={idx} className={idx % 2 === 1 ? 'bg-slate-50/50' : ''}>
+                                  <td className="py-2 px-3 print:py-1 print:px-2 text-center font-bold text-slate-400">{idx + 1}</td>
+                                  <td className="py-2 px-3 print:py-1 print:px-2">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-bold text-slate-900">{item.product_name || 'Item'}</span>
+                                      {isFree && (
+                                        <span className="bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded uppercase tracking-wider">
+                                          FREE
+                                        </span>
+                                      )}
+                                    </div>
+                                    {(item.description || item.custom_note || item.notes) && (
+                                      <span className="text-[10px] text-slate-600 block mt-0.5 whitespace-pre-line font-normal leading-tight">
+                                        {item.description || item.custom_note || item.notes}
+                                      </span>
+                                    )}
+                                    {((f.showSKU && (item.sku || (item as any).product_code)) || (f.showBarcode && (item as any).barcode)) && (
+                                      <span className="text-[9px] font-mono text-slate-500 block mt-0.5">
+                                        {f.showSKU && (item.sku || (item as any).product_code) && `SKU: ${item.sku || (item as any).product_code} `}
+                                        {f.showBarcode && (item as any).barcode && `| Barcode: ${(item as any).barcode}`}
+                                      </span>
+                                    )}
+                                    {(mrpPrice > 0 || sellPrice > 0) && !isFree && (
+                                      <span className="text-[9px] text-slate-500">
+                                        {mrpPrice > 0 && <span>MRP: {currency.symbol}{mrpPrice.toFixed(2)} </span>}
+                                        {sellPrice > 0 && <span>• Sell: {currency.symbol}{sellPrice.toFixed(2)}</span>}
+                                      </span>
+                                    )}
+                                  </td>
+                                  {f.showHSN && <td className="py-2 px-3 print:py-1 print:px-2 text-center font-mono text-slate-600 text-[10px]">{hsnDisplay}</td>}
+                                  <td className="py-2 px-3 print:py-1 print:px-2 text-center font-extrabold text-slate-800">
+                                    <div>
+                                      <span>{qty}</span>
+                                      {(item.selected_uom || item.uom || (item as any).measuring_unit) && (
+                                        <span className="ml-1 text-slate-700 font-bold">
+                                          {item.selected_uom || item.uom || (item as any).measuring_unit}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {item.secondary_uom ? (
+                                      <span className="block text-[8px] font-black uppercase tracking-tight text-indigo-700">
+                                        {item.selected_uom === item.secondary_uom ? "(Secondary Unit)" : "(Primary Unit)"}
+                                      </span>
+                                    ) : (item.selected_uom || item.uom) ? (
+                                      <span className="block text-[8px] font-semibold text-slate-500 tracking-tight">
+                                        (Primary Unit)
+                                      </span>
+                                    ) : null}
+                                  </td>
+                                  <td className="py-2 px-3 print:py-1 print:px-2 text-right font-medium text-slate-700">
+                                    {isFree ? (
+                                      <span>
+                                        {originalRate > 0 && <span className="line-through text-slate-400 mr-1 text-[10px]">{currency.symbol}{originalRate.toFixed(2)}</span>}
+                                        <span className="text-emerald-700 font-bold">{currency.symbol}0.00</span>
+                                      </span>
+                                    ) : (
+                                      <span>{currency.symbol}{unitPrice.toFixed(2)}</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2 px-3 print:py-1 print:px-2 text-right text-emerald-600 font-semibold">
+                                    {isFree ? '—' : (disc > 0 ? `-₹${disc.toFixed(2)}` : '—')}
+                                  </td>
+                                  {f.showTaxSplit && (
+                                    <td className="py-2 px-3 print:py-1 print:px-2 text-right text-slate-600 font-medium">
+                                      {isFree ? (
+                                        <span className="text-slate-400 font-normal">0%</span>
+                                      ) : !isInterState ? (
+                                        <div>
+                                          <span>{taxRate ? `${taxRate}%` : '0%'}</span>
+                                          {taxRate > 0 && <span className="text-[9px] text-slate-400 block font-normal leading-none mt-0.5">({(taxRate/2)}%+{(taxRate/2)}%)</span>}
+                                        </div>
+                                      ) : (
+                                        <div>
+                                          <span>{taxRate ? `${taxRate}%` : '0%'}</span>
+                                          {taxRate > 0 && <span className="text-[9px] text-indigo-500 block font-normal leading-none mt-0.5">IGST</span>}
+                                        </div>
+                                      )}
+                                    </td>
+                                  )}
+                                  <td className="py-2 px-3 print:py-1 print:px-2 text-right font-bold text-slate-900">
+                                    {isFree ? (
+                                      <span className="text-emerald-600 font-extrabold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[11px]">
+                                        FREE ({currency.symbol}0.00)
+                                      </span>
+                                    ) : (
+                                      <span>{currency.symbol}{netAmount.toFixed(2)}</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot className="border-t-2 border-slate-300 bg-slate-100/90 font-bold text-slate-900">
+                            {hasProcurementColumns ? (
+                              <tr>
+                                <td className="py-2 px-2 print:py-1 print:px-1.5 text-center text-slate-500 font-bold text-[10px]">Total</td>
+                                <td className="py-2 px-2.5 print:py-1 print:px-2 font-extrabold text-slate-800 text-[11px]">
+                                  Total Items: {items.length} {items.length === 1 ? 'Item' : 'Items'}
+                                </td>
+                                <td className="py-2 px-2 print:py-1 print:px-1.5 text-center text-slate-400">—</td>
+                                <td className="py-2 px-2 print:py-1 print:px-1.5 text-center text-slate-400">—</td>
+                                <td className="py-2 px-2 print:py-1 print:px-1.5 text-center text-slate-400">—</td>
+                                <td className="py-2 px-2 print:py-1 print:px-1.5 text-right text-slate-400">—</td>
+                                <td className="py-2 px-2 print:py-1 print:px-1.5 text-right text-slate-400">—</td>
+                                <td className="py-1.5 px-2 print:py-1 print:px-1.5 text-center font-black text-slate-900 bg-slate-200/90">
+                                  <span className="text-slate-500 text-[8px] uppercase block font-semibold leading-none">Total Qty</span>
+                                  <span className="text-[11px] font-mono">{totalQtyBilled}</span>
+                                </td>
+                                <td className="py-2 px-2 print:py-1 print:px-1.5 text-right text-slate-400">—</td>
+                                <td className="py-2 px-2 print:py-1 print:px-1.5 text-right text-emerald-600 font-bold">
+                                  {totalDiscount > 0 ? `-${currency.symbol}${Number(totalDiscount).toFixed(2)}` : '0%'}
+                                </td>
+                                <td className="py-2 px-2 print:py-1 print:px-1.5 text-right text-slate-400">—</td>
+                                <td className="py-2 px-2.5 print:py-1 print:px-2 text-right font-black text-slate-900 text-[11px]">
+                                  {currency.symbol}{Number(taxableSubtotal).toFixed(2)}
+                                </td>
+                              </tr>
+                            ) : (
+                              <tr>
+                                <td className="py-2 px-3 print:py-1 print:px-2 text-center text-slate-500 font-bold text-[10px]">Total</td>
+                                <td className="py-2 px-3 print:py-1 print:px-2 font-extrabold text-slate-800 text-[11px]">
+                                  Total Items: {items.length} {items.length === 1 ? 'Item' : 'Items'}
+                                </td>
+                                {f.showHSN && <td className="py-2 px-3 print:py-1 print:px-2 text-center text-slate-400">—</td>}
+                                <td className="py-1.5 px-3 print:py-1 print:px-2 text-center font-black text-slate-900 bg-slate-200/90">
+                                  <span className="text-slate-500 text-[8px] uppercase block font-semibold leading-none">Total Qty</span>
+                                  <span className="text-[11px] font-mono">{totalQtyBilled}</span>
+                                </td>
+                                <td className="py-2 px-3 print:py-1 print:px-2 text-right text-slate-400">—</td>
+                                <td className="py-2 px-3 print:py-1 print:px-2 text-right text-emerald-600 font-bold">
+                                  {totalDiscount > 0 ? `-${currency.symbol}${Number(totalDiscount).toFixed(2)}` : '—'}
+                                </td>
+                                {f.showTaxSplit && <td className="py-2 px-3 print:py-1 print:px-2 text-right text-slate-400">—</td>}
+                                <td className="py-2 px-3 print:py-1 print:px-2 text-right font-black text-slate-900 text-[11px]">
+                                  {currency.symbol}{Number(taxableSubtotal).toFixed(2)}
+                                </td>
+                              </tr>
+                            )}
+                          </tfoot>
+                        </table>
+                      </div>
+                    );
+                  })()}
 
                   {/* GST Tax Breakdown Table (Standard Statutory Compliance) */}
                   {f.showTaxSplit && gstBreakdown.slabsBreakdown.length > 0 && (
@@ -2475,6 +2740,21 @@ export function FullInvoicePrinter({
               }
             }
           } catch {}
+        }}
+      />
+      <PurchaseInvoiceQuickSettingsModal
+        isOpen={isPurchaseSettingsOpen}
+        onClose={() => setIsPurchaseSettingsOpen(false)}
+      />
+      <InvoiceQuickSettingsModal
+        isOpen={isSalesSettingsOpen}
+        onClose={() => setIsSalesSettingsOpen(false)}
+      />
+      <WordInvoiceStudioModal
+        isOpen={isWordStudioOpen}
+        onClose={() => setIsWordStudioOpen(false)}
+        onSaved={() => {
+          setSelectedTemplateId('tpl-word-default');
         }}
       />
     </>,

@@ -194,7 +194,7 @@ export interface InvoiceItem {
   quantity: number;
   free_qty?: number;
   unit_price: number;
-  discount_value: number;
+  discount_value: number | string;
   discount_type?: "amount" | "percent" | string;
   tax_rate: number;
   is_tax_inclusive?: boolean;
@@ -3240,8 +3240,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         if (item.id === id) {
           const updated = { ...item, [field]: value };
           if (field === "discount_value") {
+            updated.discount_value = value;
             const numVal = Math.max(0, Number(value) || 0);
-            updated.discount_value = numVal;
             if (numVal > 0) {
               updated._prev_discount_val = numVal;
               updated._prev_discount_type = updated.discount_type;
@@ -3368,6 +3368,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             if (newType !== oldType) {
               const currentVal = Number(item.discount_value) || 0;
               const price = Number(item.unit_price) || 0;
+              const qty = Number(item.quantity) || 1;
+              const lineGross = qty * price;
               const prod = item.product_id ? products.find((p) => p.id === item.product_id) : null;
 
               let prodFixed = 0;
@@ -3392,18 +3394,18 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               }
 
               if (newType === "amount") {
-                // Switching from % to Amount (₹): convert current percentage to rupee amount!
-                if (currentVal > 0 && price > 0) {
-                  updated.discount_value = Number(((price * currentVal) / 100).toFixed(2));
+                // Switching from % to Amount (₹): convert current percentage to rupee amount using line gross!
+                if (currentVal > 0 && lineGross > 0) {
+                  updated.discount_value = Number(((lineGross * currentVal) / 100).toFixed(2));
                 } else if (prodFixed > 0) {
                   updated.discount_value = prodFixed;
                 } else {
                   updated.discount_value = 0;
                 }
               } else {
-                // Switching from Amount (₹) to %: convert current rupee amount to percentage!
-                if (currentVal > 0 && price > 0) {
-                  updated.discount_value = Math.min(100, Number(((currentVal / price) * 100).toFixed(2)));
+                // Switching from Amount (₹) to %: convert current rupee amount to percentage using line gross!
+                if (currentVal > 0 && lineGross > 0) {
+                  updated.discount_value = Math.min(100, Number(((currentVal / lineGross) * 100).toFixed(2)));
                 } else if (prodPercent > 0) {
                   updated.discount_value = prodPercent;
                 } else {
@@ -3545,7 +3547,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const totalAdditionalCharges = baseAdditionalCharges + chargesGstTotal;
   const combinedTax = effectiveTotalTax + chargesGstTotal;
   const isInterstateTax = gstType === "igst";
-  const posGstBreakdown = computeGstBreakdown(items, isInterstateTax);
+  // Normalize buffered discount strings to numbers for the GST engine
+  const posGstBreakdown = computeGstBreakdown(
+    items.map((it) => ({ ...it, discount_value: Number(it.discount_value || 0) })),
+    isInterstateTax
+  );
 
   // Gross total before after-tax discount
   const grossBillAmount = taxableValue + combinedTax + baseAdditionalCharges;
@@ -4340,8 +4346,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           is_free: Boolean(it.is_free),
           description: it.is_free ? [it.description || it.custom_note, "FREE ITEM"].filter(Boolean).join(" | ") : (it.description || it.custom_note || ""),
           custom_note: it.is_free ? "FREE ITEM" : (it.custom_note || ""),
-          discount: it.is_free ? 0 : (it.discount_type === 'percent' ? (it.quantity * it.unit_price * it.discount_value / 100) : it.discount_value),
-          subtotal: it.is_free ? 0 : ((it.quantity * it.unit_price) - (it.discount_type === 'percent' ? (it.quantity * it.unit_price * it.discount_value / 100) : it.discount_value))
+          discount: it.is_free ? 0 : (it.discount_type === 'percent' ? (it.quantity * it.unit_price * Number(it.discount_value || 0) / 100) : Number(it.discount_value || 0)),
+          subtotal: it.is_free ? 0 : ((it.quantity * it.unit_price) - (it.discount_type === 'percent' ? (it.quantity * it.unit_price * Number(it.discount_value || 0) / 100) : Number(it.discount_value || 0)))
         })),
         subtotal: subtotal,
         taxable_value: taxableValue,
@@ -5235,9 +5241,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             quantity: it.quantity,
             unit_price: it.unit_price,
             price: it.unit_price,
-            discount_percent: it.discount_type === "percent" ? it.discount_value : (it.unit_price > 0 ? (it.discount_value / it.unit_price) * 100 : 0),
+            discount_percent: it.discount_type === "percent" ? Number(it.discount_value || 0) : (it.unit_price > 0 ? (Number(it.discount_value || 0) / it.unit_price) * 100 : 0),
             tax_percent: it.tax_rate,
-            line_total: (it.unit_price * it.quantity) - (it.discount_type === "percent" ? (it.unit_price * it.quantity * it.discount_value) / 100 : it.discount_value),
+            line_total: (it.unit_price * it.quantity) - (it.discount_type === "percent" ? (it.unit_price * it.quantity * Number(it.discount_value || 0)) / 100 : Number(it.discount_value || 0)),
           })),
         },
       };
@@ -6791,7 +6797,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   <th className="px-3 py-3 w-[12%] min-w-[140px] text-left">Qty</th>
                   <th className="px-3 py-3 w-[9%] min-w-[95px] text-left">Price/Item</th>
                   {invoiceSettings.showDiscount !== false && (
-                    <th className="px-3 py-3 w-[11%] min-w-[120px] text-left">Discount</th>
+                    <th className="px-3 py-3 w-[13%] min-w-[150px] text-left">Discount</th>
                   )}
                   <th className="px-3 py-3 w-[10%] min-w-[105px] text-left">GST Tax</th>
                   {invoiceSettings.itemCustomColumns?.filter((c) => c.enabled).map((c) => (
@@ -7247,12 +7253,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                           {/* Discount */}
                           {invoiceSettings.showDiscount !== false && (
                             <td className="px-3 py-2.5 align-middle">
-                              <div className="space-y-1 min-w-[130px] max-w-[160px]">
+                              <div className="space-y-1.5 min-w-[145px] max-w-[180px]">
                                 <div className="flex items-center gap-1">
                                   <select
                                     value={item.discount_type === "amount" || item.discount_type === "fixed" ? "amount" : "percent"}
                                     onChange={(e) => updateItem(item.id, "discount_type", e.target.value)}
-                                    className="bg-slate-100 border border-slate-200 hover:bg-slate-200 rounded-lg px-1.5 py-1.5 text-[11px] font-bold text-slate-700 outline-none cursor-pointer shrink-0 shadow-2xs"
+                                    className="bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 outline-none cursor-pointer shrink-0 transition-colors shadow-2xs"
                                     title="Discount Mode (% or Flat Amount)"
                                   >
                                     <option value="percent">%</option>
@@ -7260,28 +7266,30 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                   </select>
                                   <div className="relative flex-1">
                                     <input
-                                      type="number"
-                                      min="0"
-                                      max={item.discount_type === "amount" || item.discount_type === "fixed" ? undefined : 100}
-                                      step="any"
-                                      value={item.discount_value || ""}
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={item.discount_value !== undefined && item.discount_value !== null ? item.discount_value : ""}
                                       onFocus={(e) => e.target.select()}
                                       onChange={(e) => {
                                         const raw = e.target.value;
-                                        const val = raw === "" ? 0 : Math.max(0, Number(raw) || 0);
-                                        updateItem(item.id, "discount_value", val);
+                                        if (raw === "" || /^\d*\.?\d*$/.test(raw)) {
+                                          if (item.discount_type !== "amount" && item.discount_type !== "fixed") {
+                                            const num = parseFloat(raw);
+                                            if (!isNaN(num) && num > 100) return;
+                                          }
+                                          updateItem(item.id, "discount_value", raw);
+                                        }
                                       }}
                                       className={cn(
-                                        "w-full bg-slate-50 border rounded-lg px-2 py-1.5 text-left outline-none text-xs font-bold transition-all",
+                                        "w-full bg-white border rounded-lg px-2.5 py-1.5 text-left outline-none text-xs font-bold transition-all shadow-2xs",
                                         isDiscountActive
-                                          ? "border-emerald-300 bg-emerald-50/40 text-emerald-800 focus:border-emerald-500 focus:bg-white"
+                                          ? "border-emerald-400 bg-emerald-50/60 text-emerald-900 focus:border-emerald-600 focus:bg-white focus:ring-1 focus:ring-emerald-400"
                                           : "border-slate-200 text-slate-800 focus:border-indigo-500 focus:bg-white"
                                       )}
                                       placeholder="0"
                                       title={item.discount_type === "amount" || item.discount_type === "fixed" ? `Flat discount in ${currency.symbol}` : "Discount percentage (%)"}
                                     />
                                   </div>
-                                  {/* Quick Shutoff / Enable Toggle */}
                                   {isDiscountActive ? (
                                     <button
                                       type="button"
@@ -7292,8 +7300,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                           discount_value: 0,
                                         });
                                       }}
-                                      className="px-1.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-[9px] font-black cursor-pointer shadow-2xs transition-all shrink-0"
-                                      title="Shut off / Disable discount for this item"
+                                      className="px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg text-[10px] font-black cursor-pointer shadow-2xs transition-all shrink-0"
+                                      title="Clear / Disable discount"
                                     >
                                       OFF
                                     </button>
@@ -7306,8 +7314,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                           discount_value: invDisc.discount_value,
                                         });
                                       }}
-                                      className="px-1.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg text-[9px] font-black cursor-pointer shadow-2xs transition-all shrink-0 animate-pulse"
-                                      title={`Turn ON inventory discount (${invDisc.discount_type === "amount" ? currency.symbol : ""}${invDisc.discount_value}${invDisc.discount_type === "percent" ? "%" : ""})`}
+                                      className="px-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg text-[10px] font-black cursor-pointer shadow-2xs transition-all shrink-0 animate-pulse"
+                                      title={`Turn ON catalog discount (${invDisc.discount_type === "amount" ? currency.symbol : ""}${invDisc.discount_value}${invDisc.discount_type === "percent" ? "%" : ""})`}
                                     >
                                       ON
                                     </button>
@@ -7320,7 +7328,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                           discount_value: item._prev_discount_val || 0,
                                         });
                                       }}
-                                      className="px-1.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[9px] font-black cursor-pointer shadow-2xs transition-all shrink-0"
+                                      className="px-2 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-black cursor-pointer shadow-2xs transition-all shrink-0"
                                       title="Restore previous discount"
                                     >
                                       ON
@@ -7328,42 +7336,61 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                   ) : null}
                                 </div>
 
-                                {/* Helper message / Inventory Discount Notification Tag */}
-                                {hasInventoryDiscount ? (
-                                  <div className="flex items-center justify-between text-[8.5px] px-0.5">
-                                    {isDiscountActive ? (
-                                      <span className="text-emerald-700 font-bold flex items-center gap-0.5">
-                                        <span>🏷️</span> Under {item.discount_type === "amount" || item.discount_type === "fixed" ? currency.symbol : ""}{item.discount_value}{item.discount_type === "percent" || item.discount_type === "%" ? "%" : ""} Disc
-                                      </span>
-                                    ) : (
-                                      <span className="text-amber-700 font-bold flex items-center gap-0.5">
-                                        <span>⚡</span> Available: {invDisc.discount_type === "amount" ? currency.symbol : ""}{invDisc.discount_value}{invDisc.discount_type === "percent" ? "%" : ""}
-                                      </span>
-                                    )}
-                                    {!isDiscountActive && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          updateItemMultiple(item.id, {
-                                            discount_type: invDisc.discount_type,
-                                            discount_value: invDisc.discount_value,
-                                          });
-                                        }}
-                                        className="text-[8px] font-extrabold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
-                                      >
-                                        Apply
-                                      </button>
-                                    )}
-                                  </div>
-                                ) : isDiscountActive ? (
-                                  <div className="flex items-center justify-between text-[8.5px] px-0.5 text-slate-500 font-medium">
-                                    <span className="text-indigo-600 font-bold">✨ Custom Disc</span>
+                                {/* Quick Percentage Chips for rapid manipulation */}
+                                <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+                                  {[0, 5, 10, 15, 20].map((pct) => (
+                                    <button
+                                      key={pct}
+                                      type="button"
+                                      onClick={() => {
+                                        updateItemMultiple(item.id, {
+                                          discount_type: "percent",
+                                          discount_value: pct,
+                                        });
+                                      }}
+                                      className={cn(
+                                        "px-1.5 py-0.5 rounded text-[9.5px] font-bold transition-all shrink-0 cursor-pointer border",
+                                        item.discount_type !== "amount" && item.discount_type !== "fixed" && Number(item.discount_value) === pct
+                                          ? "bg-emerald-600 text-white border-emerald-700 shadow-2xs"
+                                          : "bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200"
+                                      )}
+                                      title={`Set ${pct === 0 ? "No" : `${pct}%`} discount`}
+                                    >
+                                      {pct === 0 ? "0%" : `${pct}%`}
+                                    </button>
+                                  ))}
+                                </div>
+
+                                {/* Calculated Live Discount Badge */}
+                                {lineDisc > 0 ? (
+                                  <div className="flex items-center justify-between text-[10px] px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded-md text-emerald-800 font-bold">
+                                    <span className="flex items-center gap-1 truncate">
+                                      <span>🏷️</span>
+                                      <span>Save -{currency.symbol}{lineDisc.toFixed(2)}</span>
+                                    </span>
                                     <button
                                       type="button"
                                       onClick={() => updateItem(item.id, "discount_value", 0)}
-                                      className="text-[8px] text-red-500 hover:text-red-700 font-bold hover:underline cursor-pointer"
+                                      className="text-red-500 hover:text-red-700 text-[10px] font-black cursor-pointer ml-1"
+                                      title="Reset discount to 0"
                                     >
-                                      Clear
+                                      ✕
+                                    </button>
+                                  </div>
+                                ) : hasInventoryDiscount ? (
+                                  <div className="flex items-center justify-between text-[9px] px-1.5 py-0.5 bg-amber-50 border border-amber-200 rounded-md text-amber-800 font-semibold">
+                                    <span className="truncate">⚡ Catalog: {invDisc.discount_type === "amount" ? currency.symbol : ""}{invDisc.discount_value}{invDisc.discount_type === "percent" ? "%" : ""}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        updateItemMultiple(item.id, {
+                                          discount_type: invDisc.discount_type,
+                                          discount_value: invDisc.discount_value,
+                                        });
+                                      }}
+                                      className="text-[9px] font-extrabold text-indigo-600 hover:text-indigo-800 underline cursor-pointer ml-1 shrink-0"
+                                    >
+                                      Apply
                                     </button>
                                   </div>
                                 ) : null}
@@ -7409,7 +7436,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                 <span className="text-emerald-600 font-extrabold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">FREE ({currency.symbol}0.00)</span>
                               </span>
                             ) : (
-                              <span className="text-slate-900">{currency.symbol}{Number(lineAmount || 0).toFixed(2)}</span>
+                              <div>
+                                {lineDisc > 0 && (
+                                  <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-400 mb-0.5">
+                                    <span className="line-through">{currency.symbol}{rawLineGross.toFixed(2)}</span>
+                                    <span className="text-emerald-700 font-bold bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 text-[9px]">
+                                      -{currency.symbol}{lineDisc.toFixed(2)}
+                                    </span>
+                                  </div>
+                                )}
+                                <span className="text-slate-900">{currency.symbol}{Number(lineAmount || 0).toFixed(2)}</span>
+                              </div>
                             )}
                           </td>
 
@@ -7633,6 +7670,27 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 <span className="bg-[#3b82f6] text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full">
                   {products.length > 0 ? `${products.length} Items` : "500 Items"}
                 </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const nextVal = invoiceSettings.showDiscount === false ? true : false;
+                  const newSettings = { ...invoiceSettings, showDiscount: nextVal };
+                  setInvoiceSettings(newSettings);
+                  saveStoredInvoiceSettings(newSettings);
+                  toast.success(nextVal ? "Discount column is now visible" : "Discount column hidden");
+                }}
+                className={cn(
+                  "px-3 py-2 font-bold text-xs rounded-xl border shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer ml-auto",
+                  invoiceSettings.showDiscount !== false
+                    ? "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200"
+                    : "bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-300"
+                )}
+                title="Toggle visibility of the Discount column in item table"
+              >
+                <Tag className="size-3.5" />
+                <span>Discount Column: {invoiceSettings.showDiscount !== false ? "Visible" : "Hidden"}</span>
               </button>
             </div>
           </div>

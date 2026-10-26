@@ -1622,12 +1622,10 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
             pdf.set_font("Helvetica", "I", 6.2)
             pdf.cell(usable_w, 2.7, f"   MRP: Rs. {_fmt_amount(mrp)} | Saved: Rs. {_fmt_amount(saved_total)} ({pct_off}% OFF)", align="L", new_x="LMARGIN", new_y="NEXT")
 
-        # Subline: HSN / Batch / Expiry details
+        # Subline: HSN / Expiry details (batch omitted per user preference)
         sub_info = []
         if hsn:
             sub_info.append(f"HSN: {hsn}")
-        if batch:
-            sub_info.append(f"Batch: {batch}")
         if exp:
             sub_info.append(f"EXP: {exp}")
         if sub_info:

@@ -14,6 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 logger = logging.getLogger(__name__)
 
+# Set True once when PyMuPDF (fitz) is detected as missing, so the
+# "not installed" warning is logged a single time per process (not per request).
+_fitz_missing_logged = False
+
 from src.config.settings import get_settings
 settings = get_settings()
 
@@ -1924,9 +1928,44 @@ async def list_vendor_bills(
                             selling_price=float(ov["selling_price"]) if ov and ov.get("selling_price") is not None else (float(it.selling_price) if it.selling_price is not None else None),
                             quantity=float(ov["quantity"]) if ov and ov.get("quantity") is not None else float(it.quantity),
                             unit_price=float(ov["unit_price"]) if ov and ov.get("unit_price") is not None else float(it.unit_price),
-                            tax_percent=float(ov["tax_percent"]) if ov and ov.get("tax_percent") is not None else float(it.tax_percent)
+                            tax_percent=float(ov["tax_percent"]) if ov and ov.get("tax_percent") is not None else float(it.tax_percent),
+                            batch_number=(ov or {}).get("batch_number"),
+                            expiry_date=(ov or {}).get("expiry_date"),
+                            discount_value=float(ov["discount_value"]) if ov and ov.get("discount_value") is not None else None,
+                            discount_type=(ov or {}).get("discount_type"),
+                            is_free=bool((ov or {}).get("is_free", False))
                         )
                     )
+
+        # If PO has no items but bill has overrides, populate po_items from overrides
+        if not po_items and bill_overrides:
+            for ov in bill_overrides:
+                p_name = ov.get("product_name") or "Procured Item"
+                p_id_raw = ov.get("product_id")
+                try:
+                    p_id = uuid.UUID(str(p_id_raw)) if p_id_raw else uuid.uuid4()
+                except Exception:
+                    p_id = uuid.uuid4()
+                from src.schemas.procurement import PurchaseOrderItemResponse
+                po_items.append(
+                    PurchaseOrderItemResponse(
+                        id=uuid.uuid4(),
+                        product_id=p_id,
+                        product_name=p_name,
+                        hsn_code=ov.get("hsn_code"),
+                        uom=ov.get("uom"),
+                        mrp=float(ov["mrp"]) if ov.get("mrp") is not None else None,
+                        selling_price=float(ov["selling_price"]) if ov.get("selling_price") is not None else None,
+                        quantity=float(ov.get("quantity") or 1.0),
+                        unit_price=float(ov.get("unit_price") or 0.0),
+                        tax_percent=float(ov.get("tax_percent") or 0.0),
+                        batch_number=ov.get("batch_number"),
+                        expiry_date=ov.get("expiry_date"),
+                        discount_value=float(ov["discount_value"]) if ov.get("discount_value") is not None else None,
+                        discount_type=ov.get("discount_type"),
+                        is_free=bool(ov.get("is_free", False))
+                    )
+                )
         
         # Resolve GRN details for 3-way match display
         if resolved_grn_id:
@@ -3785,6 +3824,7 @@ async def _execute_multimodal_ai_ocr(prompt: str, contents: bytes, filename: str
 
             # 1. High-Resolution 300 DPI Image Preprocessing via PyMuPDF (fitz)
             # Avoids native PDF rasterization/Files API downscaling on dense financial tables
+            global _fitz_missing_logged
             try:
                 import fitz
                 doc = fitz.open(stream=contents, filetype="pdf")
@@ -3797,6 +3837,11 @@ async def _execute_multimodal_ai_ocr(prompt: str, contents: bytes, filename: str
                     png_pages_b64.append(page_b64)
                 doc.close()
                 logger.info(f"[PDF Preprocessing] Converted {len(png_pages_b64)} pages to 300 DPI PNG buffers.")
+            except ModuleNotFoundError:
+                # PyMuPDF not installed — warn only once per process to avoid log spam
+                if not _fitz_missing_logged:
+                    logger.warning("PyMuPDF (fitz) not installed — 300 DPI PDF rasterization skipped. Run `pip install PyMuPDF` to enable high-res OCR pre-rendering.")
+                    _fitz_missing_logged = True
             except Exception as fe:
                 logger.warning(f"PyMuPDF 300 DPI rasterization fallback: {fe}")
 
