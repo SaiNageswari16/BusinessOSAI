@@ -1833,46 +1833,103 @@ export function FullInvoicePrinter({
                             isTally ? 'bg-white border-slate-900' : 'bg-slate-50/80 border-slate-200'
                           }`}
                         >
-                          {/* 1. Billed To Column */}
-                          <div className="space-y-0.5">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Billed To (Customer Details)</span>
-                            <h4 className="font-bold text-slate-900 text-xs">{invoice.customerName || 'Walk-in Customer'}</h4>
-                            {invoice.customerCompany && <p className="text-[10px] font-semibold text-slate-700">{invoice.customerCompany}</p>}
-                            {billingAddr ? (
-                              <p className="text-[10px] text-slate-600 leading-tight">{billingAddr}</p>
-                            ) : (
-                              <p className="text-[10px] text-slate-400 italic">No billing address specified</p>
-                            )}
-                            {invoice.customerPhone && <p className="text-[10px] text-slate-600">Ph: {invoice.customerPhone}</p>}
-                            {invoice.customerEmail && <p className="text-[10px] text-slate-600">Email: {invoice.customerEmail}</p>}
-                            {invoice.customerGST && <p className="text-[10px] font-bold text-slate-800">GSTIN: {invoice.customerGST}</p>}
-                            {invoice.customerPan && <p className="text-[10px] font-semibold text-slate-700">PAN: {invoice.customerPan}</p>}
-                          </div>
+                          {isPurchaseDoc ? (
+                            <>
+                              {/* 1. Supplier / Vendor Party (Sold By) */}
+                              <div className="space-y-0.5">
+                                <span className="text-[9px] font-black text-indigo-600 uppercase tracking-wider block flex items-center gap-1">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-600 inline-block" />
+                                  Supplier / Vendor (Sold By)
+                                </span>
+                                <h4 className="font-bold text-slate-900 text-xs">{invoice.customerCompany || invoice.customerName || 'Vendor / Supplier'}</h4>
+                                {billingAddr ? (
+                                  <p className="text-[10px] text-slate-700 leading-tight">{billingAddr}</p>
+                                ) : (
+                                  <p className="text-[10px] text-slate-400 italic">No vendor address specified</p>
+                                )}
+                                {invoice.customerPhone && <p className="text-[10px] text-slate-600">Ph: {invoice.customerPhone}</p>}
+                                {invoice.customerEmail && <p className="text-[10px] text-slate-600">Email: {invoice.customerEmail}</p>}
+                                {invoice.customerGST && <p className="text-[10px] font-bold text-slate-900 font-mono">GSTIN: {invoice.customerGST}</p>}
+                                {invoice.customerPan && <p className="text-[10px] font-semibold text-slate-700 font-mono">PAN: {invoice.customerPan}</p>}
+                              </div>
 
-                          {/* 2. Shipped To Column (Always clearly displayed) */}
-                          <div className="space-y-0.5 border-l border-slate-200 pl-3">
-                            <span className="text-[9px] font-bold text-indigo-500 uppercase tracking-wider block flex items-center gap-1">
-                              Shipped To (Delivery Destination)
-                            </span>
-                            <h4 className="font-bold text-slate-900 text-xs">{invoice.customerCompany || invoice.customerName || 'Consignee / Recipient'}</h4>
-                            {shippingAddr ? (
-                              <p className="text-[10px] text-slate-700 font-medium leading-tight">{shippingAddr}</p>
-                            ) : (
-                              <p className="text-[10px] text-slate-500 leading-tight">Same as Billing Address</p>
-                            )}
-                            {invoice.customerPhone && <p className="text-[10px] text-slate-600">Contact: {invoice.customerPhone}</p>}
-                            {invoice.customerGST && <p className="text-[10px] font-semibold text-slate-700">GSTIN: {invoice.customerGST}</p>}
-                          </div>
+                              {/* 2. Purchaser / Billed To (Our Company / Buyer) */}
+                              <div className="space-y-0.5 border-l border-slate-200 pl-3">
+                                <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider block flex items-center gap-1">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-slate-400 inline-block" />
+                                  Purchaser / Billed To (Buyer)
+                                </span>
+                                <h4 className="font-bold text-slate-900 text-xs">{dynamicStoreName || 'Our Enterprise'}</h4>
+                                {dynamicAddress && (
+                                  <p className="text-[10px] text-slate-700 leading-tight">{dynamicAddress}</p>
+                                )}
+                                {dynamicPhone && <p className="text-[10px] text-slate-600">Ph: {dynamicPhone}</p>}
+                                {dynamicEmail && <p className="text-[10px] text-slate-600">Email: {dynamicEmail}</p>}
+                                {sellerGstin && <p className="text-[10px] font-bold text-slate-900 font-mono">GSTIN: {sellerGstin}</p>}
+                              </div>
 
-                          {/* 3. Place of Supply Column */}
-                          <div className="text-right space-y-0.5 flex flex-col justify-between border-l border-slate-200 pl-3">
-                            <div>
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Place of Supply</span>
-                              <p className="text-[10px] font-bold text-slate-800 mt-0.5">
-                                {isInterState ? `${customerState?.name || 'State'} (${customerState?.code || ''}) - Inter-State` : `${sellerState?.name || 'State'} (${sellerState?.code || ''}) - Intra-State`}
-                              </p>
-                            </div>
-                          </div>
+                              {/* 3. Shipped To (Delivery Destination) & Place of Supply */}
+                              <div className="text-right space-y-1 flex flex-col justify-between border-l border-slate-200 pl-3">
+                                <div className="text-left space-y-0.5">
+                                  <span className="text-[9px] font-black text-emerald-600 uppercase tracking-wider block flex items-center gap-1">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 inline-block" />
+                                    Shipped To (Delivery Destination)
+                                  </span>
+                                  <p className="text-[10px] text-slate-800 font-semibold leading-tight">{dynamicStoreName}</p>
+                                  <p className="text-[9.5px] text-slate-600 leading-tight">{dynamicAddress || 'Same as Purchaser Address'}</p>
+                                </div>
+                                <div className="text-right border-t border-slate-200/80 pt-1">
+                                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider block">Place of Supply</span>
+                                  <p className="text-[10px] font-bold text-slate-800 mt-0.5">
+                                    {invoice.place_of_supply || (isInterState ? `${sellerState?.name || 'Telangana'} (${sellerState?.code || '36'}) - Inter-State` : `${sellerState?.name || 'State'} (${sellerState?.code || ''}) - Intra-State`)}
+                                  </p>
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              {/* 1. Billed To Column */}
+                              <div className="space-y-0.5">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Billed To (Customer Details)</span>
+                                <h4 className="font-bold text-slate-900 text-xs">{invoice.customerName || 'Walk-in Customer'}</h4>
+                                {invoice.customerCompany && <p className="text-[10px] font-semibold text-slate-700">{invoice.customerCompany}</p>}
+                                {billingAddr ? (
+                                  <p className="text-[10px] text-slate-600 leading-tight">{billingAddr}</p>
+                                ) : (
+                                  <p className="text-[10px] text-slate-400 italic">No billing address specified</p>
+                                )}
+                                {invoice.customerPhone && <p className="text-[10px] text-slate-600">Ph: {invoice.customerPhone}</p>}
+                                {invoice.customerEmail && <p className="text-[10px] text-slate-600">Email: {invoice.customerEmail}</p>}
+                                {invoice.customerGST && <p className="text-[10px] font-bold text-slate-800">GSTIN: {invoice.customerGST}</p>}
+                                {invoice.customerPan && <p className="text-[10px] font-semibold text-slate-700">PAN: {invoice.customerPan}</p>}
+                              </div>
+
+                              {/* 2. Shipped To Column (Always clearly displayed) */}
+                              <div className="space-y-0.5 border-l border-slate-200 pl-3">
+                                <span className="text-[9px] font-bold text-indigo-500 uppercase tracking-wider block flex items-center gap-1">
+                                  Shipped To (Delivery Destination)
+                                </span>
+                                <h4 className="font-bold text-slate-900 text-xs">{invoice.customerCompany || invoice.customerName || 'Consignee / Recipient'}</h4>
+                                {shippingAddr ? (
+                                  <p className="text-[10px] text-slate-700 font-medium leading-tight">{shippingAddr}</p>
+                                ) : (
+                                  <p className="text-[10px] text-slate-500 leading-tight">Same as Billing Address</p>
+                                )}
+                                {invoice.customerPhone && <p className="text-[10px] text-slate-600">Contact: {invoice.customerPhone}</p>}
+                                {invoice.customerGST && <p className="text-[10px] font-semibold text-slate-700">GSTIN: {invoice.customerGST}</p>}
+                              </div>
+
+                              {/* 3. Place of Supply Column */}
+                              <div className="text-right space-y-0.5 flex flex-col justify-between border-l border-slate-200 pl-3">
+                                <div>
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Place of Supply</span>
+                                  <p className="text-[10px] font-bold text-slate-800 mt-0.5">
+                                    {isInterState ? `${customerState?.name || 'State'} (${customerState?.code || ''}) - Inter-State` : `${sellerState?.name || 'State'} (${sellerState?.code || ''}) - Intra-State`}
+                                  </p>
+                                </div>
+                              </div>
+                            </>
+                          )}
                         </div>
 
                         {/* Dispatch, Transport, PO, Challan, Terms & Custom Invoice Fields Strip */}
