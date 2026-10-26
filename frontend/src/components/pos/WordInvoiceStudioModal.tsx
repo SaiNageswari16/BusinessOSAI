@@ -208,6 +208,7 @@ interface WordInvoiceStudioModalProps {
   phone?: string;
   email?: string;
   gstin?: string;
+  docMode?: "sales" | "purchase";
 }
 
 export function WordInvoiceStudioModal({
@@ -223,6 +224,7 @@ export function WordInvoiceStudioModal({
   phone: propPhone,
   email: propEmail,
   gstin: propGstin,
+  docMode = "sales",
 }: WordInvoiceStudioModalProps) {
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<"visual_canvas" | "smart_suggestions" | "columns" | "custom_fields" | "signature_stamp" | "typography">(startBlank ? "smart_suggestions" : "visual_canvas");
@@ -754,19 +756,26 @@ export function WordInvoiceStudioModal({
       localStorage.setItem("businessos_print_templates_v1", JSON.stringify(updatedList));
 
       if (config.isDefault) {
-        const defaultsKey = getTenantDefaultsKey(tenantId);
-        const rawDefaults = localStorage.getItem(defaultsKey);
-        const nextDefaults = rawDefaults ? JSON.parse(rawDefaults) : {};
-        nextDefaults.invoices = transformedTemplate.id;
-        nextDefaults.invoice = transformedTemplate.id;
-        localStorage.setItem(defaultsKey, JSON.stringify(nextDefaults));
-        localStorage.setItem("user_active_print_templates_v1", JSON.stringify(nextDefaults));
-        localStorage.setItem(`bos_active_invoice_template_id_${tenantId || 'default'}`, transformedTemplate.id);
-        localStorage.setItem('bos_active_invoice_template_id', transformedTemplate.id);
-        localStorage.setItem('bos_word_invoice_custom_fields', JSON.stringify(config.customFields));
-        setActiveInvoicePrintTemplate(transformedTemplate.id, tenantId);
-        invoicesApi.setActivePrintTemplate(transformedTemplate.id).catch(console.warn);
-        printTemplatesApi.setActiveTemplate(transformedTemplate.id, "invoices").catch(console.warn);
+        if (docMode === "purchase") {
+          localStorage.setItem(`bos_active_purchase_template_id_${tenantId || 'default'}`, transformedTemplate.id);
+          localStorage.setItem('bos_active_purchase_template_id', transformedTemplate.id);
+          window.dispatchEvent(new CustomEvent('bos-purchase-invoice-template-changed', { detail: { templateId: transformedTemplate.id } }));
+          printTemplatesApi.setActiveTemplate(transformedTemplate.id, "purchase_invoices").catch(console.warn);
+        } else {
+          const defaultsKey = getTenantDefaultsKey(tenantId);
+          const rawDefaults = localStorage.getItem(defaultsKey);
+          const nextDefaults = rawDefaults ? JSON.parse(rawDefaults) : {};
+          nextDefaults.invoices = transformedTemplate.id;
+          nextDefaults.invoice = transformedTemplate.id;
+          localStorage.setItem(defaultsKey, JSON.stringify(nextDefaults));
+          localStorage.setItem("user_active_print_templates_v1", JSON.stringify(nextDefaults));
+          localStorage.setItem(`bos_active_invoice_template_id_${tenantId || 'default'}`, transformedTemplate.id);
+          localStorage.setItem('bos_active_invoice_template_id', transformedTemplate.id);
+          localStorage.setItem('bos_word_invoice_custom_fields', JSON.stringify(config.customFields));
+          setActiveInvoicePrintTemplate(transformedTemplate.id, tenantId);
+          invoicesApi.setActivePrintTemplate(transformedTemplate.id).catch(console.warn);
+          printTemplatesApi.setActiveTemplate(transformedTemplate.id, "invoices").catch(console.warn);
+        }
       }
 
       // Persist to backend database as well so it is synced across all users and devices in this organization

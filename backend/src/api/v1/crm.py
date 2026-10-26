@@ -120,6 +120,14 @@ async def list_customers(
         )
         existing_emails = {r[0] for r in existing_emails_res.all() if r[0]}
 
+        tenant_email = None
+        if hasattr(ctx, "user") and getattr(ctx.user, "tenant", None):
+            tenant_email = str(getattr(ctx.user.tenant, "email", None) or "").strip().lower()
+        if not tenant_email:
+            tenant_obj = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+            if tenant_obj and tenant_obj.email:
+                tenant_email = str(tenant_obj.email).strip().lower()
+
         synced_count = 0
         for inv_row in unregistered_invs.all():
             c_name = str(inv_row.customer_name or "").strip()
@@ -130,24 +138,32 @@ async def list_customers(
             raw_email = str(inv_row.customer_email or "").strip().lower()
             clean_email = None
             if raw_email and raw_email not in existing_emails:
-                clean_email = raw_email
-                existing_emails.add(raw_email)
+                if not (tenant_email and raw_email == tenant_email):
+                    clean_email = raw_email
+                    existing_emails.add(raw_email)
 
-            new_c = Customer(
-                tenant_id=ctx.tenant_id,
-                company_id=inv_row.company_id or ctx.active_company_id,
-                name=c_name,
-                phone=str(inv_row.customer_phone).strip() if inv_row.customer_phone else None,
-                email=clean_email,
-                gst_number=str(inv_row.customer_gstin).strip() if inv_row.customer_gstin else None,
-                billing_address=str(inv_row.billing_address).strip() if inv_row.billing_address else None,
-                shipping_address=str(inv_row.shipping_address).strip() if inv_row.shipping_address else None,
-                address=str(inv_row.billing_address or inv_row.shipping_address or "").strip() or None,
-                customer_type="Retail",
-                status="Active",
-            )
-            db.add(new_c)
-            synced_count += 1
+            try:
+                async with db.begin_nested():
+                    new_c = Customer(
+                        tenant_id=ctx.tenant_id,
+                        company_id=ctx.active_company_id or inv_row.company_id,
+                        name=c_name,
+                        phone=str(inv_row.customer_phone).strip() if inv_row.customer_phone else None,
+                        email=clean_email,
+                        gst_number=str(inv_row.customer_gstin).strip() if inv_row.customer_gstin else None,
+                        billing_address=str(inv_row.billing_address).strip() if inv_row.billing_address else None,
+                        shipping_address=str(inv_row.shipping_address).strip() if inv_row.shipping_address else None,
+                        address=str(inv_row.billing_address or inv_row.shipping_address or "").strip() or None,
+                        customer_type="Retail",
+                        status="Active",
+                    )
+                    db.add(new_c)
+                    await db.flush()
+                    synced_count += 1
+            except Exception as row_err:
+                logger.warning(f"Skipping auto-sync for customer '{c_name}': {row_err}")
+                continue
+
         if synced_count > 0:
             await db.commit()
     except Exception as sync_e:
@@ -178,8 +194,29 @@ async def list_customers(
     if cust_ids:
         from src.models.erp import Invoice
         cust_id_set = set(cust_ids)
-        cust_phone_map = {str(c.phone).strip(): c.id for c in customers if c.phone and str(c.phone).strip()}
-        cust_name_map = {str(c.name).strip().lower(): c.id for c in customers if c.name and str(c.name).strip() and str(c.name).strip().lower() != "walk-in customer"}
+
+        def _to_clean_phone(raw: any) -> str:
+            if not raw:
+                return ""
+            digits = "".join(filter(str.isdigit, str(raw)))
+            return digits[-10:] if len(digits) >= 10 else digits
+
+        def _to_clean_name(raw: any) -> str:
+            if not raw:
+                return ""
+            return re.sub(r"[^a-z0-9]", "", str(raw).lower())
+
+        cust_phone_map = {}
+        for c in customers:
+            cp = _to_clean_phone(c.phone)
+            if cp:
+                cust_phone_map[cp] = c.id
+
+        cust_name_map = {}
+        for c in customers:
+            cn = _to_clean_name(c.name)
+            if cn and cn != "walkincustomer":
+                cust_name_map[cn] = c.id
 
         inv_conds = [
             Invoice.tenant_id == ctx.tenant_id,
@@ -188,24 +225,12 @@ async def list_customers(
             ~Invoice.invoice_number.startswith("OPN-"),
         ]
         if ctx.active_company_id:
-            if getattr(ctx, "is_primary_company", False):
-                inv_conds.append(
-                    or_(
-                        Invoice.company_id == ctx.active_company_id,
-                        Invoice.company_id.is_(None)
-                    )
+            inv_conds.append(
+                or_(
+                    Invoice.company_id == ctx.active_company_id,
+                    Invoice.company_id.is_(None)
                 )
-            else:
-                inv_conds.append(Invoice.company_id == ctx.active_company_id)
-
-        target_matches = [Invoice.customer_id.in_(cust_ids)]
-        if cust_phone_map:
-            target_matches.append(Invoice.customer_phone.in_(list(cust_phone_map.keys())))
-        if cust_name_map:
-            for c_name_str in list(cust_name_map.keys())[:20]:
-                target_matches.append(Invoice.customer_name.ilike(f"%{c_name_str}%"))
-
-        inv_conds.append(or_(*target_matches))
+            )
 
         inv_stmt = select(
             Invoice.id,
@@ -224,10 +249,20 @@ async def list_customers(
             matched_cust_id = None
             if c_id and c_id in cust_id_set:
                 matched_cust_id = c_id
-            elif c_phone and str(c_phone).strip() in cust_phone_map:
-                matched_cust_id = cust_phone_map[str(c_phone).strip()]
-            elif c_name and str(c_name).strip().lower() in cust_name_map:
-                matched_cust_id = cust_name_map[str(c_name).strip().lower()]
+
+            clean_inv_phone = _to_clean_phone(c_phone)
+            if not matched_cust_id and clean_inv_phone and clean_inv_phone in cust_phone_map:
+                matched_cust_id = cust_phone_map[clean_inv_phone]
+
+            clean_inv_name = _to_clean_name(c_name)
+            if not matched_cust_id and clean_inv_name:
+                if clean_inv_name in cust_name_map:
+                    matched_cust_id = cust_name_map[clean_inv_name]
+                else:
+                    for k_name, k_id in cust_name_map.items():
+                        if (len(k_name) >= 6 and (clean_inv_name.startswith(k_name[:6]) or k_name.startswith(clean_inv_name[:6]))):
+                            matched_cust_id = k_id
+                            break
 
             if matched_cust_id:
                 stats_map[matched_cust_id]["ltv"] += float(tot or 0)

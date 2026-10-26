@@ -240,10 +240,29 @@ export function FullInvoicePrinter({
     return GLOBAL_INVOICE_TEMPLATES;
   });
 
+  const isPurchaseDoc = Boolean(
+    invoice?.doc_type === 'purchase_invoice' ||
+    invoice?.doc_type === 'PO' ||
+    invoice?.doc_type === 'PR' ||
+    invoice?.doc_type === 'PINV' ||
+    invoice?.doc_type === 'vendor_bill' ||
+    invoice?.doc_type === 'bill' ||
+    invoice?.header_title?.toLowerCase().includes('purchase') ||
+    invoice?.documentTitle?.toLowerCase().includes('purchase') ||
+    (invoice as any)?.isProcurement
+  );
+
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(() => {
     if (typeof window === 'undefined') return 'tpl-word-default';
     try {
       const tid = tenant?.id || getTenantIdFromStorage();
+      if (isPurchaseDoc) {
+        const purchaseSaved = tid ? localStorage.getItem(`bos_active_purchase_template_id_${tid}`) : null;
+        if (purchaseSaved && !isThermalReceiptId(purchaseSaved)) {
+          return purchaseSaved;
+        }
+        return 'tpl-word-default';
+      }
       const defaultsKey = getTenantDefaultsKey(tid);
       // Workspace-scoped default keys only — never the unsuffixed global fallback
       const userActiveDefaultsRaw = tid ? localStorage.getItem(defaultsKey) : null;
@@ -275,18 +294,6 @@ export function FullInvoicePrinter({
   const [isWordStudioOpen, setIsWordStudioOpen] = useState(false);
   const [purchaseSettings, setPurchaseSettings] = useState<PurchaseInvoiceSettings>(() => loadStoredPurchaseInvoiceSettings(tenant?.id));
   const [salesSettings, setSalesSettings] = useState<any>(() => loadStoredInvoiceSettings(tenant?.id));
-
-  const isPurchaseDoc = Boolean(
-    invoice?.doc_type === 'purchase_invoice' ||
-    invoice?.doc_type === 'PO' ||
-    invoice?.doc_type === 'PR' ||
-    invoice?.doc_type === 'PINV' ||
-    invoice?.doc_type === 'vendor_bill' ||
-    invoice?.doc_type === 'bill' ||
-    invoice?.header_title?.toLowerCase().includes('purchase') ||
-    invoice?.documentTitle?.toLowerCase().includes('purchase') ||
-    (invoice as any)?.isProcurement
-  );
 
   useEffect(() => {
     const handlePurchaseUpdate = (e: any) => {
@@ -465,6 +472,16 @@ export function FullInvoicePrinter({
 
         if (invoiceSpecificTplId) {
           setSelectedTemplateId(invoiceSpecificTplId);
+          return;
+        }
+
+        if (isPurchaseDoc) {
+          const purchaseSaved = localStorage.getItem(`bos_active_purchase_template_id_${tenant?.id}`);
+          if (purchaseSaved && !isThermalReceiptId(purchaseSaved)) {
+            setSelectedTemplateId(purchaseSaved);
+          } else {
+            setSelectedTemplateId('tpl-word-default');
+          }
           return;
         }
 
@@ -1407,6 +1424,13 @@ export function FullInvoicePrinter({
                     onChange={(e) => {
                       const newTplId = e.target.value;
                       setSelectedTemplateId(newTplId);
+                      if (isPurchaseDoc) {
+                        const tid = tenant?.id || 'default';
+                        localStorage.setItem(`bos_active_purchase_template_id_${tid}`, newTplId);
+                        window.dispatchEvent(new CustomEvent('bos-purchase-invoice-template-changed', { detail: { templateId: newTplId } }));
+                        toast.success("Applied purchase invoice template!");
+                        return;
+                      }
                       setActiveInvoicePrintTemplate(newTplId, tenant?.id);
                       invoicesApi.setActivePrintTemplate(newTplId).catch(() => {});
                       printTemplatesApi.setActiveTemplate(newTplId, 'invoices').catch(() => {});
@@ -1430,7 +1454,7 @@ export function FullInvoicePrinter({
                           }
                         } catch {}
                       }
-                      toast.success("Applied invoice template across system!");
+                      toast.success("Applied sales invoice template across system!");
                     }}
                     className="bg-slate-800 text-blue-300 border border-slate-700 rounded px-2 py-0.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                   >
@@ -2810,8 +2834,9 @@ export function FullInvoicePrinter({
       <WordInvoiceStudioModal
         isOpen={isWordStudioOpen}
         onClose={() => setIsWordStudioOpen(false)}
-        onSaved={() => {
-          setSelectedTemplateId('tpl-word-default');
+        docMode={isPurchaseDoc ? 'purchase' : 'sales'}
+        onSaved={(tplConfig) => {
+          setSelectedTemplateId(tplConfig?.id || 'tpl-word-default');
         }}
       />
     </>,

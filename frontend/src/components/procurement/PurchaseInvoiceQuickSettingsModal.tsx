@@ -698,6 +698,7 @@ export function PurchaseInvoiceQuickSettingsModal({
         <WordInvoiceStudioModal
           isOpen={isWordStudioOpen}
           onClose={() => setIsWordStudioOpen(false)}
+          docMode="purchase"
           onSaved={() => {
             setIsWordStudioOpen(false);
             toast.success("Purchase template customized in Word Studio!");
