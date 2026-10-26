@@ -3067,14 +3067,26 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const queryCode = (scannedCode || "").trim();
     if (!queryCode) return;
 
-    // 1. Match in local product list by barcode, SKU, ID or name
+    // 1. Match in local product list (Prioritizing exact barcode first, then ID, SKU, name)
+    const cleanQuery = queryCode.toLowerCase();
     let product = products.find(
-      (p) =>
-        (p.barcode && String(p.barcode).trim().toLowerCase() === queryCode.toLowerCase()) ||
-        (p.sku && String(p.sku).trim().toLowerCase() === queryCode.toLowerCase()) ||
-        (p.id && String(p.id).trim().toLowerCase() === queryCode.toLowerCase()) ||
-        (p.name && String(p.name).trim().toLowerCase() === queryCode.toLowerCase())
+      (p) => p.barcode && String(p.barcode).trim().toLowerCase() === cleanQuery
     );
+    if (!product) {
+      product = products.find(
+        (p) => p.id && String(p.id).trim().toLowerCase() === cleanQuery
+      );
+    }
+    if (!product) {
+      product = products.find(
+        (p) => p.sku && String(p.sku).trim().toLowerCase() === cleanQuery
+      );
+    }
+    if (!product) {
+      product = products.find(
+        (p) => p.name && String(p.name).trim().toLowerCase() === cleanQuery
+      );
+    }
 
     // 2. If not found locally, try looking up via backend / master catalog RAG
     if (!product) {
@@ -3095,20 +3107,46 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     }
 
     // 3. Auto-add to product line or increment quantity if same exact product is scanned
-    const incomingId = product.id ? String(product.id) : "";
-    const incomingSku = product.sku ? String(product.sku).trim() : "";
-    const incomingBarcode = product.barcode ? String(product.barcode).trim() : "";
+    const isSameScannedProduct = (it: InvoiceItem) => {
+      const itId = it.product_id ? String(it.product_id).trim() : "";
+      const itBarcode = it.barcode ? String(it.barcode).trim().toLowerCase() : "";
+      const itSku = it.sku ? String(it.sku).trim().toLowerCase() : "";
+      const itName = it.product_name ? String(it.product_name).trim().toLowerCase() : "";
 
-    const existingIndex = items.findIndex((it) => {
-      const itId = it.product_id ? String(it.product_id) : "";
-      const itSku = it.sku ? String(it.sku).trim() : "";
-      const itBarcode = it.barcode ? String(it.barcode).trim() : "";
-      if (incomingId && itId && itId === incomingId) return true;
-      if (incomingBarcode && itBarcode && itBarcode === incomingBarcode) return true;
-      if (incomingSku && itSku && itSku.toLowerCase() === incomingSku.toLowerCase()) return true;
-      if (!incomingId && !itId && !incomingSku && !itSku && it.product_name && product.name && it.product_name.toLowerCase().trim() === product.name.toLowerCase().trim()) return true;
+      const incomingId = product.id ? String(product.id).trim() : "";
+      const incomingBarcode = product.barcode ? String(product.barcode).trim().toLowerCase() : "";
+      const incomingSku = product.sku ? String(product.sku).trim().toLowerCase() : "";
+      const incomingName = product.name ? String(product.name).trim().toLowerCase() : "";
+
+      // Conflict checks: If physical barcodes differ, they are different products
+      if (incomingBarcode && itBarcode && incomingBarcode !== itBarcode) {
+        return false;
+      }
+      // Conflict checks: If database product IDs differ, they are different products
+      if (incomingId && itId && incomingId !== itId) {
+        return false;
+      }
+      // Conflict checks: If product names differ, they are different products
+      if (incomingName && itName && incomingName !== itName) {
+        return false;
+      }
+
+      // Authoritative matches
+      if (incomingId && itId && incomingId === itId) return true;
+      if (incomingBarcode && itBarcode && incomingBarcode === itBarcode) return true;
+
+      // Fallback match by SKU only when neither barcode, ID, nor name contradicted
+      if (incomingSku && itSku && incomingSku === itSku) return true;
+
+      // Fallback match by name if both lack ID, barcode, and SKU
+      if (!incomingId && !itId && !incomingBarcode && !itBarcode && !incomingSku && !itSku && incomingName && itName && incomingName === itName) {
+        return true;
+      }
+
       return false;
-    });
+    };
+
+    const existingIndex = items.findIndex(isSameScannedProduct);
 
     const targetQty = existingIndex >= 0 ? Number(items[existingIndex].quantity || 0) + 1 : 1;
     const targetItemId = existingIndex >= 0 ? items[existingIndex].id : Math.random().toString(36).substr(2, 9);
@@ -3118,15 +3156,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const batchInfo = getProductBatchInfo(product, 1);
         const incomingBatch = batchInfo?.batch_number ? String(batchInfo.batch_number).trim() : "";
 
-        const foundIdx = prevItems.findIndex((it) => {
-          const itId = it.product_id ? String(it.product_id) : "";
-          const itSku = it.sku ? String(it.sku).trim() : "";
-          const itBarcode = it.barcode ? String(it.barcode).trim() : "";
-          if (incomingId && itId && itId === incomingId) return true;
-          if (incomingBarcode && itBarcode && itBarcode === incomingBarcode) return true;
-          if (incomingSku && itSku && itSku.toLowerCase() === incomingSku.toLowerCase()) return true;
-          return false;
-        });
+        const foundIdx = prevItems.findIndex(isSameScannedProduct);
 
         if (foundIdx >= 0) {
           const existingItem = prevItems[foundIdx];
