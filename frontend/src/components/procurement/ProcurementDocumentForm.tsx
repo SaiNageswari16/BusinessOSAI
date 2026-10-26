@@ -208,11 +208,11 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       }
     };
     window.addEventListener("bos-purchase-settings-updated", handleUpdate);
-    window.addEventListener("bos-invoice-settings-changed", handleUpdate);
+    window.addEventListener("bos-purchase-invoice-settings-changed", handleUpdate);
     window.addEventListener("storage", handleUpdate);
     return () => {
       window.removeEventListener("bos-purchase-settings-updated", handleUpdate);
-      window.removeEventListener("bos-invoice-settings-changed", handleUpdate);
+      window.removeEventListener("bos-purchase-invoice-settings-changed", handleUpdate);
       window.removeEventListener("storage", handleUpdate);
     };
   }, []);

@@ -4975,6 +4975,15 @@ export const inventoryApi = {
   consultAIReport: (tab: string, query: string, contextData: any) => request<{ answer: string }>("POST", `/analytics/reports/${tab}/ai-consult`, { query, contextData }),
   getReportBuilderPresets: () => request<any>("GET", "/analytics/report-builder/presets"),
   generateCustomReport: (payload: any) => request<any>("POST", "/analytics/report-builder/generate", payload),
+  emailReport: (payload: {
+    report_title: string;
+    recipient_emails: string[];
+    summary_lines?: string[];
+    headers?: string[];
+    rows?: any[][];
+    sheet_name?: string;
+    attachment_filename?: string;
+  }) => request<{ success: boolean; smtp_active: boolean; recipients: string[]; has_attachment: boolean; message: string }>("POST", "/analytics/email-report", payload),
 
   // --- Zoho Recruit Integration ---
   getZohoStatus: () => request<any>("GET", "/integrations/zoho/status"),

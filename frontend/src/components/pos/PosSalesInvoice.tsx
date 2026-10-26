@@ -441,18 +441,6 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [challanNumber, setChallanNumber] = useState("");
   const [invoiceCustomFieldValues, setInvoiceCustomFieldValues] = useState<Record<string, string>>({});
 
-  // Sync settings when modified from any modal
-  useEffect(() => {
-    const handleSettingsChanged = (e: any) => {
-      if (e.detail) {
-        setInvoiceSettings(e.detail);
-      }
-    };
-    window.addEventListener("bos-invoice-settings-changed", handleSettingsChanged);
-    return () => {
-      window.removeEventListener("bos-invoice-settings-changed", handleSettingsChanged);
-    };
-  }, []);
 
   // Invoice Fields & Document Type Support (Tax Invoice, Estimate, Proforma, Credit Note, Debit Note)
   const [invoiceType, setInvoiceType] = useState<DocumentType>(initialDocType);
@@ -747,10 +735,21 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   // Listen for bos-invoice-settings-changed event
   useEffect(() => {
     const handleSettingsChanged = (e: any) => {
-      if (e.detail) {
-        setInvoiceSettings(e.detail);
+      if (e.detail && typeof e.detail === "object") {
+        // Guard against template configs (like WordInvoiceStudioConfig) polluting InvoiceSettings
+        if ("wordConfig" in e.detail || "headerStyle" in e.detail || "sections" in e.detail) {
+          return;
+        }
+        const s = loadStoredInvoiceSettings();
+        const merged: InvoiceSettings = {
+          ...s,
+          ...e.detail,
+          itemCustomColumns: Array.isArray(e.detail.itemCustomColumns) ? e.detail.itemCustomColumns : (s.itemCustomColumns || []),
+          invoiceCustomFields: Array.isArray(e.detail.invoiceCustomFields) ? e.detail.invoiceCustomFields : (s.invoiceCustomFields || []),
+        };
+        setInvoiceSettings(merged);
         if (!activeEditingInvoice && !editingInvoice && !isRecreatingInvoice) {
-          const nextNum = getNextSequentialInvoiceNumber(invoiceType, e.detail);
+          const nextNum = getNextSequentialInvoiceNumber(invoiceType, merged);
           setInvoiceNumber(nextNum);
         }
       }
@@ -4611,6 +4610,27 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const isConversionMode = isQuotationConversion || isProformaConversion;
       const isEditMode = Boolean((activeEditingInvoice || editingInvoice) && !isConversionMode);
       const isRecreateMode = Boolean(isRecreatingInvoice);
+
+      // ── Party integrity lock ──
+      // Re-saving an EXISTING bill (edit mode / settlement flow) must keep the ORIGINAL
+      // billed party. The POS terminal's currently-selected customer must never
+      // re-attribute another customer's invoice — that is what corrupted LTV / order
+      // counts ("hijacked by ABC"). Backend mirrors this: a mismatched party payload is
+      // ignored for invoices already linked to a customer.
+      const lockSrc = (settlingInvoice && !isRecreatingInvoice)
+        ? settlingInvoice
+        : (isEditMode ? (activeEditingInvoice || editingInvoice) : null);
+      const lockedParty: { id: string | null; name: string; phone: string | null; email: string | null; gst: string | null } | null =
+        lockSrc && (lockSrc.customer_id || lockSrc.customer_name)
+          ? {
+              id: lockSrc.customer_id && isValidUUID(lockSrc.customer_id) ? lockSrc.customer_id : null,
+              name: lockSrc.customer_name || lockSrc.customer?.name || "Walk-in Customer",
+              phone: lockSrc.customer_phone || lockSrc.customer?.phone || null,
+              email: lockSrc.customer_email || lockSrc.customer?.email || null,
+              gst: lockSrc.customer_gstin || lockSrc.customer?.gst_number || null,
+            }
+          : null;
+
       const isWalkIn = isWalkInParty(customer || selectedCustomer);
       const isCredit = !isWalkIn && paymentMode === "Credit";
       const calculatedPaymentStatus = isWalkIn
@@ -4691,11 +4711,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           print_template_id: currentTemplateId,
           template_id: currentTemplateId,
         },
-        customer_id: (customer?.id && isValidUUID(customer.id)) ? customer.id : null,
-        customer_name: customer?.name || "Walk-in Customer",
-        customer_phone: customer?.phone || null,
-        customer_email: customer?.email || null,
-        customer_gstin: selectedBillingAddress?.gst_number || customer?.gst_number || null,
+        customer_id: lockedParty ? (lockedParty.id && isValidUUID(lockedParty.id) ? lockedParty.id : null) : ((customer?.id && isValidUUID(customer.id)) ? customer.id : null),
+        customer_name: lockedParty ? lockedParty.name : (customer?.name || "Walk-in Customer"),
+        customer_phone: lockedParty ? (lockedParty.phone ?? null) : (customer?.phone || null),
+        customer_email: lockedParty ? (lockedParty.email ?? null) : (customer?.email || null),
+        customer_gstin: lockedParty ? (lockedParty.gst ?? null) : (selectedBillingAddress?.gst_number || customer?.gst_number || null),
         billing_address: formattedBillingAddress,
         shipping_address: formattedShippingAddress,
         invoice_date: invoiceDate,

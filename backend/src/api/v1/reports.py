@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Annotated
 from fastapi import APIRouter, Depends, Query, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -5360,3 +5361,130 @@ async def get_payment_mode_sales_report(
 
 
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EMAIL REPORT DISPATCH (uses the organization's configured SMTP)
+# ─────────────────────────────────────────────────────────────────────────────
+class EmailReportPayload(BaseModel):
+    report_title: str
+    recipient_emails: List[str]
+    summary_lines: List[str] = []
+    headers: List[str] = []
+    rows: List[List[Any]] = []
+    sheet_name: str = "Report"
+    attachment_filename: Optional[str] = None
+
+
+@router.post("/email-report")
+async def email_report(
+    payload: EmailReportPayload,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Emails a report to the given recipients using the organization's SMTP
+    configuration (tenant / active-company email_settings, falling back to
+    the server .env SMTP). The report data is attached as an .xlsx file.
+    """
+    from src.utils.email import send_email, resolve_email_config
+    import io
+
+    recipients = [r.strip().lower() for r in payload.recipient_emails if r and "@" in r]
+    if not recipients:
+        raise HTTPException(status_code=400, detail="At least one valid recipient email is required.")
+
+    # Build the xlsx attachment server-side from the provided rows
+    attachment_bytes: Optional[bytes] = None
+    attachment_name = payload.attachment_filename or "report.xlsx"
+    if payload.headers or payload.rows:
+        try:
+            import openpyxl
+            from openpyxl.styles import Font, PatternFill, Alignment
+
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = (payload.sheet_name or "Report")[:31]
+
+            # Report metadata block
+            ws.append([payload.report_title])
+            ws.append([f"Generated: {datetime.utcnow().strftime('%d/%m/%Y %I:%M %p')}"])
+            if payload.summary_lines:
+                for line in payload.summary_lines:
+                    ws.append([line])
+            ws.append([])
+
+            # Header row
+            if payload.headers:
+                ws.append(payload.headers)
+                for cell in ws[ws.max_row]:
+                    cell.font = Font(bold=True, color="FFFFFF", size=10)
+                    cell.fill = PatternFill("solid", fgColor="4F46E5")
+                    cell.alignment = Alignment(horizontal="left", vertical="center")
+
+            # Data rows
+            for row in payload.rows:
+                ws.append([r if r is not None else "" for r in row])
+
+            buf = io.BytesIO()
+            wb.save(buf)
+            attachment_bytes = buf.getvalue()
+        except Exception as e:
+            logger.warning(f"Could not build xlsx attachment for email report: {e}")
+            attachment_bytes = None
+
+    # Build an HTML summary body
+    summary_html_rows = ""
+    if payload.summary_lines:
+        summary_html_rows = "".join(f"<li>{line}</li>" for line in payload.summary_lines)
+    html_body = f"""
+    <div style="font-family:Arial,sans-serif;font-size:13px;color:#0f172a;">
+      <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:14px 18px;margin-bottom:16px;">
+        <strong style="font-size:15px;color:#312e81;">{payload.report_title}</strong>
+        <div style="font-size:11px;color:#64748b;margin-top:3px;">
+          Report generated on {datetime.utcnow().strftime('%d/%m/%Y %I:%M %p')} via BusinessOS AI
+        </div>
+      </div>
+      {('<ul style="margin:8px 0 14px 18px;padding:0;line-height:1.7;">' + summary_html_rows + '</ul>') if summary_html_rows else ''}
+      <p style="margin-top:10px;">Please find the complete report attached as an Excel file. Open it in Microsoft Excel or Google Sheets.</p>
+      <div style="margin-top:18px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px;">
+        BusinessOS AI &mdash; Confidential Business Report
+      </div>
+    </div>
+    """
+    text_body = f"{payload.report_title}\nGenerated: {datetime.utcnow().strftime('%d/%m/%Y %I:%M %p')}\n\n"
+    text_body += "\n".join(payload.summary_lines) + "\n\n" if payload.summary_lines else ""
+    text_body += "Please find the complete report attached as an Excel file."
+
+    subject = f"{payload.report_title} — BusinessOS AI Report"
+
+    # Resolve the organization's SMTP config to report back whether real dispatch happened
+    config = await resolve_email_config(db=db, tenant_id=ctx.tenant_id, company_id=ctx.active_company_id)
+    smtp_active = bool(config.mail_server and config.enabled)
+
+    ok = await send_email(
+        subject=subject,
+        recipients=recipients,
+        html=html_body,
+        text=text_body,
+        tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
+        attachment_bytes=attachment_bytes,
+        attachment_filename=attachment_name if attachment_bytes else None,
+        db=db,
+    )
+
+    if not ok:
+        raise HTTPException(status_code=502, detail="Failed to dispatch the email. Please check the SMTP configuration.")
+
+    return {
+        "success": True,
+        "smtp_active": smtp_active,
+        "recipients": recipients,
+        "has_attachment": bool(attachment_bytes),
+        "message": (
+            f"Report emailed to {', '.join(recipients)} via the organization's SMTP."
+            if smtp_active
+            else "Report queued (no SMTP configured — email dispatched via server fallback logging)."
+        ),
+    }

@@ -222,7 +222,12 @@ export function InvoiceQuickSettingsModal({
 }: InvoiceQuickSettingsModalProps) {
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<"invoice" | "thermal_receipt" | "item" | "tax_finance" | "google_reviews" | "payment_qr" | "signature_stamp">("invoice");
-  const [draftSettings, setDraftSettings] = useState<InvoiceSettings>(settings);
+  const [draftSettings, setDraftSettings] = useState<InvoiceSettings>(() => ({
+    ...DEFAULT_INVOICE_SETTINGS,
+    ...(settings || {}),
+    itemCustomColumns: Array.isArray(settings?.itemCustomColumns) ? settings.itemCustomColumns : [],
+    invoiceCustomFields: Array.isArray(settings?.invoiceCustomFields) ? settings.invoiceCustomFields : [],
+  }));
   const [isWordStudioOpen, setIsWordStudioOpen] = useState(false);
 
   // Thermal Receipt State
@@ -292,7 +297,12 @@ export function InvoiceQuickSettingsModal({
   // Initialize data when modal opens
   useEffect(() => {
     if (isOpen) {
-      setDraftSettings(settings);
+      setDraftSettings({
+        ...DEFAULT_INVOICE_SETTINGS,
+        ...(settings || {}),
+        itemCustomColumns: Array.isArray(settings?.itemCustomColumns) ? settings.itemCustomColumns : [],
+        invoiceCustomFields: Array.isArray(settings?.invoiceCustomFields) ? settings.invoiceCustomFields : [],
+      });
 
       // Load active GST details
       const currentGst = getActiveBillingGst();
@@ -408,7 +418,7 @@ export function InvoiceQuickSettingsModal({
     };
     setDraftSettings((prev) => ({
       ...prev,
-      invoiceCustomFields: [...prev.invoiceCustomFields, newField],
+      invoiceCustomFields: [...(prev.invoiceCustomFields || []), newField],
     }));
   };
 
@@ -418,7 +428,7 @@ export function InvoiceQuickSettingsModal({
   ) => {
     setDraftSettings((prev) => ({
       ...prev,
-      invoiceCustomFields: prev.invoiceCustomFields.map((f) =>
+      invoiceCustomFields: (prev.invoiceCustomFields || []).map((f) =>
         f.id === id ? { ...f, ...patch } : f
       ),
     }));
@@ -427,7 +437,7 @@ export function InvoiceQuickSettingsModal({
   const handleDeleteInvoiceCustomField = (id: string) => {
     setDraftSettings((prev) => ({
       ...prev,
-      invoiceCustomFields: prev.invoiceCustomFields.filter((f) => f.id !== id),
+      invoiceCustomFields: (prev.invoiceCustomFields || []).filter((f) => f.id !== id),
     }));
   };
 
@@ -439,7 +449,7 @@ export function InvoiceQuickSettingsModal({
     };
     setDraftSettings((prev) => ({
       ...prev,
-      itemCustomColumns: [...prev.itemCustomColumns, newCol],
+      itemCustomColumns: [...(prev.itemCustomColumns || []), newCol],
     }));
   };
 
@@ -449,7 +459,7 @@ export function InvoiceQuickSettingsModal({
   ) => {
     setDraftSettings((prev) => ({
       ...prev,
-      itemCustomColumns: prev.itemCustomColumns.map((c) =>
+      itemCustomColumns: (prev.itemCustomColumns || []).map((c) =>
         c.id === id ? { ...c, ...patch } : c
       ),
     }));
@@ -458,7 +468,7 @@ export function InvoiceQuickSettingsModal({
   const handleDeleteItemCustomColumn = (id: string) => {
     setDraftSettings((prev) => ({
       ...prev,
-      itemCustomColumns: prev.itemCustomColumns.filter((c) => c.id !== id),
+      itemCustomColumns: (prev.itemCustomColumns || []).filter((c) => c.id !== id),
     }));
   };
 
@@ -715,10 +725,10 @@ export function InvoiceQuickSettingsModal({
       // 1. Clean and Save Invoice Settings
       const cleaned: InvoiceSettings = {
         ...draftSettings,
-        invoiceCustomFields: draftSettings.invoiceCustomFields.filter(
+        invoiceCustomFields: (draftSettings.invoiceCustomFields || []).filter(
           (f) => f.name.trim() !== ""
         ),
-        itemCustomColumns: draftSettings.itemCustomColumns.filter(
+        itemCustomColumns: (draftSettings.itemCustomColumns || []).filter(
           (c) => c.name.trim() !== ""
         ),
       };
@@ -1765,7 +1775,7 @@ export function InvoiceQuickSettingsModal({
                       Custom Invoice Fields
                     </span>
 
-                    {draftSettings.invoiceCustomFields.map((field) => (
+                    {(draftSettings.invoiceCustomFields || []).map((field) => (
                       <div
                         key={field.id}
                         className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white"
@@ -2002,7 +2012,7 @@ export function InvoiceQuickSettingsModal({
                       Custom Item Columns
                     </span>
 
-                    {draftSettings.itemCustomColumns.map((col) => (
+                    {(draftSettings.itemCustomColumns || []).map((col) => (
                       <div
                         key={col.id}
                         className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white"

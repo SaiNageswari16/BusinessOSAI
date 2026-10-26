@@ -25,6 +25,7 @@ import { useTenant } from "@/contexts/tenant-context";
 import { formatDisplayDate } from "@/lib/utils";
 import { inventoryApi } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import { ReportEmailModal } from "./ReportEmailModal";
 
 interface EmployeeSalesReportSuiteProps {
   onBack?: () => void;
@@ -60,8 +61,6 @@ export function EmployeeSalesReportSuite({ onBack }: EmployeeSalesReportSuitePro
   // UI state
   const [downloadMenuOpen, setDownloadMenuOpen] = useState<boolean>(false);
   const [emailModalOpen, setEmailModalOpen] = useState<boolean>(false);
-  const [emailAddress, setEmailAddress] = useState<string>("");
-  const [emailSending, setEmailSending] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [reportData, setReportData] = useState<any>(null);
 
@@ -291,22 +290,6 @@ export function EmployeeSalesReportSuite({ onBack }: EmployeeSalesReportSuitePro
     link.click();
     document.body.removeChild(link);
     toast.success("CSV report downloaded successfully");
-  };
-
-  // Email report simulation
-  const handleSendEmail = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!emailAddress.trim()) {
-      toast.error("Please enter a valid email address");
-      return;
-    }
-    setEmailSending(true);
-    setTimeout(() => {
-      setEmailSending(false);
-      setEmailModalOpen(false);
-      toast.success(`Sales Summary report sent to ${emailAddress}`);
-      setEmailAddress("");
-    }, 900);
   };
 
   // Preset labels map
@@ -721,78 +704,32 @@ export function EmployeeSalesReportSuite({ onBack }: EmployeeSalesReportSuitePro
         </div>
       </div>
 
-      {/* Email Modal Dialog */}
-      {emailModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-2xs p-4">
-          <div className="bg-white rounded-xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
-            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-slate-800 font-semibold text-sm">
-                <Mail className="w-4 h-4 text-blue-600" />
-                <span>Email Sales Summary Report</span>
-              </div>
-              <button
-                onClick={() => setEmailModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-md"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSendEmail} className="p-5 flex flex-col gap-4 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Recipient Email</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="e.g. accountant@company.com"
-                  value={emailAddress}
-                  onChange={(e) => setEmailAddress(e.target.value)}
-                  className="w-full h-9 px-3 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-slate-600 space-y-1">
-                <p className="font-semibold text-slate-700">Attachment Details:</p>
-                <p>• Report: Sales Summary - Staff wise</p>
-                <p>• Format: Excel (.xlsx)</p>
-                <p>• Date Filter: {presetLabels[datePreset] || "This Week"}</p>
-                <p>• Transactions: {invoices.length} records</p>
-                <p>• Total Amount: ₹ {totalSales.toLocaleString("en-IN")}</p>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setEmailModalOpen(false)}
-                  className="h-8 px-3 text-xs"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={emailSending}
-                  className="h-8 px-4 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
-                >
-                  {emailSending ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Sending...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Send Email</span>
-                    </>
-                  )}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Email Modal Dialog — real SMTP dispatch via organization config */}
+      <ReportEmailModal
+        open={emailModalOpen}
+        onClose={() => setEmailModalOpen(false)}
+        reportTitle="Sales Summary - Staff wise"
+        sheetName="Staff Sales Summary"
+        attachmentFilename={`Sales_Summary_Staff_Wise_${datePreset}_${new Date().toISOString().slice(0, 10)}.xlsx`}
+        headers={["Date", "Invoice No", "Party Name", "Due Date", "Amount", "Balance Amount", "Invoice Type", "Invoice Status", "Created By"]}
+        rows={invoices.map((inv) => [
+          inv.date ? formatDisplayDate(inv.date) : "—",
+          inv.invoice_number || inv.receipt_number || "—",
+          inv.party_name || inv.customer_name || "Cash Customer",
+          inv.due_date ? formatDisplayDate(inv.due_date) : "—",
+          Number(inv.amount || inv.total_amount || 0),
+          Number(inv.balance_amount || 0),
+          inv.invoice_type || "Tax Invoice",
+          inv.invoice_status || "PAID",
+          inv.created_by || inv.login_user_name || "Admin",
+        ])}
+        summaryLines={[
+          `Date Filter: ${presetLabels[datePreset] || "This Week"}`,
+          `Transactions: ${invoices.length} records`,
+          `Total Amount: ₹ ${totalSales.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          `Outstanding Balance: ₹ ${totalBalance.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        ]}
+      />
     </div>
   );
 }

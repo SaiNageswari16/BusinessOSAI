@@ -307,12 +307,16 @@ export function FullInvoicePrinter({
       setSalesSettings(loadStoredInvoiceSettings(tenant?.id));
     };
     window.addEventListener('bos-purchase-settings-updated', handlePurchaseUpdate);
-    window.addEventListener('bos-invoice-settings-changed', handlePurchaseUpdate);
+    window.addEventListener('bos-purchase-invoice-settings-changed', handlePurchaseUpdate);
+    window.addEventListener('bos-invoice-settings-changed', handleSalesUpdate);
     window.addEventListener('storage', handlePurchaseUpdate);
+    window.addEventListener('storage', handleSalesUpdate);
     return () => {
       window.removeEventListener('bos-purchase-settings-updated', handlePurchaseUpdate);
-      window.removeEventListener('bos-invoice-settings-changed', handlePurchaseUpdate);
+      window.removeEventListener('bos-purchase-invoice-settings-changed', handlePurchaseUpdate);
+      window.removeEventListener('bos-invoice-settings-changed', handleSalesUpdate);
       window.removeEventListener('storage', handlePurchaseUpdate);
+      window.removeEventListener('storage', handleSalesUpdate);
     };
   }, [tenant?.id]);
 

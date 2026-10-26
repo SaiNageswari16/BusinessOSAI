@@ -52,6 +52,7 @@ import {
   type ActiveGstDetails,
 } from "@/lib/receipt-template-store";
 import { printTemplatesApi, invoicesApi } from "@/lib/api-client";
+import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
 
 export interface WordStudioColumnConfig {
   id: string;
@@ -799,8 +800,41 @@ export function WordInvoiceStudioModal({
         tenantId
       );
 
+      // Safely sync custom table columns into POS Invoice Quick Settings without corrupting InvoiceSettings schema
+      if (docMode !== "purchase") {
+        try {
+          const currentSettings = loadStoredInvoiceSettings(tenantId);
+          const customWordCols = (config.columns || [])
+            .filter((c) => (c.isCustom || !DEFAULT_WORD_COLUMNS.some((dc) => dc.id === c.id || dc.fieldKey === c.fieldKey)) && c.enabled)
+            .map((c) => ({
+              id: c.id,
+              name: c.headerTitle || "Custom Column",
+              enabled: true,
+            }));
+
+          if (customWordCols.length > 0) {
+            const existingCols = currentSettings.itemCustomColumns || [];
+            const mergedCols = [...existingCols];
+            customWordCols.forEach((newCol) => {
+              const exists = mergedCols.some(
+                (ex) => ex.id === newCol.id || ex.name.trim().toLowerCase() === newCol.name.trim().toLowerCase()
+              );
+              if (!exists) {
+                mergedCols.push(newCol);
+              }
+            });
+            const updatedInvoiceSettings = {
+              ...currentSettings,
+              itemCustomColumns: mergedCols,
+            };
+            saveStoredInvoiceSettings(updatedInvoiceSettings, tenantId);
+          }
+        } catch (settingsSyncErr) {
+          console.warn("Failed to sync custom columns to POS invoice settings:", settingsSyncErr);
+        }
+      }
+
       window.dispatchEvent(new Event("print_templates_updated"));
-      window.dispatchEvent(new CustomEvent("bos-invoice-settings-changed", { detail: config }));
       window.dispatchEvent(new CustomEvent("bos_invoice_template_changed", { detail: { templateId: transformedTemplate.id } }));
       
       toast.success(`Word-Style Invoice Template "${config.name}" saved & applied across organization!`);

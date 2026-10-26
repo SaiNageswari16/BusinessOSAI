@@ -1,5 +1,6 @@
 """Accounts Receivable — Invoices, Payments, Returns."""
 import logging
+import re
 import uuid
 from datetime import date, datetime
 from typing import Annotated, Optional, List, Dict, Any
@@ -39,6 +40,86 @@ from src.utils.clock import clock
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/invoices", tags=["Invoices & AR"])
+
+# Party fields on an invoice that identify WHO was billed. Re-assigning these to a
+# different customer silently steals LTV / order counts, so the write paths below
+# only allow changing the party when the request explicitly carries a coherent
+# party (name that aligns with the customer) — never a bare, mismatched customer_id.
+PARTY_FIELDS = ("customer_id", "customer_name", "customer_phone", "customer_email", "customer_gstin")
+
+
+def _clean_party_text(raw: Any) -> str:
+    """Alphanumeric-normalized lowercase text, used for party identity comparison."""
+    return re.sub(r"[^a-z0-9]", "", str(raw or "").lower())
+
+
+def _clean_phone10(raw: Any) -> str:
+    """Last 10 digits of a phone value ('' when fewer than 10 digits exist)."""
+    digits = "".join(filter(str.isdigit, str(raw or "")))
+    return digits[-10:] if len(digits) >= 10 else ""
+
+
+def _party_identity_matches(
+    current_customer: Any,
+    new_customer_id: Any,
+    new_name: Any,
+    new_phone: Any,
+    stored_name: Any = None,
+    stored_phone: Any = None,
+) -> bool:
+    """True when the requested party is the SAME party already billed on the invoice.
+
+    The "current party" is the linked Customer when present, else the invoice's stored
+    name/phone (when those are a real, non-walk-in party). Rules:
+
+    - No current party at all (no link, no real stored name) → first assignment allowed.
+    - Requested customer_id equals current customer → always allowed.
+    - Requested name/phone → allowed only when it aligns with the CURRENT party's own
+      name/phone, so a payload carrying a DIFFERENT customer's id can never re-assign
+      the billed party (protects LTV / order counts).
+    - Requested identity empty → party stays untouched (returns False: the field loop
+      keeps whatever is stored).
+    """
+    new_uuid: Optional[uuid.UUID] = None
+    if new_customer_id:
+        try:
+            new_uuid = uuid.UUID(str(new_customer_id))
+        except Exception:
+            new_uuid = None
+
+    # Establish the "current party" identity to preserve
+    if current_customer is not None:
+        # Linked to a Customer record: identity = that customer (id + name + phone)
+        if new_uuid is not None and new_uuid == getattr(current_customer, "id", None):
+            return True
+        c_name_src = getattr(current_customer, "name", None)
+        c_phone_src = getattr(current_customer, "phone", None)
+    else:
+        # Unlinked: the stored invoice party is the identity — UNLESS it is just a
+        # walk-in / anonymous placeholder, which carries no identity to preserve
+        # (re-linking such an invoice to a customer is normal operation).
+        s_clean = _clean_party_text(stored_name)
+        s_phone = _clean_phone10(stored_phone)
+        if (not s_clean or s_clean.startswith("walkin") or s_clean in ("cashcustomer", "guest")) and not s_phone:
+            return True
+        c_name_src = stored_name
+        c_phone_src = stored_phone
+
+    n_clean = _clean_party_text(new_name)
+    p10 = _clean_phone10(new_phone)
+    c_clean = _clean_party_text(c_name_src)
+    c_p10 = _clean_phone10(c_phone_src)
+    if n_clean:
+        if c_clean:
+            return n_clean == c_clean or (
+                len(c_clean) >= 4 and (n_clean.startswith(c_clean) or c_clean.startswith(n_clean))
+            )
+        # Current party has no stored name: accept only a coherent request (id or phone)
+        return new_uuid is not None or bool(p10)
+    if p10:
+        return c_p10 == p10 if c_p10 else True
+    # No requested name/phone: party re-assignment is not allowed, only keeping it
+    return False
 
 
 def _compute_invoice_totals(payload_lines: list[InvoiceLineCreate], is_interstate: bool = False, invoice_discount_amount: float = 0.0) -> dict:
@@ -1186,10 +1267,43 @@ async def create_invoice(
                             b_revert.remaining_quantity = int((b_revert.remaining_quantity or 0) + old_qty)
 
         await db.execute(delete(InvoiceLine).where(InvoiceLine.invoice_id == existing_inv.id))
+
+        # ── Party integrity guard ──
+        # When editing an invoice that is already linked to a customer, a request carrying a
+        # DIFFERENT customer (e.g. the POS terminal's currently-selected party) must not steal
+        # the invoice's party fields — that is what corrupted LTV for real customers.
+        current_cust_obj = None
+        if existing_inv.customer_id:
+            current_cust_obj = await db.scalar(
+                select(Customer).where(
+                    Customer.id == existing_inv.customer_id,
+                    Customer.tenant_id == ctx.tenant_id,
+                )
+            )
+        party_request_id = inv_data.get("customer_id")
+        party_same = _party_identity_matches(
+            current_cust_obj,
+            party_request_id,
+            inv_data.get("customer_name"),
+            inv_data.get("customer_phone"),
+            stored_name=existing_inv.customer_name,
+            stored_phone=existing_inv.customer_phone,
+        )
+        if not party_same:
+            logger.warning(
+                "Blocked party re-assignment on invoice %s: request customer_id=%s (party %r/%r) "
+                "does not match current customer %s (%s)",
+                existing_inv.invoice_number, party_request_id,
+                inv_data.get("customer_name"), inv_data.get("customer_phone"),
+                getattr(current_cust_obj, "id", None), getattr(current_cust_obj, "name", None),
+            )
+
         for k, v in inv_data.items():
             if k not in ("id", "created_at", "tenant_id"):
-                # Safeguard: Never overwrite existing valid customer details with null or empty values
-                if k in ("customer_name", "customer_phone", "customer_email", "customer_gstin", "billing_address", "shipping_address", "customer_id"):
+                # Never overwrite existing valid customer details with null or empty values
+                if k in PARTY_FIELDS:
+                    if not party_same:
+                        continue  # keep the existing linked party untouched
                     if v is None or (isinstance(v, str) and not v.strip()):
                         if getattr(existing_inv, k, None):
                             continue
@@ -1591,8 +1705,41 @@ async def update_invoice(
         raise HTTPException(status_code=400, detail=f"Cannot update a {invoice.status} invoice")
 
     updates = payload.model_dump(exclude_unset=True, exclude={"lines"})
+
+    # ── Party integrity guard ──
+    # Party fields may only be changed to a coherent party (explicit customer_id that
+    # aligns with name/phone, or same identity). A payload that merely repeats a DIFFERENT
+    # customer's details — e.g. an active POS party — must not re-assign the billed party.
+    party_keys_touched = [k for k in updates if k in PARTY_FIELDS]
+    keep_party = False
+    if party_keys_touched:
+        current_cust_obj = None
+        if invoice.customer_id:
+            current_cust_obj = await db.scalar(
+                select(Customer).where(
+                    Customer.id == invoice.customer_id,
+                    Customer.tenant_id == ctx.tenant_id,
+                )
+            )
+        keep_party = not _party_identity_matches(
+            current_cust_obj,
+            updates.get("customer_id"),
+            updates.get("customer_name"),
+            updates.get("customer_phone"),
+            stored_name=invoice.customer_name,
+            stored_phone=invoice.customer_phone,
+        )
+        if keep_party:
+            logger.warning(
+                "PATCH blocked party re-assignment on invoice %s (request customer_id=%s, party %r/%r)",
+                invoice.invoice_number, updates.get("customer_id"),
+                updates.get("customer_name"), updates.get("customer_phone"),
+            )
+
     old_values = {k: getattr(invoice, k) for k in updates}
     for key, value in updates.items():
+        if keep_party and key in PARTY_FIELDS:
+            continue
         setattr(invoice, key, value)
 
     if payload.lines is not None:

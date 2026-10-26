@@ -301,6 +301,7 @@ export function CustomerPartyReportsSuite({
   const [activeReport, setActiveReport] = useState<CustomerReportType>(defaultReport);
   const [isFavourite, setIsFavourite] = useState<boolean>(false);
   const [showExcelDropdown, setShowExcelDropdown] = useState<boolean>(false);
+  const [emailModalOpen, setEmailModalOpen] = useState<boolean>(false);
   const excelDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1016,10 +1017,11 @@ export function CustomerPartyReportsSuite({
     toast.success(`Opening WhatsApp for ${activeParty.name}`);
   };
 
-  // ── Export Excel / CSV with Real DB Data ───────────────────
-  const handleExportExcel = (format: "xlsx" | "csv" = "xlsx") => {
+  // ── Build export rows (shared by Excel/CSV download AND email dispatch) ──
+  const buildExportRows = (): { filename: string; rows: any[][]; title: string } => {
     let filename = `${activeReport}_${new Date().toISOString().slice(0, 10)}`;
     const rows: any[][] = [];
+    let title = activeReport.replace(/_/g, " ").toUpperCase();
 
     switch (activeReport) {
       case "party_statement": {
@@ -1186,6 +1188,12 @@ export function CustomerPartyReportsSuite({
       }
     }
 
+    return { filename, rows, title };
+  };
+
+  // ── Export Excel / CSV with Real DB Data ───────────────────
+  const handleExportExcel = (format: "xlsx" | "csv" = "xlsx") => {
+    const { filename, rows, title } = buildExportRows();
     const ws = XLSX.utils.aoa_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     const sheetName = (activeReport || "Report").slice(0, 31);
@@ -1193,10 +1201,10 @@ export function CustomerPartyReportsSuite({
 
     if (format === "xlsx") {
       XLSX.writeFile(wb, `${filename}.xlsx`);
-      toast.success(`Exported ${activeReport.replace(/_/g, " ").toUpperCase()} as Excel (.xlsx)!`);
+      toast.success(`Exported ${title} as Excel (.xlsx)!`);
     } else {
       XLSX.writeFile(wb, `${filename}.csv`, { bookType: "csv" });
-      toast.success(`Exported ${activeReport.replace(/_/g, " ").toUpperCase()} as CSV (.csv)!`);
+      toast.success(`Exported ${title} as CSV (.csv)!`);
     }
   };
 

@@ -84,6 +84,32 @@ async def checkout(
 
     valid_cid = await resolve_valid_company_id(db, ctx.tenant_id, ctx.active_company_id)
 
+    # ── Tenant isolation for the billed party ──
+    # A customer_id that doesn't belong to this tenant must never be stamped onto the
+    # receipt / ERP invoice (it would misattribute the sale to a foreign party, exactly
+    # the "hijacked by ABC" incident). Normalize it to a valid tenant-local customer or
+    # force walk-in handling.
+    if payload.customer_id:
+        resolved_cust_id: Optional[uuid.UUID] = None
+        try:
+            cand_uuid = uuid.UUID(str(payload.customer_id))
+            cand = await db.scalar(
+                select(Customer.id).where(
+                    Customer.id == cand_uuid,
+                    Customer.tenant_id == ctx.tenant_id,
+                )
+            )
+            if cand:
+                resolved_cust_id = cand_uuid
+        except Exception:
+            resolved_cust_id = None
+        if resolved_cust_id is None:
+            logger.warning(
+                "POS checkout: customer_id %s not valid in tenant %s; treating as walk-in",
+                payload.customer_id, ctx.tenant_id,
+            )
+        payload.customer_id = resolved_cust_id
+
     # Auto-set status for refund receipts and partial/credit payments
     has_credit_payment = any((p.payment_method or "").lower() in ("credit", "pay later", "pay_later") for p in payload.payments)
     total_non_credit = sum(p.amount for p in payload.payments if (p.payment_method or "").lower() not in ("credit", "pay later", "pay_later"))
@@ -503,6 +529,7 @@ async def _create_invoice_from_pos_transaction(
         cust_email = None
         cust_gstin = None
         cust_address = None
+        linked_cust_id: Optional[uuid.UUID] = None
         if payload.customer_id:
             cust_row = await db.scalar(
                 select(Customer).where(
@@ -511,11 +538,20 @@ async def _create_invoice_from_pos_transaction(
                 )
             )
             if cust_row:
-                cust_name = cust_row.name
+                cust_name = cust_row.name or "Walk-in Guest"
                 cust_phone = cust_row.phone
                 cust_email = cust_row.email
                 cust_gstin = cust_row.gst_number
                 cust_address = cust_row.address
+                linked_cust_id = cust_row.id
+            else:
+                # customer_id that doesn't belong to this tenant (or doesn't exist) must
+                # never be stamped onto the receipt/invoice — it would create a dangling
+                # FK or misattribute the sale. Treat as walk-in and flag it.
+                logger.warning(
+                    "POS checkout: customer_id %s not found in tenant %s; saving bill as Walk-in Guest",
+                    payload.customer_id, ctx.tenant_id,
+                )
 
         # Determine payment method and actual cash/online paid vs credit
         pay_method = payload.payments[0].payment_method if payload.payments else "cash"

@@ -148,7 +148,7 @@ export function saveStoredPurchaseInvoiceSettings(settings: PurchaseInvoiceSetti
     }
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("bos-purchase-settings-updated", { detail: { settings, key } }));
-      window.dispatchEvent(new CustomEvent("bos-invoice-settings-changed", { detail: settings }));
+      window.dispatchEvent(new CustomEvent("bos-purchase-invoice-settings-changed", { detail: settings }));
     }
   } catch (err) {
     console.warn("Failed to save purchase invoice settings:", err);

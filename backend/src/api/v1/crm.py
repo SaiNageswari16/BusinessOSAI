@@ -281,19 +281,26 @@ async def list_customers(
             if not matched_cust_id and clean_inv_phone and clean_inv_phone in cust_phone_map:
                 matched_cust_id = cust_phone_map[clean_inv_phone]
 
-            # 4. Partial prefix name match (>= 6 characters)
-            if not matched_cust_id and not is_walkin and len(clean_inv_name) >= 6:
-                for k_name, k_id in cust_clean_name_map.items():
-                    if len(k_name) >= 6 and (clean_inv_name.startswith(k_name[:6]) or k_name.startswith(clean_inv_name[:6])):
-                        matched_cust_id = k_id
-                        break
-
-            # 5. Fallback to existing customer_id on invoice ONLY IF the customer's name actually aligns
+            # 4. Fallback to existing customer_id on the invoice ONLY when that customer is
+            #    provably the same party:
+            #      - walk-in invoice: accept a generic/identity customer (invoice carries no
+            #        distinguishable party of its own),
+            #      - invoice name exactly/normalized-matches the customer's own name,
+            #      - invoice phone (last 10 digits) equals the customer's own phone.
+            #    No prefix/name-substring guessing here: crediting an invoice to a customer
+            #    that does not match on identity silently corrupts LTV and order counts
+            #    (the "hijacked by ABC" incident).
             if not matched_cust_id and c_id and c_id in cust_obj_map:
                 existing_c = cust_obj_map[c_id]
                 existing_c_clean = _to_clean_name(existing_c.name)
-                # Only accept existing c_id if invoice is generic walkin or the customer's name matches
-                if is_walkin or not existing_c_clean or existing_c_clean == clean_inv_name:
+                existing_c_phone = _to_clean_phone(existing_c.phone)
+                if is_walkin or (
+                    existing_c_clean
+                    and (
+                        (clean_inv_name and clean_inv_name == existing_c_clean)
+                        or (clean_inv_phone and existing_c_phone and clean_inv_phone == existing_c_phone)
+                    )
+                ):
                     matched_cust_id = c_id
 
             if matched_cust_id:
@@ -436,10 +443,24 @@ async def get_customer_ledger(
         inv_conds.append(Invoice.company_id == ctx.active_company_id)
 
     match_conds = [Invoice.customer_id == customer.id]
+    # Legacy invoices may be unlinked; fall back to EXACT phone / EXACT name. Never use a
+    # substring / ilike match here: it pulls in OTHER customers' invoices that merely share
+    # a phone suffix or name prefix (the "hijacked by ABC" incident) and corrupts the ledger.
     if customer.phone:
-        match_conds.append(Invoice.customer_phone == customer.phone)
+        p_digits = "".join(filter(str.isdigit, str(customer.phone)))
+        match_conds.append(
+            Invoice.customer_phone == (p_digits[-10:] if len(p_digits) >= 10 else p_digits)
+        )
     if customer.name and len(customer.name.strip()) >= 2:
-        match_conds.append(Invoice.customer_name.ilike(customer.name.strip()))
+        match_conds.append(func.lower(Invoice.customer_name) == customer.name.strip().lower())
+    # An invoice already linked to a DIFFERENT customer is never this customer's bill,
+    # even when phone or name matches (shared mobile numbers happen).
+    other_owned_ids = select(Invoice.id).where(
+        Invoice.tenant_id == ctx.tenant_id,
+        Invoice.customer_id.isnot(None),
+        Invoice.customer_id != customer.id,
+    )
+    match_conds.append(~Invoice.id.in_(other_owned_ids))
     inv_conds.append(or_(*match_conds))
 
     inv_stmt = (
@@ -452,8 +473,14 @@ async def get_customer_ledger(
     cust_clean = re.sub(r"[^a-z0-9]", "", str(customer.name or "").lower())
     filtered_invoices = []
     for inv in invoices:
+        # Invoices the customer already owns (via customer_id) always belong in their
+        # ledger even if the stored name is spelled slightly differently — the link is
+        # authoritative. Only UNLINKED invoices fetched by name/phone are subject to the
+        # name-conflict check, which drops invoices whose party is clearly a different
+        # customer (prevents another party's invoices bleeding into this statement).
+        owns_link = inv.customer_id == customer.id
         inv_clean = re.sub(r"[^a-z0-9]", "", str(inv.customer_name or "").lower())
-        if cust_clean and inv_clean and cust_clean != inv_clean and not inv_clean.startswith("walkin"):
+        if not owns_link and cust_clean and inv_clean and cust_clean != inv_clean and not inv_clean.startswith("walkin"):
             continue
         filtered_invoices.append(inv)
     invoices = filtered_invoices
@@ -848,6 +875,19 @@ async def record_customer_payment(
                 pass
 
     # Find candidate invoices to apply payment
+    # Tenant isolation: only invoices OWNED by this customer (customer_id) or legacy
+    # unlinked invoices whose phone exactly equals the customer's may be settled here.
+    # An invoice already linked to a DIFFERENT customer is never a valid target.
+    def _inv_owned(customer_ref: Customer):
+        owned = [Invoice.customer_id == customer_ref.id]
+        if customer_ref.phone:
+            p_digits = "".join(filter(str.isdigit, str(customer_ref.phone)))
+            p_norm = p_digits[-10:] if len(p_digits) >= 10 else p_digits
+            if p_norm:
+                legacy_phone = and_(Invoice.customer_id.is_(None), Invoice.customer_phone == p_norm)
+                owned.append(legacy_phone)
+        return owned
+
     if payload.invoice_id:
         target_inv = await db.scalar(
             select(Invoice).where(
@@ -855,6 +895,22 @@ async def record_customer_payment(
                 Invoice.tenant_id == ctx.tenant_id
             )
         )
+        belongs = bool(target_inv and (
+            target_inv.customer_id == customer.id
+            or (
+                target_inv.customer_id is None
+                and customer.phone
+                and target_inv.customer_phone
+                and "".join(filter(str.isdigit, str(target_inv.customer_phone)))[-10:]
+                == "".join(filter(str.isdigit, str(customer.phone)))[-10:]
+            )
+        ))
+        if not belongs:
+            logger.warning(
+                "record_customer_payment: invoice %s does not belong to customer %s; falling back to oldest unpaid",
+                payload.invoice_id, customer.id,
+            )
+            target_inv = None
         target_invoices = [target_inv] if target_inv else []
     else:
         # Oldest unpaid invoices first
@@ -862,7 +918,7 @@ async def record_customer_payment(
             select(Invoice)
             .where(
                 Invoice.tenant_id == ctx.tenant_id,
-                or_(Invoice.customer_id == customer.id, Invoice.customer_phone == customer.phone),
+                or_(*_inv_owned(customer)),
                 Invoice.status.notin_(["paid", "voided", "cancelled"])
             )
             .order_by(Invoice.invoice_date.asc(), Invoice.created_at.asc())
@@ -1016,18 +1072,27 @@ async def _adjust_customer_balance_internal(
     new_balance = round(float(new_balance), 2)
     customer.outstanding_balance = new_balance
 
-    # Match invoices for this customer by ID, phone digits, or customer name substring
+    # Match invoices for this customer: owned (customer_id) or legacy UNLINKED invoices
+    # with an EXACT phone / EXACT name. Substring matches are intentionally avoided —
+    # they cross customer boundaries (shared/similar phones or names) and can re-assign
+    # or settle another customer's bills, which corrupts LTV and order counts.
     match_conds = [Invoice.customer_id == customer.id]
     if customer.phone:
         p_clean = str(customer.phone).strip()
         digits = "".join(filter(str.isdigit, p_clean))
-        if len(digits) >= 10:
-            match_conds.append(Invoice.customer_phone.ilike(f"%{digits[-10:]}%"))
-        else:
-            match_conds.append(Invoice.customer_phone == p_clean)
+        p_norm = digits[-10:] if len(digits) >= 10 else p_clean
+        if p_norm:
+            match_conds.append(and_(Invoice.customer_id.is_(None), Invoice.customer_phone == p_norm))
     if customer.name and len(customer.name.strip()) >= 2:
         c_name = customer.name.strip()
-        match_conds.append(Invoice.customer_name.ilike(f"%{c_name}%"))
+        match_conds.append(and_(Invoice.customer_id.is_(None), func.lower(Invoice.customer_name) == c_name.lower()))
+    # Never touch invoices owned by another customer
+    owned_elsewhere = select(Invoice.id).where(
+        Invoice.tenant_id == tenant_id,
+        Invoice.customer_id.isnot(None),
+        Invoice.customer_id != customer.id,
+    )
+    match_conds.append(~Invoice.id.in_(owned_elsewhere))
 
     # 1. Clean up and delete any ghost OPN- / opening_balance invoices
     try:
@@ -1335,9 +1400,16 @@ async def update_customer(
     if invoice_updates:
         from src.models.erp import Invoice
         from sqlalchemy import update as sa_update
+        # Cascade contact fields to invoices the customer already owns.
+        # Skip settled invoices: their paper record (PDF / e-invoice / GST return) must keep
+        # the party as it was when the sale was made.
         await db.execute(
             sa_update(Invoice)
-            .where(Invoice.customer_id == customer_id, Invoice.tenant_id == ctx.tenant_id)
+            .where(
+                Invoice.customer_id == customer_id,
+                Invoice.tenant_id == ctx.tenant_id,
+                Invoice.status.notin_(["paid", "voided", "cancelled", "refunded"]),
+            )
             .values(**invoice_updates)
         )
 
