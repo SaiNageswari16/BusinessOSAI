@@ -16,6 +16,8 @@ interface TemplateProps {
   sellerStateCode: string;
   currency: { symbol: string; code: string };
   f?: any;
+  paperSize?: 'A4' | 'A5';
+  orientation?: 'portrait' | 'landscape';
 }
 
 export function ParleDistributorTemplate({
@@ -29,8 +31,11 @@ export function ParleDistributorTemplate({
   sellerStateCode,
   currency,
   f = {},
+  paperSize = 'A4',
+  orientation = 'portrait',
 }: TemplateProps) {
   const { t } = useI18n();
+  const isA5 = paperSize === 'A5';
   const items = invoice.items || [];
   const grandTotal = Number(invoice.grand_total || invoice.total_amount || 0);
   const taxableSubtotal = Number(invoice.taxable_value || invoice.subtotal || grandTotal * 0.85);
@@ -111,9 +116,9 @@ export function ParleDistributorTemplate({
   const docDateLabel = isEstimate ? "Estimate Date : " : isQuotation ? "Quote Date : " : "Date : ";
 
   return (
-    <div className="w-full bg-transparent text-black font-sans text-[10px] leading-tight border border-black/40 rounded-md selection:bg-none p-1">
+    <div className={`w-full bg-transparent text-black font-sans ${isA5 ? 'text-[8px] leading-tight p-0.5' : 'text-[10px] leading-tight p-1'} border border-black/40 rounded-md selection:bg-none`}>
       {/* ─── TOP COPY TYPE BAR ─── */}
-      <div className="flex justify-between items-center text-[9px] font-bold border-b border-black pb-0.5 mb-1 px-1">
+      <div className={`flex justify-between items-center ${isA5 ? 'text-[7.5px] pb-0.5 mb-0.5 px-0.5' : 'text-[9px] pb-0.5 mb-1 px-1'} font-bold border-b border-black`}>
         <span className="font-extrabold uppercase text-blue-900 bg-black/5 px-1.5 py-0.5 rounded border border-gray-400">
           {invoice.copy_type || "ORIGINAL FOR RECIPIENT"}
         </span>

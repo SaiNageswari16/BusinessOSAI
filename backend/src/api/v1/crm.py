@@ -1382,14 +1382,10 @@ async def update_customer(
         if hasattr(customer, key):
             setattr(customer, key, value)
     
-    # Cascade customer contact/address updates to invoices
+    # Do NOT cascade customer name or phone to existing invoices. An issued invoice
+    # is an immutable legal/tax record that preserves the exact party billed at the time of sale.
+    # Only optional draft-only billing/shipping address sync is allowed.
     invoice_updates = {}
-    if "name" in updates and updates["name"]:
-        invoice_updates["customer_name"] = updates["name"]
-    if "email" in updates:
-        invoice_updates["customer_email"] = updates["email"]
-    if "phone" in updates:
-        invoice_updates["customer_phone"] = updates["phone"]
     if "gst_number" in updates:
         invoice_updates["customer_gstin"] = updates["gst_number"]
     if "billing_address" in updates:
@@ -1399,16 +1395,14 @@ async def update_customer(
 
     if invoice_updates:
         from src.models.erp import Invoice
-        from sqlalchemy import update as sa_update
-        # Cascade contact fields to invoices the customer already owns.
-        # Skip settled invoices: their paper record (PDF / e-invoice / GST return) must keep
-        # the party as it was when the sale was made.
+        from sqlalchemy import update as sa_update, func as sa_func
+        # Only update unissued draft invoices — NEVER paid, completed, voided, or cancelled invoices.
         await db.execute(
             sa_update(Invoice)
             .where(
                 Invoice.customer_id == customer_id,
                 Invoice.tenant_id == ctx.tenant_id,
-                Invoice.status.notin_(["paid", "voided", "cancelled", "refunded"]),
+                sa_func.lower(Invoice.status).notin_(["paid", "completed", "voided", "cancelled", "refunded"]),
             )
             .values(**invoice_updates)
         )

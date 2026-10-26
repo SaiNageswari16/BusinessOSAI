@@ -16,6 +16,8 @@ interface TemplateProps {
   sellerStateCode: string;
   currency: { symbol: string; code: string };
   f?: any;
+  paperSize?: 'A4' | 'A5';
+  orientation?: 'portrait' | 'landscape';
 }
 
 export function MargPharmaTemplate({
@@ -29,8 +31,11 @@ export function MargPharmaTemplate({
   sellerStateCode,
   currency,
   f = {},
+  paperSize = 'A4',
+  orientation = 'portrait',
 }: TemplateProps) {
   const { t } = useI18n();
+  const isA5 = paperSize === 'A5';
   const items = invoice.items || [];
   const grandTotal = Number(invoice.grand_total || invoice.total_amount || 0);
   const taxableSubtotal = Number(invoice.taxable_value || invoice.subtotal || grandTotal * 0.85);
@@ -100,7 +105,7 @@ export function MargPharmaTemplate({
   const docDateLabel = isEstimate ? "Estimate Date" : isQuotation ? "Quote Date" : "Invoice Date";
 
   return (
-    <div className="w-full bg-transparent text-black font-sans text-[11px] leading-tight border border-black/40 rounded-md selection:bg-none">
+    <div className={`w-full bg-transparent text-black font-sans ${isA5 ? 'text-[8.5px] leading-tight p-0.5' : 'text-[11px] leading-tight'} border border-black/40 rounded-md selection:bg-none`}>
       {/* ─── TOP 3-BOX HEADER ─── */}
       <div className="grid grid-cols-12 border-b-2 border-black">
         {/* Left Box: Seller */}

@@ -38,6 +38,7 @@ import { useTenant } from "@/contexts/tenant-context";
 
 import { inventoryApi, posApi, invoicesApi } from "@/lib/api-client";
 import { parseSafeDateTimestamp, formatDisplayDate, getTodayDateString } from "@/lib/utils";
+import { ReportEmailModal } from "./ReportEmailModal";
 import * as XLSX from "xlsx";
 
 
@@ -522,6 +523,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
   const [hideOutOfStockBatches, setHideOutOfStockBatches] = useState<boolean>(false);
   const [isFavourite, setIsFavourite] = useState<boolean>(false);
   const [showExcelDropdown, setShowExcelDropdown] = useState<boolean>(false);
+  const [emailModalOpen, setEmailModalOpen] = useState<boolean>(false);
   const excelDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1212,7 +1214,9 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
   }, [inventoryItems]);
 
   // Comprehensive Export handler exporting authentic database records (Excel & CSV)
-  const handleExport = (format: "xlsx" | "csv" = "xlsx") => {
+  // Build export rows (shared by Excel/CSV download AND email dispatch)
+  // notify=false when called at render time so selection toasts don't fire
+  const buildExportRows = (notify = true): { filename: string; rows: any[][]; title: string } => {
     const term = searchTerm.toLowerCase().trim();
     const currentFilteredItems = inventoryItems.filter((it) => {
       if (selectedCategory !== "all" && it.category !== selectedCategory) return false;
@@ -1226,6 +1230,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
 
     let filename = `${activeReport}_${new Date().toISOString().slice(0, 10)}`;
     const rows: any[][] = [];
+    let title = activeReport.replace(/_/g, " ").toUpperCase();
 
     switch (activeReport) {
       case "stock_summary": {
@@ -1350,8 +1355,8 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
 
       case "stock_detail": {
         if (!selectedProduct) {
-          toast.error("Please select an item first before downloading stock detail report.");
-          return;
+          if (notify) toast.error("Please select an item first before downloading stock detail report.");
+          return { filename, rows, title };
         }
         filename = `stock_detail_${(selectedProduct.name || "item").replace(/[^a-zA-Z0-9]/g, "_")}_${new Date().toISOString().slice(0, 10)}`;
         rows.push([`Stock Detail Report: ${selectedProduct.name} (${selectedProduct.itemCode || "SKU"})`]);
@@ -1406,8 +1411,8 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
 
       case "item_party": {
         if (!selectedItemId) {
-          toast.error("Please select an item first before downloading Party Report By Item.");
-          return;
+          if (notify) toast.error("Please select an item first before downloading Party Report By Item.");
+          return { filename, rows, title };
         }
         filename = `party_report_by_item_${(selectedProduct?.name || selectedItemId).replace(/[^a-zA-Z0-9]/g, "_")}_${new Date().toISOString().slice(0, 10)}`;
         rows.push([`Party Report By Item: ${selectedProduct?.name || selectedItemId}`]);
@@ -1465,6 +1470,11 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
       }
     }
 
+    return { filename, rows, title };
+  };
+
+  const handleExport = (format: "xlsx" | "csv" = "xlsx") => {
+    const { filename, rows, title } = buildExportRows();
     const ws = XLSX.utils.aoa_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     const sheetName = (activeReport || "Report").slice(0, 31);
@@ -1472,10 +1482,10 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
 
     if (format === "xlsx") {
       XLSX.writeFile(wb, `${filename}.xlsx`);
-      toast.success(`Exported ${activeReport.replace(/_/g, " ").toUpperCase()} as Excel (.xlsx)!`);
+      toast.success(`Exported ${title} as Excel (.xlsx)!`);
     } else {
       XLSX.writeFile(wb, `${filename}.csv`, { bookType: "csv" });
-      toast.success(`Exported ${activeReport.replace(/_/g, " ").toUpperCase()} as CSV (.csv)!`);
+      toast.success(`Exported ${title} as CSV (.csv)!`);
     }
   };
 
@@ -1519,7 +1529,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
               {/* Action Buttons: Email Excel, Download Excel ⓘ ∨, Print PDF */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => toast.success("Email with full Stock Summary report queued successfully!")}
+                  onClick={() => setEmailModalOpen(true)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                 >
                   <Mail className="w-3.5 h-3.5 text-slate-400" />
@@ -1713,7 +1723,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
               {/* Action Buttons: Email Excel, Download Excel ⓘ ∨, Print PDF */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => toast.success("Email with Godown Stock report queued successfully!")}
+                  onClick={() => setEmailModalOpen(true)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                 >
                   <Mail className="w-3.5 h-3.5 text-slate-400" />
@@ -1923,7 +1933,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
               {/* Action Buttons: Email Excel, Download Excel ∨, Print PDF */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => toast.success("Email with Excel batch report queued successfully!")}
+                  onClick={() => setEmailModalOpen(true)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                 >
                   <span>Email Excel</span>
@@ -2196,7 +2206,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
               {/* Action Buttons: Email Excel, Download Excel ∨, Print PDF */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => toast.success("Email with Low Stock report queued successfully!")}
+                  onClick={() => setEmailModalOpen(true)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                 >
                   <span>Email Excel</span>
@@ -2273,7 +2283,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
               {/* Action Buttons: Email Excel, Download Excel ∨, Print PDF */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => toast.success("Email with Party Report By Item queued successfully!")}
+                  onClick={() => setEmailModalOpen(true)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                 >
                   <span>Email Excel</span>
@@ -2416,7 +2426,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
               {/* Action Buttons: Email Excel, Download Excel ∨, Print PDF */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => toast.success("Email with full Rate List report queued successfully!")}
+                  onClick={() => setEmailModalOpen(true)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                 >
                   <span>Email Excel</span>
@@ -2617,6 +2627,21 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
             )
           )}
         </div>
+
+        {/* Email report modal — real SMTP dispatch via organization config */}
+        {emailModalOpen && (() => {
+          const emailReportData = buildExportRows(false);
+          return (
+            <ReportEmailModal
+              open={emailModalOpen}
+              onClose={() => setEmailModalOpen(false)}
+              reportTitle={currentMeta?.name || activeReport.replace(/_/g, " ")}
+              sheetName={(activeReport || "Report").slice(0, 31)}
+              attachmentFilename={emailReportData.filename + ".xlsx"}
+              rows={emailReportData.rows}
+            />
+          );
+        })()}
       </div>
     </div>
   );

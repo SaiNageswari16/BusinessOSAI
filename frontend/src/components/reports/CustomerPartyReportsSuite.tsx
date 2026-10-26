@@ -39,6 +39,7 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { formatDisplayDate, formatDisplayDateTime, getTodayDateString, parseSafeDateTimestamp } from "@/lib/utils";
+import { ReportEmailModal } from "./ReportEmailModal";
 import * as XLSX from "xlsx";
 
 import { inventoryApi, posApi, crmCustomersApi, invoicesApi } from "@/lib/api-client";
@@ -1255,7 +1256,7 @@ export function CustomerPartyReportsSuite({
                 </button>
 
                 <button
-                  onClick={() => toast.success("Email with Party Statement queued successfully!")}
+                  onClick={() => setEmailModalOpen(true)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                 >
                   <Mail className="w-3.5 h-3.5 text-slate-400" />
@@ -1433,7 +1434,7 @@ export function CustomerPartyReportsSuite({
               {/* Action Buttons: Email Excel, Download Excel ∨, Print PDF */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => toast.success("Email with Party Wise Outstanding report queued successfully!")}
+                  onClick={() => setEmailModalOpen(true)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                 >
                   <span>Email Excel</span>
@@ -1603,7 +1604,7 @@ export function CustomerPartyReportsSuite({
               {/* Action Buttons: Email Excel, Download Excel ∨, Print PDF */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => toast.success("Email with Ageing Report queued successfully!")}
+                  onClick={() => setEmailModalOpen(true)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                 >
                   <Mail className="w-3.5 h-3.5 text-slate-400" />
@@ -1700,7 +1701,7 @@ export function CustomerPartyReportsSuite({
               {/* Action Buttons: Email Excel, Download Excel ∨, Print PDF */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => toast.success("Email with Sales Summary - Category Wise queued successfully!")}
+                  onClick={() => setEmailModalOpen(true)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                 >
                   <span>Email Excel</span>
@@ -2354,6 +2355,21 @@ export function CustomerPartyReportsSuite({
         )}
           </>
         )}
+
+        {/* Email report modal — real SMTP dispatch via organization config */}
+        {emailModalOpen && (() => {
+          const emailReportData = buildExportRows();
+          return (
+            <ReportEmailModal
+              open={emailModalOpen}
+              onClose={() => setEmailModalOpen(false)}
+              reportTitle={currentMeta?.name || activeReport.replace(/_/g, " ")}
+              sheetName={(activeReport || "Report").slice(0, 31)}
+              attachmentFilename={emailReportData.filename + ".xlsx"}
+              rows={emailReportData.rows}
+            />
+          );
+        })()}
       </div>
     </div>
   );

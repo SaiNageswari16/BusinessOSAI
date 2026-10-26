@@ -28,6 +28,8 @@ export interface WordInvoiceDocumentProps {
   currency?: { symbol: string; code: string };
   f?: any;
   template?: any;
+  paperSize?: 'A4' | 'A5';
+  orientation?: 'portrait' | 'landscape';
 }
 
 const isDummyStoreName = (name?: string | null): boolean => {
@@ -109,6 +111,8 @@ export function WordInvoiceDocument({
   dynamicBank = "",
   currency = { symbol: "₹", code: "INR" },
   template,
+  paperSize = 'A4',
+  orientation = 'portrait',
 }: WordInvoiceDocumentProps) {
   const { t } = useI18n();
 
@@ -755,12 +759,18 @@ export function WordInvoiceDocument({
   const brandPrimary = config.primaryColor || "#0f172a";
   const effectiveLogoUrl = config.logoUrl || dynamicLogoUrl;
 
+  const isA5 = paperSize === 'A5';
+  const effectiveFontSize = isA5 ? Math.max(7, (config.fontSizePt || 9.5) - 2) : (config.fontSizePt || 9.5);
+  const containerDimensions = isA5
+    ? (orientation === 'landscape' ? 'max-w-[794px] min-h-[559px] p-4 sm:p-5' : 'max-w-[559px] min-h-[794px] p-4 sm:p-5')
+    : 'max-w-[794px] min-h-[1123px] p-8 sm:p-10';
+
   return (
     <div
-      className="relative bg-white text-slate-900 mx-auto select-text print:p-0 print:shadow-none print:border-none print:rounded-none print:min-h-0 print:w-full print:max-w-none w-full max-w-[794px] min-h-[1123px] p-8 sm:p-10 shadow-2xl border border-slate-200/90 rounded-2xl flex flex-col justify-between"
+      className={`relative bg-white text-slate-900 mx-auto select-text print:p-0 print:shadow-none print:border-none print:rounded-none print:min-h-0 print:w-full print:max-w-none w-full ${containerDimensions} shadow-2xl border border-slate-200/90 rounded-2xl flex flex-col justify-between`}
       style={{
         fontFamily: config.fontFamily,
-        fontSize: `${config.fontSizePt}pt`,
+        fontSize: `${effectiveFontSize}pt`,
         backgroundColor: config.paperBgColor || "#ffffff",
       }}
     >
@@ -777,7 +787,7 @@ export function WordInvoiceDocument({
       )}
 
       {/* Main Document Content */}
-      <div className="relative z-10 space-y-5">
+      <div className={`relative z-10 ${isA5 ? 'space-y-3' : 'space-y-5'}`}>
         {enabledSections.map((section) => {
           // ── 1. ORGANIZATION HEADER & IDENTITY ──
           if (section.id === "company_header") {

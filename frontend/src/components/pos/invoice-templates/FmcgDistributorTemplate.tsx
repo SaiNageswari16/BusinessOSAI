@@ -16,6 +16,8 @@ interface TemplateProps {
   sellerStateCode: string;
   currency: { symbol: string; code: string };
   f?: any;
+  paperSize?: 'A4' | 'A5';
+  orientation?: 'portrait' | 'landscape';
 }
 
 export function FmcgDistributorTemplate({
@@ -28,10 +30,13 @@ export function FmcgDistributorTemplate({
   sellerStateCode,
   currency,
   f = {},
+  paperSize = 'A4',
+  orientation = 'portrait',
 }: TemplateProps) {
   const { t } = useI18n();
   const items = invoice.items || [];
   const grandTotal = Number(invoice.grand_total || invoice.total_amount || 0);
+  const isA5 = paperSize === 'A5';
 
   const sigSettings = getOrgSignatureSettings() as any;
   const activeGst = getActiveBillingGst() as any;
@@ -61,35 +66,35 @@ export function FmcgDistributorTemplate({
   const docDateLabel = isEstimate ? "Estimate Date: " : isQuotation ? "Quote Date: " : "Invoice Date: ";
 
   return (
-    <div className="w-full bg-transparent text-black font-sans text-[10px] leading-tight border border-black/40 rounded-md selection:bg-none p-1">
+    <div className={`w-full bg-transparent text-black font-sans ${isA5 ? 'text-[8px] leading-tight p-0.5' : 'text-[10px] leading-tight p-1'} border border-black/40 rounded-md selection:bg-none`}>
       {/* ─── TOP TITLE BAR ─── */}
-      <div className="flex justify-between items-center text-[9px] font-bold border-b border-black pb-0.5 mb-1 px-1">
-        <span className="font-extrabold uppercase text-blue-900 border border-black/60 px-1.5 py-0.5 rounded bg-black/5">
+      <div className={`flex justify-between items-center ${isA5 ? 'text-[7.5px] pb-0.5 mb-0.5 px-0.5' : 'text-[9px] pb-0.5 mb-1 px-1'} font-bold border-b border-black`}>
+        <span className="font-extrabold uppercase text-blue-900 border border-black/60 px-1 py-0.2 rounded bg-black/5">
           {invoice.copy_type || "ORIGINAL FOR RECIPIENT"}
         </span>
-        <span className="text-xs font-black tracking-wider uppercase">{docTitle}</span>
+        <span className={`${isA5 ? 'text-[10px]' : 'text-xs'} font-black tracking-wider uppercase`}>{docTitle}</span>
         <span>Page No: 1 of 1</span>
       </div>
 
       {/* ─── COMPANY PROFILE HEADER ─── */}
       {f?.showCompanyDetails !== false && (
-        <div className="grid grid-cols-12 gap-2 border-b border-black pb-1 px-1">
+        <div className={`grid grid-cols-12 gap-1.5 border-b border-black ${isA5 ? 'pb-0.5 px-0.5' : 'pb-1 px-1'}`}>
           <div className="col-span-7">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               {f?.showLogo !== false && dynamicLogoUrl && dynamicLogoUrl !== '/Logo.png' && (
-                <img src={dynamicLogoUrl} alt="Logo" className="h-7 max-w-[70px] object-contain" />
+                <img src={dynamicLogoUrl} alt="Logo" className={`${isA5 ? 'h-5 max-w-[50px]' : 'h-7 max-w-[70px]'} object-contain`} />
               )}
-              <h1 className="font-extrabold text-xs uppercase tracking-tight text-slate-900">
+              <h1 className={`font-extrabold ${isA5 ? 'text-[10px]' : 'text-xs'} uppercase tracking-tight text-slate-900`}>
                 {dynamicStoreName}
               </h1>
             </div>
-            <p className="text-[9px] text-gray-700 leading-snug mt-0.5">
+            <p className={`${isA5 ? 'text-[7.5px]' : 'text-[9px]'} text-gray-700 leading-tight mt-0.5`}>
               {dynamicAddress || 'PLOT NO - N-2, INDUSTRIAL ESTATE, State : 29-Karnataka'}
             </p>
-            <p className="text-[9px] text-gray-700">CIN: U74999KA2026PTC123456</p>
+            <p className={`${isA5 ? 'text-[7.5px]' : 'text-[9px]'} text-gray-700`}>CIN: U74999KA2026PTC123456</p>
           </div>
 
-          <div className="col-span-5 text-right font-mono text-[9px] space-y-0.5">
+          <div className={`col-span-5 text-right font-mono ${isA5 ? 'text-[7.5px] space-y-0' : 'text-[9px] space-y-0.5'}`}>
             <p className="font-bold">GSTIN: <span className="font-extrabold">{sellerGstin || '29AAOFM2891F1ZT'}</span></p>
             {dynamicPhone && <p>Phone: {dynamicPhone}</p>}
             <p>PAN: <span className="font-bold">{panNumber}</span></p>
@@ -99,7 +104,7 @@ export function FmcgDistributorTemplate({
 
       {/* ─── META BAR ─── */}
       {f?.showInvoiceDetails !== false && (
-        <div className="grid grid-cols-5 border-b border-black text-[9px] font-mono py-1 px-1 bg-black/5">
+        <div className={`grid grid-cols-5 border-b border-black ${isA5 ? 'text-[7.5px] py-0.5 px-0.5' : 'text-[9px] py-1 px-1'} font-mono bg-black/5`}>
           <div><span className="font-sans font-bold">{docNumLabel}</span>{invoice.invoice_number || (isQuotation ? 'QT-0001' : 'B/26-27/010451')}</div>
           <div><span className="font-sans font-bold">{docDateLabel}</span>{formattedDate}</div>
           <div><span className="font-sans font-bold">PO / Order Ref: </span>{invoice.po_number || invoice.order_number || 'DMS'}</div>
@@ -110,15 +115,15 @@ export function FmcgDistributorTemplate({
 
       {/* ─── BILLED TO / SHIPPED TO DUAL COLUMNS ─── */}
       {f?.showCustomerDetails !== false && (
-        <div className="grid grid-cols-2 border-b border-black text-[9px] leading-snug">
-          <div className="p-1 border-r border-black space-y-0.5">
+        <div className={`grid grid-cols-2 border-b border-black ${isA5 ? 'text-[7.5px] leading-tight' : 'text-[9px] leading-snug'}`}>
+          <div className={`${isA5 ? 'p-0.5' : 'p-1'} border-r border-black space-y-0.5`}>
             <p className="font-bold font-sans">Billed To : <span className="font-mono">{invoice.customerName || 'Customer'}</span></p>
             <p>Address : {invoice.customerBillingAddress || invoice.customerAddress || '-'}</p>
             <p className="font-mono font-bold">GSTIN : {invoice.customerGST || 'UNREGISTERED'}</p>
             {f?.showPartyBalance && (
-              <p className="text-[8px] font-bold text-red-600">Outstanding Balance: {currency.symbol}14,200.00</p>
+              <p className="text-[7.5px] font-bold text-red-600">Outstanding Balance: {currency.symbol}14,200.00</p>
             )}
-            <div className="grid grid-cols-2 text-[8px] pt-0.5">
+            <div className={`grid grid-cols-2 ${isA5 ? 'text-[7px]' : 'text-[8px]'} pt-0.5`}>
               <p>State : {invoice.customerState || invoice.shipping_state || invoice.billing_state || `${sellerStateCode || '36'}`}</p>
               <p>PO Date : {invoice.po_date ? formatDisplayDate(invoice.po_date) : formattedDate}</p>
               <p>Vehicle : {invoice.vehicle_number || '-'}</p>
@@ -126,11 +131,11 @@ export function FmcgDistributorTemplate({
             </div>
           </div>
 
-          <div className="p-1 space-y-0.5">
+          <div className={`${isA5 ? 'p-0.5' : 'p-1'} space-y-0.5`}>
             <p className="font-bold font-sans">Shipped To : <span className="font-mono">{invoice.customerCompany || invoice.customerName || 'Customer'}</span></p>
             <p>Address : {invoice.customerShippingAddress || invoice.customerBillingAddress || invoice.customerAddress || 'Same as Billed Address'}</p>
             <p className="font-mono font-bold">GSTIN : {invoice.customerGST || 'UNREGISTERED'}</p>
-            <div className="grid grid-cols-2 text-[8px] pt-0.5">
+            <div className={`grid grid-cols-2 ${isA5 ? 'text-[7px]' : 'text-[8px]'} pt-0.5`}>
               <p>Driver / Transport : {invoice.transporter_name || invoice.driver_phone || '-'}</p>
               <p>e-Way Bill No : {invoice.eway_bill_number || '-'}</p>
               <p>Due Date : {formatDisplayDate(invoice.due_date || invoice.invoice_date || new Date())}</p>
@@ -142,8 +147,8 @@ export function FmcgDistributorTemplate({
 
       {/* ─── MULTI-ROW FMCG ITEM TABLE ─── */}
       {f?.showItemTable !== false && (
-        <div className="min-h-[160px] print:min-h-0">
-          <table className="w-full border-collapse text-[8px] font-mono">
+        <div className={`${isA5 ? 'min-h-[80px]' : 'min-h-[160px]'} print:min-h-0`}>
+          <table className={`w-full border-collapse ${isA5 ? 'text-[7px]' : 'text-[8px]'} font-mono`}>
             <thead>
               <tr className="border-b border-black font-sans font-bold text-center bg-black/5">
                 <th className="p-0.5 border-r border-black w-5" rowSpan={2}>#</th>

@@ -295,6 +295,53 @@ export function FullInvoicePrinter({
   const [purchaseSettings, setPurchaseSettings] = useState<PurchaseInvoiceSettings>(() => loadStoredPurchaseInvoiceSettings(tenant?.id));
   const [salesSettings, setSalesSettings] = useState<any>(() => loadStoredInvoiceSettings(tenant?.id));
 
+  // Paper Size & Orientation state — strictly isolated between Sales & Purchase
+  const paperStorageKey = useMemo(() => {
+    const tid = tenant?.id || getTenantIdFromStorage() || 'default';
+    return isPurchaseDoc ? `bos_purchase_paper_size_${tid}` : `bos_invoice_paper_size_${tid}`;
+  }, [tenant?.id, isPurchaseDoc]);
+
+  const orientationStorageKey = useMemo(() => {
+    const tid = tenant?.id || getTenantIdFromStorage() || 'default';
+    return isPurchaseDoc ? `bos_purchase_orientation_${tid}` : `bos_invoice_orientation_${tid}`;
+  }, [tenant?.id, isPurchaseDoc]);
+
+  const [selectedPaperSize, setSelectedPaperSize] = useState<'A4' | 'A5'>(() => {
+    if (typeof window === 'undefined') return 'A4';
+    try {
+      const tid = tenant?.id || getTenantIdFromStorage() || 'default';
+      const key = isPurchaseDoc ? `bos_purchase_paper_size_${tid}` : `bos_invoice_paper_size_${tid}`;
+      const saved = localStorage.getItem(key);
+      if (saved === 'A4' || saved === 'A5') return saved;
+    } catch {}
+    return 'A4';
+  });
+
+  const [selectedOrientation, setSelectedOrientation] = useState<'portrait' | 'landscape'>(() => {
+    if (typeof window === 'undefined') return 'landscape';
+    try {
+      const tid = tenant?.id || getTenantIdFromStorage() || 'default';
+      const key = isPurchaseDoc ? `bos_purchase_orientation_${tid}` : `bos_invoice_orientation_${tid}`;
+      const saved = localStorage.getItem(key);
+      if (saved === 'portrait' || saved === 'landscape') return saved;
+    } catch {}
+    return 'landscape';
+  });
+
+  const handlePaperSizeChange = (size: 'A4' | 'A5') => {
+    setSelectedPaperSize(size);
+    try {
+      localStorage.setItem(paperStorageKey, size);
+    } catch {}
+  };
+
+  const handleOrientationChange = (orient: 'portrait' | 'landscape') => {
+    setSelectedOrientation(orient);
+    try {
+      localStorage.setItem(orientationStorageKey, orient);
+    } catch {}
+  };
+
   useEffect(() => {
     const handlePurchaseUpdate = (e: any) => {
       if (e?.detail?.settings) {
@@ -1252,8 +1299,8 @@ export function FullInvoicePrinter({
             ${styles}
             <style>
               @page {
-                size: A4 portrait !important;
-                margin: 4mm 6mm !important;
+                size: ${selectedPaperSize === 'A5' ? `A5 ${selectedOrientation}` : 'A4 portrait'} !important;
+                margin: ${selectedPaperSize === 'A5' ? '2.5mm 3.5mm' : '4mm 6mm'} !important;
               }
               * {
                 -webkit-print-color-adjust: exact !important;
@@ -1374,7 +1421,7 @@ export function FullInvoicePrinter({
     <>
       <style>{`
         @media print {
-          @page { size: A4 portrait !important; margin: 4mm 6mm !important; }
+          @page { size: ${selectedPaperSize === 'A5' ? `A5 ${selectedOrientation}` : 'A4 portrait'} !important; margin: ${selectedPaperSize === 'A5' ? '2.5mm 3.5mm' : '4mm 6mm'} !important; }
           html, body { width: 100% !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; background: #ffffff !important; color: #000000 !important; overflow: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           body > *:not(#a4-invoice-portal), #root, header, nav, footer, .no-print, [data-no-print] { display: none !important; visibility: hidden !important; }
           #a4-invoice-portal { display: block !important; visibility: visible !important; position: static !important; width: 100% !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; background: #ffffff !important; color: #000000 !important; overflow: visible !important; }
@@ -1502,6 +1549,63 @@ export function FullInvoicePrinter({
                     <option value="OFFICE COPY">Office Record Copy</option>
                     <option value="EXTRA COPY">Extra Copy</option>
                   </select>
+
+                  {/* Dynamic Paper Format & Orientation Switcher */}
+                  <div className="flex items-center gap-1 bg-slate-800/90 p-0.5 rounded-md border border-slate-700 shadow-xs">
+                    <button
+                      type="button"
+                      onClick={() => handlePaperSizeChange('A4')}
+                      className={`px-2 py-0.5 text-xs font-bold rounded transition-all cursor-pointer ${
+                        selectedPaperSize === 'A4'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                      title="A4 Full Page (210 × 297 mm)"
+                    >
+                      📄 A4
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handlePaperSizeChange('A5')}
+                      className={`px-2 py-0.5 text-xs font-bold rounded transition-all cursor-pointer ${
+                        selectedPaperSize === 'A5'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                      title="A5 Half Page (148 × 210 mm) - FMCG & Wholesale standard"
+                    >
+                      📃 A5
+                    </button>
+
+                    {selectedPaperSize === 'A5' && (
+                      <div className="flex items-center gap-0.5 border-l border-slate-700 pl-1 ml-0.5">
+                        <button
+                          type="button"
+                          onClick={() => handleOrientationChange('landscape')}
+                          className={`px-1.5 py-0.5 text-[11px] font-semibold rounded transition-all cursor-pointer ${
+                            selectedOrientation === 'landscape'
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                          title="Wide / Landscape (210 × 148 mm) - Best for multi-column GST grids"
+                        >
+                          ↔ Wide
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOrientationChange('portrait')}
+                          className={`px-1.5 py-0.5 text-[11px] font-semibold rounded transition-all cursor-pointer ${
+                            selectedOrientation === 'portrait'
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                          title="Tall / Portrait (148 × 210 mm)"
+                        >
+                          ↕ Tall
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1572,9 +1676,17 @@ export function FullInvoicePrinter({
               ref={printContainerRef}
               className={`mx-auto bg-white relative overflow-visible ${
                 isWordTemplate
-                  ? 'p-0 max-w-[794px] w-full border-0 shadow-none bg-transparent'
+                  ? `p-0 w-full border-0 shadow-none bg-transparent ${
+                      selectedPaperSize === 'A5'
+                        ? selectedOrientation === 'landscape' ? 'max-w-[794px] min-h-[559px]' : 'max-w-[559px] min-h-[794px]'
+                        : 'max-w-[794px] min-h-[1080px]'
+                    }`
                   : isCustomReplica
                   ? 'p-1 md:p-2 max-w-4xl'
+                  : selectedPaperSize === 'A5'
+                  ? `p-3 md:p-4 w-full ${
+                      selectedOrientation === 'landscape' ? 'max-w-[794px] min-h-[559px]' : 'max-w-[559px] min-h-[794px]'
+                    } print:min-h-0 print:h-auto space-y-2 shadow-2xl rounded-xl border border-slate-200`
                   : 'p-6 md:p-10 max-w-[794px] w-full min-h-[1080px] print:min-h-0 print:h-auto space-y-4 print:space-y-2 shadow-2xl rounded-xl border border-slate-200'
               } text-slate-900 text-xs print:static print:w-full print:max-w-none print:shadow-none print:rounded-none print:border-none print:p-0 print:m-0 print:min-h-0 print:h-auto ${
                 !isWordTemplate && !isCustomReplica && isTally ? 'border-2 border-double border-slate-900' : ''
@@ -1669,6 +1781,8 @@ export function FullInvoicePrinter({
                   currency={currency}
                   f={f}
                   template={template}
+                  paperSize={selectedPaperSize}
+                  orientation={selectedOrientation}
                 />
               ) : isPdfOverlay ? (
                 <PdfStationeryOverlayTemplate
@@ -1697,6 +1811,8 @@ export function FullInvoicePrinter({
                   sellerStateCode={sellerStateCode}
                   currency={currency}
                   f={f}
+                  paperSize={selectedPaperSize}
+                  orientation={selectedOrientation}
                 />
               ) : isFmcg ? (
                 <FmcgDistributorTemplate
@@ -1710,6 +1826,8 @@ export function FullInvoicePrinter({
                   sellerStateCode={sellerStateCode}
                   currency={currency}
                   f={f}
+                  paperSize={selectedPaperSize}
+                  orientation={selectedOrientation}
                 />
               ) : isParle ? (
                 <ParleDistributorTemplate
@@ -1723,6 +1841,8 @@ export function FullInvoicePrinter({
                   sellerStateCode={sellerStateCode}
                   currency={currency}
                   f={f}
+                  paperSize={selectedPaperSize}
+                  orientation={selectedOrientation}
                 />
               ) : isAgriSeeds ? (
                 <AgriSeedsTemplate
@@ -1737,6 +1857,8 @@ export function FullInvoicePrinter({
                   dynamicBank={dynamicBank}
                   currency={currency}
                   f={f}
+                  paperSize={selectedPaperSize}
+                  orientation={selectedOrientation}
                 />
               ) : (
                 <>
