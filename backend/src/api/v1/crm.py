@@ -206,17 +206,27 @@ async def list_customers(
                 return ""
             return re.sub(r"[^a-z0-9]", "", str(raw).lower())
 
-        cust_phone_map = {}
-        for c in customers:
+        # Load all customers in the workspace to build authoritative mapping
+        all_tenant_custs = (await db.execute(
+            select(Customer).where(Customer.tenant_id == ctx.tenant_id)
+        )).scalars().all()
+
+        cust_exact_name_map: dict[str, uuid.UUID] = {}
+        cust_clean_name_map: dict[str, uuid.UUID] = {}
+        cust_phone_map: dict[str, uuid.UUID] = {}
+        cust_obj_map: dict[uuid.UUID, Customer] = {}
+
+        for c in all_tenant_custs:
+            cust_obj_map[c.id] = c
+            raw_c_name = str(c.name or "").strip().lower()
+            if raw_c_name and raw_c_name != "walk-in customer":
+                cust_exact_name_map[raw_c_name] = c.id
+            cn = _to_clean_name(c.name)
+            if cn and cn != "walkincustomer":
+                cust_clean_name_map[cn] = c.id
             cp = _to_clean_phone(c.phone)
             if cp:
                 cust_phone_map[cp] = c.id
-
-        cust_name_map = {}
-        for c in customers:
-            cn = _to_clean_name(c.name)
-            if cn and cn != "walkincustomer":
-                cust_name_map[cn] = c.id
 
         inv_conds = [
             Invoice.tenant_id == ctx.tenant_id,
@@ -246,30 +256,48 @@ async def list_customers(
         invoices_to_link = []
         for inv_row in inv_res.all():
             i_id, c_id, c_phone, c_name, tot, due, comp_id = inv_row
-            matched_cust_id = None
-            if c_id and c_id in cust_id_set:
-                matched_cust_id = c_id
-
+            raw_inv_name = str(c_name or "").strip().lower()
+            clean_inv_name = _to_clean_name(c_name)
             clean_inv_phone = _to_clean_phone(c_phone)
+            is_walkin = not clean_inv_name or clean_inv_name in ("walkin", "walkincustomer", "cashcustomer", "guest")
+
+            matched_cust_id = None
+
+            # 1. Exact case-insensitive name match has highest priority
+            if not is_walkin and raw_inv_name in cust_exact_name_map:
+                matched_cust_id = cust_exact_name_map[raw_inv_name]
+
+            # 2. Normalized alphanumeric name match
+            if not matched_cust_id and not is_walkin and clean_inv_name in cust_clean_name_map:
+                matched_cust_id = cust_clean_name_map[clean_inv_name]
+
+            # 3. Phone number match (last 10 digits)
             if not matched_cust_id and clean_inv_phone and clean_inv_phone in cust_phone_map:
                 matched_cust_id = cust_phone_map[clean_inv_phone]
 
-            clean_inv_name = _to_clean_name(c_name)
-            if not matched_cust_id and clean_inv_name:
-                if clean_inv_name in cust_name_map:
-                    matched_cust_id = cust_name_map[clean_inv_name]
-                else:
-                    for k_name, k_id in cust_name_map.items():
-                        if (len(k_name) >= 6 and (clean_inv_name.startswith(k_name[:6]) or k_name.startswith(clean_inv_name[:6]))):
-                            matched_cust_id = k_id
-                            break
+            # 4. Partial prefix name match (>= 6 characters)
+            if not matched_cust_id and not is_walkin and len(clean_inv_name) >= 6:
+                for k_name, k_id in cust_clean_name_map.items():
+                    if len(k_name) >= 6 and (clean_inv_name.startswith(k_name[:6]) or k_name.startswith(clean_inv_name[:6])):
+                        matched_cust_id = k_id
+                        break
+
+            # 5. Fallback to existing customer_id on invoice ONLY IF the customer's name actually aligns
+            if not matched_cust_id and c_id and c_id in cust_obj_map:
+                existing_c = cust_obj_map[c_id]
+                existing_c_clean = _to_clean_name(existing_c.name)
+                # Only accept existing c_id if invoice is generic walkin or the customer's name matches
+                if is_walkin or not existing_c_clean or existing_c_clean == clean_inv_name:
+                    matched_cust_id = c_id
 
             if matched_cust_id:
-                stats_map[matched_cust_id]["ltv"] += float(tot or 0)
-                stats_map[matched_cust_id]["due"] += float(due or 0)
-                stats_map[matched_cust_id]["orders"] += 1
+                if matched_cust_id in stats_map:
+                    stats_map[matched_cust_id]["ltv"] += float(tot or 0)
+                    stats_map[matched_cust_id]["due"] += float(due or 0)
+                    stats_map[matched_cust_id]["orders"] += 1
 
-                if c_id is None or comp_id is None:
+                # If customer_id on the invoice was null or pointed to the WRONG customer (e.g. ABC instead of Mangalore Store)
+                if c_id != matched_cust_id or comp_id is None:
                     invoices_to_link.append((i_id, matched_cust_id))
 
         # Clean up any ghost OPN- invoices if customer already has real invoices in DB
@@ -415,6 +443,14 @@ async def get_customer_ledger(
         .order_by(Invoice.invoice_date.asc(), Invoice.created_at.asc())
     )
     invoices = (await db.execute(inv_stmt)).scalars().all()
+    cust_clean = re.sub(r"[^a-z0-9]", "", str(customer.name or "").lower())
+    filtered_invoices = []
+    for inv in invoices:
+        inv_clean = re.sub(r"[^a-z0-9]", "", str(inv.customer_name or "").lower())
+        if cust_clean and inv_clean and cust_clean != inv_clean and not inv_clean.startswith("walkin"):
+            continue
+        filtered_invoices.append(inv)
+    invoices = filtered_invoices
 
     # 2. Fetch POS Transactions for this customer
     pos_conds = [

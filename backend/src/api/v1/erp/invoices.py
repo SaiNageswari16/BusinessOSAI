@@ -302,6 +302,13 @@ async def get_customer_invoice_summary(
     invoices = res.scalars().all()
 
     # Clean up and purge any ghost OPN- invoices from ar_invoices
+    cust_obj = None
+    try:
+        c_uuid = uuid.UUID(str(customer_id))
+        cust_obj = await db.scalar(select(Customer).where(Customer.id == c_uuid, Customer.tenant_id == ctx.tenant_id))
+    except (ValueError, AttributeError):
+        pass
+
     valid_invoices = []
     ghosts_to_delete = []
     for inv in invoices:
@@ -312,6 +319,12 @@ async def get_customer_invoice_summary(
         if is_opn:
             ghosts_to_delete.append(inv)
             continue
+        # Verify invoice customer name does not conflict with customer object name
+        if cust_obj and cust_obj.name and inv.customer_name:
+            c_clean = re.sub(r"[^a-z0-9]", "", cust_obj.name.lower())
+            inv_clean = re.sub(r"[^a-z0-9]", "", str(inv.customer_name).lower())
+            if c_clean and inv_clean and c_clean != inv_clean and not inv_clean.startswith("walkin"):
+                continue
         valid_invoices.append(inv)
 
     if ghosts_to_delete:
@@ -1024,26 +1037,33 @@ async def create_invoice(
 
     # 2. customer_id must point to a valid Customer.id if provided
     raw_cust_id = inv_data.get("customer_id")
-    if raw_cust_id:
-        try:
-            c_uuid = uuid.UUID(str(raw_cust_id))
-            valid_cust = await db.scalar(
-                select(Customer.id).where(
-                    Customer.id == c_uuid,
-                    Customer.tenant_id == ctx.tenant_id
-                )
-            )
-            inv_data["customer_id"] = valid_cust
-        except Exception:
-            inv_data["customer_id"] = None
-
-    # If customer_id is not linked, but customer_name is provided, link or auto-create customer in CRM
     cust_name_clean = str(inv_data.get("customer_name") or "").strip()
     cust_phone_clean = str(inv_data.get("customer_phone") or "").strip()
     is_generic_walkin = (
         not cust_name_clean
         or cust_name_clean.lower() in ("walk-in customer", "walk-in guest", "walk-in", "walkin customer", "walkin", "cash customer", "guest")
     )
+    valid_cust = None
+    if raw_cust_id:
+        try:
+            c_uuid = uuid.UUID(str(raw_cust_id))
+            target_cust = await db.scalar(
+                select(Customer).where(
+                    Customer.id == c_uuid,
+                    Customer.tenant_id == ctx.tenant_id
+                )
+            )
+            if target_cust:
+                # Check if the customer's name actually aligns with invoice customer name
+                c_clean = re.sub(r"[^a-z0-9]", "", str(target_cust.name or "").lower())
+                inv_clean = re.sub(r"[^a-z0-9]", "", cust_name_clean.lower())
+                if is_generic_walkin or not inv_clean or c_clean == inv_clean or (len(c_clean) >= 4 and (inv_clean.startswith(c_clean) or c_clean.startswith(inv_clean))):
+                    valid_cust = target_cust.id
+        except Exception:
+            valid_cust = None
+    inv_data["customer_id"] = valid_cust
+
+    # If customer_id is not linked, but customer_name is provided, link or auto-create customer in CRM
     if not inv_data.get("customer_id") and not is_generic_walkin:
         try:
             match_conds = [Customer.tenant_id == ctx.tenant_id]
