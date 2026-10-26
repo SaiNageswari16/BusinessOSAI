@@ -403,3 +403,130 @@ async def list_branches_compat(
         for o in sliced
     ]
     return paginate(normalized, total, page, page_size)
+
+
+# ─── ERP Roles (compat proxy → auth service, the role owner post-split) ─────
+# The monolith kept roles in-house; in the microservice split they live in the
+# auth service. The HRMS role picker / employee-role assignment calls
+# /erp/roles, so this proxies to auth over the mesh (identity-forwarded) and
+# reshapes auth's plain-list / RoleResponse into the frontend's
+# PaginatedResponse<Role> contract.
+
+def _role_to_frontend(r: dict, ctx: CurrentUserContext) -> dict:
+    """Auth RoleResponse → frontend Role shape."""
+    is_active = r.get("is_active", True)
+    return {
+        "id": str(r.get("id") or ""),
+        "tenant_id": str(ctx.tenant_id),
+        "name": r.get("name") or "",
+        "slug": r.get("slug") or "",
+        "description": r.get("description"),
+        "permissions": r.get("permissions") or [],
+        "is_system": r.get("is_system", False),
+        "status": "active" if is_active else "inactive",
+    }
+
+
+async def _auth_request(
+    ctx: CurrentUserContext,
+    method: str,
+    path: str,
+    *,
+    json_body: dict | None = None,
+) -> tuple[int, object]:
+    from src.services.shared.registry import base_url, get_descriptor
+
+    descriptor = get_descriptor("auth")
+    if descriptor is None:
+        return 503, {}
+    url = f"{base_url(descriptor)}/api/v1/auth{path}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.request(
+                method, url, json=json_body, headers=_erp_identity_headers(ctx)
+            )
+            try:
+                return res.status_code, res.json()
+            except ValueError:
+                return res.status_code, {}
+    except Exception:
+        return 503, {}
+
+
+@router.get("/roles", response_model=PaginatedResponse[dict])
+async def list_roles_compat(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=500),
+    search: str | None = None,
+):
+    _code, body = await _auth_request(ctx, "GET", "/roles")
+    rows = body if isinstance(body, list) else []
+    items = [_role_to_frontend(r, ctx) for r in rows]
+    if search:
+        items = [i for i in items if search.lower() in (i.get("name") or "").lower()]
+    total = len(items)
+    sliced = items[(page - 1) * page_size : page * page_size]
+    return paginate(sliced, total, page, page_size)
+
+
+@router.get("/roles/{role_id}", response_model=PaginatedResponse[dict])
+async def get_role_compat(
+    role_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=500),
+):
+    """auth has no GET /roles/{id}; synthesize a single row from the list."""
+    _code, body = await _auth_request(ctx, "GET", "/roles")
+    rows = body if isinstance(body, list) else []
+    match = next((r for r in rows if str(r.get("id")) == str(role_id)), None)
+    if match is None:
+        raise HTTPException(status_code=404, detail="Role not found")
+    return paginate([_role_to_frontend(match, ctx)], 1, page, page_size)
+
+
+@router.post("/roles", response_model=dict, status_code=status.HTTP_201_CREATED)
+async def create_role_compat(
+    payload: dict,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:hrms"))],
+):
+    body = dict(payload)
+    # auth requires a slug; derive one from the name when the UI omits it.
+    if not body.get("slug") and body.get("name"):
+        slug = "".join(ch if ch.isalnum() else "_" for ch in body["name"].lower()).strip("_")
+        body["slug"] = slug or "custom_role"
+    code, resp = await _auth_request(ctx, "POST", "/roles", json_body=body)
+    if code in (200, 201):
+        return _role_to_frontend(resp, ctx) if isinstance(resp, dict) else {}
+    detail = resp.get("detail") if isinstance(resp, dict) else f"auth returned {code}"
+    raise HTTPException(status_code=code, detail=detail)
+
+
+@router.patch("/roles/{role_id}", response_model=dict)
+async def update_role_compat(
+    role_id: uuid.UUID,
+    payload: dict,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:hrms"))],
+):
+    body = dict(payload)
+    # The frontend Role uses `status`; auth expects `is_active`.
+    if "status" in body and "is_active" not in body:
+        body["is_active"] = str(body["status"]).lower() in ("active", "true", "1")
+    body.pop("slug", None)  # slug is immutable on auth updates
+    code, resp = await _auth_request(ctx, "PATCH", f"/roles/{role_id}", json_body=body)
+    if code == 200:
+        return _role_to_frontend(resp, ctx) if isinstance(resp, dict) else {}
+    detail = resp.get("detail") if isinstance(resp, dict) else f"auth returned {code}"
+    raise HTTPException(status_code=code, detail=detail)
+
+
+@router.delete("/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_role_compat(
+    role_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:hrms"))],
+):
+    code, _ = await _auth_request(ctx, "DELETE", f"/roles/{role_id}")
+    if code == 204:
+        return None
+    raise HTTPException(status_code=code, detail=f"auth returned {code}")

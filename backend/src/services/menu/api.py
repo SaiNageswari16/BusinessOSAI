@@ -652,6 +652,7 @@ async def recipe_breakdown(
                 code="",
                 unit="",
                 qty_per_portion=round(per_portion / yield_qty, 4),
+                is_optional=bool(ln.is_optional),
                 wastage_pct=wastage,
                 required_for_n=round(required, 4),
                 available_stock=0.0,
@@ -774,8 +775,12 @@ async def item_food_cost(
         ids = [l["inventory_item_id"] for l in lines]
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
+                # The inventory app mounts its router at /api/v1/inventory, so
+                # a direct service-to-service call needs the full prefix —
+                # the gateway's /api/v1/inventory/... rewrites are NOT in
+                # effect here. (This bare /items/cost-lookup was the 404.)
                 resp = await client.get(
-                    f"{base_url(inv_descriptor)}/items/cost-lookup",
+                    f"{base_url(inv_descriptor)}/api/v1/inventory/items/cost-lookup",
                     params={"ids": ids},
                     headers={"X-Identity-Tenant-Id": str(identity.tenant_id)},
                 )

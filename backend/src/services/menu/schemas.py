@@ -342,6 +342,10 @@ class RecipeBreakdownLine(BaseModel):
     """Quantity per single portion (the recipe line's raw qty, in the item's
     unit of measure)."""
 
+    is_optional: bool = False
+    """Whether the recipe line is optional (skip-allowed when serving).
+    The menu service owns this; it comes straight from the BOM line."""
+
     wastage_pct: float = 0.0
     """Wastage/trim loss percentage baked into the recipe line. Drives the
     required-for-N calculation: ``qty_per_portion * N * (1 + wastage_pct/100)``."""

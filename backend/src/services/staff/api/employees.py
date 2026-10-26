@@ -21,6 +21,10 @@ from src.services.staff.models import (
     EmployeeDocument,
     Department,
     Designation,
+    Tenant,
+    User,
+    Role,
+    UserRole,
 )
 from src.services.staff.deps import hash_password
 from src.services.staff.schemas import (
@@ -108,19 +112,13 @@ async def list_employees(
     page_size: int = Query(20, ge=1, le=1000),
     search: str | None = None,
 ):
-    target_company_id = company_id or ctx.active_company_id
-
-    # Auto-linking managed via auth service in microservices architecture
-    pass
+    # The Employee model has no company_id column — in the microservice split
+    # the tenant IS the company, and rows are scoped by tenant_id alone.
+    # An explicitly-supplied company_id is honoured only when it equals the
+    # caller's tenant; any other value means "no match", not an error.
     query = select(Employee).where(Employee.tenant_id == ctx.tenant_id)
-    if target_company_id:
-        primary_comp = await db.scalar(
-            select(Employee.tenant_id).where(Employee.tenant_id == ctx.tenant_id).limit(1)
-        )
-        if target_company_id == primary_comp:
-            query = query.where((Employee.company_id == target_company_id) | (Employee.company_id == None))
-        else:
-            query = query.where(Employee.company_id == target_company_id)
+    if company_id is not None and company_id != ctx.tenant_id:
+        query = query.where(Employee.id == uuid.UUID.int(0))  # no rows
 
 
     # If the user does not have company-wide employee viewing permissions, strictly isolate to their own profile
@@ -156,14 +154,6 @@ async def list_employees(
     # If role filter produced 0 results, fallback to returning active employees for this workspace
     if (total or 0) == 0 and role:
         query = select(Employee).where(Employee.tenant_id == ctx.tenant_id, Employee.status.ilike("Active"))
-        if target_company_id:
-            primary_comp = await db.scalar(
-                select(Employee.tenant_id).where(Employee.tenant_id == ctx.tenant_id).limit(1)
-            )
-            if target_company_id == primary_comp:
-                query = query.where((Employee.company_id == target_company_id) | (Employee.company_id == None))
-            else:
-                query = query.where(Employee.company_id == target_company_id)
         total = await db.scalar(select(func.count()).select_from(query.subquery()))
 
     result = await db.execute(
@@ -228,11 +218,17 @@ async def create_employee(
     temp_pass = f"Welcome@{payload.employee_code.replace('-', '')}"
     
     linked_user_id = getattr(payload, 'user_id', None) or uuid.uuid4()
+    # The monolith set a temp password only when it created a brand-new user.
+    # A payload that already carried a user_id means the auth user pre-existed,
+    # so no temp password is presented. (The split no longer mints auth users
+    # here, so new_user stays None.)
+    existing_user = getattr(payload, 'user_id', None) is not None
     new_user = None
     verification_code = None
-    from src.services.staff.deps import _resolve_company_id
     emp_data = payload.model_dump(exclude={"user_id", "role_id", "role_name"})
-    emp_data["company_id"] = await _resolve_company_id(db, ctx.tenant_id, emp_data.get("company_id") or ctx.active_company_id)
+    # company_id is not a column on Employee in the microservice split — the
+    # tenant IS the company; drop it so the model constructor doesn't 500.
+    emp_data.pop("company_id", None)
     emp = Employee(
         tenant_id=ctx.tenant_id,
         user_id=linked_user_id,
@@ -361,10 +357,9 @@ async def update_employee(
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    from src.services.staff.deps import _resolve_company_id
     updates = payload.model_dump(exclude_unset=True)
-    if "company_id" in updates:
-        updates["company_id"] = await _resolve_company_id(db, ctx.tenant_id, updates["company_id"])
+    # company_id is not a column on Employee in the microservice split.
+    updates.pop("company_id", None)
     role_id_to_update = updates.pop("role_id", None)
     updates.pop("role_name", None)
 

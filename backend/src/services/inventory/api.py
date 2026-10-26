@@ -33,6 +33,7 @@ from src.services.inventory.models import (
     InventoryStock,
     MovementType,
     StockAdjustment,
+    StockMovement,
     WastageLog,
 )
 from src.services.inventory.schemas import (
@@ -46,6 +47,7 @@ from src.services.inventory.schemas import (
     DeductionResult,
     ExpiryScanEntry,
     ExpiryScanResponse,
+    GlobalInventoryOverview,
     InventoryItemCreate,
     InventoryItemResponse,
     InventoryItemUpdate,
@@ -367,7 +369,14 @@ async def _recipe_for(menu_item_id: uuid.UUID) -> list[dict] | None:
         if descriptor is None:
             return None
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(f"{base_url(descriptor)}/recipes/{menu_item_id}/lines")
+            # Menu exposes a menu item's active BOM at
+            # /items/{id}/recipe-lines (the /recipes/{id}/lines route does
+            # not exist in the split). The gateway rewrites /api/v1/menu/...
+            # to the menu service's canonical prefix; calling the service
+            # directly still needs that full prefix.
+            resp = await client.get(
+                f"{base_url(descriptor)}/api/v1/menu/items/{menu_item_id}/recipe-lines"
+            )
         if resp.status_code != 200:
             return None
         return resp.json().get("lines") or None
@@ -651,6 +660,18 @@ async def total_stock_value(identity: CurrentIdentity, db: DbDep):
     identity.require("view:inventory")
     value = await svc.stock_value(db, identity.tenant_id)
     return {"stock_value": value}
+
+
+@router.get("/global-rollup", response_model=GlobalInventoryOverview, tags=["inventory"])
+async def global_rollup(
+    identity: CurrentIdentity, db: DbDep, outlet_id: uuid.UUID | None = None
+):
+    """Hub-and-spoke multi-tier inventory overview the Global Master page
+    renders: central-warehouse value, per-module sub-inventory breakdowns,
+    and critical/low counts in one call. The service function existed;
+    this route was the missing half that the frontend's sync flow 404s on."""
+    identity.require("view:inventory")
+    return await svc.get_global_rollup(db, identity.tenant_id, outlet_id)
 
 
 # ─── Wastage ────────────────────────────────────────────────────────────────

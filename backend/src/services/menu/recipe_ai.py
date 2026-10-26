@@ -153,6 +153,19 @@ def _item_indexes(items: list[dict]) -> tuple[dict[str, uuid.UUID], list[tuple[s
     return code_index, name_index
 
 
+_WORD_STOP = frozenset(
+    {"the", "a", "an", "and", "or", "of", "with", "in", "for", "fresh", "dried"}
+)
+
+
+def _name_tokens(name: str) -> set[str]:
+    """Lowercased significant words of an inventory item / ingredient name."""
+    return {
+        t for t in (w.lower() for w in name.split())
+        if t and t not in _WORD_STOP
+    }
+
+
 def _resolve_from_index(
     ing: AiRecipeIngredient,
     overrides: dict[str, uuid.UUID] | None,
@@ -167,7 +180,9 @@ def _resolve_from_index(
          already carry a real UUID — the highest-confidence source),
       3. the ingredient's ``inventory_code`` matched against the live item
          list's ``code`` field,
-      4. fuzzy name: exact, then substring, against the live item list.
+      4. name match: exact, then word-set overlap (an LLM's "boneless
+         chicken" matches the inventory's "Chicken Boneless" because their
+         significant-word sets intersect), then substring.
     Unknown ingredients come back ``None`` — they show as
     ``inventory_item_id: null`` and reconcile as ``missing``.
     """
@@ -191,14 +206,42 @@ def _resolve_from_index(
             if exact is not None:
                 target = exact
             else:
-                # Shortest-matching name wins so "paneer" matches "paneer"
-                # before "paneer (small cubes)".
-                candidates = sorted(
-                    ((len(nm), iid) for nm, iid in name_index
-                     if needle in nm or nm in needle),
-                )
-                if candidates:
-                    target = candidates[0][1]
+                # Word-overlap scoring: how many of the ingredient's
+                # significant words appear in the item name (case ignored).
+                # "boneless chicken" -> {boneless, chicken} matches
+                # "chicken boneless" 2/2; "basmati rice" -> {basmati, rice}
+                # matches "basmati rice premium" 2/2. Tie-break on total
+                # word count so "chicken boneless" wins over a longer
+                # incidental overlap.
+                needle_words = _name_tokens(needle)
+                if needle_words:
+                    scored: list[tuple[int, int, uuid.UUID]] = []
+                    for nm, iid in name_index:
+                        item_words = _name_tokens(nm)
+                        overlap = len(needle_words & item_words)
+                        if overlap == 0:
+                            continue
+                        # Require that the ingredient's distinctive words are
+                        # covered proportionally: overlap / len(needle_words).
+                        score = overlap * 10 - len(item_words)
+                        scored.append((score, overlap, iid))
+                    if scored:
+                        scored.sort(key=lambda t: (-t[0], -t[1]))
+                        # Only accept if at least half the ingredient's words
+                        # matched, so "rice" alone doesn't grab
+                        # "basmati rice premium" when the ingredient was
+                        # "jasmine rice" (0 significant overlap).
+                        best_score, best_overlap, best_iid = scored[0]
+                        if best_overlap * 2 >= len(needle_words):
+                            target = best_iid
+                        else:
+                            # Fall back to the legacy substring check.
+                            candidates = sorted(
+                                ((len(nm), iid) for nm, iid in name_index
+                                 if needle in nm or nm in needle),
+                            )
+                            if candidates:
+                                target = candidates[0][1]
     return target
 
 

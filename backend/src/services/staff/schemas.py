@@ -278,6 +278,10 @@ class EmployeeResponse(OrmModel):
     manager_id: uuid.UUID | None = None
     work_calendar_id: uuid.UUID | None = None
     role_type: str | None = None
+    # The enrich step sets a display role name (designation or role_type).
+    role_name: str | None = None
+    department_name: str | None = None
+    designation_name: str | None = None
     employment_type: str
     status: str
     date_of_birth: date | None = None
@@ -474,22 +478,38 @@ class AttendanceSchemeUpdate(BaseModel):
 
 
 class AttendanceSchemeResponse(OrmModel):
+    """Fields exactly match what list/create attendance-scheme endpoints build
+    — the monolith-compat geofence + punch-method + assignment-enrichment
+    fields, not the older minimal column set."""
     id: uuid.UUID
-    tenant_id: uuid.UUID
+    tenant_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
     name: str
     code: str
+    description: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    geofence_radius_meters: int | None = None
+    enforce_geofence: bool | None = None
+    allowed_punch_methods: list = []
     shift_start_time: str
     shift_end_time: str
     grace_period_minutes: int
     half_day_hours: float
     full_day_hours: float
-    break_duration_minutes: int
-    is_overtime_allowed: bool
-    overtime_multiplier: float
+    break_duration_minutes: int | None = None
+    is_overtime_allowed: bool | None = None
+    overtime_allowed: bool | None = None
+    overtime_multiplier: float | None = None
+    overtime_min_minutes: int | None = None
+    working_days: list = []
+    ip_whitelist: str | None = None
     is_default: bool
     status: str
-    created_at: datetime
-    updated_at: datetime
+    assigned_employees_count: int = 0
+    assigned_employee_ids: list = []
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class EmployeeLocationTrailCreate(BaseModel):
@@ -798,26 +818,43 @@ class SalaryStructureUpdate(BaseModel):
 
 
 class SalaryStructureResponse(OrmModel):
+    """Matches what the salary-structures endpoints build AND the frontend
+    ``SalaryStructure`` type: the monolith per-employee components
+    (basic/hra/other + pf/esi/tds deductions), enriched with the employee's
+    display name + designation + department. The split's *_monthly column
+    set is kept optional so the old shape still serializes if present."""
     id: uuid.UUID
     tenant_id: uuid.UUID
     employee_id: uuid.UUID
-    ctc_annual: float
-    basic_monthly: float
-    hra_monthly: float
-    da_monthly: float
-    conveyance_monthly: float
-    special_allowance_monthly: float
-    gross_monthly: float
-    pf_employee_monthly: float
-    pf_employer_monthly: float
-    esi_employee_monthly: float
-    esi_employer_monthly: float
-    professional_tax_monthly: float
-    tds_monthly: float
-    total_deductions_monthly: float
-    net_monthly: float
-    effective_from: date
-    components_breakdown: dict
+    employee_name: str | None = None
+    designation: str | None = None
+    department: str | None = None
+    basic_salary: float = 0.0
+    hra: float = 0.0
+    other_allowances: float = 0.0
+    pf_deduction: float = 0.0
+    esi_deduction: float = 0.0
+    tds_deduction: float = 0.0
+    other_deductions: float = 0.0
+    net_salary: float | None = None
+    # Legacy split column shape (optional — set only when present on the row).
+    ctc_annual: float | None = None
+    basic_monthly: float | None = None
+    hra_monthly: float | None = None
+    da_monthly: float | None = None
+    conveyance_monthly: float | None = None
+    special_allowance_monthly: float | None = None
+    gross_monthly: float | None = None
+    pf_employee_monthly: float | None = None
+    pf_employer_monthly: float | None = None
+    esi_employee_monthly: float | None = None
+    esi_employer_monthly: float | None = None
+    professional_tax_monthly: float | None = None
+    tds_monthly: float | None = None
+    total_deductions_monthly: float | None = None
+    net_monthly: float | None = None
+    effective_from: date | None = None
+    components_breakdown: dict | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -1122,10 +1159,18 @@ class ApplicantResponse(OrmModel):
 
 
 class InterviewCreate(BaseModel):
+    """Monolith-compat payload: the interview dialog posts date/time strings
+    (not a single timestamp) plus duration/type/mode. ``scheduled_at`` is
+    optional — the handler fills it from date+time when it's omitted."""
     applicant_id: uuid.UUID
     interviewer_name: str = Field(min_length=1, max_length=150)
     round_name: str = "Technical Round 1"
-    scheduled_at: datetime
+    date: str | None = None
+    time: str | None = None
+    duration: int = 30
+    type: str | None = None
+    mode: str | None = None
+    scheduled_at: datetime | None = None
     meeting_link: str | None = None
     feedback: str | None = None
     score: int | None = None
@@ -1146,9 +1191,16 @@ class InterviewResponse(OrmModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
     applicant_id: uuid.UUID
+    candidate: str | None = None
+    job_title: str | None = None
     interviewer_name: str
     round_name: str
-    scheduled_at: datetime
+    scheduled_at: datetime | None = None
+    date: str | None = None
+    time: str | None = None
+    duration: int = 30
+    type: str | None = None
+    mode: str | None = None
     meeting_link: str | None
     feedback: str | None
     score: int | None
@@ -1199,29 +1251,39 @@ class OfferLetterResponse(OrmModel):
     updated_at: datetime
 
 
+class OnboardingTask(BaseModel):
+    """One checklist task on a new-hire's onboarding record (frontend shape:
+    {task, assignedTo, status})."""
+    task: str
+    assignedTo: str = ""
+    status: str = "Pending"  # Pending | In Progress | Done
+
+
 class OnboardingRecordCreate(BaseModel):
-    employee_id: uuid.UUID
-    step_name: str
-    status: str = "Pending"
-    assigned_to: str
-    due_date: date | None = None
+    """Monolith-compat create: track a new hire from applicant + a task
+    checklist. `start_date` is the planned onboarding date; progress is
+    derived from the tasks, not sent."""
+    applicant_id: uuid.UUID
+    start_date: date | None = None
+    tasks: list[OnboardingTask] = []
 
 
 class OnboardingRecordUpdate(BaseModel):
-    step_name: str | None = None
+    tasks: list[OnboardingTask] | None = None
     status: str | None = None
-    assigned_to: str | None = None
-    due_date: date | None = None
 
 
 class OnboardingRecordResponse(OrmModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
-    employee_id: uuid.UUID
-    step_name: str
-    status: str
-    assigned_to: str
-    due_date: date | None
+    applicant_id: uuid.UUID | None = None
+    employee_id: uuid.UUID | None = None
+    new_hire: str | None = None
+    role: str | None = None
+    start_date: date | None = None
+    progress: int = 0
+    tasks_json: list = []
+    status: str = "Pending"
     created_at: datetime
     updated_at: datetime
 

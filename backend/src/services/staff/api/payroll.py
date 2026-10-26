@@ -30,6 +30,7 @@ from src.services.staff.models import (
     WorkCalendar,
     AttendanceScheme,
     EmployeeAttendanceScheme,
+    Tenant,
 )
 from src.services.staff.schemas import (
     SalaryStructureCreate,

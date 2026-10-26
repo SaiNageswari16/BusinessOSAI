@@ -22,6 +22,7 @@ from src.services.staff.models import (
     EmployeeLocationTrail,
     Department,
     Designation,
+    SystemSetting,
 )
 from src.services.staff.schemas import (
     LocationPingPayload,

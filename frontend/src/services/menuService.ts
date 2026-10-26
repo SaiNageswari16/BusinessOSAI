@@ -128,6 +128,8 @@ export interface RecipeBreakdownLine {
   code: string;
   unit: string;
   qty_per_portion: number;
+  /** True when the recipe line can be skipped (optional ingredient). */
+  is_optional: boolean;
   wastage_pct: number;
   required_for_n: number;
   available_stock: number;
@@ -163,6 +165,7 @@ export interface AiRecipeResult {
   recipe_id: string;
   name: string;
   description: string | null;
+  instructions?: string | null;
   item_type: string;
   base_price: number | null;
   yield_qty: number;
@@ -340,6 +343,21 @@ export const menuService = {
     return apiClient.put<Recipe>(`/api/v1/menu/recipes/${recipeId}/lines`, lines);
   },
 
+  /** Metadata-only update: rename, rescale the yield, edit instructions, or
+   *  activate/deactivate a recipe version. BOM lines change via
+   *  replaceRecipeLines or createRecipe (upsert) instead. */
+  async updateRecipe(
+    recipeId: string,
+    payload: {
+      name?: string;
+      yield_qty?: number;
+      instructions?: string | null;
+      is_active?: boolean;
+    },
+  ): Promise<Recipe> {
+    return apiClient.put<Recipe>(`/api/v1/menu/recipes/${recipeId}`, payload);
+  },
+
   async deleteRecipe(recipeId: string): Promise<void> {
     return apiClient.delete<void>(`/api/v1/menu/recipes/${recipeId}`);
   },
@@ -380,9 +398,14 @@ export const menuService = {
 
   /** Reconcile a recipe's ingredient BOM against CURRENT live inventory,
    *  scaled to `portions`. Pass `outlet_id` to narrow the menu-item lookup
-   *  when the tenant runs the same dish on several outlets. */
+   *  when the tenant runs the same dish on several outlets.
+   *
+   *  Accepts either a full `recipe` object (the only reliable path for
+   *  LLM-generated results, whose ids are transient) or a `recipe_id`
+   *  (a stable catalog code, CAT-*). */
   async aiRecipeReconcile(p: {
-    recipe_id: string;
+    recipe?: AiRecipeResult;
+    recipe_id?: string;
     portions: number;
     outlet_id?: string | null;
   }): Promise<AiReconcileResult> {

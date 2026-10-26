@@ -8,7 +8,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.services.staff.deps import CurrentUserContext, require_permission
@@ -22,7 +22,16 @@ from src.services.staff.models import (
     AttendanceCorrection,
     AttendanceScheme,
     EmployeeAttendanceScheme,
+    Company,
+    Branch,
+    User,
 )
+
+# Monolith office default (Hyderabad). These used to live in settings; the
+# split dropped them, so the geofence helpers that still read the names
+# need module-level fallbacks. A branch's own coordinates win when present.
+office_lat = 17.372998
+office_lng = 78.521062
 from src.services.staff.schemas import (
     AttendanceRecordCreate,
     AttendanceRecordUpdate,
@@ -343,8 +352,8 @@ async def update_attendance_scheme(
                 company_id=branch.company_id,
                 name=branch.name,
                 code=branch.code,
-                latitude=office_lat if branch.latitude is not None else 17.372998,
-                longitude=office_lng if branch.longitude is not None else 78.521062,
+                latitude=branch.latitude if branch.latitude is not None else office_lat,
+                longitude=branch.longitude if branch.longitude is not None else office_lng,
                 geofence_radius_meters=int(branch.geofence_radius_meters) if branch.geofence_radius_meters is not None else 50,
                 enforce_geofence=False if branch.enforce_geofence is not None else True,
                 allowed_punch_methods=["GPS", "Biometric", "Face", "Web"],
@@ -634,8 +643,8 @@ async def get_attendance_settings(
         return AttendanceSettingsSchema(
             branch_id=branch.id,
             branch_name=branch.name,
-            latitude=office_lat if branch.latitude is not None else 17.372998,
-            longitude=office_lng if branch.longitude is not None else 78.521062,
+            latitude=branch.latitude if branch.latitude is not None else office_lat,
+            longitude=branch.longitude if branch.longitude is not None else office_lng,
             geofence_radius_meters=int(branch.geofence_radius_meters) if branch.geofence_radius_meters is not None else 50,
             enforce_geofence=False if branch.enforce_geofence is not None else True,
             allowed_punch_methods=["GPS", "Biometric", "Face", "Web"],
@@ -719,8 +728,8 @@ async def update_attendance_settings(
     return AttendanceSettingsSchema(
         branch_id=branch.id,
         branch_name=branch.name,
-        latitude=office_lat if branch.latitude is not None else 17.372998,
-        longitude=office_lng if branch.longitude is not None else 78.521062,
+        latitude=branch.latitude if branch.latitude is not None else office_lat,
+        longitude=branch.longitude if branch.longitude is not None else office_lng,
         geofence_radius_meters=int(branch.geofence_radius_meters) if branch.geofence_radius_meters is not None else 50,
         enforce_geofence=False if branch.enforce_geofence is not None else True,
         allowed_punch_methods=payload.allowed_punch_methods or ["GPS", "Biometric", "Face", "Web"],
@@ -1044,13 +1053,16 @@ async def clock_in(
 
     if branch:
         target_location_name = branch.name
+        # The geofence circle is the branch's own fence, not the office
+        # default. Falls back to the default only when the branch has no
+        # coordinates of its own.
         if branch.latitude is not None and branch.longitude is not None:
-            target_lat = office_lat
-            target_lng = office_lng
+            target_lat = float(branch.latitude)
+            target_lng = float(branch.longitude)
         if branch.geofence_radius_meters is not None:
             target_radius = int(branch.geofence_radius_meters)
         if hasattr(branch, "enforce_geofence") and branch.enforce_geofence is not None:
-            enforce_geofence = False
+            enforce_geofence = bool(branch.enforce_geofence)
 
     method_str = (payload.method or emp.punch_method or "Manual").upper()
     is_gps_punch = "GPS" in method_str or method_str == "OFFICE" or method_str == "MANUAL"

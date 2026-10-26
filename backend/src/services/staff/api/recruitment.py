@@ -42,6 +42,7 @@ from src.services.staff.models import (
     OnboardingRecord,
     Employee,
     EmployeeDocument,
+    Company,
 )
 from src.services.staff.schemas import (
     JobOpeningCreate,

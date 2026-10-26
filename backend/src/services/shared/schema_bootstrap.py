@@ -38,6 +38,7 @@ import logging
 
 from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.sql import ClauseElement
 
 from src.services.shared.registry import ServiceDescriptor, all_services
 
@@ -133,12 +134,117 @@ def _service_tables() -> dict[str, list[str]]:
     return owned
 
 
+def _column_default_sql(col, dialect) -> str | None:
+    """SQL for a column's ``DEFAULT`` clause, or ``None`` if it cannot be
+    added to a table that already holds rows.
+
+    A NOT NULL column may only be ALTER-added if it carries a default that
+    Postgres can back-fill existing rows with. That default may be declared
+    three ways, all handled here:
+
+      * a *server* default (``server_default=...``) — a string or
+        ``DefaultClause``;
+      * a Python-side default that is a SQL expression (``func.now()``);
+      * a Python-side literal (``default=0``, ``default="x"``).
+
+    A NOT NULL column with *no* default at all returns None: guessing a
+    back-fill value would corrupt data, so it is left to a manual migration.
+    """
+    from sqlalchemy.sql.schema import DefaultClause
+
+    if col.server_default is not None:
+        sd = col.server_default
+        if isinstance(sd, DefaultClause):
+            arg = sd.arg
+            return arg if isinstance(arg, str) else str(arg.compile(dialect=dialect))
+        return sd if isinstance(sd, str) else str(sd)
+
+    if col.default is not None:
+        val = col.default.arg
+        if isinstance(val, ClauseElement):
+            # SQL expression default (e.g. func.now()) — compile it.
+            return str(val.compile(dialect=dialect))
+        if callable(val):
+            # Python callable (default=date.today / default=_utcnow): an
+            # ORM-side default that emits NO DDL on fresh tables either.
+            # There is no literal to back-fill existing rows with, so a
+            # NOT NULL column like this cannot be ALTER-added safely.
+            return None
+        import decimal
+        if val is None:
+            return "NULL"
+        if isinstance(val, bool):
+            return "true" if val else "false"
+        if isinstance(val, (int, float, decimal.Decimal)):
+            return str(val)
+        if isinstance(val, str):
+            return "'" + val.replace("'", "''") + "'"
+        return repr(val)
+
+    return None
+
+
+def _add_missing_columns(sync_conn, metadata, table_names: list[str]) -> int:
+    """Add columns the model declares but the live table lacks.
+
+    ``create_all`` only ever emits CREATE TABLE — it can never ALTER an
+    existing table — so a column added to a model after its table first
+    existed stays missing from the database, and every query touching it
+    500s with ``UndefinedColumnError``. That is the failure mode this
+    covers: the fleet boots, the tables are "there", the columns are not.
+
+    Conservative by design:
+      * only the named tables are touched;
+      * primary-key columns are never added (adding one is a table rebuild,
+        which is not this module's job);
+      * a nullable column is added as-is (existing rows get NULL);
+      * a NOT NULL column is added only when a default exists to back-fill
+        existing rows (see ``_column_default_sql``); otherwise it is skipped
+        and logged, never guessed.
+    """
+    inspector = inspect(sync_conn)
+    added = 0
+    for tname in table_names:
+        table = metadata.tables.get(tname)
+        if table is None:
+            continue
+        try:
+            present = {c["name"] for c in inspector.get_columns(tname)}
+        except Exception:
+            present = set()  # table was created moments ago; refresh view
+        for col in table.columns:
+            if col.primary_key or col.name in present:
+                continue
+            col_type = col.type.compile(dialect=sync_conn.dialect)
+            if col.nullable:
+                sync_conn.execute(text(f'ALTER TABLE "{tname}" ADD COLUMN "{col.name}" {col_type}'))
+            else:
+                default_sql = _column_default_sql(col, sync_conn.dialect)
+                if default_sql is None:
+                    logger.warning(
+                        "Column %s.%s is NOT NULL with no usable default; not "
+                        "adding it to an existing table automatically — "
+                        "needs a manual migration", tname, col.name,
+                    )
+                    continue
+                sync_conn.execute(
+                    text(f'ALTER TABLE "{tname}" ADD COLUMN "{col.name}" {col_type} NOT NULL DEFAULT {default_sql}')
+                )
+            logger.info("Added missing column %s.%s", tname, col.name)
+            added += 1
+    return added
+
+
 async def create_tables(service_name: str, dsn: str, table_names: list[str]) -> int:
     """Create the named tables, ignoring ones that already exist.
 
     ``create_all`` handles ordering via the metadata's dependency graph, so
     rather than emitting individual CREATEs this restricts it to the tables
     named — which preserves that ordering. ``checkfirst`` keeps it idempotent.
+
+    After creation, missing *columns* on already-existing tables are added
+    (``_add_missing_columns``) — the half of schema drift ``create_all`` can
+    never repair on its own.
     """
     from src.services.shared.service_db import service_base
 
@@ -147,25 +253,26 @@ async def create_tables(service_name: str, dsn: str, table_names: list[str]) -> 
     engine = create_async_engine(dsn)
     try:
         async with engine.begin() as conn:
-            # Count what exists *before* creating, so the return value means
-            # "how many were missing" rather than "how many exist".
-            #
-            # ``Inspector.has_table`` is the supported existence check — a
-            # ``Table`` object has no ``exists()`` of its own. It needs the
-            # schema name to look in; ``Table.schema`` is None for these, which
-            # the inspector resolves to the connection's default schema.
-            def _count_missing(sync_conn) -> int:
+            def _create_and_repair(sync_conn) -> int:
                 inspector = inspect(sync_conn)
-                return sum(
-                    1 for t in targets if not inspector.has_table(t.name, t.schema)
-                )
+                # Count what exists *before* creating, so the return value
+                # means "how many were missing" rather than "how many exist".
+                #
+                # ``Inspector.has_table`` is the supported existence check — a
+                # ``Table`` object has no ``exists()`` of its own. It needs the
+                # schema name to look in; ``Table.schema`` is None for these,
+                # which the inspector resolves to the connection's default
+                # schema.
+                missing = [t for t in targets if not inspector.has_table(t.name, t.schema)]
+                # create_all's ``tables=`` restricts the DDL to the named
+                # subset while keeping the metadata's dependency ordering.
+                # Passing nothing creates every table in the metadata —
+                # exactly the cross-contamination this module exists to avoid.
+                metadata.create_all(sync_conn, tables=missing, checkfirst=True)
+                _add_missing_columns(sync_conn, metadata, table_names)
+                return len(missing)
 
-            before = await conn.run_sync(_count_missing)
-            # create_all's ``tables=`` restricts the DDL to the named subset
-            # while keeping the metadata's dependency ordering. Passing nothing
-            # creates every table in the metadata — exactly the
-            # cross-contamination this module exists to avoid.
-            await conn.run_sync(metadata.create_all, tables=targets)
+            before = await conn.run_sync(_create_and_repair)
             return before
     finally:
         await engine.dispose()

@@ -54,6 +54,10 @@ class CurrentUserContext:
             id=identity.user_id,
             email=identity.email,
             full_name=identity.full_name,
+            # The HRMS employee auto-create (GET /employees/me) reads a phone
+            # number; the token doesn't carry one, so default to None rather
+            # than AttributeError.
+            phone=None,
             is_tenant_owner=identity.is_tenant_owner,
             roles=identity.roles,
             permissions=identity.permissions,
@@ -72,12 +76,28 @@ class CurrentUserContext:
                 detail=f"Missing permission: {permission}",
             )
 
+    def has_permission(self, permission: str) -> bool:
+        """Monolith-style predicate check (no 403 raise) for endpoints written
+        against the legacy ``User.has_permission`` helper. Owner or wildcard
+        always passes, matching :meth:`require`."""
+        return (
+            self.identity.is_tenant_owner
+            or "*" in self.identity.permissions
+            or permission in self.identity.permissions
+        )
+
+    @property
+    def is_tenant_owner(self) -> bool:
+        return self.identity.is_tenant_owner
+
 
 async def get_current_user_context(request: Request) -> CurrentUserContext:
     """Resolve current user identity from forwarded headers or dev fallback."""
     identity = _forwarded_identity(request)
     if identity is None and dev_fallback_enabled():
-        identity = build_dev_fallback_identity()
+        # async — awaiting is required, otherwise the coroutine object gets
+        # wrapped into CurrentUserContext and every .tenant_id access 500s.
+        identity = await build_dev_fallback_identity(request)
     if identity is None:
         # Check bearer token directly as a secondary fallback
         from src.services.shared.identity import bearer_scheme, _decode
