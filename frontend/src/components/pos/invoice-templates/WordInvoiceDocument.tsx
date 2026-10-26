@@ -1154,6 +1154,24 @@ export function WordInvoiceDocument({
               );
             };
 
+            const isInternalSystemKey = (lbl: string) => {
+              const norm = String(lbl || "").toLowerCase().replace(/[-_\s]/g, "");
+              return (
+                norm.includes("templateid") ||
+                norm.includes("printtemplate") ||
+                norm.includes("receiptformat") ||
+                norm.includes("theme") ||
+                norm.includes("invoicetype") ||
+                norm.includes("sessionid") ||
+                norm.includes("token") ||
+                norm.includes("createdvia") ||
+                norm.includes("docmode") ||
+                norm.includes("syncstatus") ||
+                norm.includes("uid") ||
+                norm === "id"
+              );
+            };
+
             const poField = (config?.customFields || []).find((f) => f && f.enabled && (String(f.label || (f as any).name || "").toLowerCase().includes("po") || String(f.id || "").toLowerCase().includes("po")));
             const vehField = (config?.customFields || []).find((f) => f && f.enabled && (String(f.label || (f as any).name || "").toLowerCase().includes("veh") || String(f.id || "").toLowerCase().includes("veh")));
             const ewayField = (config?.customFields || []).find((f) => f && f.enabled && (String(f.label || (f as any).name || "").toLowerCase().includes("eway") || String(f.id || "").toLowerCase().includes("eway")));
@@ -1169,7 +1187,7 @@ export function WordInvoiceDocument({
 
             // Custom metadata fields with standard references filtered out, and ONLY fields that actually have a resolved value!
             const metaCustomFields = (config?.customFields || [])
-              .filter((f) => f && f.enabled && (f.section === "meta" || !f.section) && !isStandardRef(f.label || (f as any).name || f.id || ""))
+              .filter((f) => f && f.enabled && (f.section === "meta" || !f.section) && !isStandardRef(f.label || (f as any).name || f.id || "") && !isInternalSystemKey(f.label || (f as any).name || f.id || ""))
               .map((f) => ({ ...f, label: f.label || (f as any).name || f.id || "Field", resolvedVal: resolveCustomFieldValue(f) || (isPureMockPreview ? String(f.value || "") : "") || "" }))
               .filter((f) => Boolean(f.resolvedVal && String(f.resolvedVal).trim() !== ""));
 
@@ -1181,7 +1199,7 @@ export function WordInvoiceDocument({
             }
             if (typeof rawInvMeta === "object" && rawInvMeta !== null && !Array.isArray(rawInvMeta)) {
               Object.entries(rawInvMeta).forEach(([k, v]) => {
-                if (!v || typeof v === "object" || isStandardRef(k)) return;
+                if (!v || typeof v === "object" || isStandardRef(k) || isInternalSystemKey(k)) return;
                 const kLower = String(k || "").toLowerCase();
                 const existing = metaCustomFields.find(
                   (m) => String(m?.label || (m as any)?.name || "").toLowerCase() === kLower || String(m?.id || "").toLowerCase() === kLower
@@ -1209,7 +1227,6 @@ export function WordInvoiceDocument({
               >
                 <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center justify-between">
                   <span>Commercial & Shipment References</span>
-                  <span className="font-mono text-slate-400">REF-TAG</span>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">

@@ -70,16 +70,80 @@ async def list_customers(
     search: str | None = None,
     customer_type: str | None = None,
 ):
-    if ctx.active_company_id:
-        if ctx.is_primary_company:
-            query = select(Customer).where(
-                or_(
-                    Customer.company_id == ctx.active_company_id,
-                    and_(Customer.tenant_id == ctx.tenant_id, Customer.company_id == None)
-                )
+    # Auto-sync distinct customers from invoices into crm_customers so all billed parties appear in Customers directory
+    try:
+        from src.models.erp import Invoice
+        inv_sync_conds = [
+            Invoice.tenant_id == ctx.tenant_id,
+            Invoice.customer_name.isnot(None),
+            Invoice.customer_name != "",
+            ~Invoice.customer_name.ilike("%walk-in%"),
+            ~Invoice.customer_name.ilike("%walkin%"),
+            ~Invoice.customer_name.ilike("%cash customer%"),
+            ~Invoice.customer_name.ilike("%guest%"),
+        ]
+        if ctx.active_company_id:
+            if getattr(ctx, "is_primary_company", False):
+                inv_sync_conds.append(or_(Invoice.company_id == ctx.active_company_id, Invoice.company_id.is_(None)))
+            else:
+                inv_sync_conds.append(Invoice.company_id == ctx.active_company_id)
+
+        unregistered_invs = await db.execute(
+            select(
+                Invoice.customer_name,
+                Invoice.customer_phone,
+                Invoice.customer_email,
+                Invoice.customer_gstin,
+                Invoice.billing_address,
+                Invoice.shipping_address,
+                Invoice.company_id,
+            ).where(*inv_sync_conds).group_by(
+                Invoice.customer_name,
+                Invoice.customer_phone,
+                Invoice.customer_email,
+                Invoice.customer_gstin,
+                Invoice.billing_address,
+                Invoice.shipping_address,
+                Invoice.company_id,
             )
-        else:
-            query = select(Customer).where(Customer.company_id == ctx.active_company_id)
+        )
+        existing_names_res = await db.execute(
+            select(func.lower(Customer.name)).where(Customer.tenant_id == ctx.tenant_id)
+        )
+        existing_names = {r[0] for r in existing_names_res.all() if r[0]}
+        synced_count = 0
+        for inv_row in unregistered_invs.all():
+            c_name = str(inv_row.customer_name or "").strip()
+            if not c_name or c_name.lower() in existing_names:
+                continue
+            existing_names.add(c_name.lower())
+            new_c = Customer(
+                tenant_id=ctx.tenant_id,
+                company_id=inv_row.company_id or ctx.active_company_id,
+                name=c_name,
+                phone=str(inv_row.customer_phone).strip() if inv_row.customer_phone else None,
+                email=str(inv_row.customer_email).strip() if inv_row.customer_email else None,
+                gst_number=str(inv_row.customer_gstin).strip() if inv_row.customer_gstin else None,
+                billing_address=str(inv_row.billing_address).strip() if inv_row.billing_address else None,
+                shipping_address=str(inv_row.shipping_address).strip() if inv_row.shipping_address else None,
+                address=str(inv_row.billing_address or inv_row.shipping_address or "").strip() or None,
+                customer_type="Retail",
+                status="Active",
+            )
+            db.add(new_c)
+            synced_count += 1
+        if synced_count > 0:
+            await db.commit()
+    except Exception as sync_e:
+        logger.warning(f"Failed to auto-sync customers from invoices: {sync_e}")
+
+    if ctx.active_company_id:
+        query = select(Customer).where(
+            or_(
+                Customer.company_id == ctx.active_company_id,
+                and_(Customer.tenant_id == ctx.tenant_id, Customer.company_id == None)
+            )
+        )
     else:
         query = select(Customer).where(Customer.tenant_id == ctx.tenant_id)
     if search:

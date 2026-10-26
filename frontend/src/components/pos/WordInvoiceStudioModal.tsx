@@ -2192,7 +2192,6 @@ export function WordInvoiceStudioModal({
                                 <Plus className="size-2.5" />
                                 + Add Field
                               </button>
-                              <span className="font-mono text-slate-400">REF-TAG</span>
                             </div>
                           </div>
 

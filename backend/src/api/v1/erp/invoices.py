@@ -1037,6 +1037,43 @@ async def create_invoice(
         except Exception:
             inv_data["customer_id"] = None
 
+    # If customer_id is not linked, but customer_name is provided, link or auto-create customer in CRM
+    cust_name_clean = str(inv_data.get("customer_name") or "").strip()
+    cust_phone_clean = str(inv_data.get("customer_phone") or "").strip()
+    is_generic_walkin = (
+        not cust_name_clean
+        or cust_name_clean.lower() in ("walk-in customer", "walk-in guest", "walk-in", "walkin customer", "walkin", "cash customer", "guest")
+    )
+    if not inv_data.get("customer_id") and not is_generic_walkin:
+        try:
+            match_conds = [Customer.tenant_id == ctx.tenant_id]
+            if cust_phone_clean and len(cust_phone_clean) >= 6:
+                match_conds.append(or_(Customer.phone == cust_phone_clean, Customer.name.ilike(cust_name_clean)))
+            else:
+                match_conds.append(Customer.name.ilike(cust_name_clean))
+            matched_cust = await db.scalar(select(Customer).where(*match_conds))
+            if matched_cust:
+                inv_data["customer_id"] = matched_cust.id
+            else:
+                new_cust = Customer(
+                    tenant_id=ctx.tenant_id,
+                    company_id=active_cid,
+                    name=cust_name_clean,
+                    phone=cust_phone_clean or None,
+                    email=str(inv_data.get("customer_email") or "").strip() or None,
+                    gst_number=str(inv_data.get("customer_gstin") or "").strip() or None,
+                    billing_address=str(inv_data.get("billing_address") or "").strip() or None,
+                    shipping_address=str(inv_data.get("shipping_address") or "").strip() or None,
+                    address=str(inv_data.get("billing_address") or inv_data.get("shipping_address") or "").strip() or None,
+                    customer_type=str(getattr(payload, "customer_type", None) or "Retail"),
+                    status="Active",
+                )
+                db.add(new_cust)
+                await db.flush()
+                inv_data["customer_id"] = new_cust.id
+        except Exception as auto_cust_err:
+            logger.warning(f"Could not auto-link or auto-create customer from invoice: {auto_cust_err}")
+
     # Walk-in / cash customers (no registered party) must pay in full on fiscal invoices
     walk_in_invoice = not inv_data.get("customer_id")
     credit_doc_types = ("proforma", "quotation", "quote", "credit_note", "debit_note")
@@ -1118,6 +1155,11 @@ async def create_invoice(
         await db.execute(delete(InvoiceLine).where(InvoiceLine.invoice_id == existing_inv.id))
         for k, v in inv_data.items():
             if k not in ("id", "created_at", "tenant_id"):
+                # Safeguard: Never overwrite existing valid customer details with null or empty values
+                if k in ("customer_name", "customer_phone", "customer_email", "customer_gstin", "billing_address", "shipping_address", "customer_id"):
+                    if v is None or (isinstance(v, str) and not v.strip()):
+                        if getattr(existing_inv, k, None):
+                            continue
                 setattr(existing_inv, k, v)
         invoice = existing_inv
     elif existing_inv and not is_explicit_edit:
