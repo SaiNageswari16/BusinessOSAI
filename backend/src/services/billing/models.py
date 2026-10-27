@@ -677,3 +677,400 @@ class ConsumedEvent(ServiceBase, TimestampMixin):
     consumed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+
+# ─── Invoice & receipt subsystem ───────────────────────────────────────────
+#
+# AR-side of money: a Bill is what the kitchen cooked and the POS charged; an
+# Invoice is the document that leaves the building. ``bill_id`` links the two.
+# Both tables live in this service's own database, so a real FK is allowed
+# (same rule as bill_items: FKs only to tables owned here, never across
+# service databases).
+
+class InvoiceStatus(str, enum.Enum):
+    DRAFT = "draft"
+    SETTLED = "settled"
+    VOID = "void"
+    REFUNDED = "refunded"
+    PARTIAL = "partial"
+
+
+class Invoice(ServiceBase, TimestampMixin):
+    """An issued document (tax invoice, receipt, or credit note).
+
+    All money is Decimal, settled paise-accurate; the API serialises to
+    float. ``status`` is a String, not an Enum — a value just written in
+    Python is an enum member, the same field loaded back is a bare str.
+    """
+
+    __tablename__ = "ar_invoices"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "invoice_number", name="uq_billing_invoice_number"),
+        Index("ix_billing_invoices_outlet_status", "outlet_id", "status"),
+        Index("ix_billing_invoices_customer", "customer_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    outlet_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    invoice_number: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    invoice_type: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="tax_invoice"
+    )
+    # Same-database link to the POS bill that produced this document.
+    bill_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    exchange_from_invoice_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+
+    # Customer fields live in the crm service: bare UUID, no FK.
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    customer_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    customer_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    customer_gstin: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    subtotal: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    discount_total: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    taxable_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    tax_total: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    cgst_total: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    sgst_total: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    igst_total: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    cess_total: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    tds: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    round_off: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    grand_total: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    paid_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+
+    status: Mapped[InvoiceStatus] = mapped_column(
+        String(20), default=InvoiceStatus.DRAFT, index=True
+    )
+
+    is_reverse_charge: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_tax_inclusive: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # e-invoice ready: IRN / ACK fill in when the e-invoicing call lands.
+    irn_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    ack_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    e_invoice_qr: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Journal entry in the accounting service: bare UUID, no FK.
+    journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    print_template_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+
+    dated: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False, index=True
+    )
+
+    lines: Mapped[list["InvoiceLine"]] = relationship(
+        back_populates="invoice",
+        primaryjoin="Invoice.id == InvoiceLine.invoice_id",
+        foreign_keys="InvoiceLine.invoice_id",
+        cascade="all, delete-orphan",
+    )
+    payments: Mapped[list["InvoicePayment"]] = relationship(
+        back_populates="invoice",
+        primaryjoin="Invoice.id == InvoicePayment.invoice_id",
+        foreign_keys="InvoicePayment.invoice_id",
+        cascade="all, delete-orphan",
+    )
+
+
+class InvoiceLine(ServiceBase, TimestampMixin):
+    """A snapshotted line on an invoice — survives menu and tax edits."""
+
+    __tablename__ = "ar_invoice_lines"
+    __table_args__ = (
+        Index("ix_billing_invoice_lines_invoice", "invoice_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    invoice_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ar_invoices.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    line_number: Mapped[int] = mapped_column(Integer, default=1)
+    # Menu items live in the menu service: bare UUID, no FK.
+    menu_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    description: Mapped[str] = mapped_column(String(200), nullable=False)
+    hsn_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    qty: Mapped[float] = mapped_column(Numeric(12, 3), nullable=False, default=1)
+    unit: Mapped[str] = mapped_column(String(20), default="Nos")
+    unit_price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    discount_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    tax_code_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    tax_rate: Mapped[float] = mapped_column(Numeric(6, 2), default=0)
+    cgst: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    sgst: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    igst: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    cess: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    line_total: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+
+    invoice: Mapped["Invoice"] = relationship(
+        back_populates="lines",
+        primaryjoin="InvoiceLine.invoice_id == Invoice.id",
+        foreign_keys="InvoiceLine.invoice_id",
+    )
+
+
+class InvoicePayment(ServiceBase, TimestampMixin):
+    """One payment leg recorded against an invoice."""
+
+    __tablename__ = "ar_invoice_payments"
+    __table_args__ = (
+        Index("ix_billing_invoice_payments_invoice", "invoice_id", "method"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    invoice_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ar_invoices.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    method: Mapped[str] = mapped_column(String(30), default="cash")
+    amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    reference: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    paid_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    invoice: Mapped["Invoice"] = relationship(
+        back_populates="payments",
+        primaryjoin="InvoicePayment.invoice_id == Invoice.id",
+        foreign_keys="InvoicePayment.invoice_id",
+    )
+
+
+class InvoiceReturnStatus(str, enum.Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class InvoiceReturn(ServiceBase, TimestampMixin):
+    """A return (or exchange) against a settled invoice.
+
+    Restaurant-side of a return is a refund, not an inventory restock — the
+    food was served. Lines here are a snapshot of what came back.
+    """
+
+    __tablename__ = "ar_invoice_returns"
+    __table_args__ = (
+        Index("ix_billing_invoice_returns_invoice", "invoice_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    outlet_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    invoice_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ar_invoices.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+    invoice_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    return_number: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    customer_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    customer_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    return_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    settlement_method: Mapped[str] = mapped_column(String(30), default="refund")
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    total_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    status: Mapped[InvoiceReturnStatus] = mapped_column(
+        String(20), default=InvoiceReturnStatus.COMPLETED, index=True
+    )
+    exchange_invoice_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+
+    lines: Mapped[list["InvoiceReturnLine"]] = relationship(
+        back_populates="return_doc",
+        primaryjoin="InvoiceReturn.id == InvoiceReturnLine.return_id",
+        foreign_keys="InvoiceReturnLine.return_id",
+        cascade="all, delete-orphan",
+    )
+
+
+class InvoiceReturnLine(ServiceBase, TimestampMixin):
+    """A snapshot of one returned item on a sales return."""
+
+    __tablename__ = "ar_invoice_return_lines"
+    __table_args__ = (
+        Index("ix_billing_return_lines_return", "return_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    return_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ar_invoice_returns.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    invoice_line_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    menu_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    description: Mapped[str] = mapped_column(String(200), nullable=False)
+    hsn_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    qty: Mapped[float] = mapped_column(Numeric(12, 3), nullable=False, default=1)
+    unit: Mapped[str] = mapped_column(String(20), default="Nos")
+    unit_price: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    tax_rate: Mapped[float] = mapped_column(Numeric(6, 2), default=0)
+    line_total: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    disposition: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    return_doc: Mapped["InvoiceReturn"] = relationship(
+        back_populates="lines",
+        primaryjoin="InvoiceReturnLine.return_id == InvoiceReturn.id",
+        foreign_keys="InvoiceReturnLine.return_id",
+    )
+
+
+class PrintTemplate(ServiceBase, TimestampMixin):
+    """Named receipt / invoice / barcode layout, per outlet.
+
+    ``outlet_id`` NULL means tenant-wide default. ``active`` marks the
+    template used for the outlet's category; POST /print-template/active
+    deactivates the siblings and flips the target.
+    """
+
+    __tablename__ = "print_templates"
+    __table_args__ = (
+        Index("ix_billing_print_templates_outlet_active", "outlet_id", "active", "category"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    outlet_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    category: Mapped[str] = mapped_column(
+        String(30), default="thermal", index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    paper_size: Mapped[str] = mapped_column(String(5), default="80mm")
+    fields: Mapped[dict] = mapped_column(JSONB, default=dict)
+    active: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ReminderPolicy(ServiceBase, TimestampMixin):
+    """Payment-reminder cadence, one row per outlet (NULL = tenant default).
+
+    The send-now / evaluate-batch endpoints are stubs until the notifications
+    service lands; this row lets the frontend read/write the policy now so the
+    later service picks up working settings.
+    """
+
+    __tablename__ = "reminder_policies"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "outlet_id", name="uq_billing_reminder_policy_outlet"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    outlet_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    policy: Mapped[dict] = mapped_column(
+        JSONB, default=lambda: {"enabled": False, "channels": ["whatsapp"],
+                                 "days_before_due": 3, "reminder_frequency_days": 1}
+    )
+
+
+class GatewayConfig(ServiceBase, TimestampMixin):
+    """Payment gateway credentials, one row per (tenant, gateway, outlet).
+
+    ``outlet_id`` NULL is the tenant-wide row; a row with an outlet wins when
+    both exist. ``enabled`` reports whether usable key material is present —
+    a stored key without a secret means the gateway cannot verify, and the
+    verify endpoints return 501 GATEWAY_NOT_CONFIGURED rather than faking
+    success.
+    """
+
+    __tablename__ = "gateway_configs"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "gateway", "outlet_id",
+            name="uq_billing_gateway_config",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    outlet_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    gateway: Mapped[str] = mapped_column(String(30), nullable=False)
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_test_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class PaymentGatewayOrder(ServiceBase, TimestampMixin):
+    """A gateway order created by /payments/razorpay/create-order.
+
+    The order id is ours (rzp_<uuid>): without live gateway keys we cannot
+    mint a real one, so the verify endpoint checks the signature against the
+    stored row, which is also what makes a retried verify honest — a
+    payment can only be "verified" for an order this service created.
+    """
+
+    __tablename__ = "payment_gateway_orders"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "order_id", name="uq_billing_gw_order"),
+        Index("ix_billing_gw_orders_tenant_gateway", "tenant_id", "gateway"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    outlet_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    gateway: Mapped[str] = mapped_column(String(30), nullable=False, default="razorpay")
+    order_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), default="INR")
+    status: Mapped[str] = mapped_column(String(20), default="created", index=True)
+    payment_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    notes: Mapped[dict] = mapped_column(JSONB, default=dict)

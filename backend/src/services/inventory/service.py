@@ -205,6 +205,32 @@ async def record_movement(
     )
     db.add(movement)
     await db.flush()
+
+    # The movement row and its outbox row commit together: a stock change
+    # without its event would leave the rest of the system believing the
+    # stock never moved.
+    from src.services.inventory.models import OutboxMessage
+
+    db.add(OutboxMessage(
+        event_id=str(uuid.uuid4()),
+        type="stock.movement.created",
+        tenant_id=tenant_id,
+        outlet_id=outlet_id,
+        data={
+            "movement_id": str(movement.id),
+            "inventory_item_id": str(item.id),
+            "inventory_item_name": item.name,
+            "movement_type": status_value(movement_type),
+            "qty": float(qty),
+            "unit_cost": float(unit_cost),
+            "line_total": round(float(qty) * float(unit_cost), 4),
+            "location_id": str(location_id) if location_id else None,
+            "reference_type": reference_type,
+            "reference_id": reference_id,
+        },
+        source_service="inventory",
+        status="pending",
+    ))
     return movement
 
 

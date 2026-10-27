@@ -6,7 +6,7 @@ Who may call what:
 
 Events:
   subscribes bill.paid  (record the visit, update lifetime totals)
-  publishes  customer.created, customer.updated
+  publishes  customer.created, customer.updated, customer.deleted
 
 ``bill.paid`` is the one link that matters: customers owns the guest record and
 lifetime totals, so both loyalty and reports read from it rather than each
@@ -95,6 +95,26 @@ def _tenant(event: Event) -> uuid.UUID | None:
         return None
 
 
+def _outbox(db: AsyncSession, event: Event) -> None:
+    """Write the event to the outbox inside the current transaction.
+
+    The outbox row is added to the same session that owns the domain change,
+    so both commit or roll back together. The relay background task picks up
+    pending rows and pushes them to the event bus.
+    """
+    from src.services.customers.models import OutboxMessage
+
+    db.add(OutboxMessage(
+        event_id=event.event_id,
+        type=event.type,
+        tenant_id=event.tenant_id,
+        outlet_id=event.outlet_id,
+        data=event.data,
+        source_service=event.source_service,
+        status="pending",
+    ))
+
+
 # ─── Consumers ────────────────────────────────────────────────────────────────
 
 @bus.on("bill.paid")
@@ -141,8 +161,7 @@ async def _on_bill_paid(event: Event) -> None:
             covers=int(data.get("covers") or 1),
             outlet_id=outlet, bill_id=bill_id,
         )
-        await db.commit()
-        await bus.publish(_ev(
+        event = _ev(
             "customer.updated", tenant, outlet,
             data={
                 "customer_id": str(customer.id),
@@ -150,7 +169,10 @@ async def _on_bill_paid(event: Event) -> None:
                 "total_visits": customer.total_visits,
                 "total_spent": float(customer.total_spent),
             },
-        ))
+        )
+        _outbox(db, event)
+        await db.commit()
+        await bus.publish(event, local=True)
     except Exception:
         await db.rollback()
         raise
@@ -210,10 +232,13 @@ async def create_customer(payload: CustomerCreate, identity: CurrentIdentity, db
     customer = Customer(tenant_id=identity.tenant_id, **payload.model_dump())
     db.add(customer)
     await db.flush()
-    await bus.publish(_ev(
+    event = _ev(
         "customer.created", identity.tenant_id, customer.outlet_id,
         data={"customer_id": str(customer.id), "phone": customer.phone},
-    ))
+    )
+    _outbox(db, event)
+    await db.commit()
+    await bus.publish(event, local=True)
     return customer
 
 
@@ -239,6 +264,36 @@ async def update_customer(customer_id: uuid.UUID, payload: CustomerUpdate,
         setattr(customer, field, value)
     await db.flush()
     return customer
+
+
+@router.delete("/customers/{customer_id}", tags=["customers"],
+                 summary="Delete a guest profile")
+async def delete_customer(customer_id: uuid.UUID, identity: CurrentIdentity,
+                           db: DbDep):
+    """Remove a guest profile.
+
+    A hard delete is only safe because the child rows (preferences, visits,
+    feedback) cascade. The event is published so downstream services — loyalty
+    in particular — know the guest is gone instead of continuing to credit a
+    profile that no longer exists.
+    """
+    identity.require("manage:customers")
+    customer = await svc.load_customer(db, identity.tenant_id, customer_id)
+    if customer is None:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    event = _ev(
+        "customer.deleted", identity.tenant_id, customer.outlet_id,
+        data={
+            "customer_id": str(customer.id),
+            "tenant_id": str(identity.tenant_id),
+            "phone": customer.phone,
+        },
+    )
+    _outbox(db, event)
+    await db.delete(customer)
+    await db.commit()
+    await bus.publish(event, local=True)
+    return {"status": "deleted", "deleted_id": str(customer_id)}
 
 
 # ─── Preferences ─────────────────────────────────────────────────────────────

@@ -3304,6 +3304,85 @@ async def list_sales_commissions(
     return commissions
 
 
+
+
+async def _pos_rep_revenue(ctx, emp, month: int, year: int) -> tuple[float, int]:
+    """A rep's POS revenue for the month, pulled from the pos service over the
+    mesh. staff must never read another service's DB directly (split rule); a
+    pos outage degrades to (0.0, 0) so the performance page still renders.
+    Rows are attributed to the rep by the linked auth user id (waiter)."""
+    import httpx
+    from src.services.shared.registry import base_url, get_descriptor
+    desc = get_descriptor("pos")
+    if desc is None or not emp.user_id:
+        return 0.0, 0
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            res = await client.get(
+                f"{base_url(desc)}/api/v1/pos/orders",
+                params={"limit": 500},
+                headers={
+                    "X-Identity-Tenant-Id": str(ctx.tenant_id),
+                    "X-Identity-User-Id": str(ctx.user_id),
+                },
+            )
+        if res.status_code != 200:
+            return 0.0, 0
+        total, count = 0.0, 0
+        for r in res.json():
+            placed = str(r.get("placed_at") or "")[:7]
+            if placed != f"{year:04d}-{month:02d}":
+                continue
+            if str(r.get("status") or "").lower() not in {"settled", "served"}:
+                continue
+            if str(r.get("waiter_id") or "") == str(emp.user_id):
+                total += float(r.get("grand_total") or 0.0)
+                count += 1
+        return total, count
+    except Exception:
+        return 0.0, 0
+
+
+async def _billing_rep_revenue(ctx, emp, month: int, year: int) -> tuple[float, int]:
+    """A rep's invoiced/settled revenue for the month, pulled from the billing
+    service over the mesh. Attributed by cashier/waiter == the linked user.
+    Phase 1 adds real AR invoices; until then this sums settled bills."""
+    import calendar
+    import httpx
+    from src.services.shared.registry import base_url, get_descriptor
+    desc = get_descriptor("billing")
+    if desc is None or not emp.user_id:
+        return 0.0, 0
+    last_day = calendar.monthrange(year, month)[1]
+    params = {
+        "limit": 500,
+        "date_from": f"{year:04d}-{month:02d}-01",
+        "date_to": f"{year:04d}-{month:02d}-{last_day:02d}",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            res = await client.get(
+                f"{base_url(desc)}/api/v1/billing/bills",
+                params=params,
+                headers={
+                    "X-Identity-Tenant-Id": str(ctx.tenant_id),
+                    "X-Identity-User-Id": str(ctx.user_id),
+                },
+            )
+        if res.status_code != 200:
+            return 0.0, 0
+        total, count = 0.0, 0
+        for r in res.json():
+            if str(r.get("status") or "").lower() != "settled":
+                continue
+            owner = str(r.get("cashier_id") or r.get("waiter_id") or "")
+            if owner == str(emp.user_id):
+                total += float(r.get("grand_total") or 0.0)
+                count += 1
+        return total, count
+    except Exception:
+        return 0.0, 0
+
 @router.get("/payroll/rep-performance/{employee_id}")
 async def get_sales_rep_performance(
     employee_id: uuid.UUID,
@@ -3340,82 +3419,13 @@ async def get_sales_rep_performance(
     pos_tx_count = 0
     inv_count = 0
 
-    try:
-        from src.services.staff.models import CRMOpportunity
-        opp_stmt = (
-            select(CRMOpportunity)
-            .where(
-                CRMOpportunity.tenant_id == ctx.tenant_id,
-                func.extract("month", CRMOpportunity.created_at) == month,
-                func.extract("year", CRMOpportunity.created_at) == year,
-            )
-        )
-        if emp.user_id:
-            opp_stmt = opp_stmt.where(CRMOpportunity.owner_user_id == emp.user_id)
-        
-        opps_res = await db.execute(opp_stmt)
-        opps = opps_res.scalars().all()
-        for opp in opps:
-            stage_clean = (opp.stage or "").lower()
-            if "won" in stage_clean or "closed" in stage_clean:
-                crm_revenue += float(opp.amount or 0.0)
-                crm_deals_count += 1
-    except Exception:
-        pass
+    # CRM revenue ships with the crm module in Phase 5.
+    # (Was a dead import of a non-existent CRMOpportunity model, swallowed
+    #  by `except: pass`, so the figure was always silently 0.)
 
-    try:
-        from src.services.staff.models import POSTransaction
-        pos_conds = [
-            POSTransaction.tenant_id == ctx.tenant_id,
-            func.extract("month", POSTransaction.created_at) == month,
-            func.extract("year", POSTransaction.created_at) == year,
-        ]
-        
-        rep_cond = (POSTransaction.sales_rep_id == emp.id) | (POSTransaction.sales_rep_name.ilike(emp.full_name))
-        if emp.user_id:
-            rep_cond = rep_cond | (POSTransaction.cashier_id == emp.user_id)
-        pos_conds.append(rep_cond)
+    pos_revenue, pos_tx_count = await _pos_rep_revenue(ctx, emp, month, year)
 
-        pos_stmt = select(POSTransaction).where(*pos_conds)
-        pos_res = await db.execute(pos_stmt)
-        for tx in pos_res.scalars().all():
-            if tx.status and tx.status.lower() in ["completed", "paid", "partially_paid", "credit"]:
-                pos_revenue += float(tx.total_amount or 0.0)
-                pos_tx_count += 1
-    except Exception:
-        pass
-
-    try:
-        from src.services.staff.models import Invoice
-        inv_conds = [
-            Invoice.tenant_id == ctx.tenant_id,
-            Invoice.status.notin_(["cancelled", "voided", "draft"]),
-        ]
-        
-        # Match date by invoice_date or created_at
-        date_cond = (
-            (func.extract("month", Invoice.invoice_date) == month) & (func.extract("year", Invoice.invoice_date) == year)
-        ) | (
-            (func.extract("month", Invoice.created_at) == month) & (func.extract("year", Invoice.created_at) == year)
-        )
-        inv_conds.append(date_cond)
-
-        rep_cond = (
-            (Invoice.sales_rep_id == emp.id)
-            | (Invoice.sales_rep_name.ilike(emp.full_name))
-            | (Invoice.salesperson_name.ilike(emp.full_name))
-        )
-        if emp.user_id:
-            rep_cond = rep_cond | (Invoice.approved_by_user_id == emp.user_id)
-        inv_conds.append(rep_cond)
-
-        inv_stmt = select(Invoice).where(*inv_conds)
-        inv_res = await db.execute(inv_stmt)
-        for inv in inv_res.scalars().all():
-            inv_revenue += float(inv.total_amount or 0.0)
-            inv_count += 1
-    except Exception:
-        pass
+    inv_revenue, inv_count = await _billing_rep_revenue(ctx, emp, month, year)
 
     total_achieved = round(crm_revenue + pos_revenue + inv_revenue, 2)
     emp_points = float(emp.sales_points or 0.0)

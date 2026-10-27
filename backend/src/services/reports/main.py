@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from src.services.reports import models  # noqa: F401 - must come first
 from src.services.reports.api import router
+from src.services.event_bus.dedupe import install_service_ledger
 from src.services.shared.registry import get_descriptor
 from src.services.shared.service_factory import build_service
 
@@ -18,7 +19,20 @@ TAGS = [
     {"name": "items", "description": "Menu item sales velocity and margins"},
 ]
 
-app, db = build_service("reports", [router], tags=TAGS)
+
+async def _on_startup(app) -> None:
+    """Install this service's durable dedupe ledger.
+
+    Reports projects events into additive counters — a redelivered
+    ``bill.paid`` would double-count the day's sales. The in-memory gate in
+    the bus dies with the process; the ledger in this service's own
+    ``consumed_events`` table is what makes the projection survive a
+    restart.
+    """
+    install_service_ledger(app.state.db)
+
+
+app, db = build_service("reports", [router], on_startup=_on_startup, tags=TAGS)
 
 if __name__ == "__main__":
     import uvicorn

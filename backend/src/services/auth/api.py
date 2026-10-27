@@ -318,6 +318,12 @@ async def update_user(
             # stolen access JWT must not survive the deactivation either.
             await service.revoke_all_for_user(db, user.id)
             await service.revoke_all_access_tokens(db, user)
+            # Other services need to know the user is gone (e.g. a POS
+            # terminal mid-shift) — this event is what they subscribe to.
+            await record_event(db, type="user.deactivated",
+                               tenant_id=identity.tenant_id,
+                               data={"user_id": str(user.id),
+                                     "tenant_id": str(identity.tenant_id)})
 
     if payload.full_name is not None:
         user.full_name = payload.full_name

@@ -220,3 +220,351 @@ class PnlResponse(BaseModel):
     total_revenue: Decimal
     total_expense: Decimal
     net_profit: Decimal
+
+
+# ─── General ledger / opening balances ───────────────────────────────────────
+
+
+class GeneralLedgerRow(BaseModel):
+    entry_id: uuid.UUID
+    entry_number: str
+    entry_date: date
+    reference_type: str | None = None
+    reference_id: str | None = None
+    narration: str | None = None
+    description: str | None = None
+    debit: Decimal = Decimal("0")
+    credit: Decimal = Decimal("0")
+    running_balance: Decimal
+
+
+class GeneralLedgerResponse(BaseModel):
+    account_id: uuid.UUID
+    account_code: str
+    account_name: str
+    date_from: date
+    date_to: date
+    opening_balance: Decimal
+    closing_balance: Decimal
+    total_debit: Decimal
+    total_credit: Decimal
+    rows: list[GeneralLedgerRow] = []
+
+
+class OpeningBalanceRow(BaseModel):
+    account_id: uuid.UUID
+    code: str
+    name: str
+    account_type: str
+    total_debit: Decimal
+    total_credit: Decimal
+    net_balance: Decimal
+
+
+class OpeningBalanceResponse(BaseModel):
+    as_of: date
+    rows: list[OpeningBalanceRow] = []
+
+
+# ─── Bank ───────────────────────────────────────────────────────────────────
+
+
+class BankAccountCreate(BaseModel):
+    name: str = Field(..., max_length=200)
+    account_number: str = Field(..., max_length=50)
+    ifsc: str | None = Field(default=None, max_length=20)
+    branch: str | None = Field(default=None, max_length=200)
+    balance_snapshot: Decimal = Decimal("0")
+    is_active: bool = True
+
+
+class BankAccountResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    name: str
+    account_number: str
+    ifsc: str | None
+    branch: str | None
+    balance_snapshot: Decimal
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class BankReconciliationCreate(BaseModel):
+    period_start: date
+    period_end: date
+    matched_amount: Decimal = Decimal("0")
+    unmatched_amount: Decimal = Decimal("0")
+    notes: str | None = None
+
+
+class BankReconciliationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    bank_account_id: uuid.UUID
+    period_start: date
+    period_end: date
+    matched_amount: Decimal
+    unmatched_amount: Decimal
+    status: str
+    reconciled_by: uuid.UUID | None
+    notes: str | None
+    journal_entry_id: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+# ─── Fixed assets ───────────────────────────────────────────────────────────
+
+
+class FixedAssetCategoryCreate(BaseModel):
+    name: str = Field(..., max_length=200)
+    useful_life_years: int = 5
+
+
+class FixedAssetCategoryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    name: str
+    useful_life_years: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class FixedAssetCreate(BaseModel):
+    outlet_id: uuid.UUID | None = None
+    name: str = Field(..., max_length=200)
+    asset_code: str = Field(..., max_length=50)
+    category_id: uuid.UUID | None = None
+    purchase_cost: Decimal
+    purchase_date: date
+    useful_life_years: int = 5
+    salvage_value: Decimal = Decimal("0")
+
+
+class FixedAssetResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    outlet_id: uuid.UUID | None
+    name: str
+    asset_code: str
+    category_id: uuid.UUID | None
+    purchase_cost: Decimal
+    purchase_date: date
+    useful_life_years: int
+    salvage_value: Decimal
+    accumulated_depreciation: Decimal
+    disposal_status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class DepreciationPeriod(BaseModel):
+    period: str            # "YYYY-MM"
+    opening_book_value: Decimal
+    depreciation: Decimal
+    closing_book_value: Decimal
+
+
+class DepreciationScheduleResponse(BaseModel):
+    asset_id: uuid.UUID
+    asset_code: str
+    name: str
+    purchase_cost: Decimal
+    salvage_value: Decimal
+    useful_life_years: int
+    monthly_depreciation: Decimal
+    straight_line_base: Decimal
+    periods: list[DepreciationPeriod] = []
+    note: str = (
+        "Straight-line monthly: (purchase_cost - salvage_value) / useful_life_years / 12. "
+        "The schedule is a projection — accumulated_depreciation is only moved "
+        "when a depreciation run is posted."
+    )
+
+
+# ─── Budgets ────────────────────────────────────────────────────────────────
+
+
+class BudgetCreate(BaseModel):
+    outlet_id: uuid.UUID | None = None
+    department_or_module: str = Field(..., max_length=100)
+    period_month: int = Field(..., ge=1, le=12)
+    period_year: int = Field(..., ge=2000, le=2100)
+    budgeted: Decimal
+    actual: Decimal = Decimal("0")
+
+
+class BudgetResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    outlet_id: uuid.UUID | None
+    department_or_module: str
+    period_month: int
+    period_year: int
+    budgeted: Decimal
+    actual: Decimal
+    variance: Decimal
+    created_at: datetime
+    updated_at: datetime
+
+
+class BudgetActualCreate(BaseModel):
+    amount: Decimal
+    period: str | None = None  # "YYYY-MM" — defaults to the budget's own period
+
+
+class BudgetSummaryRow(BaseModel):
+    department_or_module: str
+    period_year: int
+    period_month: int
+    budgeted: Decimal
+    actual: Decimal
+    variance: Decimal
+
+
+class BudgetSummaryResponse(BaseModel):
+    rows: list[BudgetSummaryRow] = []
+    total_budgeted: Decimal = Decimal("0")
+    total_actual: Decimal = Decimal("0")
+    total_variance: Decimal = Decimal("0")
+
+
+# ─── Expense claims ────────────────────────────────────────────────────────
+
+
+class ExpenseClaimLineCreate(BaseModel):
+    category: str = Field(..., max_length=100)
+    amount: Decimal
+    description: str | None = Field(default=None, max_length=300)
+
+
+class ExpenseClaimLineResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    claim_id: uuid.UUID
+    category: str
+    amount: Decimal
+    description: str | None
+
+
+class ExpenseClaimCreate(BaseModel):
+    user_id: uuid.UUID | None = None
+    claimed_on: date | None = None
+    total: Decimal | None = None
+    status: str = "submitted"
+    notes: str | None = None
+    lines: list[ExpenseClaimLineCreate] = Field(default_factory=list)
+
+
+class ExpenseClaimResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    user_id: uuid.UUID
+    claimed_on: date
+    total: Decimal
+    status: str
+    notes: str | None
+    journal_entry_id: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime
+    lines: list[ExpenseClaimLineResponse] = []
+
+
+class ExpenseClaimActionResponse(BaseModel):
+    message: str
+    claim: ExpenseClaimResponse
+
+
+class ExpenseClaimSummaryRow(BaseModel):
+    status: str
+    count: int
+    total: Decimal
+
+
+class ExpenseClaimSummaryResponse(BaseModel):
+    rows: list[ExpenseClaimSummaryRow] = []
+    total_claims: int = 0
+    total_amount: Decimal = Decimal("0")
+    pending_amount: Decimal = Decimal("0")
+
+
+# ─── Financial reports ──────────────────────────────────────────────────────
+
+
+class ReportMeta(BaseModel):
+    title: str
+    from_date: date
+    to_date: date
+    currency: str = "INR"
+
+
+class LineItem(BaseModel):
+    account_code: str
+    account_name: str
+    account_type: str
+    debit: Decimal = Decimal("0")
+    credit: Decimal = Decimal("0")
+    net: Decimal = Decimal("0")
+
+
+class BalanceSheetResponse(BaseModel):
+    meta: ReportMeta
+    assets: list[LineItem] = []
+    total_assets: Decimal = Decimal("0")
+    liabilities: list[LineItem] = []
+    total_liabilities: Decimal = Decimal("0")
+    equity: list[LineItem] = []
+    total_equity: Decimal = Decimal("0")
+    total_liabilities_and_equity: Decimal = Decimal("0")
+    notes: list[str] = []
+
+
+class CashFlowResponse(BaseModel):
+    meta: ReportMeta
+    operating: list[LineItem] = []
+    net_operating: Decimal = Decimal("0")
+    investing: list[LineItem] = []
+    net_investing: Decimal = Decimal("0")
+    financing: list[LineItem] = []
+    net_financing: Decimal = Decimal("0")
+    net_cash_flow: Decimal = Decimal("0")
+
+
+class ARAgingResponse(BaseModel):
+    meta: ReportMeta
+    current: Decimal = Decimal("0")
+    days_1_30: Decimal = Decimal("0")
+    days_31_60: Decimal = Decimal("0")
+    days_61_90: Decimal = Decimal("0")
+    days_over_90: Decimal = Decimal("0")
+    total_outstanding: Decimal = Decimal("0")
+    buckets_available: bool = True
+
+
+class GSTSummaryResponse(BaseModel):
+    period: str
+    returns: list[GSTReturnResponse] = []
+    total_taxable_value: Decimal = Decimal("0")
+    total_cgst: Decimal = Decimal("0")
+    total_sgst: Decimal = Decimal("0")
+    total_igst: Decimal = Decimal("0")
+    total_cess: Decimal = Decimal("0")
+    total_tax: Decimal = Decimal("0")
+    invoices_available: bool = False
+    invoice_count: int = 0
+    notes: list[str] = []

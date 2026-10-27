@@ -15,6 +15,7 @@ from src.services.shared.service_factory import build_service
 from src.services.event_bus.dedupe import install_service_ledger
 from src.services.staff import models  # noqa: F401 - registers tables first
 from src.services.staff.api import router as staff_router, hrms_api_router
+from src.services.staff.outbox import OutboxRelay
 
 TAGS = [
     {"name": "staff", "description": "Employees, rosters, attendance, tips, feedback"},
@@ -22,8 +23,17 @@ TAGS = [
 ]
 
 async def _on_startup(app) -> None:
+    _relay._db = app.state.db
     install_service_ledger(app.state.db)
     await _ensure_company_rows(app.state.db)
+    await _relay.start()
+
+
+async def _on_shutdown(app) -> None:
+    await _relay.stop()
+
+
+_relay = OutboxRelay(None)  # db handle bound below
 
 
 async def _ensure_company_rows(db) -> None:
@@ -77,8 +87,10 @@ async def _ensure_company_rows(db) -> None:
 app, db = build_service(
     "staff", [staff_router],
     on_startup=_on_startup,
+    on_shutdown=_on_shutdown,
     tags=TAGS,
 )
+_relay._db = db
 
 # Mount canonical HRMS API directly at /api/v1 so that calls to /api/v1/hrms/* and /api/v1/erp/* resolve seamlessly
 app.include_router(hrms_api_router, prefix="/api/v1")

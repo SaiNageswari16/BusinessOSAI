@@ -14,8 +14,11 @@ the store, and the inventory service would never learn that goods arrived.
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Annotated
+
+logger = logging.getLogger("purchase.api")
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status as http_status
 from pydantic import BaseModel, Field
@@ -122,6 +125,40 @@ def _tenant(event: Event) -> uuid.UUID | None:
         return uuid.UUID(str(value))
     except (ValueError, TypeError):
         return None
+
+
+def _outbox(db: AsyncSession, event: Event) -> None:
+    """Write the event to the outbox inside the current transaction.
+
+    The outbox row is added to the same session that owns the domain change,
+    so both commit or roll back together. The relay background task picks up
+    pending rows and pushes them to the event bus. A crashed process leaves
+    the row in the database; the relay on the next boot picks it up.
+    """
+    from src.services.purchase.models import OutboxMessage
+
+    db.add(OutboxMessage(
+        event_id=event.event_id,
+        type=event.type,
+        tenant_id=event.tenant_id,
+        outlet_id=event.outlet_id,
+        data=event.data,
+        source_service=event.source_service,
+        status="pending",
+    ))
+
+
+async def _publish(event: Event) -> None:
+    """Publish an event that is already durable in the outbox.
+
+    The outbox row is the source of truth, so a bus failure here is not a
+    request failure — the relay retries the row on its next poll. Swallowing
+    the error keeps a flaky bus from turning a committed purchase into a 500.
+    """
+    try:
+        await bus.publish(event, local=True)
+    except Exception as exc:  # pragma: no cover - bus failure path
+        logger.warning("Event publish failed for %s: %s", event.type, exc)
 
 
 # ─── Consumers ────────────────────────────────────────────────────────────────
@@ -459,6 +496,28 @@ async def decide_request(pr_id: uuid.UUID, payload: PRDecision,
     status = PRStatus.APPROVED if payload.approve else PRStatus.REJECTED
     await svc.set_pr_status(db, identity.tenant_id, pr, status,
                             decided_by=identity.user_id, notes=payload.notes)
+    if payload.approve:
+        # Approval is the moment money is committed in principle, so it is
+        # the moment the rest of the system needs to know. The outbox row
+        # commits with the status change, so the event cannot be lost.
+        event = _ev(
+            "po.approved", identity.tenant_id, pr.outlet_id,
+            data={
+                "pr_id": str(pr.id),
+                "pr_number": pr.pr_number,
+                "tenant_id": str(identity.tenant_id),
+                "outlet_id": str(pr.outlet_id) if pr.outlet_id else None,
+                "approved_by": str(identity.user_id),
+                "lines": [
+                    {"inventory_item_id": str(l.inventory_item_id),
+                     "qty": float(l.qty)}
+                    for l in pr.lines
+                ],
+            },
+        )
+        _outbox(db, event)
+        await db.commit()
+        await _publish(event)
     return pr
 
 
@@ -528,11 +587,16 @@ async def create_order(payload: PurchaseOrderCreate,
         notes=payload.notes, created_by=identity.user_id,
     )
     po = await svc.load_order(db, identity.tenant_id, po.id)
-    await bus.publish(_ev(
+    event = _ev(
         "po.created", identity.tenant_id, payload.outlet_id,
         data={"po_id": str(po.id), "po_number": po.po_number,
               "vendor_id": str(vendor.id), "grand_total": float(po.grand_total)},
-    ))
+    )
+    _outbox(db, event)
+    await db.commit()
+    # Immediate local dispatch for in-process handlers; the relay picks up the
+    # outbox row for cross-service delivery.
+    await bus.publish(event, local=True)
     return po
 
 
@@ -666,7 +730,7 @@ async def qc_grn(grn_id: uuid.UUID, payload: QCDecision,
     if payload.pass_:
         accepted = sum(float(l.accepted_qty) for l in grn.lines)
         amount = sum(float(l.accepted_qty) * float(l.unit_price) for l in grn.lines)
-        await bus.publish(_ev(
+        event = _ev(
             "grn.posted", identity.tenant_id, grn.outlet_id,
             data={
                 "grn_id": str(grn.id),
@@ -684,7 +748,10 @@ async def qc_grn(grn_id: uuid.UUID, payload: QCDecision,
                     for l in grn.lines
                 ],
             },
-        ))
+        )
+        _outbox(db, event)
+        await db.commit()
+        await bus.publish(event, local=True)
     return grn
 
 
@@ -718,12 +785,15 @@ async def create_bill(payload: VendorBillCreate, identity: CurrentIdentity, db: 
         tax_total=payload.tax_total, invoice_number=payload.invoice_number,
         invoice_date=payload.invoice_date, notes=payload.notes,
     )
-    await bus.publish(_ev(
+    event = _ev(
         "vendor_bill.created", identity.tenant_id, bill.outlet_id,
         data={"bill_id": str(bill.id), "bill_number": bill.bill_number,
               "vendor_id": str(bill.vendor_id),
               "grand_total": float(bill.grand_total)},
-    ))
+    )
+    _outbox(db, event)
+    await db.commit()
+    await bus.publish(event, local=True)
     return bill
 
 

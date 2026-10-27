@@ -18,6 +18,7 @@ from src.services.platform.models import (
     PlatformAdmin,
     PlatformAdminRole,
     PlatformAuditEntry,
+    PluginManifest,
     TenantModuleState,
     _utcnow,
 )
@@ -92,6 +93,28 @@ async def require_platform_admin(
             detail="Platform administrator not found or inactive",
         )
     return admin
+
+
+def require_role(*roles: str):
+    """Role-scoped gate. ``super_admin`` always passes; any other admin must
+    hold one of ``roles``.
+
+    Without this, every route that takes ``require_platform_admin`` treats
+    all four roles as equivalent — an ``ops_admin`` could create a
+    ``super_admin``, flip a kill-switch, or delete a policy. The roles exist
+    in the model and the UI labels them, but nothing enforced them; this is
+    that enforcement.
+    """
+    async def _dep(
+        admin: Annotated[PlatformAdmin, Depends(require_platform_admin)],
+    ) -> PlatformAdmin:
+        if admin.role == "super_admin" or admin.role in roles:
+            return admin
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Requires role {list(roles)} (or super_admin); you are {admin.role}",
+        )
+    return _dep
 
 
 # ─── Auth Endpoints ──────────────────────────────────────────────────────────
@@ -208,7 +231,7 @@ async def list_plugins(
 async def toggle_plugin_kill_switch(
     plugin_id: str,
     is_active: bool,
-    admin: Annotated[PlatformAdmin, Depends(require_platform_admin)],
+    admin: Annotated[PlatformAdmin, Depends(require_role("super_admin", "ops_admin"))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ):
     try:
@@ -383,6 +406,19 @@ async def module_gate_check(
     itself is already authenticated before it proxies. A direct call from
     outside would be meaningless — it returns a state row, not data.
     """
+    # Global kill-switch: when the module's PluginManifest is de-activated the
+    # whole vertical is off for everyone, tenant row or not. This is the
+    # data-plane effect the toggle advertised but the gate never consulted.
+    # ``PluginManifest.id`` matches the service name for core services, which
+    # is exactly what the gateway keys ``module_key`` on, so the lookup is the
+    # same key the gate already uses.
+    manifest_res = await session.execute(
+        select(PluginManifest).where(PluginManifest.id == module_key)
+    )
+    manifest = manifest_res.scalar_one_or_none()
+    if manifest is not None and not manifest.is_active:
+        return {"module_key": module_key, "state": "kill_switched", "allowed": False}
+
     res = await session.execute(
         select(TenantModuleState).where(
             TenantModuleState.tenant_id == tenant_id,
@@ -606,7 +642,7 @@ async def list_admins(
 @router.post("/admins", response_model=PlatformAdminResponse, status_code=201)
 async def create_admin(
     req: AdminCreateRequest,
-    admin: Annotated[PlatformAdmin, Depends(require_platform_admin)],
+    admin: Annotated[PlatformAdmin, Depends(require_role("super_admin"))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ):
     try:
@@ -622,7 +658,7 @@ async def create_admin(
 async def update_admin(
     admin_id: uuid.UUID,
     req: AdminUpdateRequest,
-    admin: Annotated[PlatformAdmin, Depends(require_platform_admin)],
+    admin: Annotated[PlatformAdmin, Depends(require_role("super_admin"))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ):
     try:
@@ -708,7 +744,7 @@ async def list_policies(
 @router.delete("/policies/{policy_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_policy(
     policy_id: uuid.UUID,
-    admin: Annotated[PlatformAdmin, Depends(require_platform_admin)],
+    admin: Annotated[PlatformAdmin, Depends(require_role("super_admin"))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ):
     """Retire an ABAC policy. The rule's content is captured in the audit log,

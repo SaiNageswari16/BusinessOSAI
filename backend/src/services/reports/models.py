@@ -44,6 +44,33 @@ class TimestampMixin:
     )
 
 
+class ConsumedEvent(ServiceBase, TimestampMixin):
+    """Durable idempotency ledger — one row per event this service consumed.
+
+    Written by the bus's consumer loop via the installed dedupe ledger
+    (``src.services.event_bus.dedupe``), so a redelivered event whose
+    event_id is already here is skipped even after a process restart. The
+    in-memory dedupe gate in ``EventBus`` alone is not restart-safe; this
+    table closes that gap.
+
+    ``event_id`` is the primary key — a redelivery with the same event_id
+    is a no-op insert (``ON CONFLICT DO NOTHING``), which is exactly the
+    check-then-mark primitive the dedupe helper needs.
+    """
+
+    __tablename__ = "consumed_events"
+
+    event_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True
+    )
+    type: Mapped[str] = mapped_column(
+        String(120), nullable=False, default="", index=True
+    )
+    consumed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
 class DailySalesSummary(ServiceBase, TimestampMixin):
     __tablename__ = "daily_sales_summaries"
     __table_args__ = (

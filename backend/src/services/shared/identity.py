@@ -31,6 +31,12 @@ class Identity:
     roles: set[str] = field(default_factory=set)
     is_tenant_owner: bool = False
     tenant_slug: str = ""
+    # Which realm minted the token. "tenant" = a normal user's token from the
+    # auth service; "platform" = a super-admin's token from the platform
+    # control plane. The gateway uses this to keep the two realms isolated
+    # (a platform token must not ride the data plane). See the realm check in
+    # gateway/app.py.
+    auth_realm: str = "tenant"
     active_outlet_id: uuid.UUID | None = None
     allowed_outlet_ids: set[uuid.UUID] = field(default_factory=set)
     auth_source: str = "jwt"
@@ -152,6 +158,7 @@ def _identity_from_claims(claims: dict) -> Identity:
         roles=set(claims.get("roles") or []),
         is_tenant_owner=bool(claims.get("is_tenant_owner", False)),
         tenant_slug=claims.get("tenant_slug", ""),
+        auth_realm=claims.get("auth_realm", "tenant"),
         active_outlet_id=(
             uuid.UUID(claims["active_outlet_id"])
             if claims.get("active_outlet_id")
@@ -201,6 +208,7 @@ def _identity_from_forwarded_headers(request: Request) -> Identity:
             ),
             is_tenant_owner=(request.headers.get("x-identity-is-owner") or "").lower() == "true",
             tenant_slug=request.headers.get("x-identity-tenant-slug", ""),
+            auth_realm=request.headers.get("x-identity-realm", "tenant"),
             active_outlet_id=_uuid_or_none("x-identity-active-outlet"),
             allowed_outlet_ids={
                 uuid.UUID(o)
@@ -268,6 +276,16 @@ async def get_identity(
             identity = _decode(credentials)
         except Exception:
             identity = None
+
+    # A valid bearer token is the authoritative identity. The gateway proxies
+    # the client's token alongside its forwarded X-Identity-* headers, so a
+    # request can carry both — in that case the token and the headers describe
+    # the same user (the gateway decoded that very token), and the token wins.
+    # Without this return, a successfully-decoded token was silently discarded
+    # in favour of the dev fallback, so every authenticated request resolved
+    # to the fallback user and /me-family routes 404'd.
+    if identity is not None:
+        return identity
 
     # 2. Trusted service-to-service forwarding — the menu/inventory/purchase
     #    services call each other over HTTP carrying the request's own

@@ -67,8 +67,13 @@ from src.services.inventory.schemas import (
     WastageResponse,
 )
 from src.services.shared.identity import CurrentIdentity
+from src.services.inventory.api_procurement import router as procurement_router
 
 router = APIRouter()
+
+# The procurement screens live under /api/v1/inventory/procurement/* but the
+# data belongs to the purchase service — this include mounts the proxy there.
+router.include_router(procurement_router)
 
 
 async def get_db(request: Request) -> AsyncSession:

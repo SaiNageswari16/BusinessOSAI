@@ -156,6 +156,226 @@ async def allocate_bill_number(
     return f"{counter.prefix}{str(number).zfill(4)}"
 
 
+async def allocate_invoice_number(
+    db: AsyncSession, tenant_id: uuid.UUID, outlet_id: uuid.UUID,
+    code: str | None = None,
+) -> str:
+    """Next invoice number for this outlet, monthly-resetting.
+
+    Mirrors ``allocate_bill_number`` on the invoice sequence: same locked-row
+    pattern, its own counter key (``invoice:<outlet>:<YYYY-MM>``) so bills
+    and invoices number independently, and the same lock-on-create re-select
+    so two concurrent creators cannot both start at 1.
+    """
+    now = _now()
+    key = f"invoice:{outlet_id}:{now:%Y-%m}"
+    prefix = f"{(code or 'INV').upper()}-{now:%y%m}-"
+
+    counter = (
+        await db.execute(
+            select(NumberCounter)
+            .where(NumberCounter.tenant_id == tenant_id, NumberCounter.key == key)
+            .with_for_update()
+        )
+    ).scalars().first()
+
+    if counter is None:
+        counter = NumberCounter(
+            tenant_id=tenant_id, key=key, prefix=prefix, next_number=1
+        )
+        db.add(counter)
+        await db.flush()
+        counter = (
+            await db.execute(
+                select(NumberCounter).where(
+                    NumberCounter.tenant_id == tenant_id, NumberCounter.key == key
+                )
+                .with_for_update()
+            )
+        ).scalars().one()
+
+    number = counter.next_number
+    counter.next_number = number + 1
+    await db.flush()
+    return f"{counter.prefix}{str(number).zfill(4)}"
+
+
+# ─── Invoice GST math ────────────────────────────────────────────────────────
+#
+# Ported from the retail monolith's ``_compute_invoice_totals`` and
+# interstate detection, wired to this service's TaxCode rows: a line's
+# tax_code_id selects cgst_pct/sgst_pct/igst_pct; when the customer's GSTIN
+# state code differs from the outlet's, the whole invoice charges a single
+# IGST window instead of a CGST+SGST split. A whole-invoice discount is
+# prorated across lines before tax; rounding is to the paise. No tax codes in
+# the tenant → zero-tax invoice, never a crash.
+
+IN_STATE = "in_state"
+OUT_STATE = "out_state"
+STATE_NAMES = {
+    "01": "Jammu & Kashmir", "02": "Himachal Pradesh", "03": "Punjab",
+    "04": "Chandigarh", "05": "Uttarakhand", "06": "Delhi",
+    "07": "Haryana", "08": "Rajasthan", "09": "Uttar Pradesh",
+    "10": "Bihar", "11": "Sikkim", "12": "Arunachal Pradesh",
+    "13": "Nagaland", "14": "Manipur", "15": "Mizoram",
+    "16": "Meghalaya", "17": "Tripura", "18": "Assam",
+    "19": "West Bengal", "20": "Jharkhand", "21": "Odisha",
+    "22": "Chhattisgarh", "23": "Madhya Pradesh", "24": "Gujarat",
+    "25": "Daman & Diu", "26": "Dadra & Nagar Haveli", "27": "Maharashtra",
+    "28": "Karnataka", "29": "Goa", "30": "Lakshadweep", "31": "Kerala",
+    "32": "Tamil Nadu", "33": "Puducherry", "34": "Andhra Pradesh",
+    "35": "Telangana", "36": "Andaman & Nicobar Islands",
+    "37": "Andaman & Nicobar Islands", "38": "Ladakh",
+    "97": "J&K", "98": "Jammu & Kashmir", "99": "Other Territory",
+}
+
+
+def gstin_state_code(gstin: str | None) -> str | None:
+    """The two-digit state code out of a GSTIN, or None when the GSTIN is
+    absent / not Indian GST. The code picks inter-state routing; a malformed
+    registration therefore falls back to intra-state, which is the safe
+    default for a restaurant counter sale."""
+    if not gstin:
+        return None
+    code = str(gstin).strip().upper()[:2]
+    return code if code.isdigit() and code in STATE_NAMES else None
+
+
+def is_interstate_sale(outlet_gstin: str | None, customer_gstin: str | None,
+                       outlet_state_code: str | None = None) -> bool:
+    """Inter-state when both states are known and differ.
+
+    A customer GSTIN is the signal: unregistered or unknown customers keep
+    the outlet's state. (The customer's state *cannot* be read from their
+    GSTIN alone in every case, but the two-digit prefix is exactly the
+    routing code GST registers on, so it is the right test.)
+    """
+    out_code = outlet_state_code or gstin_state_code(outlet_gstin)
+    cust_code = gstin_state_code(customer_gstin)
+    if out_code is None or cust_code is None:
+        return False
+    return out_code != cust_code
+
+
+def compute_invoice_totals(
+    lines: list[dict],
+    *,
+    is_interstate: bool = False,
+    invoice_discount: Decimal = Decimal("0"),
+    is_tax_inclusive: bool = False,
+    tax_rates: dict | None = None,
+) -> dict:
+    """Line → totals for an invoice, to the paise.
+
+    ``lines`` carry: qty/quantity, unit_price, discount_amount, tax_rate,
+    optionally is_tax_inclusive. ``tax_rates`` (keyed by line index, values
+    {"cgst_pct","sgst_pct","igst_pct","cess_pct"} read from TaxCode rows)
+    pick the split; when a line has no code, a bare ``tax_rate`` is halved
+    into CGST+SGST, or kept whole as IGST for inter-state invoices. No code
+    anywhere means a zero-tax invoice — the function never crashes on it.
+
+    Whole-invoice discounts are prorated across lines by gross value so the
+    tax base stays attributable. Round-off to the nearest rupee is returned
+    separately, exactly like the bill path.
+
+    Returns a dict the caller writes onto the invoice row:
+      subtotal, discount_total, taxable_amount, tax_total,
+      cgst_total, sgst_total, igst_total, cess_total, round_off, grand_total,
+      per_line: [{cgst, sgst, igst, cess, tax, line_total, taxable}]
+    """
+    invoice_discount = _money(_d(invoice_discount))
+    gross_all = sum(_d(l.get("unit_price")) * _d(l.get("qty") or l.get("quantity") or 1)
+                    for l in (lines or []))
+
+    subtotal = Decimal("0")
+    discount_total = Decimal("0")
+    taxable_amount = Decimal("0")
+    tax_total = Decimal("0")
+    cgst_total = sgst_total = igst_total = cess_total = Decimal("0")
+    per_line: list[dict] = []
+
+    for i, line in enumerate(lines or []):
+        qty = _d(line.get("qty") or line.get("quantity") or 1)
+        gross = _money(_d(line.get("unit_price")) * qty)
+        disc = _money(_d(line.get("discount_amount")))
+        # This line's share of the whole-invoice discount, by value.
+        if invoice_discount > 0 and gross_all > 0:
+            disc += _money(gross * invoice_discount / gross_all)
+        disc = _money(min(disc, gross))
+
+        rates = (tax_rates or {}).get(i) or {}
+        cgst_pct = _d(rates.get("cgst_pct"))
+        sgst_pct = _d(rates.get("sgst_pct"))
+        igst_pct = _d(rates.get("igst_pct"))
+        cess_pct = _d(rates.get("cess_pct"))
+        if is_interstate:
+            # Single IGST window: a code that stores the CGST+SGST split is
+            # consolidated; a code that already stores igst_pct wins.
+            igst_pct = _d(rates.get("igst_pct")) or (cgst_pct + sgst_pct)
+            cgst_pct = sgst_pct = Decimal("0")
+        elif (cgst_pct + sgst_pct + igst_pct + cess_pct) <= 0 and _d(line.get("tax_rate")) > 0:
+            # No tax code: the caller's bare rate. Intra-state → half/half
+            # CGST+SGST, the usual restaurant case.
+            bare = _d(line.get("tax_rate"))
+            if is_interstate:
+                igst_pct = bare
+            else:
+                cgst_pct = bare / Decimal("2")
+                sgst_pct = bare / Decimal("2")
+
+        net = _money(gross - disc)
+        rate = _d(line.get("tax_rate"))
+        if bool(line.get("is_tax_inclusive", is_tax_inclusive)) and rate > 0 and not rates:
+            # Inclusive: GST sits inside the price; back it out of the base.
+            taxable = _money(net - _money(net * rate / (Decimal("100") + rate)))
+        else:
+            taxable = net
+        if taxable < 0:
+            taxable = Decimal("0")
+
+        cgst = _money(taxable * cgst_pct / Decimal("100"))
+        sgst = _money(taxable * sgst_pct / Decimal("100"))
+        igst = _money(taxable * igst_pct / Decimal("100"))
+        cess = _money(taxable * cess_pct / Decimal("100"))
+        line_tax = cgst + sgst + igst + cess
+
+        subtotal += gross
+        discount_total += disc
+        taxable_amount += taxable
+        tax_total += line_tax
+        cgst_total += cgst
+        sgst_total += sgst
+        igst_total += igst
+        cess_total += cess
+        per_line.append({
+            "cgst": cgst, "sgst": sgst, "igst": igst, "cess": cess,
+            "tax": line_tax, "line_total": _money(taxable + line_tax),
+            "taxable": taxable,
+        })
+
+    raw_total = _money(taxable_amount + (cgst_total + sgst_total + igst_total + cess_total))
+    rounded = raw_total
+    round_off = Decimal("0")
+    nearest = rounded.to_integral_value(rounding=ROUND_HALF_UP)
+    if nearest != rounded:
+        round_off = nearest - rounded
+        rounded = nearest
+
+    return {
+        "subtotal": _money(subtotal),
+        "discount_total": _money(discount_total),
+        "taxable_amount": _money(taxable_amount),
+        "tax_total": _money(cgst_total + sgst_total + igst_total + cess_total),
+        "cgst_total": _money(cgst_total),
+        "sgst_total": _money(sgst_total),
+        "igst_total": _money(igst_total),
+        "cess_total": _money(cess_total),
+        "round_off": round_off,
+        "grand_total": _money(rounded),
+        "per_line": per_line,
+    }
+
+
 # ─── Bill construction ───────────────────────────────────────────────────────
 
 async def build_bill(

@@ -211,13 +211,24 @@ def _add_missing_columns(sync_conn, metadata, table_names: list[str]) -> int:
         try:
             present = {c["name"] for c in inspector.get_columns(tname)}
         except Exception:
-            present = set()  # table was created moments ago; refresh view
+            try:
+                # The inspector view can be a moment stale right after
+                # create_all: retry once before giving up on this table.
+                present = {c["name"] for c in inspect(sync_conn).get_columns(tname)}
+            except Exception:
+                # Cannot determine what exists. NEVER fall back to "nothing
+                # exists" — that makes every column "missing" and the ALTERs
+                # below hit DuplicateColumn on a table create_all just built.
+                logger.warning(
+                    "Cannot inspect columns of %s; skipping column repair for it", tname,
+                )
+                continue
         for col in table.columns:
             if col.primary_key or col.name in present:
                 continue
             col_type = col.type.compile(dialect=sync_conn.dialect)
             if col.nullable:
-                sync_conn.execute(text(f'ALTER TABLE "{tname}" ADD COLUMN "{col.name}" {col_type}'))
+                clause = f'ALTER TABLE "{tname}" ADD COLUMN "{col.name}" {col_type}'
             else:
                 default_sql = _column_default_sql(col, sync_conn.dialect)
                 if default_sql is None:
@@ -227,9 +238,16 @@ def _add_missing_columns(sync_conn, metadata, table_names: list[str]) -> int:
                         "needs a manual migration", tname, col.name,
                     )
                     continue
-                sync_conn.execute(
-                    text(f'ALTER TABLE "{tname}" ADD COLUMN "{col.name}" {col_type} NOT NULL DEFAULT {default_sql}')
-                )
+                clause = f'ALTER TABLE "{tname}" ADD COLUMN "{col.name}" {col_type} NOT NULL DEFAULT {default_sql}'
+            try:
+                sync_conn.execute(text(clause))
+            except Exception as exc:
+                # Two replicas racing, or the inspector raced with create_all:
+                # a duplicate column is success, anything else is fatal.
+                if "duplicate" in str(exc).lower():
+                    logger.info("Column %s.%s already exists (race); leaving it", tname, col.name)
+                    continue
+                raise
             logger.info("Added missing column %s.%s", tname, col.name)
             added += 1
     return added

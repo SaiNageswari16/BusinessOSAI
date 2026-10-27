@@ -473,3 +473,414 @@ class CouponUpdate(BaseModel):
     min_order_value: float | None = Field(default=None, ge=0)
     is_active: bool | None = None
 
+
+# ─── Invoices & receipts ────────────────────────────────────────────────────
+#
+# Request shapes mirror the retail frontend's invoicesApi / salesReturnsApi /
+# paymentsApi payloads (frontend/src/lib/api-client.ts). Response models ride
+# the OrmModel base so they serialise straight off ORM rows.
+
+class InvoiceLineCreate(BaseModel):
+    """One line. Prices are snapshotted; tax_rate comes from a billing tax
+    code when the caller passes tax_code_id, otherwise it is used as-is."""
+
+    menu_item_id: uuid.UUID | None = None
+    description: str = Field(min_length=1, max_length=200)
+    hsn_code: str | None = Field(default=None, max_length=20)
+    qty: float = Field(gt=0, default=1)
+    unit: str | None = Field(default=None, max_length=20)
+    unit_price: float = Field(ge=0, default=0)
+    discount_amount: float = Field(ge=0, default=0)
+    tax_code_id: uuid.UUID | None = None
+    tax_rate: float | None = Field(default=None, ge=0, le=100)
+    name: str | None = None  # frontend alias of description
+
+    @model_validator(mode="after")
+    def _fill_description(self) -> "InvoiceLineCreate":
+        if not self.description and self.name:
+            self.description = self.name
+        return self
+
+
+class InvoiceCreate(BaseModel):
+    """Create an invoice. With ``bill_id`` the document is built from that
+    bill's lines and totals (the POS path); otherwise from manual lines."""
+
+    outlet_id: uuid.UUID | None = None
+    bill_id: uuid.UUID | None = None
+    invoice_type: str = "tax_invoice"
+    invoice_number: str | None = Field(default=None, max_length=50)
+    customer_id: uuid.UUID | None = None
+    customer_name: str | None = Field(default=None, max_length=200)
+    customer_phone: str | None = Field(default=None, max_length=30)
+    customer_gstin: str | None = Field(default=None, max_length=20)
+    discount_amount: float = Field(ge=0, default=0)  # whole-invoice discount
+    tds: float = Field(ge=0, default=0)
+    is_reverse_charge: bool = False
+    is_tax_inclusive: bool = False
+    dated: datetime | None = None
+    notes: str | None = None
+    paid_amount: float | None = Field(default=None, ge=0)
+    payment_method: str | None = Field(default=None, max_length=30)
+    lines: list[InvoiceLineCreate] = Field(default_factory=list)
+    # Frontend also sends these spellings; tolerate both.
+    items: list[InvoiceLineCreate] | None = None
+    total_amount: float | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _fill(self) -> "InvoiceCreate":
+        if self.items and not self.lines:
+            self.lines = self.items
+        return self
+
+
+class InvoiceUpdate(BaseModel):
+    customer_name: str | None = Field(default=None, max_length=200)
+    customer_phone: str | None = Field(default=None, max_length=30)
+    customer_gstin: str | None = Field(default=None, max_length=20)
+    notes: str | None = None
+    status: str | None = None
+    is_reverse_charge: bool | None = None
+    is_tax_inclusive: bool | None = None
+    irn_number: str | None = Field(default=None, max_length=100)
+    ack_number: str | None = Field(default=None, max_length=100)
+    e_invoice_qr: str | None = None
+    print_template_id: uuid.UUID | None = None
+    journal_entry_id: uuid.UUID | None = None
+
+
+class InvoiceLineResponse(OrmModel):
+    id: uuid.UUID
+    invoice_id: uuid.UUID
+    line_number: int
+    menu_item_id: uuid.UUID | None
+    description: str
+    hsn_code: str | None
+    qty: float
+    unit: str
+    unit_price: float
+    discount_amount: float
+    tax_code_id: uuid.UUID | None
+    tax_rate: float
+    cgst: float
+    sgst: float
+    igst: float
+    cess: float
+    line_total: float
+
+
+class InvoicePaymentResponse(OrmModel):
+    id: uuid.UUID
+    invoice_id: uuid.UUID
+    method: str
+    amount: float
+    reference: str | None
+    paid_at: datetime | None
+    created_at: datetime
+
+
+class InvoiceResponse(OrmModel):
+    """Frontend Invoice shape plus the billing details the receipts and the
+    settlement UI need. ``amount_paid`` / ``balance_due`` / ``invoice_date``
+    / ``currency_code`` are derived so the retail UI's Invoice interface
+    resolves without a second fetch."""
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    outlet_id: uuid.UUID
+    invoice_number: str
+    invoice_type: str
+    bill_id: uuid.UUID | None
+    exchange_from_invoice_id: uuid.UUID | None
+    customer_id: uuid.UUID | None
+    customer_name: str | None
+    customer_phone: str | None
+    customer_gstin: str | None
+
+    subtotal: float
+    discount_total: float
+    taxable_amount: float
+    tax_total: float
+    cgst_total: float
+    sgst_total: float
+    igst_total: float
+    cess_total: float
+    tds: float
+    round_off: float
+    grand_total: float
+    paid_amount: float
+    status: str
+
+    is_reverse_charge: bool
+    is_tax_inclusive: bool
+    irn_number: str | None
+    ack_number: str | None
+    e_invoice_qr: str | None
+    journal_entry_id: uuid.UUID | None
+    print_template_id: uuid.UUID | None
+
+    dated: datetime
+    created_at: datetime
+    updated_at: datetime
+
+    lines: list[InvoiceLineResponse] = Field(default_factory=list)
+    payments: list[InvoicePaymentResponse] = Field(default_factory=list)
+
+    amount_paid: float = 0.0
+    balance_due: float = 0.0
+    invoice_date: str = ""
+    currency_code: str = "INR"
+
+    @model_validator(mode="after")
+    def _derived(self) -> "InvoiceResponse":
+        self.amount_paid = float(self.paid_amount or 0)
+        self.balance_due = max(0.0, float(self.grand_total or 0) - float(self.paid_amount or 0))
+        if not self.invoice_date:
+            d = self.dated or self.created_at
+            self.invoice_date = d.date().isoformat() if d else ""
+        return self
+
+
+class InvoiceListResponse(OrmModel):
+    """Register-row shape for GET /invoices. Columns only — the list handler
+    builds these with ``_shallow`` (no relationships) so serialising can
+    never fire a lazy load; the derived ``balance_due`` keeps the UI's
+    open-balance column cheap to compute."""
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    outlet_id: uuid.UUID
+    invoice_number: str
+    invoice_type: str
+    customer_name: str | None = None
+    customer_phone: str | None = None
+    grand_total: float
+    paid_amount: float
+    status: str
+    dated: datetime
+    created_at: datetime
+    balance_due: float = 0.0
+
+    @model_validator(mode="after")
+    def _derived(self) -> "InvoiceListResponse":
+        self.balance_due = max(0.0, float(self.grand_total or 0) - float(self.paid_amount or 0))
+        return self
+
+
+class InvoiceItemCreate(BaseModel):
+    """Frontend sales-returns item shape (product-centric naming)."""
+
+    product_id: uuid.UUID | None = None
+    product_name: str = ""
+    menu_item_id: uuid.UUID | None = None
+    sku: str | None = Field(default=None, max_length=100)
+    hsn_code: str | None = Field(default=None, max_length=20)
+    batch_number: str | None = Field(default=None, max_length=100)
+    quantity: float = Field(ge=0, default=1)
+    qty: float | None = None
+    unit_price: float = Field(ge=0, default=0)
+    price: float | None = None
+    tax_rate: float | None = Field(default=None, ge=0, le=100)
+    tax_amount: float | None = Field(default=None, ge=0)
+    discount_amount: float | None = Field(default=None, ge=0)
+    line_total: float | None = Field(default=None, ge=0)
+    reason: str | None = None
+    disposition: str | None = None
+
+    @model_validator(mode="after")
+    def _fill(self) -> "InvoiceItemCreate":
+        if self.quantity <= 0 and (self.qty or 0) > 0:
+            self.quantity = self.qty
+        if not self.unit_price and (self.price or 0) > 0:
+            self.unit_price = self.price
+        return self
+
+
+class SalesReturnCreate(BaseModel):
+    original_invoice_id: uuid.UUID | None = None
+    original_invoice_number: str | None = None
+    outlet_id: uuid.UUID | None = None
+    customer_id: uuid.UUID | None = None
+    customer_name: str | None = None
+    customer_phone: str | None = None
+    return_date: datetime | None = None
+    settlement_method: str | None = None
+    reason: str | None = None
+    notes: str | None = None
+    items: list[InvoiceItemCreate] = Field(default_factory=list)
+
+
+class SalesReturnExchangeCreate(SalesReturnCreate):
+    exchange_items: list[InvoiceItemCreate] = Field(default_factory=list)
+
+
+class SalesReturnResponse(BaseModel):
+    """Columns plus the caller's items, so POST echoes and GET stay one
+    query deep."""
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    outlet_id: uuid.UUID | None
+    invoice_id: uuid.UUID | None
+    invoice_number: str | None
+    return_number: str
+    customer_id: uuid.UUID | None
+    customer_name: str | None
+    customer_phone: str | None
+    return_date: datetime
+    settlement_method: str | None
+    reason: str | None
+    notes: str | None
+    total_amount: float
+    status: str
+    exchange_invoice_id: uuid.UUID | None
+    created_at: datetime
+    items: list[dict] = Field(default_factory=list)
+    items_count: int = 0
+
+    @model_validator(mode="after")
+    def _count(self) -> "SalesReturnResponse":
+        self.items_count = len(self.items or [])
+        return self
+
+
+class PrintTemplateCreate(BaseModel):
+    """POST /print-templates arrives as ``{"template": {...}, "set_as_default":
+    bool}`` from the frontend saveTemplate. The template body is free-form:
+    the frontend's ReceiptTemplate JSON (themeName, paperSize, fields,
+    elements, ...) is stored wholesale in ``fields`` so nothing is lost on
+    round-trip."""
+
+    template: dict | None = None
+    outlet_id: uuid.UUID | None = None
+    category: str = "thermal"
+    name: str | None = None
+    set_as_default: bool = False
+
+
+class PrintTemplateResponse(OrmModel):
+    """The stored row. A template's full JSON (everything except id/tenant)
+    is round-tripped in ``fields``; ``name`` and ``paper_size`` are top
+    level so list responses match the frontend's expectations."""
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    outlet_id: uuid.UUID | None
+    category: str
+    name: str
+    paper_size: str
+    fields: dict
+    active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class SetActivePrintTemplate(BaseModel):
+    template_id: uuid.UUID
+    category: str = "thermal"
+
+
+class InvoiceSettlementCreate(BaseModel):
+    """Settle one invoice (or a FIFO batch of a customer's invoices). The
+    retail settleInvoices payload also carries customer-level fields; they
+    are accepted and the allocations are applied oldest-first."""
+
+    customer_id: uuid.UUID | None = None
+    customer_name: str | None = None
+    customer_phone: str | None = None
+    payment_amount: float = Field(gt=0)
+    payment_date: datetime | None = None
+    payment_method: str = "cash"
+    reference_number: str | None = Field(default=None, max_length=200)
+    notes: str | None = None
+    allocations: list[dict] | None = None  # [{"invoice_id","amount_allocated"}]
+    invoice_id: uuid.UUID | None = None
+
+
+class InvoiceVoid(BaseModel):
+    reason: str | None = Field(default=None, max_length=300)
+
+
+class ReminderPolicyIn(BaseModel):
+    outlet_id: uuid.UUID | None = None
+    enabled: bool = False
+    channels: list[str] = Field(default_factory=lambda: ["whatsapp"])
+    days_before_due: int = 3
+    reminder_frequency_days: int = 1
+    notes: str | None = None
+
+
+class GatewayConfigIn(BaseModel):
+    gateway: str
+    outlet_id: uuid.UUID | None = None
+    is_enabled: bool = True
+    is_test_mode: bool = False
+    credentials: dict = Field(default_factory=dict)
+    settings: dict | None = None
+
+
+class GatewayConfigResponse(OrmModel):
+    """Frontend PaymentGatewayConfigDTO shape, derived from the row."""
+
+    id: uuid.UUID
+    gateway: str
+    outlet_id: uuid.UUID | None
+    is_enabled: bool
+    is_test_mode: bool
+    config: dict
+    name: str = ""
+    category: str = "domestic"
+    description: str = ""
+    credentials: dict = Field(default_factory=dict)
+    supported_methods: list[str] = Field(default_factory=list)
+    currencies: list[str] = Field(default_factory=lambda: ["INR"])
+
+    @model_validator(mode="after")
+    def _fill(self) -> "GatewayConfigResponse":
+        self.name = {"razorpay": "Razorpay", "pinelabs": "PineLabs POS Terminal"}.get(
+            self.gateway, self.gateway)
+        self.category = "pos_terminal" if self.gateway == "pinelabs" else "domestic"
+        self.credentials = {k: v for k, v in (self.config or {}).items()
+                            if k in ("key_id", "terminal_id", "merchant_id", "region")}
+        return self
+
+
+class RazorpayOrderCreate(BaseModel):
+    amount: float = Field(gt=0)
+    currency: str = "INR"
+    receipt: str | None = None
+    outlet_id: uuid.UUID | None = None
+    company_id: str | None = None  # retail frontends send a company id; scope by outlet
+    notes: dict | None = None
+
+
+class RazorpayVerifyRequest(BaseModel):
+    razorpay_order_id: str = ""
+    order_id: str | None = None
+    razorpay_payment_id: str = ""
+    payment_id: str | None = None
+    razorpay_signature: str = ""
+    signature: str | None = None
+    outlet_id: uuid.UUID | None = None
+    company_id: str | None = None
+
+    @model_validator(mode="after")
+    def _fill(self) -> "RazorpayVerifyRequest":
+        if not self.order_id:
+            self.order_id = self.razorpay_order_id
+        if not self.payment_id:
+            self.payment_id = self.razorpay_payment_id
+        if not self.signature:
+            self.signature = self.razorpay_signature
+        return self
+
+
+class PineLabsChargeRequest(BaseModel):
+    amount: float = Field(gt=0)
+    bill_number: str = ""
+    outlet_id: uuid.UUID | None = None
+    customer_mobile: str | None = None
+    payment_mode: str | None = "CARD"
+    terminal_id: str | None = None
+    company_id: str | None = None
+

@@ -55,6 +55,26 @@ def _tenant(event: Event) -> uuid.UUID | None:
         return None
 
 
+def _outbox(db: AsyncSession, event: Event) -> None:
+    """Write the event to the outbox inside the current transaction.
+
+    The outbox row is added to the same session that owns the domain change,
+    so both commit or roll back together. The relay background task picks up
+    pending rows and pushes them to the event bus.
+    """
+    from src.services.staff.models import OutboxMessage
+
+    db.add(OutboxMessage(
+        event_id=event.event_id,
+        type=event.type,
+        tenant_id=event.tenant_id,
+        outlet_id=event.outlet_id,
+        data=event.data,
+        source_service=event.source_service,
+        status="pending",
+    ))
+
+
 # ─── Event Consumer ──────────────────────────────────────────────────────────
 
 @bus.on("bill.paid")
@@ -90,15 +110,17 @@ async def _on_bill_paid(event: Event) -> None:
             is_pool_eligible=bool(data.get("tip_pool_eligible", True)),
             notes=f"bill {data.get('bill_number') or bill_id}",
         )
-        await db.commit()
-        await bus.publish(_ev(
+        event = _ev(
             "tip.recorded", tenant, outlet,
             data={
                 "tip_id": str(tip.id), "bill_id": str(bill_id),
                 "amount": float(tip.amount),
                 "employee_id": str(tip.employee_id) if tip.employee_id else None,
             },
-        ))
+        )
+        _outbox(db, event)
+        await db.commit()
+        await bus.publish(event, local=True)
     except Exception:
         await db.rollback()
         raise
@@ -121,13 +143,16 @@ async def record_tip(
         shift_id=payload.shift_id,
         is_pool_eligible=payload.is_pool_eligible, notes=payload.notes,
     )
-    await bus.publish(_ev(
+    event = _ev(
         "tip.recorded", ctx.tenant_id, payload.outlet_id,
         data={
             "tip_id": str(tip.id), "amount": float(tip.amount),
             "employee_id": str(tip.employee_id) if tip.employee_id else None,
         },
-    ))
+    )
+    _outbox(db, event)
+    await db.commit()
+    await bus.publish(event, local=True)
     return tip
 
 

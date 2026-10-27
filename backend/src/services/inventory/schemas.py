@@ -378,3 +378,224 @@ class StockConsumptionCreate(BaseModel):
     reference_id: str | None = None
     notes: str | None = None
 
+
+# ─── Barcodes / QR / RFID identifiers (label management) ───────────────────
+
+class BarcodeEntry(OrmModel):
+    """One row of the barcode list: the item's identity plus its code."""
+    id: uuid.UUID
+    product_name: str
+    sku: str | None = None
+    barcode: str | None = None
+    format: str | None = None
+    selling_price: float | None = None
+    image_url: str | None = None
+    category_name: str | None = None
+
+
+class BarcodePeek(BaseModel):
+    """The next unique barcode, computed but not yet persisted."""
+    barcode: str
+    format: str
+    is_unique: bool = True
+
+
+class BarcodeGenerated(BaseModel):
+    barcode: str
+    format: str
+    is_unique: bool = True
+    product_id: uuid.UUID | None = None
+    product_name: str | None = None
+    note: str | None = None
+
+
+class BulkBarcodeResult(BaseModel):
+    message: str
+    generated_count: int
+    products: list[BarcodeEntry] = Field(default_factory=list)
+
+
+class BatchPrintPayload(BaseModel):
+    """The label data the frontend turns into print media.
+
+    String-only on purpose — no server-side image generation. The client
+    owns how the label looks (font, size, silent-printer layout).
+    """
+    printed: int
+    labels: list[BarcodeEntry] = Field(default_factory=list)
+    products: list[BarcodeEntry] = Field(default_factory=list)
+
+
+class BatchPrintIn(BaseModel):
+    product_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
+class BarcodeLookup(BaseModel):
+    found: bool
+    barcode: str | None = None
+    item: BarcodeEntry | None = None
+    message: str | None = None
+
+
+# ─── Expiry & manufacturing cohort reports ─────────────────────────────────
+
+class BucketStats(BaseModel):
+    count: int
+    units: int
+
+
+class ExpirySummaryResponse(BaseModel):
+    today: str
+    expired: BucketStats
+    expiring_30: BucketStats
+    expiring_90: BucketStats
+    no_expiry: BucketStats | None = None
+
+
+class ExpiryBatchItem(OrmModel):
+    id: uuid.UUID
+    batch_number: str
+    product_name: str | None = None
+    sku: str | None = None
+    warehouse_name: str | None = None
+    quantity: float
+    remaining_quantity: float
+    manufacturing_date: date | None = None
+    expiry_date: date | None = None
+    status: str
+    days_to_expiry: int | None = None
+    supplier: str | None = None
+
+
+class ManufacturingCohorts(BaseModel):
+    today: str
+    cohorts: dict[str, BucketStats]
+    serials_tracked: int
+
+
+class WriteOffResult(BaseModel):
+    message: str
+    batch_id: uuid.UUID
+    qty_written_off: float
+
+
+# ─── QR codes ──────────────────────────────────────────────────────────────
+
+class QRCodeIn(BaseModel):
+    item_id: uuid.UUID | None = None
+    # The frontend sends its own field name for the item binding.
+    product_id: uuid.UUID | None = None
+    # Either ``code`` or ``qr_data`` is required; ``qr_data`` is the
+    # frontend's name for the machine-readable payload.
+    code: str | None = None
+    qr_data: str | None = None
+    label: str | None = None
+    qr_type: str = "QR"
+    version: str | None = None
+    error_correction: str | None = None
+    active: bool = True
+    outlet_id: uuid.UUID | None = None
+    notes: str | None = None
+
+    def resolve(self) -> tuple[str, str | None]:
+        """Return the mandatory code and the payload to store."""
+        code = self.code or self.qr_data
+        if not code:
+            raise ValueError("A QR payload is required (code or qr_data)")
+        return code, (self.qr_data or self.code)
+
+
+class QRCodeUpdate(BaseModel):
+    code: str | None = None
+    qr_data: str | None = None
+    label: str | None = None
+    qr_type: str | None = None
+    version: str | None = None
+    error_correction: str | None = None
+    active: bool | None = None
+    item_id: uuid.UUID | None = None
+    product_id: uuid.UUID | None = None
+    outlet_id: uuid.UUID | None = None
+    notes: str | None = None
+
+
+class QRCodeResponse(OrmModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    item_id: uuid.UUID | None
+    product_id: uuid.UUID | None = None
+    code: str
+    qr_data: str | None
+    label: str | None
+    qr_type: str
+    version: str | None
+    error_correction: str | None
+    active: bool
+    outlet_id: uuid.UUID | None
+    print_count: int
+    last_printed_at: datetime | None
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class QRPrintResult(BaseModel):
+    message: str
+    print_count: int
+    id: uuid.UUID
+
+
+# ─── RFID tags ─────────────────────────────────────────────────────────────
+
+class RFIDIn(BaseModel):
+    item_id: uuid.UUID | None = None
+    product_id: uuid.UUID | None = None
+    # Either ``rfid`` or ``tag_uid`` (the frontend's name for it).
+    rfid: str | None = Field(default=None, max_length=50)
+    tag_uid: str | None = Field(default=None, max_length=50)
+    status: str = "active"
+    tag_type: str | None = None
+    frequency: str | None = None
+    protocol: str | None = None
+    memory_bits: int | None = None
+    label: str | None = None
+    outlet_id: uuid.UUID | None = None
+    notes: str | None = None
+
+
+class RFIDUpdate(BaseModel):
+    rfid: str | None = None
+    tag_uid: str | None = None
+    status: str | None = None
+    tag_type: str | None = None
+    frequency: str | None = None
+    protocol: str | None = None
+    memory_bits: int | None = None
+    label: str | None = None
+    item_id: uuid.UUID | None = None
+    product_id: uuid.UUID | None = None
+    outlet_id: uuid.UUID | None = None
+    notes: str | None = None
+
+
+class RFIDResponse(OrmModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    item_id: uuid.UUID | None
+    product_id: uuid.UUID | None = None
+    rfid: str
+    tag_uid: str | None = None
+    status: str
+    tag_type: str | None
+    frequency: str | None
+    protocol: str | None
+    memory_bits: int | None
+    label: str | None
+    outlet_id: uuid.UUID | None
+    write_count: int
+    last_seen_at: datetime | None
+    last_seen_location: str | None
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+

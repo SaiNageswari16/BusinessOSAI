@@ -312,9 +312,30 @@ def all_services() -> list[ServiceDescriptor]:
 # by the staff service (it mounts the HRMS studio + ERP org routers under both
 # /api/v1/hrms and /api/v1/erp as well as the canonical /api/v1/staff). They
 # are not separate services: same port, same database, same module gate.
+#
+# The frontend was written against a richer retail-ERP surface (invoices,
+# barcodes, crm, tax, ...) that the split hasn't fully built yet. These
+# aliases route that legacy-first-segment onto the owning service so the
+# gateway stops dying at the edge with SERVICE_NOT_FOUND; the owning service
+# then answers with a clean per-route 404 until the real routes land in the
+# build phases. Registering an alias is safe even before its routes exist.
 _ALIASES: dict[str, str] = {
     "hrms": "staff",
     "erp": "staff",
+    # Finance / back-office surfaces
+    "tax": "accounting",
+    "financial-reports": "accounting",
+    "bank": "accounting",
+    "fixed-assets": "accounting",
+    "budgets": "accounting",
+    "expense-claims": "accounting",
+    # Commerce surfaces
+    "invoices": "billing",
+    "payments": "billing",
+    "sales-returns": "billing",
+    # Growth / analytics surfaces
+    "analytics": "reports",
+    "crm": "customers",
 }
 
 

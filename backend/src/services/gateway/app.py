@@ -20,6 +20,7 @@ import logging
 import os
 import time
 import uuid
+from collections import OrderedDict
 from contextlib import asynccontextmanager
 from typing import Annotated
 
@@ -60,7 +61,26 @@ MAX_BODY_BYTES = 25 * 1024 * 1024
 # This is deliberate and documented, not a bug.
 
 _MODULE_GATE_TTL_SECONDS = int(os.environ.get("MODULE_GATE_TTL_SECONDS", "5"))
-_module_gate_cache: dict[tuple[str, str], tuple[float, bool]] = {}
+# Bounded so a long-lived gateway process can't accumulate one entry per
+# (tenant, module) pair forever (the old unbounded dict was a slow leak at
+# fleet scale). An OrderedDict gives LRU ordering for free via move_to_end;
+# past the cap we evict the least-recently-checked entry.
+_MODULE_GATE_CACHE_MAX = int(os.environ.get("MODULE_GATE_CACHE_MAX", "10000"))
+_module_gate_cache: "OrderedDict[tuple[str, str], tuple[float, bool]]" = OrderedDict()
+
+
+def _module_gate_invalidate(tenant_id: str | None = None, module_key: str | None = None) -> None:
+    """Evict a cached gate decision. The platform publishes module lifecycle
+    events so a suspend/activate takes effect sooner than the TTL window; a
+    gateway process that receives one calls this. Blank args clear everything
+    (used rarely, e.g. on a config change)."""
+    if tenant_id is None and module_key is None:
+        _module_gate_cache.clear()
+        return
+    for k in [k for k in _module_gate_cache
+              if (tenant_id is None or k[0] == tenant_id)
+              and (module_key is None or k[1] == module_key)]:
+        _module_gate_cache.pop(k, None)
 
 
 async def _module_gate_allows(
@@ -72,6 +92,7 @@ async def _module_gate_allows(
     key = (tenant_id, module_key)
     now = time.monotonic()
     if key in _module_gate_cache:
+        _module_gate_cache.move_to_end(key)  # LRU touch
         checked_at, allowed = _module_gate_cache[key]
         if now - checked_at < _MODULE_GATE_TTL_SECONDS:
             return allowed
@@ -91,6 +112,10 @@ async def _module_gate_allows(
         # data plane. The cache is left untouched so the next call retries.
         return True
     _module_gate_cache[key] = (now, allowed)
+    _module_gate_cache.move_to_end(key)
+    # Evict least-recently-checked entries once past the cap.
+    while len(_module_gate_cache) > _MODULE_GATE_CACHE_MAX:
+        _module_gate_cache.popitem(last=False)
     return allowed
 
 
@@ -301,6 +326,7 @@ def _forwarded_headers(request: Request, identity: Identity | None) -> dict[str,
             "X-Identity-Roles": ",".join(sorted(identity.roles)),
             "X-Identity-Is-Owner": "true" if identity.is_tenant_owner else "false",
             "X-Identity-Tenant-Slug": identity.tenant_slug,
+            "X-Identity-Realm": identity.auth_realm,
             "X-Identity-Active-Outlet": (
                 str(identity.active_outlet_id) if identity.active_outlet_id else ""
             ),
@@ -453,6 +479,28 @@ def _register_service_proxy(gateway: FastAPI) -> None:
             from src.services.shared.identity import build_dev_fallback_identity
 
             identity = await build_dev_fallback_identity(request)
+
+        # Realm isolation (the enforcement the platform service's docstring
+        # promises: "the gateway enforces that before proxying"). A platform
+        # super-admin token (auth_realm="platform") may only reach the platform
+        # control plane; riding it into any data-plane service is a cross-
+        # realm leak. Tenant tokens pass everywhere as before.
+        if (
+            identity is not None
+            and getattr(identity, "auth_realm", "tenant") == "platform"
+            and descriptor.name != "platform"
+        ):
+            return JSONResponse(
+                status_code=403,
+                content=ErrorEnvelope(
+                    error=ErrorDetail(
+                        code="REALM_MISMATCH",
+                        message="Platform-realm tokens may only access the platform service",
+                    ),
+                    service="gateway",
+                    request_id=request.state.request_id,
+                ).model_dump(mode="json"),
+            )
 
         # Per-tenant module gate. Runs for every service that opted in via
         # the registry's enforce_module_gate flag — currently all the

@@ -11,6 +11,7 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import date, datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
@@ -145,6 +146,25 @@ class JournalEntryLine(ServiceBase, TimestampMixin):
     )
 
 
+class ConsumedEvent(ServiceBase, TimestampMixin):
+    """Durable idempotency ledger — one row per event this service consumed.
+
+    Written by the bus's consumer loop via the installed dedupe ledger
+    (``src.services.event_bus.dedupe``), so a redelivered event whose
+    event_id is already here is skipped even after a process restart.
+    Accounting auto-posts journals on ``bill.paid`` — a redelivered payment
+    must not double-post to the GL.
+    """
+
+    __tablename__ = "consumed_events"
+
+    event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    type: Mapped[str] = mapped_column(String(120), nullable=False, default="", index=True)
+    consumed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
 class DayClose(ServiceBase, TimestampMixin):
     __tablename__ = "day_closes"
     __table_args__ = (
@@ -214,3 +234,170 @@ class TaxPayment(ServiceBase, TimestampMixin):
     amount: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
     challan_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
     paid_at: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+
+# ─── Bank ─────────────────────────────────────────────────────────────────────
+
+
+class BankAccount(ServiceBase, TimestampMixin):
+    __tablename__ = "bank_accounts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    account_number: Mapped[str] = mapped_column(String(50), nullable=False)
+    ifsc: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    branch: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    balance_snapshot: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0.00"))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class BankReconciliation(ServiceBase, TimestampMixin):
+    """Period bank reconciliation against account 1010 (Bank Account).
+
+    ``bank_account_id`` FKs this service's own ``bank_accounts`` table — the
+    only FKs in this service.
+    """
+    __tablename__ = "bank_reconciliations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    bank_account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("bank_accounts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    matched_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0.00"))
+    unmatched_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0.00"))
+    status: Mapped[str] = mapped_column(String(30), default="open", nullable=False, index=True)
+    reconciled_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+
+# ─── Fixed assets ─────────────────────────────────────────────────────────────
+
+
+class FixedAssetCategory(ServiceBase, TimestampMixin):
+    __tablename__ = "fixed_asset_categories"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_accounting_tenant_fa_category"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    useful_life_years: Mapped[int] = mapped_column(Integer, default=5)
+
+
+class FixedAsset(ServiceBase, TimestampMixin):
+    __tablename__ = "fixed_assets"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "asset_code", name="uq_accounting_tenant_fa_code"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    outlet_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    asset_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("fixed_asset_categories.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+    purchase_cost: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    purchase_date: Mapped[date] = mapped_column(Date, nullable=False)
+    useful_life_years: Mapped[int] = mapped_column(Integer, default=5)
+    salvage_value: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0.00"))
+    accumulated_depreciation: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0.00"))
+    disposal_status: Mapped[str] = mapped_column(
+        String(20), default="active", nullable=False, index=True  # active|disposed
+    )
+
+    category: Mapped[FixedAssetCategory | None] = relationship(
+        primaryjoin="FixedAsset.category_id == FixedAssetCategory.id",
+        foreign_keys="FixedAsset.category_id",
+    )
+
+
+# ─── Budgets ────────────────────────────────────────────────────────────────
+
+
+class Budget(ServiceBase, TimestampMixin):
+    """Monthly budget per outlet/department; actuals accumulate via postings."""
+    __tablename__ = "budgets"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "outlet_id", "department_or_module", "period_month", "period_year",
+            name="uq_accounting_tenant_budget_period",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    outlet_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    department_or_module: Mapped[str] = mapped_column(String(100), nullable=False)
+    period_month: Mapped[int] = mapped_column(Integer, nullable=False)
+    period_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    budgeted: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    actual: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0.00"))
+
+    @property
+    def variance(self) -> Decimal:
+        return _m(self.budgeted) - _m(self.actual)
+
+    @property
+    def is_over_budget(self) -> bool:
+        return self.actual > self.budgeted
+
+
+def _m(value) -> Decimal:
+    """Best-effort Decimal coercion used by Budget's properties."""
+    if value is None:
+        return Decimal("0.00")
+    if isinstance(value, Decimal):
+        return value
+    return Decimal(str(value))
+
+
+# ─── Expense claims ─────────────────────────────────────────────────────────
+
+
+class ExpenseClaim(ServiceBase, TimestampMixin):
+    __tablename__ = "expense_claims"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    claimed_on: Mapped[date] = mapped_column(Date, nullable=False)
+    total: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(30), default="submitted", nullable=False, index=True
+    )  # submitted|approved|rejected|reimbursed
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+    lines: Mapped[list["ExpenseClaimLine"]] = relationship(
+        back_populates="claim",
+        primaryjoin="ExpenseClaim.id == ExpenseClaimLine.claim_id",
+        foreign_keys="ExpenseClaimLine.claim_id",
+        cascade="all, delete-orphan",
+    )
+
+
+class ExpenseClaimLine(ServiceBase, TimestampMixin):
+    __tablename__ = "expense_claim_lines"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    claim_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("expense_claims.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    category: Mapped[str] = mapped_column(String(100), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+    claim: Mapped["ExpenseClaim"] = relationship(
+        back_populates="lines",
+        primaryjoin="ExpenseClaimLine.claim_id == ExpenseClaim.id",
+        foreign_keys="ExpenseClaimLine.claim_id",
+    )

@@ -75,6 +75,26 @@ def _ev(topic, tenant_id=None, outlet_id=None, data=None):
                  data=data or {}, source_service="loyalty")
 
 
+def _outbox(db: AsyncSession, event: Event) -> None:
+    """Write the event to the outbox inside the current transaction.
+
+    The outbox row is added to the same session that owns the domain change,
+    so both commit or roll back together. The relay background task picks up
+    pending rows and pushes them to the event bus.
+    """
+    from src.services.loyalty.models import OutboxMessage
+
+    db.add(OutboxMessage(
+        event_id=event.event_id,
+        type=event.type,
+        tenant_id=event.tenant_id,
+        outlet_id=event.outlet_id,
+        data=event.data,
+        source_service=event.source_service,
+        status="pending",
+    ))
+
+
 # ─── Consumers ────────────────────────────────────────────────────────────────
 
 @bus.on("bill.paid")
@@ -149,16 +169,22 @@ async def _on_bill_paid(event: Event) -> None:
             )
             created.append(txn)
 
-        await db.commit()
-        for txn in created:
-            await bus.publish(_ev(
+        events = [
+            _ev(
                 "loyalty.points.earned", tenant,
                 data={
                     "account_id": str(txn.account_id),
                     "points": txn.points,
                     "bill_id": str(bill_id),
                 },
-            ))
+            )
+            for txn in created
+        ]
+        for ev in events:
+            _outbox(db, ev)
+        await db.commit()
+        for ev in events:
+            await bus.publish(ev, local=True)
     except Exception:
         await db.rollback()
         raise
@@ -346,11 +372,14 @@ async def redeem(account_id: uuid.UUID, payload: RedeemRequest,
         )
     except svc.LoyaltyError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
-    await bus.publish(_ev(
+    event = _ev(
         "loyalty.points.redeemed", identity.tenant_id,
         data={"account_id": str(account.id), "points": -txn.points,
               "bill_id": str(payload.bill_id) if payload.bill_id else None},
-    ))
+    )
+    _outbox(db, event)
+    await db.commit()
+    await bus.publish(event, local=True)
     return txn
 
 

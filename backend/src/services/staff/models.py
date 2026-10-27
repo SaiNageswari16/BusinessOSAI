@@ -1452,3 +1452,65 @@ class UserRole(ServiceBase, TimestampMixin):
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     branch_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+
+class OutboxMessage(ServiceBase, TimestampMixin):
+    """Transactional outbox row — one per event this service would emit.
+
+    Written in the same transaction as the domain change so the two commit
+    or roll back together. A relay marks rows published or dead; pending rows
+    are what the relay keeps picking up on crash-recovery. ``event_id`` is
+    the bus dedupe key, so a re-delivered event is a no-op on the consumer
+    side even if the relay over-publishes it.
+
+    Status transitions: pending -> published (relay succeeded) / dead (retries
+    exhausted).
+    """
+
+    __tablename__ = "outbox_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    type: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    outlet_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    source_service: Mapped[str] = mapped_column(String(50), default="staff")
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False, index=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class ConsumedEvent(ServiceBase, TimestampMixin):
+    """Durable idempotency ledger — one row per event this service consumed.
+
+    Written by the bus's consumer loop via the installed dedupe ledger
+    (``src.services.event_bus.dedupe``), so a redelivered event whose
+    event_id is already here is skipped even after a process restart.
+
+    ``event_id`` is the primary key — a redelivery with the same event_id
+    is a no-op insert (``ON CONFLICT DO NOTHING``), which is exactly the
+    check-then-mark primitive the dedupe helper needs.
+    """
+
+    __tablename__ = "consumed_events"
+
+    event_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True
+    )
+    type: Mapped[str] = mapped_column(
+        String(120), nullable=False, default="", index=True
+    )
+    consumed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )

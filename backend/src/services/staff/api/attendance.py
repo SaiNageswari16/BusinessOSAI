@@ -1161,7 +1161,43 @@ async def clock_in(
         created_at=att.created_at,
         updated_at=att.updated_at or now_tz,
     )
+    # Publish attendance.marked through the outbox: the row commits with the
+    # attendance record, the relay delivers it to the bus, and the local
+    # dispatch below keeps in-process consumers (reports) in real time.
+    from src.services.event_bus.bus import Event, bus
+    from src.services.staff.models import OutboxMessage
+
+    event = Event(
+        type="attendance.marked",
+        tenant_id=ctx.tenant_id,
+        outlet_id=emp.outlet_id,
+        data={
+            "employee_id": str(emp.id),
+            "tenant_id": str(ctx.tenant_id),
+            "outlet_id": str(emp.outlet_id) if emp.outlet_id else None,
+            "marked_at": now_tz.isoformat(),
+            "status": att.status,
+            "date": str(att.date),
+            "method": att.method or "Manual",
+        },
+        source_service="staff",
+    )
+    db.add(OutboxMessage(
+        event_id=event.event_id,
+        type=event.type,
+        tenant_id=event.tenant_id,
+        outlet_id=event.outlet_id,
+        data=event.data,
+        source_service=event.source_service,
+        status="pending",
+    ))
     await db.commit()
+    try:
+        await bus.publish(event, local=True)
+    except Exception:
+        # The outbox row is the durable source of truth; the relay retries.
+        # Never let a bus hiccup fail a successful clock-in.
+        pass
     return resp
 
 
@@ -1300,7 +1336,7 @@ async def get_hrms_dashboard_stats(
 
 # ─── Biometric Devices ────────────────────────────────────────────
 
-@router.get("/biometric", response_model=list[BiometricDeviceResponse])
+@router.get("/attendance/biometric", response_model=list[BiometricDeviceResponse])
 async def list_biometric_devices(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -1329,7 +1365,7 @@ async def list_biometric_devices(
     return devices
 
 
-@router.post("/biometric", response_model=BiometricDeviceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/attendance/biometric", response_model=BiometricDeviceResponse, status_code=status.HTTP_201_CREATED)
 async def create_biometric_device(
     payload: BiometricDeviceCreate,
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
@@ -1604,7 +1640,7 @@ async def sync_biometric_devices(
 
 # ─── Face Recognition Logs ────────────────────────────────────────
 
-@router.get("/face-logs", response_model=list[FaceRecognitionLogResponse])
+@router.get("/attendance/face-logs", response_model=list[FaceRecognitionLogResponse])
 async def list_face_recognition_logs(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -1640,7 +1676,7 @@ async def list_face_recognition_logs(
 
 # ─── Attendance Corrections ───────────────────────────────────────
 
-@router.get("/corrections", response_model=list[AttendanceCorrectionResponse])
+@router.get("/attendance/corrections", response_model=list[AttendanceCorrectionResponse])
 async def list_corrections(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:hrms"))],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -1678,7 +1714,7 @@ async def list_corrections(
     return corrections
 
 
-@router.post("/corrections", response_model=AttendanceCorrectionResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/attendance/corrections", response_model=AttendanceCorrectionResponse, status_code=status.HTTP_201_CREATED)
 async def create_correction_request(
     payload: AttendanceCorrectionCreate,
     request: Request,
@@ -1730,7 +1766,7 @@ async def create_correction_request(
     )
 
 
-@router.patch("/corrections/{corr_id}/review", response_model=AttendanceCorrectionResponse)
+@router.patch("/attendance/corrections/{corr_id}/review", response_model=AttendanceCorrectionResponse)
 async def review_correction_request(
     corr_id: uuid.UUID,
     payload: CorrectionReviewRequest,

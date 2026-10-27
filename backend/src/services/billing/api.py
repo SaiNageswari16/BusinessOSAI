@@ -352,6 +352,17 @@ async def settle_bill(bill_id: uuid.UUID, payload: SettleRequest,
     except svc.BillingError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
 
+    # Consumers read exactly these keys — the event payload is the contract.
+    # Covers/lines/cash totals/ GST split used to be missing here, which left
+    # the reports projection (covers, cash vs card split) and the accounting
+    # auto-posting (tax payables, COGS) silently degraded.
+    items = list(bill.items or [])
+    # Refunded legs are excluded (refunds post a separate bill.refunded event).
+    payments = [
+        p for p in (bill.payments or [])
+        if p.status in (PaymentStatus.SUCCESS, PaymentStatus.PENDING)
+    ]
+    cash_amount = sum(float(p.amount) for p in payments if p.method == PaymentMethod.CASH)
     event = Event(
         type="bill.paid" if status_value(bill.status) == BillStatus.SETTLED else "bill.created",
         tenant_id=identity.tenant_id,
@@ -364,11 +375,32 @@ async def settle_bill(bill_id: uuid.UUID, payload: SettleRequest,
             "status": status_value(bill.status),
             "subtotal": float(bill.subtotal),
             "tax_total": float(bill.tax_total),
+            "cgst_total": float(bill.cgst_total or 0),
+            "sgst_total": float(bill.sgst_total or 0),
+            "igst_total": float(bill.igst_total or 0),
+            "cess_total": float(bill.cess_total or 0),
             "service_charge": float(bill.service_charge),
             "grand_total": float(bill.grand_total),
             "paid_amount": float(bill.paid_amount),
             "change_amount": float(bill.change_amount),
             "is_credit_sale": bill.is_credit_sale,
+            "covers": int(bill.covers or 1),
+            "cash_amount": round(cash_amount, 2),
+            "payment_method": status_value(payments[0].method) if payments else "cash",
+            "cashier_id": str(bill.cashier_id) if bill.cashier_id else None,
+            "waiter_id": str(bill.waiter_id) if bill.waiter_id else None,
+            "customer_gstin": bill.customer_gstin,
+            # The BOM-deduction consumer needs the dishes sold, not just the
+            # totals — the menu service resolves recipes per menu_item_id.
+            "lines": [
+                {
+                    "menu_item_id": str(i.menu_item_id) if i.menu_item_id else None,
+                    "name": i.name,
+                    "qty": int(i.qty),
+                    "unit_price": float(i.unit_price),
+                }
+                for i in items
+            ],
         },
         source_service="billing",
     )
