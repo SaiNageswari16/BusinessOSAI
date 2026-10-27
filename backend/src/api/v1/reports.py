@@ -18,7 +18,7 @@ from src.models import (
     LeadActivity, CRMOpportunity, CRMQuotation, CRMSupportTicket, User, Designation, POSPayment
 )
 from src.models.inventory import Product, Warehouse, StockMovement, MasterCatalogProduct
-from src.models.procurement import Supplier, PurchaseOrder, VendorBill
+from src.models.procurement import Supplier, PurchaseOrder, VendorBill, VendorDebitNote
 from src.models.erp import Invoice
 from src.models.marketplace import MarketplaceOrder
 from src.utils.clock import clock
@@ -2101,38 +2101,40 @@ async def generate_custom_report(
     # 2. PURCHASE REPORTS SUITE (6 Distinct Reports)
     # ══════════════════════════════════════════════════════════════════════════
     elif report_id == "vendor_outstanding":
-        # ── VENDOR OUTSTANDING (Payables Register, mirrors "Party Outstanding") ──
+        # ── VENDOR OUTSTANDING (Payables Register, mirrors Customer "Party Outstanding") ──
+        tab_filter = str(filters.get("tab") or payload.get("tab") or "all").lower()
+        search_q = (filters.get("search") or search or "").strip().lower()
+
         result["title"] = "Vendor Outstanding Register (Payables)"
         result["tableColumns"] = [
             {"header": "Vendor / Supplier", "key": "name"},
             {"header": "Category / Type", "key": "category"},
             {"header": "Contact Number", "key": "contact"},
             {"header": "GSTIN", "key": "gstin"},
+            {"header": "Total Invoiced (₹)", "key": "total_billed"},
+            {"header": "Total Paid (₹)", "key": "total_paid"},
             {"header": "Open Bills", "key": "bills"},
-            {"header": "Closing Payable (₹)", "key": "balance"},
+            {"header": "Closing Balance (₹)", "key": "balance"},
+            {"header": "Status", "key": "status"},
         ]
+
         vb_stmt = select(VendorBill).where(VendorBill.tenant_id == ctx.tenant_id).order_by(VendorBill.created_at.desc())
         if ctx.active_company_id:
             vb_stmt = vb_stmt.where(or_(VendorBill.company_id == ctx.active_company_id, VendorBill.company_id == None))
         vb_list = (await db.execute(vb_stmt)).scalars().all()
 
-        po_stmt = select(PurchaseOrder).where(PurchaseOrder.tenant_id == ctx.tenant_id, PurchaseOrder.supplier_id.isnot(None)).order_by(PurchaseOrder.created_at.desc())
+        po_stmt = select(PurchaseOrder).where(PurchaseOrder.tenant_id == ctx.tenant_id).order_by(PurchaseOrder.created_at.desc())
         if ctx.active_company_id:
             po_stmt = po_stmt.where(or_(PurchaseOrder.company_id == ctx.active_company_id, PurchaseOrder.company_id == None))
         po_rows = (await db.execute(po_stmt)).scalars().all()
         po_by_id: Dict[uuid.UUID, Any] = {po.id: po for po in po_rows}
-        supplier_ids = {po.supplier_id for po in po_rows if po.supplier_id}
 
-        # Load ALL real supplier master records for this tenant (dedup by normalized
-        # GSTIN so that duplicate supplier rows for the same vendor collapse into one)
+        # Load real supplier master records
         all_suppliers = (await db.execute(
             select(Supplier).where(Supplier.tenant_id == ctx.tenant_id).order_by(Supplier.created_at.asc())
         )).scalars().all()
 
-        # Map supplier_id -> supplier record
-        supplier_map: Dict[uuid.UUID, Any] = {s.id: s for s in all_suppliers}
-
-        # Dedup suppliers: prefer the record that carries the richest info (GSTIN/phone)
+        # Dedup suppliers: normalize by GSTIN or upper name
         dedup_key = lambda s: (
             (s.gst_number or "").strip().upper() or
             ((s.name or "").strip().upper()) or
@@ -2145,89 +2147,190 @@ async def generate_custom_report(
                 deduped_suppliers[key] = s
             else:
                 existing = deduped_suppliers[key]
-                # Merge: keep whichever has GSTIN / phone if the other lacks it
                 if not getattr(existing, "gst_number", None) and getattr(s, "gst_number", None):
                     existing.gst_number = s.gst_number
                 if not getattr(existing, "phone", None) and getattr(s, "phone", None):
                     existing.phone = s.phone
-                # Remember the merged duplicate ID so we can group bills under the
-                # primary record's ID
-                if not hasattr(existing, "_merged_duplicate_ids"):
-                    existing._merged_duplicate_ids = []
-                existing._merged_duplicate_ids.append(s.id)
 
-        # Reverse map: any supplier ID -> its deduped primary record
         supplier_id_to_primary: Dict[uuid.UUID, Any] = {}
+        supplier_name_to_primary: Dict[str, Any] = {}
         for s in all_suppliers:
             key = dedup_key(s)
             primary = deduped_suppliers[key]
             supplier_id_to_primary[s.id] = primary
+            if s.name:
+                supplier_name_to_primary[s.name.strip().upper()] = primary
 
-        # Group unpaid vendor bills by PRIMARY supplier record
-        outstanding: Dict[uuid.UUID, Dict[str, Any]] = {}
+        # Load Debit Notes to account for vendor deductions / advance credits
+        dn_stmt = select(VendorDebitNote).where(VendorDebitNote.tenant_id == ctx.tenant_id)
+        if ctx.active_company_id:
+            dn_stmt = dn_stmt.where(or_(VendorDebitNote.company_id == ctx.active_company_id, VendorDebitNote.company_id == None))
+        dn_rows = (await db.execute(dn_stmt)).scalars().all()
+
+        # Group all vendor bills by PRIMARY supplier record
+        outstanding: Dict[str, Dict[str, Any]] = {}
+
+        # Pre-seed suppliers that have active POs
+        for po in po_rows:
+            st = str(getattr(po, "status", "") or "").lower()
+            if st in ("cancelled", "voided"):
+                continue
+            primary = supplier_id_to_primary.get(po.supplier_id) if po.supplier_id else None
+            sup_key = str(primary.id) if primary else f"po_sup_{str(po.supplier_id or po.id)}"
+            if sup_key not in outstanding and primary:
+                outstanding[sup_key] = {
+                    "supplier": primary,
+                    "total_billed": 0.0,
+                    "total_paid": 0.0,
+                    "payable": 0.0,
+                    "bills_count": 0,
+                    "open_bills": 0,
+                    "bills_list": [],
+                }
+
+        # Process all vendor bills (both paid and open)
         for b in vb_list:
             st = str(getattr(b, "status", "") or "").lower()
             if st in ("cancelled", "voided"):
                 continue
-            payable = float(b.total_amount or 0) - float(b.paid_amount or 0)
-            if payable <= 0.01:
-                continue
-            # Resolve supplier: bill.supplier_id (if present) or via linked PO
+
+            po = po_by_id.get(b.purchase_order_id) if b.purchase_order_id else None
             sup_id: Optional[uuid.UUID] = getattr(b, "supplier_id", None)
-            if sup_id is None and b.purchase_order_id:
-                po = po_by_id.get(b.purchase_order_id)
-                if po:
-                    sup_id = po.supplier_id
-            if sup_id is None:
-                continue
-            primary = supplier_id_to_primary.get(sup_id)
-            if primary is None:
-                continue
-            entry = outstanding.setdefault(primary.id, {
+            if sup_id is None and po:
+                sup_id = po.supplier_id
+
+            primary = supplier_id_to_primary.get(sup_id) if sup_id else None
+            sup_key = str(primary.id) if primary else f"anon_{b.bill_number}"
+
+            entry = outstanding.setdefault(sup_key, {
                 "supplier": primary,
+                "total_billed": 0.0,
+                "total_paid": 0.0,
                 "payable": 0.0,
-                "bills": 0,
+                "bills_count": 0,
+                "open_bills": 0,
+                "bills_list": [],
             })
-            entry["payable"] += payable
-            entry["bills"] += 1
 
-        # Build one row per primary supplier (duplicate supplier rows collapsed)
-        rows = []
-        for sid, info in outstanding.items():
+            invoiced = float(b.total_amount or 0)
+            paid = float(b.paid_amount or 0)
+            due = invoiced - paid
+
+            entry["total_billed"] += invoiced
+            entry["total_paid"] += paid
+            entry["payable"] += due
+            entry["bills_count"] += 1
+            if due > 0.01:
+                entry["open_bills"] += 1
+
+            entry["bills_list"].append({
+                "id": str(b.id),
+                "bill_number": b.bill_number,
+                "date": b.bill_date.strftime("%d/%m/%Y") if getattr(b, "bill_date", None) else (b.created_at.strftime("%d/%m/%Y") if b.created_at else "—"),
+                "due_date": b.due_date.strftime("%d/%m/%Y") if getattr(b, "due_date", None) else "Immediate",
+                "po_number": po.po_number if po else "—",
+                "total_amount": invoiced,
+                "paid_amount": paid,
+                "balance": due,
+                "status": b.status or ("Paid" if due <= 0.01 else ("Partially Paid" if paid > 0 else "Unpaid")),
+            })
+
+        # Apply Debit Notes
+        for dn in dn_rows:
+            st = str(getattr(dn, "status", "") or "").lower()
+            if st in ("cancelled", "voided"):
+                continue
+            primary = supplier_id_to_primary.get(dn.supplier_id)
+            if primary and str(primary.id) in outstanding:
+                amt = float(dn.amount or 0)
+                outstanding[str(primary.id)]["payable"] -= amt
+
+        # Build unified rows
+        all_rows = []
+        total_to_pay = 0.0
+        total_to_collect = 0.0
+        total_all_billed = 0.0
+        total_all_paid = 0.0
+        total_open_bills = 0
+
+        for key_id, info in outstanding.items():
+            if info["bills_count"] == 0 and abs(info["payable"]) <= 0.01:
+                continue
+
             sup = info["supplier"]
-            rows.append({
-                "name": sup.name or f"Supplier #{str(sid)[:8]}",
-                "category": sup.type or "Manufacturer",
-                "contact": sup.phone or "—",
-                "gstin": sup.gst_number or "—",
-                "bills": info["bills"],
-                "balance": f"₹{info['payable']:,.2f}",
-            })
-        rows.sort(key=lambda r: float(r["balance"].replace("₹", "").replace(",", "")), reverse=True)
+            net_bal = round(info["payable"], 2)
+            total_all_billed += info["total_billed"]
+            total_all_paid += info["total_paid"]
+            total_open_bills += info["open_bills"]
 
-        # Fallback: if no supplier-linked bills exist, use PO-level payables
-        if not rows:
-            for po in po_rows[:50]:
-                st = str(getattr(po, "status", "") or "").lower()
-                if st in ("cancelled", "voided"):
-                    continue
-                primary = supplier_id_to_primary.get(po.supplier_id)
-                rows.append({
-                    "name": (primary.name if primary else f"Supplier #{str(po.supplier_id)[:8]}"),
-                    "category": (primary.type if primary and getattr(primary, "type", None) else "Supplier"),
-                    "contact": (primary.phone if primary and getattr(primary, "phone", None) else "—"),
-                    "gstin": (primary.gst_number if primary and getattr(primary, "gst_number", None) else "—"),
-                    "bills": 1,
-                    "balance": f"₹{float(po.total_amount or 0):,.2f}",
-                })
+            if net_bal > 0.01:
+                status_label = "To Pay"
+                total_to_pay += net_bal
+            elif net_bal < -0.01:
+                status_label = "To Collect"
+                total_to_collect += abs(net_bal)
+            else:
+                status_label = "Settled"
 
-        result["tableData"] = rows
-        total_payable = sum(float(r["balance"].replace("₹", "").replace(",", "")) for r in rows)
-        result["summaryTotals"] = {
-            "total_vendors": len(rows),
-            "total_payable_due": f"₹{total_payable:,.2f}",
-            "outstanding_vendor_bills": f"{sum(r['bills'] for r in rows)} Bills",
+            row = {
+                "id": str(sup.id) if sup else key_id,
+                "name": sup.name if sup else f"Supplier #{key_id[:8]}",
+                "category": (sup.type if sup and sup.type else "Manufacturer"),
+                "contact": (sup.phone if sup and sup.phone else "—"),
+                "gstin": (sup.gst_number if sup and sup.gst_number else "—"),
+                "address": (sup.address if sup and sup.address else ""),
+                "total_billed": f"₹{info['total_billed']:,.2f}",
+                "total_paid": f"₹{info['total_paid']:,.2f}",
+                "bills": f"{info['open_bills']} Open / {info['bills_count']} Total" if info['bills_count'] > 0 else "0",
+                "open_bills_count": info["open_bills"],
+                "total_bills_count": info["bills_count"],
+                "balance": f"₹{abs(net_bal):,.2f}",
+                "raw_balance": net_bal,
+                "status": status_label,
+                "bills_list": info["bills_list"],
+            }
+            all_rows.append(row)
+
+        # Tab Filtering
+        if tab_filter == "to_pay":
+            filtered_rows = [r for r in all_rows if r["raw_balance"] > 0.01]
+        elif tab_filter == "to_collect":
+            filtered_rows = [r for r in all_rows if r["raw_balance"] < -0.01]
+        elif tab_filter == "settled":
+            filtered_rows = [r for r in all_rows if abs(r["raw_balance"]) <= 0.01]
+        else:
+            filtered_rows = all_rows
+
+        # Search Query Filtering
+        if search_q:
+            filtered_rows = [
+                r for r in filtered_rows
+                if search_q in r["name"].lower() or search_q in r["contact"].lower() or search_q in r["gstin"].lower()
+            ]
+
+        # Sort: Highest outstanding due first, then highest total billed
+        filtered_rows.sort(
+            key=lambda r: (r["raw_balance"], float(r["total_billed"].replace("₹", "").replace(",", ""))),
+            reverse=True
+        )
+
+        result["tableData"] = filtered_rows
+        result["tabTotals"] = {
+            "all_count": len(all_rows),
+            "to_pay": round(total_to_pay, 2),
+            "to_collect": round(total_to_collect, 2),
+            "settled": round(total_all_paid, 2),
+            "total_open_bills": total_open_bills,
         }
+        result["summaryTotals"] = {
+            "total_vendors": len(filtered_rows),
+            "total_payable_due": f"₹{total_to_pay:,.2f}",
+            "total_advances": f"₹{total_to_collect:,.2f}",
+            "total_purchases_billed": f"₹{total_all_billed:,.2f}",
+            "total_settled_paid": f"₹{total_all_paid:,.2f}",
+            "outstanding_vendor_bills": f"{total_open_bills} Open Bills",
+        }
+
 
     elif report_id in ["purchase_summary", "purchase_invoice", "purchase_return", "purchase_debit_note", "purchase_supplierwise", "purchase_itemwise", "purchase_gst"]:
         po_stmt = select(PurchaseOrder).options(selectinload(PurchaseOrder.supplier)).where(PurchaseOrder.tenant_id == ctx.tenant_id).order_by(PurchaseOrder.created_at.desc()).limit(250)

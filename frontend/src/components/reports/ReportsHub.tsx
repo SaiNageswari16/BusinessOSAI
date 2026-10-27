@@ -65,6 +65,7 @@ import { InventoryReportsSuite, InventoryReportType } from "./InventoryReportsSu
 import { CustomerPartyReportsSuite, CustomerReportType } from "./CustomerPartyReportsSuite";
 import { EmployeeSalesReportSuite } from "./EmployeeSalesReportSuite";
 import { PaymentModeSalesReportSuite } from "./PaymentModeSalesReportSuite";
+import { VendorOutstandingSuite } from "./VendorOutstandingSuite";
 
 // ── Types & Metadata ──────────────────────────────────────────────────────────
 export interface ReportItem {
@@ -397,14 +398,14 @@ export function ReportsHub() {
 
   // Fetch when report selection or filters change
   useEffect(() => {
-    if (activeReport && !GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id)) {
+    if (activeReport && !GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id) && activeReport.id !== "vendor_outstanding") {
       loadReport(activeReport);
     }
   }, [activeReport, dateRange, customStartDate, customEndDate, builderEntity, builderGroupBy]);
 
   // Debounce search query so customer name search dynamically updates the live report
   useEffect(() => {
-    if (activeReport && !GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id)) {
+    if (activeReport && !GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id) && activeReport.id !== "vendor_outstanding") {
       const timer = setTimeout(() => {
         loadReport(activeReport);
       }, 320);
@@ -902,6 +903,7 @@ export function ReportsHub() {
   const isPartyReport = Boolean(activeReport && PARTY_SUITE_IDS.has(activeReport.id));
   const isEmployeeSalesReport = Boolean(activeReport && EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id));
   const isPaymentModeReport = Boolean(activeReport && PAYMENT_MODE_SUITE_IDS.has(activeReport.id));
+  const isVendorOutstandingReport = Boolean(activeReport && activeReport.id === "vendor_outstanding");
 
   return (
     <div className="flex flex-1 h-full w-full bg-slate-50 overflow-hidden font-sans">
@@ -1089,6 +1091,10 @@ export function ReportsHub() {
       ) : isPartyReport ? (
         <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
           <CustomerPartyReportsSuite key={activeReport.id} defaultReport={activeReport.id as CustomerReportType} />
+        </main>
+      ) : isVendorOutstandingReport ? (
+        <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+          <VendorOutstandingSuite onBack={() => setActiveReport(null)} />
         </main>
       ) : isEmployeeSalesReport ? (
         <main className="flex-1 flex flex-col h-full overflow-hidden bg-white">
