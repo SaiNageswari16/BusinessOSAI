@@ -5291,6 +5291,8 @@ export const salesReturnsApi = {
     settlement_method?: string;
     reason?: string;
     notes?: string;
+    discount_amount?: number;
+    total_return_amount?: number;
     items: Array<{
       product_id?: string;
       product_name: string;
@@ -5299,6 +5301,7 @@ export const salesReturnsApi = {
       batch_number?: string;
       quantity: number;
       unit_price: number;
+      original_unit_price?: number;
       tax_rate?: number;
       tax_amount?: number;
       discount_amount?: number;
@@ -5325,6 +5328,7 @@ export const salesReturnsApi = {
     settlement_method?: string;
     reason?: string;
     notes?: string;
+    discount_amount?: number;
     return_items: Array<{
       product_id?: string;
       product_name: string;
@@ -5332,6 +5336,7 @@ export const salesReturnsApi = {
       batch_number?: string;
       quantity: number;
       unit_price: number;
+      original_unit_price?: number;
       tax_rate?: number;
       tax_amount?: number;
       discount_amount?: number;

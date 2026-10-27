@@ -31,6 +31,8 @@ import {
   CreditCard,
   QrCode,
   Sparkles,
+  Percent,
+  Tag,
 } from "lucide-react";
 import { invoicesApi, posApi, salesReturnsApi } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
@@ -48,6 +50,7 @@ export interface SalesReturnItem {
   purchased_qty: number;
   returned_qty: number;
   unit_price: number;
+  original_unit_price?: number;
   tax_rate: number;
   discount_amount: number;
   subtotal: number;
@@ -545,7 +548,7 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
 
     let runningApportionedDiscount = 0;
 
-    return prepped.map(({ it, idx, pQty, pRate, pTaxRate, pLineDiscount, lineGross }) => {
+    return prepped.map(({ it, idx, pQty, pRate, pTaxRate, pLineDiscount, lineGross }: any) => {
       let apportionedDiscount = 0;
       if (sumGross > 0 && totalDiscountToApportion > 0) {
         if (idx === prepped.length - 1) {
@@ -592,7 +595,7 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
     let total_refund = 0;
 
     let allItemsSelected = true;
-    selectedBillNormalizedItems.forEach((it) => {
+    selectedBillNormalizedItems.forEach((it: any) => {
       const state = returnItemsState[it.id];
       if (!state || !state.selected || state.returned_qty < it.purchased_qty) {
         allItemsSelected = false;
@@ -767,7 +770,7 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
       const returnedItemsList: SalesReturnItem[] = [];
       const apiItems: any[] = [];
 
-      selectedBillNormalizedItems.forEach((it) => {
+      selectedBillNormalizedItems.forEach((it: any) => {
         const state = returnItemsState[it.id];
         if (state && state.selected && state.returned_qty > 0) {
           const lineTot = Number((it.unit_refund_rate * state.returned_qty).toFixed(2));
@@ -905,7 +908,7 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
       const returnedItemsList: SalesReturnItem[] = [];
       const apiReturnItems: any[] = [];
 
-      selectedBillNormalizedItems.forEach((it) => {
+      selectedBillNormalizedItems.forEach((it: any) => {
         const state = returnItemsState[it.id];
         if (state && state.selected && state.returned_qty > 0) {
           const refundRate = it.unit_refund_rate || it.unit_price;
@@ -1446,6 +1449,8 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                   <PaginationControl
                     currentPage={currentPage}
                     totalPages={Math.ceil(filteredReturns.length / pageSize)}
+                    totalItems={filteredReturns.length}
+                    pageSize={pageSize}
                     onPageChange={setCurrentPage}
                   />
                 </div>
@@ -1723,7 +1728,7 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {selectedBillNormalizedItems.map((it) => {
+                      {selectedBillNormalizedItems.map((it: any) => {
                         const st = returnItemsState[it.id] || {
                           selected: false,
                           returned_qty: 0,
