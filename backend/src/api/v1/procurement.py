@@ -1859,6 +1859,22 @@ async def list_vendor_bills(
     )
     bills = res.scalars().all()
     
+    # Determine buyer company state & GSTIN for accurate inter-state detection
+    buyer_state = None
+    buyer_gstin = None
+    if ctx.active_company_id:
+        from src.models import Company
+        company_rec = await db.get(Company, ctx.active_company_id)
+        if company_rec:
+            buyer_state = getattr(company_rec, "state", None)
+            buyer_gstin = getattr(company_rec, "gstin", None)
+    if not buyer_state and ctx.tenant_id:
+        from src.models import Tenant
+        tenant_rec = await db.get(Tenant, ctx.tenant_id)
+        if tenant_rec and tenant_rec.settings:
+            buyer_state = tenant_rec.settings.get("state")
+            buyer_gstin = tenant_rec.settings.get("gstin")
+
     responses = []
     for bill in bills:
         po_number = None
@@ -1988,6 +2004,76 @@ async def list_vendor_bills(
                 resolved_grn_id = auto_grn.id
                 grn_number = auto_grn.grn_number
                 grn_status = auto_grn.status
+
+        sup_gst = (supplier_obj or {}).get("gst_number")
+        sup_state = (supplier_obj or {}).get("state")
+
+        # Determine inter-state vs intra-state
+        is_interstate = False
+        if sup_gst and buyer_gstin and len(sup_gst) >= 2 and len(buyer_gstin) >= 2:
+            is_interstate = (sup_gst[:2] != buyer_gstin[:2])
+        elif sup_gst and len(sup_gst) >= 2 and buyer_state:
+            buyer_st_lower = buyer_state.strip().lower()
+            gst_info = STATE_DETAILS.get(sup_gst[:2])
+            sup_st_from_gst = (gst_info.get("state") or "").strip().lower() if gst_info else ""
+            is_interstate = (sup_st_from_gst != buyer_st_lower)
+        elif sup_state and buyer_state:
+            is_interstate = (sup_state.strip().lower() != buyer_state.strip().lower())
+        elif sup_gst and len(sup_gst) >= 2:
+            is_interstate = (sup_gst[:2] not in ("36", "37"))
+
+        # Calculate line items, taxable subtotal, and tax
+        calc_subtotal = 0.0
+        calc_tax = 0.0
+        detected_tax_rate = 0.0
+        source_items = (getattr(bill, "item_overrides", None) or []) or po_items
+        if source_items:
+            for it in source_items:
+                if isinstance(it, dict):
+                    qty = float(it.get("quantity") or 1.0)
+                    price = float(it.get("unit_price") or 0.0)
+                    rate = float(it.get("tax_percent") or 0.0)
+                    disc_val = float(it.get("discount_value") or 0.0)
+                    disc_type = it.get("discount_type") or "percent"
+                    is_tax_incl = bool(it.get("is_tax_inclusive", False))
+                else:
+                    qty = float(getattr(it, "quantity", 1.0) or 1.0)
+                    price = float(getattr(it, "unit_price", 0.0) or 0.0)
+                    rate = float(getattr(it, "tax_percent", 0.0) or 0.0)
+                    disc_val = float(getattr(it, "discount_value", 0.0) or 0.0)
+                    disc_type = getattr(it, "discount_type", "percent") or "percent"
+                    is_tax_incl = False
+
+                if rate > detected_tax_rate:
+                    detected_tax_rate = rate
+
+                gross = qty * price
+                disc = (gross * disc_val / 100.0) if disc_type == "percent" else disc_val
+                net = max(0.0, gross - disc)
+
+                if is_tax_incl and rate > 0:
+                    taxable = net / (1.0 + rate / 100.0)
+                    tax = net - taxable
+                else:
+                    taxable = net
+                    tax = (net * rate / 100.0) if rate > 0 else 0.0
+
+                calc_subtotal += taxable
+                calc_tax += tax
+
+        tot = float(bill.total_amount)
+        if calc_subtotal <= 0 and tot > 0:
+            active_rate = detected_tax_rate if detected_tax_rate > 0 else 5.0
+            calc_subtotal = round(tot / (1.0 + active_rate / 100.0), 2)
+            calc_tax = round(tot - calc_subtotal, 2)
+            detected_tax_rate = active_rate
+
+        calc_subtotal = round(calc_subtotal, 2)
+        calc_tax = round(calc_tax, 2)
+
+        cgst_val = 0.0 if is_interstate else round(calc_tax / 2.0, 2)
+        sgst_val = 0.0 if is_interstate else round(calc_tax / 2.0, 2)
+        igst_val = calc_tax if is_interstate else 0.0
                 
         responses.append(
             VendorBillResponse(
@@ -2000,7 +2086,14 @@ async def list_vendor_bills(
                 po_number=po_number,
                 supplier_id=supplier_id,
                 supplier_name=supplier_name,
+                supplier_gstin=sup_gst,
                 supplier=supplier_obj,
+                subtotal=calc_subtotal,
+                tax_amount=calc_tax,
+                tax_rate=detected_tax_rate,
+                cgst=cgst_val,
+                sgst=sgst_val,
+                igst=igst_val,
                 items=po_items,
                 item_overrides=getattr(bill, "item_overrides", None) or [],
                 bill_date=bill.bill_date,
@@ -2248,6 +2341,8 @@ async def create_vendor_bill(
 
     supplier_name = "Unknown Vendor"
     supplier_id = None
+    supplier_obj = None
+    sup_gst = None
     po_number_val = None
     if po:
         po_number_val = po.po_number
@@ -2256,6 +2351,102 @@ async def create_vendor_bill(
             supp = await db.get(Supplier, supplier_id)
             if supp:
                 supplier_name = supp.name
+                sup_gst = getattr(supp, "gst_number", None)
+                supplier_obj = {
+                    "id": str(supp.id),
+                    "name": supp.name,
+                    "company_name": getattr(supp, "company_name", None) or supp.name,
+                    "gst_number": sup_gst,
+                    "pan": getattr(supp, "pan", None),
+                    "phone": getattr(supp, "phone", None),
+                    "email": getattr(supp, "email", None),
+                    "address": getattr(supp, "address", None),
+                    "city": getattr(supp, "city", None),
+                    "state": getattr(supp, "state", None),
+                    "pincode": getattr(supp, "pincode", None),
+                    "products_desc": getattr(supp, "products_desc", None),
+                }
+
+    # Determine buyer state & calculate tax
+    buyer_state = None
+    buyer_gstin = None
+    if ctx.active_company_id:
+        from src.models import Company
+        company_rec = await db.get(Company, ctx.active_company_id)
+        if company_rec:
+            buyer_state = getattr(company_rec, "state", None)
+            buyer_gstin = getattr(company_rec, "gstin", None)
+    if not buyer_state and ctx.tenant_id:
+        from src.models import Tenant
+        tenant_rec = await db.get(Tenant, ctx.tenant_id)
+        if tenant_rec and tenant_rec.settings:
+            buyer_state = tenant_rec.settings.get("state")
+            buyer_gstin = tenant_rec.settings.get("gstin")
+
+    is_interstate = False
+    if sup_gst and buyer_gstin and len(sup_gst) >= 2 and len(buyer_gstin) >= 2:
+        is_interstate = (sup_gst[:2] != buyer_gstin[:2])
+    elif sup_gst and len(sup_gst) >= 2 and buyer_state:
+        buyer_st_lower = buyer_state.strip().lower()
+        gst_info = STATE_DETAILS.get(sup_gst[:2])
+        sup_st_from_gst = (gst_info.get("state") or "").strip().lower() if gst_info else ""
+        is_interstate = (sup_st_from_gst != buyer_st_lower)
+    elif supplier_obj and supplier_obj.get("state") and buyer_state:
+        is_interstate = (supplier_obj["state"].strip().lower() != buyer_state.strip().lower())
+    elif sup_gst and len(sup_gst) >= 2:
+        is_interstate = (sup_gst[:2] not in ("36", "37"))
+
+    calc_subtotal = 0.0
+    calc_tax = 0.0
+    detected_tax_rate = 0.0
+    source_items = (getattr(bill, "item_overrides", None) or []) or po_items
+    if source_items:
+        for it in source_items:
+            if isinstance(it, dict):
+                qty = float(it.get("quantity") or 1.0)
+                price = float(it.get("unit_price") or 0.0)
+                rate = float(it.get("tax_percent") or 0.0)
+                disc_val = float(it.get("discount_value") or 0.0)
+                disc_type = it.get("discount_type") or "percent"
+                is_tax_incl = bool(it.get("is_tax_inclusive", False))
+            else:
+                qty = float(getattr(it, "quantity", 1.0) or 1.0)
+                price = float(getattr(it, "unit_price", 0.0) or 0.0)
+                rate = float(getattr(it, "tax_percent", 0.0) or 0.0)
+                disc_val = float(getattr(it, "discount_value", 0.0) or 0.0)
+                disc_type = getattr(it, "discount_type", "percent") or "percent"
+                is_tax_incl = False
+
+            if rate > detected_tax_rate:
+                detected_tax_rate = rate
+
+            gross = qty * price
+            disc = (gross * disc_val / 100.0) if disc_type == "percent" else disc_val
+            net = max(0.0, gross - disc)
+
+            if is_tax_incl and rate > 0:
+                taxable = net / (1.0 + rate / 100.0)
+                tax = net - taxable
+            else:
+                taxable = net
+                tax = (net * rate / 100.0) if rate > 0 else 0.0
+
+            calc_subtotal += taxable
+            calc_tax += tax
+
+    tot = float(bill.total_amount)
+    if calc_subtotal <= 0 and tot > 0:
+        active_rate = detected_tax_rate if detected_tax_rate > 0 else 5.0
+        calc_subtotal = round(tot / (1.0 + active_rate / 100.0), 2)
+        calc_tax = round(tot - calc_subtotal, 2)
+        detected_tax_rate = active_rate
+
+    calc_subtotal = round(calc_subtotal, 2)
+    calc_tax = round(calc_tax, 2)
+
+    cgst_val = 0.0 if is_interstate else round(calc_tax / 2.0, 2)
+    sgst_val = 0.0 if is_interstate else round(calc_tax / 2.0, 2)
+    igst_val = calc_tax if is_interstate else 0.0
         
     await db.commit()
     await db.refresh(bill)
@@ -2270,6 +2461,14 @@ async def create_vendor_bill(
         po_number=po_number_val,
         supplier_id=supplier_id,
         supplier_name=supplier_name,
+        supplier_gstin=sup_gst,
+        supplier=supplier_obj,
+        subtotal=calc_subtotal,
+        tax_amount=calc_tax,
+        tax_rate=detected_tax_rate,
+        cgst=cgst_val,
+        sgst=sgst_val,
+        igst=igst_val,
         items=po_items,
         item_overrides=getattr(bill, "item_overrides", None) or [],
         bill_date=bill.bill_date,

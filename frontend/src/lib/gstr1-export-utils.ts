@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { getEffectiveTaxRate } from "./gst-utils";
+import { getEffectiveTaxRate, INDIAN_GST_STATES } from "./gst-utils";
 
 export interface GstCompanyMeta {
   companyName?: string;
@@ -115,10 +115,10 @@ export function normalizeGstInvoice(inv: any) {
   const invDate = formatDate(rawDate);
   const partyName = inv.customer_name || inv.party_name || inv.customer?.name || (inv.is_pos || String(invNo).startsWith("REC") ? "Walk-in Guest" : "Walk-in Guest");
   const partyGstin = (inv.customer_gstin || inv.party_gstin || inv.gstin || "").toUpperCase().trim();
-  
+
   const stateInfo = resolveStateDetails(inv.place_of_supply || inv.pos, partyGstin);
   const isInterstate = inv.is_interstate ?? (partyGstin && !partyGstin.startsWith("37") && !partyGstin.startsWith("36"));
-  
+
   const items = Array.isArray(inv.items) && inv.items.length > 0
     ? inv.items
     : (Array.isArray(inv.lines) && inv.lines.length > 0
@@ -316,8 +316,22 @@ export function normalizeGstInvoice(inv: any) {
     is_tax_inclusive: Boolean(inv.is_tax_inclusive || inv.tax_included || inv.is_inclusive),
     isPos: Boolean(inv.is_pos || inv.doc_type === "pos_receipt" || inv.print_status === "Thermal Printed" || String(invNo).startsWith("REC") || String(invNo).startsWith("POS") || String(invNo).startsWith("RCP")),
     isExport: Boolean(inv.isExport || String(invNo).startsWith("EXP") || inv.export_type),
-    isCdnr: Boolean(inv.is_credit_note || inv.is_debit_note || String(invNo).startsWith("CN") || String(invNo).startsWith("DN") || inv.document_type === "CREDIT_NOTE" || inv.document_type === "DEBIT_NOTE"),
-    isDebitNote: Boolean(inv.is_debit_note || String(invNo).startsWith("DN") || inv.document_type === "DEBIT_NOTE"),
+    isCdnr: Boolean(
+      inv.is_credit_note ||
+      inv.is_debit_note ||
+      String(inv.invoice_type || "").toLowerCase() === "credit_note" ||
+      String(inv.invoice_type || "").toLowerCase() === "debit_note" ||
+      String(invNo).toUpperCase().startsWith("CN") ||
+      String(invNo).toUpperCase().startsWith("DN") ||
+      inv.document_type === "CREDIT_NOTE" ||
+      inv.document_type === "DEBIT_NOTE"
+    ),
+    isDebitNote: Boolean(
+      inv.is_debit_note ||
+      String(inv.invoice_type || "").toLowerCase() === "debit_note" ||
+      String(invNo).toUpperCase().startsWith("DN") ||
+      inv.document_type === "DEBIT_NOTE"
+    ),
     raw: inv,
   };
 }
@@ -328,8 +342,15 @@ export function normalizeGstInvoice(inv: any) {
 export function buildGstr1Sections(invoices: any[] = []) {
   const normInvs = invoices.map(normalizeGstInvoice);
 
-  // 1. Regular Sales Invoices (Excluding exports and credit/debit notes)
-  const salesInvoices = normInvs.filter((inv) => !inv.isExport && !inv.isCdnr);
+  // 1. Regular Sales Invoices (Excluding exports and credit/debit notes, and excluding draft/cancelled/returned)
+  const salesInvoices = normInvs.filter((inv) => {
+    if (inv.isExport || inv.isCdnr) return false;
+    const st = String(inv.raw?.status || inv.status || "").toLowerCase().trim();
+    if (st === "draft" || st === "cancelled" || st === "returned") return false;
+    const num = String(inv.invNo || "").toUpperCase().trim();
+    if (num.startsWith("OPN-") || num === "INV-39150") return false;
+    return true;
+  });
 
   // 2. Table 4: B2B Invoices (Registered Customers with GSTIN)
   const b2bList = salesInvoices.filter((inv) => Boolean(inv.partyGstin));
@@ -637,6 +658,7 @@ export function buildGstr1Sections(invoices: any[] = []) {
     debitNotes,
     cdnrList,
     cdnurList,
+    allCreditDebitNotes: [...creditNotes, ...debitNotes],
     hsnB2bList,
     hsnB2cList,
     hsnList,
@@ -1123,7 +1145,7 @@ export function downloadGstr1Excel(invoices: any[] = [], meta: GstCompanyMeta = 
   // SHEET 7: exemp
   // ==========================================
   const exempRows: any[][] = [
-    ["Summary For Nil rated, exempted and non GST outward supplies (8)", "", "", ""],
+    ["Summary For Nil rated, exempted and non GST Sales (8)", "", "", ""],
     ["", "Total Nil Rated Supplies", "Total Exempted Supplies", "Total Non-GST Supplies"],
     ["", 0.0, 0.0, 0.0],
     ["Description", "Nil Rated Supplies", "Exempted(other than nil rated/non GST supply)", "Non-GST Supplies"],
@@ -1259,7 +1281,7 @@ export function downloadGstr1Csv(invoices: any[] = [], meta: GstCompanyMeta = {}
   const lines: string[] = [];
   const esc = (s: any) => `"${String(s ?? "").replace(/"/g, '""')}"`;
 
-  lines.push(`"${cName.toUpperCase()} — GSTR-1 OUTWARD SUPPLIES RETURN"`);
+  lines.push(`"${cName.toUpperCase()} — GSTR-1 Sales RETURN"`);
   lines.push(`"Legal Name:",${esc(cName)},"GSTIN:",${esc(gstin)},"Period:",${esc(period)},"Exported:",${esc(new Date().toLocaleString())}`);
   lines.push("");
 
@@ -1347,16 +1369,39 @@ export function downloadGenericGstReportExcel(
       const inv = normalizeGstInvoice(raw);
       rows.push([inv.invNo, inv.invDate, inv.partyName, inv.partyGstin || "Unregistered", inv.posFormatted, inv.taxable, inv.cgst, inv.sgst, inv.igst, inv.cess, inv.total]);
     });
-  } else if (reportId === "gst_purchase" || reportId === "gstr2_purchase") {
+  } else if (reportId === "gstr2_purchase") {
+    rows.push(["GSTIN", "Customer / Supplier Name", "State Code", "State Name", "Invoice No / Original No", "Invoice Date", "Invoice Value (₹)", "Total Tax %", "Taxable Value (₹)", "SGST (₹)", "CGST (₹)", "IGST (₹)", "Cess (₹)", "Total Tax (₹)"]);
+    data.purchases.forEach((p: any) => {
+      const stateCode = p.pos_state_code || (p.party_gstin && p.party_gstin !== "URP" && /^\d{2}$/.test(p.party_gstin.slice(0, 2)) ? p.party_gstin.slice(0, 2) : "29");
+      const stateName = p.pos_state_name || INDIAN_GST_STATES[stateCode] || "Karnataka";
+      const totalTax = (p.sgst || 0) + (p.cgst || 0) + (p.igst || 0) + (p.cess || 0);
+      rows.push([
+        p.party_gstin || "URP",
+        p.party_name || "Supplier",
+        stateCode,
+        stateName,
+        p.invoice_no || p.original_inv_no || "",
+        p.date || "",
+        p.amount || 0,
+        `${p.tax_rate ?? 5}%`,
+        p.taxable_value || 0,
+        p.sgst || 0,
+        p.cgst || 0,
+        p.igst || 0,
+        p.cess || 0,
+        totalTax
+      ]);
+    });
+  } else if (reportId === "gst_purchase") {
     rows.push(["Bill / Inv No", "Bill Date", "Supplier Name", "Supplier GSTIN", "Item Description", "HSN Code", "Qty", "Taxable Value (₹)", "CGST (₹)", "SGST (₹)", "IGST (₹)", "Total Amount (₹)"]);
     data.purchases.forEach((p: any) => {
       rows.push([
         p.invoice_no || p.bill_no || "PUR-001",
         p.date || new Date().toISOString().slice(0, 10),
         p.party_name || p.supplier_name || "Supplier",
-        p.party_gstin || "37AAACH5544K1Z0",
+        p.party_gstin || "URP",
         p.item_name || "General Supplies",
-        p.hsn_code || "72162100",
+        p.hsn_code || "—",
         p.qty || 1,
         p.taxable_value || 0,
         p.cgst || 0,
@@ -1406,16 +1451,39 @@ export function downloadGenericGstReportCsv(
       const inv = normalizeGstInvoice(raw);
       lines.push([inv.invNo, inv.invDate, inv.partyName, inv.partyGstin || "Unregistered", inv.posFormatted, inv.taxable.toFixed(2), inv.cgst.toFixed(2), inv.sgst.toFixed(2), inv.igst.toFixed(2), inv.cess.toFixed(2), inv.total.toFixed(2)].map(esc).join(","));
     });
-  } else if (reportId === "gst_purchase" || reportId === "gstr2_purchase") {
+  } else if (reportId === "gstr2_purchase") {
+    lines.push(["GSTIN", "Customer / Supplier Name", "State Code", "State Name", "Invoice No / Original No", "Invoice Date", "Invoice Value (₹)", "Total Tax %", "Taxable Value (₹)", "SGST (₹)", "CGST (₹)", "IGST (₹)", "Cess (₹)", "Total Tax (₹)"].map(esc).join(","));
+    data.purchases.forEach((p: any) => {
+      const stateCode = p.pos_state_code || (p.party_gstin && p.party_gstin !== "URP" && /^\d{2}$/.test(p.party_gstin.slice(0, 2)) ? p.party_gstin.slice(0, 2) : "29");
+      const stateName = p.pos_state_name || INDIAN_GST_STATES[stateCode] || "Karnataka";
+      const totalTax = (p.sgst || 0) + (p.cgst || 0) + (p.igst || 0) + (p.cess || 0);
+      lines.push([
+        p.party_gstin || "URP",
+        p.party_name || "Supplier",
+        stateCode,
+        stateName,
+        p.invoice_no || p.original_inv_no || "",
+        p.date || "",
+        Number(p.amount || 0).toFixed(2),
+        `${p.tax_rate ?? 5}%`,
+        Number(p.taxable_value || 0).toFixed(2),
+        Number(p.sgst || 0).toFixed(2),
+        Number(p.cgst || 0).toFixed(2),
+        Number(p.igst || 0).toFixed(2),
+        Number(p.cess || 0).toFixed(2),
+        Number(totalTax).toFixed(2)
+      ].map(esc).join(","));
+    });
+  } else if (reportId === "gst_purchase") {
     lines.push(["Bill / Inv No", "Bill Date", "Supplier Name", "Supplier GSTIN", "Item Description", "HSN Code", "Qty", "Taxable Value (₹)", "CGST (₹)", "SGST (₹)", "IGST (₹)", "Total Amount (₹)"].map(esc).join(","));
     data.purchases.forEach((p: any) => {
       lines.push([
         p.invoice_no || p.bill_no || "PUR-001",
         p.date || new Date().toISOString().slice(0, 10),
         p.party_name || p.supplier_name || "Supplier",
-        p.party_gstin || "37AAACH5544K1Z0",
+        p.party_gstin || "URP",
         p.item_name || "General Supplies",
-        p.hsn_code || "72162100",
+        p.hsn_code || "—",
         p.qty || 1,
         Number(p.taxable_value || 0).toFixed(2),
         Number(p.cgst || 0).toFixed(2),

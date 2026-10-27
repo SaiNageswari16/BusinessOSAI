@@ -837,7 +837,7 @@ export const nav: NavGroup[] = [
         icon: ShieldCheck,
         permission: "view:reports",
         subItems: [
-          { to: "/reports?tab=gst_gstr1", label: "GSTR-1 Outward Supplies", icon: FileSpreadsheet, permission: "view:reports" },
+          { to: "/reports?tab=gst_gstr1", label: "GSTR-1 Sales", icon: FileSpreadsheet, permission: "view:reports" },
           { to: "/reports?tab=gst_gstr3b", label: "GSTR-3B Return", icon: FileCheck, permission: "view:reports" },
           { to: "/reports?tab=gst_gstr2b", label: "GSTR-2B Auto ITC", icon: Layers, permission: "view:reports" },
           { to: "/reports?tab=gst_sales", label: "GST Sales Register", icon: TrendingUp, permission: "view:reports" },

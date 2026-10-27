@@ -23,6 +23,11 @@ import {
   ShieldCheck,
   Smartphone,
   PhoneCall,
+  History,
+  Clock,
+  X,
+  Radio,
+  Filter,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -50,6 +55,33 @@ export function LowStockAlerts() {
   const [testingWa, setTestingWa] = useState(false);
   const [sendingDigest, setSendingDigest] = useState(false);
 
+  // Alert History tracking & filtering
+  const [historyPeriod, setHistoryPeriod] = useState<"today" | "7d" | "30d" | "all">("7d");
+  const [historyChannel, setHistoryChannel] = useState<"all" | "whatsapp" | "in_app">("all");
+  const [historyData, setHistoryData] = useState<{
+    summary: { total: number; in_app: number; whatsapp: number };
+    alerts: Array<{ id: string; title: string; body: string; category: string; channel: "in_app" | "whatsapp"; created_at: string }>;
+  }>({
+    summary: { total: 0, in_app: 0, whatsapp: 0 },
+    alerts: [],
+  });
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+
+  const loadHistory = useCallback(async (period = historyPeriod, channel = historyChannel) => {
+    setHistoryLoading(true);
+    try {
+      const res = await inventoryAlertsApi.getAlertHistory(period, channel);
+      if (res && res.summary) {
+        setHistoryData(res);
+      }
+    } catch (err) {
+      console.error("Failed to load alert history:", err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [historyPeriod, historyChannel]);
+
   const loadAlertData = useCallback(async () => {
     setLoading(true);
     try {
@@ -62,17 +94,22 @@ export function LowStockAlerts() {
         setConfig(configRes.config);
         setWaConnected(configRes.whatsapp_connected);
       }
+      loadHistory();
     } catch (err: any) {
       console.error("Failed to load inventory alerts:", err);
       toast.error(t("Failed to load real-time stock alerts", "Failed to load real-time stock alerts"));
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [t, loadHistory]);
 
   useEffect(() => {
     loadAlertData();
   }, [loadAlertData]);
+
+  useEffect(() => {
+    loadHistory(historyPeriod, historyChannel);
+  }, [historyPeriod, historyChannel, loadHistory]);
 
   const handleSaveConfig = async () => {
     setSavingConfig(true);
@@ -98,6 +135,7 @@ export function LowStockAlerts() {
         phone_number: config.manager_whatsapp,
       });
       toast.success(res.message || "Test WhatsApp message sent successfully!");
+      loadHistory();
     } catch (err: any) {
       toast.error(err?.message || "Failed to send test WhatsApp message. Check Gateway connection.");
     } finally {
@@ -115,6 +153,7 @@ export function LowStockAlerts() {
         toast.success(t("In-App alert digest published! (WhatsApp: not configured or offline)", "In-App alert digest published! (WhatsApp: not configured or offline)"));
       }
       loadAlertData();
+      loadHistory();
     } catch (err: any) {
       toast.error(err?.message || "Failed to trigger stock digest");
     } finally {
@@ -196,7 +235,7 @@ export function LowStockAlerts() {
       </div>
 
       {/* KPI Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         <Card className="p-4 bg-gradient-to-br from-rose-500/10 via-rose-500/5 to-transparent border-rose-200 dark:border-rose-900/40">
           <div className="flex justify-between items-start">
             <div>
@@ -274,6 +313,66 @@ export function LowStockAlerts() {
           <p className="text-xs text-indigo-600/80 mt-2">
             Auto-checked on every POS sale & transfer
           </p>
+        </Card>
+
+        {/* Total Alerts Dispatched Card */}
+        <Card className="p-4 bg-gradient-to-br from-violet-500/10 via-purple-500/5 to-transparent border-violet-200 dark:border-violet-900/40 flex flex-col justify-between">
+          <div>
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-wider">
+                  {t("Alerts Dispatched", "Alerts Dispatched")}
+                </p>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <h3 className="text-3xl font-black text-violet-700 dark:text-violet-300">
+                    {historyLoading ? "..." : (historyData?.summary?.total ?? 0)}
+                  </h3>
+                  <span className="text-[11px] font-semibold text-violet-600/80">
+                    {historyPeriod === "today" ? "today" : historyPeriod === "7d" ? "7d" : historyPeriod === "30d" ? "30d" : "all"}
+                  </span>
+                </div>
+              </div>
+              <div className="p-2.5 bg-violet-500/20 text-violet-600 rounded-xl">
+                <Radio className="size-5" />
+              </div>
+            </div>
+
+            {/* Micro Filter segmented pills */}
+            <div className="flex items-center gap-1 mt-2.5 pt-2 border-t border-violet-100 dark:border-violet-900/30">
+              {(["today", "7d", "30d", "all"] as const).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setHistoryPeriod(p)}
+                  className={`text-[10px] px-1.5 py-0.5 rounded font-bold transition-all ${
+                    historyPeriod === p
+                      ? "bg-violet-600 text-white shadow-sm"
+                      : "bg-violet-500/10 text-violet-700 dark:text-violet-300 hover:bg-violet-500/20"
+                  }`}
+                >
+                  {p === "today" ? "Today" : p === "7d" ? "7D" : p === "30d" ? "30D" : "All"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Breakdown & View Log Link */}
+          <div className="flex items-center justify-between text-xs mt-2 pt-1 border-t border-violet-100 dark:border-violet-900/20">
+            <span className="flex items-center gap-1.5 text-[11px]">
+              <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                📱 {historyData?.summary?.whatsapp ?? 0}
+              </span>
+              <span>•</span>
+              <span className="text-blue-600 dark:text-blue-400 font-bold">
+                🔔 {historyData?.summary?.in_app ?? 0}
+              </span>
+            </span>
+            <button
+              onClick={() => setShowHistoryModal(true)}
+              className="text-[11px] font-bold text-violet-600 hover:text-violet-700 dark:text-violet-400 hover:underline flex items-center gap-0.5"
+            >
+              {t("Log", "Log")} →
+            </button>
+          </div>
         </Card>
       </div>
 
@@ -445,16 +544,21 @@ export function LowStockAlerts() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
+                    onClick={async () => {
                       if (!config.manager_whatsapp) {
                         toast.error(t("Set WhatsApp number in Settings first.", "Set WhatsApp number in Settings first."));
                         return;
                       }
-                      inventoryAlertsApi.testWhatsApp({
-                        phone_number: config.manager_whatsapp,
-                        custom_message: `🚨 *Urgent Stock Reorder Alert:*\nItem: *${item.name}* (SKU: ${item.sku})\nCurrent Stock: *${item.stock} ${item.unit}*\nMin Reorder Point: *${item.reorder_level} ${item.unit}*\nStatus: ${isStockout ? "Out of Stock" : "Low Stock"}\nPlease issue purchase order.`,
-                      });
-                      toast.success(t("WhatsApp alert dispatched for this product!", "WhatsApp alert dispatched for this product!"));
+                      try {
+                        await inventoryAlertsApi.testWhatsApp({
+                          phone_number: config.manager_whatsapp,
+                          custom_message: `🚨 *Urgent Stock Reorder Alert:*\nItem: *${item.name}* (SKU: ${item.sku})\nCurrent Stock: *${item.stock} ${item.unit}*\nMin Reorder Point: *${item.reorder_level} ${item.unit}*\nStatus: ${isStockout ? "Out of Stock" : "Low Stock"}\nPlease issue purchase order.`,
+                        });
+                        toast.success(t("WhatsApp alert dispatched for this product!", "WhatsApp alert dispatched for this product!"));
+                        loadHistory();
+                      } catch (err: any) {
+                        toast.error(err?.message || "Failed to dispatch WhatsApp alert");
+                      }
                     }}
                     className="text-xs h-9 px-3 text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"
                   >
@@ -570,6 +674,173 @@ export function LowStockAlerts() {
                   className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
                 >
                   {savingConfig ? t("Saving...", "Saving...") : t("Save Preferences", "Save Preferences")}
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Alert Dispatch History Activity Modal */}
+      <AnimatePresence>
+        {showHistoryModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-card text-card-foreground border border-border w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+            >
+              {/* Modal Header */}
+              <div className="p-6 border-b bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex justify-between items-start">
+                <div>
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-indigo-500/20 rounded-xl text-indigo-400 border border-indigo-500/30">
+                      <Radio className="size-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold">
+                        {t("Inventory Alert Dispatch Activity", "Inventory Alert Dispatch Activity")}
+                      </h3>
+                      <p className="text-xs text-slate-300 mt-0.5">
+                        {t("Audit log of all real-time WhatsApp dispatches and in-app low stock alerts.", "Audit log of all real-time WhatsApp dispatches and in-app low stock alerts.")}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowHistoryModal(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
+
+              {/* Filter Controls Bar */}
+              <div className="p-4 bg-muted/40 border-b flex flex-wrap items-center justify-between gap-3">
+                {/* Time Range Pills */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-muted-foreground mr-1 flex items-center gap-1">
+                    <Clock className="size-3.5" />
+                    {t("Period:", "Period:")}
+                  </span>
+                  {(["today", "7d", "30d", "all"] as const).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setHistoryPeriod(p)}
+                      className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-all ${
+                        historyPeriod === p
+                          ? "bg-indigo-600 text-white shadow-sm"
+                          : "bg-background border hover:bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {p === "today" ? t("Today", "Today") : p === "7d" ? t("Last 7 Days", "Last 7 Days") : p === "30d" ? t("Last 30 Days", "Last 30 Days") : t("All Time", "All Time")}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Channel Filter Pills */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-muted-foreground mr-1 flex items-center gap-1">
+                    <Filter className="size-3.5" />
+                    {t("Channel:", "Channel:")}
+                  </span>
+                  {(["all", "whatsapp", "in_app"] as const).map((ch) => (
+                    <button
+                      key={ch}
+                      onClick={() => setHistoryChannel(ch)}
+                      className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-all ${
+                        historyChannel === ch
+                          ? "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 shadow-sm"
+                          : "bg-background border hover:bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {ch === "all" ? t("All", "All") : ch === "whatsapp" ? t("📱 WhatsApp", "📱 WhatsApp") : t("🔔 In-App", "🔔 In-App")}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Summary Stats Strip inside Modal */}
+              <div className="px-6 py-3 bg-muted/20 border-b flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">
+                  {t("Total Logged Alerts:", "Total Logged Alerts:")}{" "}
+                  <strong className="text-foreground">{historyData?.summary?.total ?? 0}</strong>
+                </span>
+                <div className="flex items-center gap-4">
+                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                    📱 WhatsApp: {historyData?.summary?.whatsapp ?? 0}
+                  </span>
+                  <span className="text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-1">
+                    🔔 In-App Push: {historyData?.summary?.in_app ?? 0}
+                  </span>
+                </div>
+              </div>
+
+              {/* Alert Items List */}
+              <div className="p-6 overflow-y-auto flex-1 space-y-3">
+                {historyLoading ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                    <RefreshCw className="size-6 animate-spin mb-2" />
+                    <p className="text-sm">{t("Loading dispatch logs...", "Loading dispatch logs...")}</p>
+                  </div>
+                ) : historyData?.alerts?.length === 0 ? (
+                  <div className="text-center py-12 px-4 border border-dashed rounded-2xl bg-muted/20">
+                    <div className="size-12 mx-auto rounded-full bg-muted flex items-center justify-center text-muted-foreground mb-3">
+                      <Bell className="size-6" />
+                    </div>
+                    <h4 className="text-sm font-bold text-foreground">
+                      {t("No Alerts Dispatched in this Period", "No Alerts Dispatched in this Period")}
+                    </h4>
+                    <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1">
+                      {t(
+                        "When products breach low-stock thresholds or automated digests run, all dispatched alerts are logged here.",
+                        "When products breach low-stock thresholds or automated digests run, all dispatched alerts are logged here."
+                      )}
+                    </p>
+                  </div>
+                ) : (
+                  historyData.alerts.map((alert) => (
+                    <div
+                      key={alert.id}
+                      className="p-3.5 rounded-xl border bg-card hover:bg-muted/30 transition-colors flex items-start gap-3"
+                    >
+                      <div
+                        className={`p-2 rounded-xl shrink-0 ${
+                          alert.channel === "whatsapp"
+                            ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                            : "bg-blue-500/10 text-blue-600 border border-blue-500/20"
+                        }`}
+                      >
+                        {alert.channel === "whatsapp" ? (
+                          <MessageSquare className="size-4" />
+                        ) : (
+                          <Bell className="size-4" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <h5 className="text-xs font-bold text-foreground truncate">
+                            {alert.title}
+                          </h5>
+                          <span className="text-[11px] text-muted-foreground shrink-0 flex items-center gap-1">
+                            <Clock className="size-3" />
+                            {alert.created_at ? new Date(alert.created_at).toLocaleString() : ""}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                          {alert.body}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 bg-muted/30 border-t flex justify-end">
+                <Button variant="outline" size="sm" onClick={() => setShowHistoryModal(false)}>
+                  {t("Close", "Close")}
                 </Button>
               </div>
             </motion.div>

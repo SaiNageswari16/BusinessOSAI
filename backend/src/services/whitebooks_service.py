@@ -10,7 +10,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -821,7 +821,7 @@ class WhitebooksGstClient:
                 Invoice.tenant_id == tenant_id,
                 Invoice.invoice_date >= first_day,
                 Invoice.invoice_date <= last_day,
-                Invoice.status.notin_(["cancelled", "voided"]),
+                Invoice.status.notin_(["cancelled", "voided", "draft", "returned"]),
             )
         )
 
@@ -846,18 +846,55 @@ class WhitebooksGstClient:
         company_gstin = (self.gstin or "37AAACG1234F1Z5").strip()
         company_state = company_gstin[:2] if len(company_gstin) >= 2 else "37"
 
+        # Fetch Credit / Debit notes for the period (populates the GSP `cdnr` section)
+        cdnr_invoices: List[Invoice] = []
+        try:
+            cdnr_stmt = (
+                select(Invoice)
+                .where(
+                    Invoice.tenant_id == tenant_id,
+                    Invoice.invoice_date >= first_day,
+                    Invoice.invoice_date <= last_day,
+                    Invoice.status.notin_(["cancelled", "voided"]),
+                    func.lower(Invoice.invoice_type).in_(
+                        ["credit_note", "creditnote", "cn", "debit_note", "debitnote", "dn"]
+                    ),
+                )
+            )
+            cdnr_invoices = (await db.execute(cdnr_stmt)).scalars().all()
+        except Exception:
+            cdnr_invoices = []
+
         b2b_invoices: List[Dict[str, Any]] = []
         b2cs_invoices: List[Dict[str, Any]] = []
         b2cl_invoices: List[Dict[str, Any]] = []
         hsn_map: Dict[str, Dict[str, Any]] = {}
+        hsn_b2b_map: Dict[str, Dict[str, Any]] = {}
         b2cs_rate_map: Dict[Tuple[str, float], Dict[str, Any]] = {}
         b2b_by_ctin: Dict[str, List[Dict[str, Any]]] = {}
+        nil_map: Dict[str, Dict[str, float]] = {}
 
         total_taxable_value = 0.0
         total_cgst = 0.0
         total_sgst = 0.0
         total_igst = 0.0
         total_invoice_value = 0.0
+
+        # Count cancelled/voided invoices in the period (excluded from main query) for the doc_issue `cancel` field
+        cancelled_count = 0
+        try:
+            cancel_stmt = (
+                select(func.count(Invoice.id))
+                .where(
+                    Invoice.tenant_id == tenant_id,
+                    Invoice.invoice_date >= first_day,
+                    Invoice.invoice_date <= last_day,
+                    Invoice.status.in_(["cancelled", "voided"]),
+                )
+            )
+            cancelled_count = int(await db.scalar(cancel_stmt) or 0)
+        except Exception:
+            cancelled_count = 0
 
         for inv in invoices:
             inv_total = float(inv.total_amount or 0.0)
@@ -952,11 +989,12 @@ class WhitebooksGstClient:
                     "igst": l_igst,
                 })
 
-                # HSN Summary aggregation
+                # HSN Summary aggregation — split B2B vs B2C to match the GSP `hsn` schema
                 hsn_code_clean = str(line.hsn_code or (prod.hsn_code if prod else None) or "9988").strip()
                 hsn_key = f"{hsn_code_clean}_{line_tax_rate}"
-                if hsn_key not in hsn_map:
-                    hsn_map[hsn_key] = {
+                target_hsn_map = hsn_b2b_map if has_cust_gst else hsn_map
+                if hsn_key not in target_hsn_map:
+                    target_hsn_map[hsn_key] = {
                         "hsn_code": hsn_code_clean,
                         "description": line.product_name or (prod.name if prod else "Goods"),
                         "uqc": line.uom or "NOS",
@@ -968,12 +1006,12 @@ class WhitebooksGstClient:
                         "cgst_amount": 0.0,
                         "sgst_amount": 0.0,
                     }
-                hsn_map[hsn_key]["total_quantity"] += qty
-                hsn_map[hsn_key]["total_value"] += gross_after_disc
-                hsn_map[hsn_key]["taxable_value"] += l_taxable
-                hsn_map[hsn_key]["igst_amount"] += l_igst
-                hsn_map[hsn_key]["cgst_amount"] += l_cgst
-                hsn_map[hsn_key]["sgst_amount"] += l_sgst
+                target_hsn_map[hsn_key]["total_quantity"] += qty
+                target_hsn_map[hsn_key]["total_value"] += gross_after_disc
+                target_hsn_map[hsn_key]["taxable_value"] += l_taxable
+                target_hsn_map[hsn_key]["igst_amount"] += l_igst
+                target_hsn_map[hsn_key]["cgst_amount"] += l_cgst
+                target_hsn_map[hsn_key]["sgst_amount"] += l_sgst
 
             # Invoice totals
             inv_has_tax_saved = (float(inv.cgst_amount or 0) > 0 or float(inv.sgst_amount or 0) > 0 or float(inv.igst_amount or 0) > 0)
@@ -999,6 +1037,31 @@ class WhitebooksGstClient:
             total_cgst += cgst_val
             total_sgst += sgst_val
             total_igst += igst_val
+
+            # ── GSTR-1 `nil` section tracking: nil-rate / exempt / non-GST supplies ──
+            # sply_ty codes: INTRAB2C, INTRAB2B, EXPTB2C, EXPTB2B, NGSPB2C, NGSPB2B, OTHRB2C, OTHRB2B
+            is_non_gst_invoice = inv_type_clean in ("estimate", "nongst", "non_gst", "proforma", "cash_memo")
+            all_lines_zero_rate = bool(computed_lines) and all(cl["rate"] == 0 for cl in computed_lines) or (not computed_lines and (cgst_val + sgst_val + igst_val) == 0)
+            nil_supply_ty = None
+            nil_amount = 0.0
+            if is_non_gst_invoice:
+                nil_supply_ty = "NGSPB2B" if has_cust_gst else "NGSPB2C"
+                nil_amount = inv_total
+            elif all_lines_zero_rate and inv_taxable > 0:
+                if is_interstate:
+                    nil_supply_ty = "EXPTB2B" if has_cust_gst else "EXPTB2C"
+                    nil_amount = inv_taxable
+                else:
+                    nil_supply_ty = "INTRAB2B" if has_cust_gst else "INTRAB2C"
+                    nil_amount = inv_taxable
+            if nil_supply_ty:
+                entry = nil_map.setdefault(nil_supply_ty, {"nil_amt": 0.0, "expt_amt": 0.0, "ngsup_amt": 0.0})
+                if "NGSP" in nil_supply_ty:
+                    entry["ngsup_amt"] += round(nil_amount, 2)
+                elif "EXPT" in nil_supply_ty:
+                    entry["expt_amt"] += round(nil_amount, 2)
+                else:
+                    entry["nil_amt"] += round(nil_amount, 2)
 
             primary_rate = computed_lines[0]["rate"] if computed_lines else 18.0
 
@@ -1108,28 +1171,143 @@ class WhitebooksGstClient:
                     b2cs_rate_map[pos_rate_key]["samt"] += cl["sgst"]
                     b2cs_rate_map[pos_rate_key]["iamt"] += cl["igst"]
 
-        # Statutory GSTR1_v2.0 Payload
+        # ── Statutory GSTR-1 (GST3.1.x / GSP v2.0) Payload, aligned to Whitebooks export ──
         gstn_b2b = [{"ctin": ctin, "inv": invs} for ctin, invs in b2b_by_ctin.items()]
 
-        gstn_hsn = {
-            "data": [
-                {
+        # b2cl / cdnr entries use the internal schema — rebuild them into the GSP per-invoice shape
+        def _fmt_gsp_date(v: Any) -> str:
+            if not v:
+                return clock.now().strftime("%d-%m-%Y")
+            try:
+                return datetime.strptime(str(v)[:10], "%Y-%m-%d").strftime("%d-%m-%Y")
+            except Exception:
+                return str(v)
+
+        gstn_b2cl = []
+        for inv in b2cl_invoices:
+            gstn_b2cl.append({
+                "inum": inv.get("invoice_number"),
+                "idt": _fmt_gsp_date(inv.get("invoice_date")),
+                "ctin": "",
+                "chn": "",
+                "pos": inv.get("place_of_supply") or company_state,
+                "rchrg": "N",
+                "inv_typ": "R",
+                "itms": [{
+                    "num": 1,
+                    "itm_det": {
+                        "txval": round(float(inv.get("taxable_value") or 0), 2),
+                        "rt": round(float(inv.get("tax_rate") or 0), 2),
+                        "iamt": round(float(inv.get("igst") or 0), 2),
+                        "camt": 0.0,
+                        "samt": 0.0,
+                        "csamt": 0.0,
+                    },
+                }],
+            })
+
+        # HSN — split B2C and B2C per the GSP `hsn` schema; drop the non-schema desc/val fields
+        def _hsn_rows(hmap: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+            out: List[Dict[str, Any]] = []
+            for idx, item in enumerate(hmap.values()):
+                out.append({
                     "num": idx + 1,
                     "hsn_sc": item["hsn_code"],
-                    "desc": item["description"],
                     "uqc": item["uqc"],
-                    "rt": item.get("rate", 18.0),
-                    "qty": item["total_quantity"],
-                    "val": round(item["total_value"], 2),
+                    "qty": round(item["total_quantity"], 2),
+                    "rt": round(item.get("rate", 0.0), 2),
                     "txval": round(item["taxable_value"], 2),
                     "iamt": round(item["igst_amount"], 2),
                     "camt": round(item["cgst_amount"], 2),
                     "samt": round(item["sgst_amount"], 2),
                     "csamt": 0.0,
-                }
-                for idx, item in enumerate(hsn_map.values())
-            ]
-        }
+                })
+            return out
+
+        gstn_hsn_b2c = _hsn_rows(hsn_map)
+        gstn_hsn_b2b = _hsn_rows(hsn_b2b_map)
+
+        gstn_hsn: Dict[str, Any] = {}
+        if gstn_hsn_b2c:
+            gstn_hsn["hsn_b2c"] = gstn_hsn_b2c
+        if gstn_hsn_b2b:
+            gstn_hsn["hsn_b2b"] = gstn_hsn_b2b
+
+        # Nil / exempt / non-GST supplies
+        gstn_nil_inv: List[Dict[str, Any]] = []
+        nil_type_codes = ["INTRAB2C", "INTRAB2B", "EXPTB2C", "EXPTB2B", "NGSPB2C", "NGSPB2B"]
+        for code in nil_type_codes:
+            entry = nil_map.get(code)
+            if entry:
+                gstn_nil_inv.append({
+                    "sply_ty": code,
+                    "nil_amt": round(entry.get("nil_amt", 0.0), 2),
+                    "expt_amt": round(entry.get("expt_amt", 0.0), 2),
+                    "ngsup_amt": round(entry.get("ngsup_amt", 0.0), 2),
+                })
+
+        # Credit / Debit note entries — GSP `cdnr` shape (grouped by counterparty GSTIN)
+        cdnr_by_ctin: Dict[str, List[Dict[str, Any]]] = {}
+        cn_count = 0
+        dn_count = 0
+        for note in cdnr_invoices:
+            note_type = str(note.invoice_type or "").lower()
+            is_debit = note_type in ("debit_note", "debitnote", "dn", "debit")
+            if is_debit:
+                dn_count += 1
+            else:
+                cn_count += 1
+
+            note_total = float(note.total_amount or 0.0)
+            note_taxable = float(note.subtotal or 0.0)
+            n_cgst = float(note.cgst_amount or 0.0)
+            n_sgst = float(note.sgst_amount or 0.0)
+            n_igst = float(note.igst_amount or 0.0)
+            cust_gstin_n = (note.customer_gstin or "").strip()
+            ctin_n = cust_gstin_n if len(cust_gstin_n) == 15 else "URP"
+            cust_state_n = cust_gstin_n[:2] if len(cust_gstin_n) >= 2 else company_state
+
+            # Tax placement: inter-state → iamt; intra → camt/samt
+            is_inter_n = cust_state_n != company_state
+            if is_inter_n:
+                tax_move = round(n_igst + n_cgst + n_sgst, 2)
+                iamt_n, camt_n, samt_n = tax_move, 0.0, 0.0
+            else:
+                iamt_n, camt_n, samt_n = 0.0, round(n_cgst, 2), round(n_sgst, 2)
+
+            note_entry = {
+                "nt_num": note.invoice_number,
+                "nt_dt": _fmt_gsp_date(note.invoice_date.isoformat() if note.invoice_date else None),
+                "ntty": "D" if is_debit else "C",
+                "val": round(note_total, 2),
+                "pos": cust_state_n,
+                "rchrg": "N",
+                "inv_typ": "R",
+                "itms": [{
+                    "num": 1,
+                    "itm_det": {
+                        "rt": 0.0,
+                        "txval": round(note_taxable, 2),
+                        "iamt": iamt_n,
+                        "camt": camt_n,
+                        "samt": samt_n,
+                        "csamt": 0.0,
+                    },
+                }],
+            }
+            cdnr_by_ctin.setdefault(ctin_n, []).append(note_entry)
+
+        gstn_cdnr = [
+            {"ctin": ctin, "nt": notes}
+            for ctin, notes in cdnr_by_ctin.items()
+        ]
+
+        # Document issuance — min/max invoice numbers + real cancelled count,
+        # with a separate document range for Credit/Debit notes
+        inv_numbers = [str(i.invoice_number) for i in invoices]
+        doc_from = min(inv_numbers) if inv_numbers else "1"
+        doc_to = max(inv_numbers) if inv_numbers else "1"
+        net_issue = max(len(invoices) - cancelled_count, 0)
 
         gstn_doc_issue = {
             "doc_det": [
@@ -1139,44 +1317,97 @@ class WhitebooksGstClient:
                     "docs": [
                         {
                             "num": 1,
-                            "from": invoices[-1].invoice_number if invoices else "—",
-                            "to": invoices[0].invoice_number if invoices else "—",
+                            "from": doc_from,
+                            "to": doc_to,
                             "totnum": len(invoices),
-                            "canc": 0,
-                            "net_issue": len(invoices),
+                            "cancel": cancelled_count,
+                            "net_issue": net_issue,
                         }
                     ]
                 }
             ]
         }
 
-        gstn_b2cs = [
-            {
+        if cdnr_invoices:
+            if cn_count > 0:
+                cn_numbers = [str(n.invoice_number) for n in cdnr_invoices
+                              if str(n.invoice_type or "").lower() not in ("debit_note", "debitnote", "dn", "debit")]
+                if cn_numbers:
+                    gstn_doc_issue["doc_det"].append({
+                        "doc_num": 2,
+                        "doc_typ": "Credit Note",
+                        "docs": [{
+                            "num": 1,
+                            "from": min(cn_numbers),
+                            "to": max(cn_numbers),
+                            "totnum": len(cn_numbers),
+                            "cancel": 0,
+                            "net_issue": len(cn_numbers),
+                        }],
+                    })
+            if dn_count > 0:
+                dn_numbers = [str(n.invoice_number) for n in cdnr_invoices
+                              if str(n.invoice_type or "").lower() in ("debit_note", "debitnote", "dn", "debit")]
+                if dn_numbers:
+                    gstn_doc_issue["doc_det"].append({
+                        "doc_num": 3,
+                        "doc_typ": "Debit Note",
+                        "docs": [{
+                            "num": 1,
+                            "from": min(dn_numbers),
+                            "to": max(dn_numbers),
+                            "totnum": len(dn_numbers),
+                            "cancel": 0,
+                            "net_issue": len(dn_numbers),
+                        }],
+                    })
+
+        # B2C summary rows — enforce correct tax placement per supply type
+        gstn_b2cs = []
+        for item in b2cs_rate_map.values():
+            is_inter = item["sply_ty"] == "INTER"
+            row = {
                 "sply_ty": item["sply_ty"],
                 "pos": item["pos"],
-                "rt": item["rt"],
+                "typ": "OE",
+                "rt": round(item["rt"], 2),
                 "txval": round(item["txval"], 2),
-                "camt": round(item["camt"], 2),
-                "samt": round(item["samt"], 2),
                 "iamt": round(item["iamt"], 2),
+                "camt": 0.0,
+                "samt": 0.0,
                 "csamt": 0.0,
             }
-            for item in b2cs_rate_map.values()
-        ]
+            if is_inter:
+                # Inter-state: move the whole tax into iamt (fold cgst+sgst if no igst was recorded)
+                row["iamt"] = round(item["iamt"] + item["camt"] + item["samt"], 2)
+            else:
+                # Intra-state: keep camt/samt, ensure iamt is zero
+                row["camt"] = round(item["camt"], 2)
+                row["samt"] = round(item["samt"], 2)
+            # Skip all-zero rows (portal rejects rows where every amount is zero)
+            if row["txval"] != 0 or row["iamt"] != 0 or row["camt"] != 0 or row["samt"] != 0:
+                gstn_b2cs.append(row)
 
-        gstn_payload = {
+        # Compose the payload, omitting empty collections to match Whitebooks
+        gstn_payload: Dict[str, Any] = {
             "gstin": self.gstin or "37AAACG1234F1Z5",
             "fp": f"{month:02d}{year}",
-            "gt": round(total_invoice_value * 12, 2),
-            "cur_gt": round(total_invoice_value, 2),
-            "version": "GSTR1_v2.0",
-            "hash": "NULL",
-            "b2b": gstn_b2b,
-            "b2cl": b2cl_invoices,
-            "b2cs": gstn_b2cs,
-            "hsn": gstn_hsn,
-            "doc_issue": gstn_doc_issue,
+            "version": "GST3.1.6",
+            "hash": "hash",
         }
+        if gstn_b2b:
+            gstn_payload["b2b"] = gstn_b2b
+        if gstn_b2cl:
+            gstn_payload["b2cl"] = gstn_b2cl
+        if gstn_b2cs:
+            gstn_payload["b2cs"] = gstn_b2cs
+        if gstn_cdnr:
+            gstn_payload["cdnr"] = gstn_cdnr
+        if gstn_nil_inv:
+            gstn_payload["nil"] = {"inv": gstn_nil_inv}
+        if gstn_hsn:
+            gstn_payload["hsn"] = gstn_hsn
+        gstn_payload["doc_issue"] = gstn_doc_issue
 
         return {
             "period": f"{month:02d}{year}",
@@ -1199,13 +1430,21 @@ class WhitebooksGstClient:
                 "invoices": b2cs_invoices,
                 "total_taxable": round(sum(x["taxable_value"] for x in b2cs_invoices), 2),
             },
-            "hsn_summary": list(hsn_map.values()),
+            "hsn_summary": {"b2c": list(hsn_map.values()), "b2b": list(hsn_b2b_map.values())},
+            "nil_supplies": {k: v for k, v in nil_map.items()},
+            "cdnr_summary": {
+                "credit_note_count": cn_count,
+                "debit_note_count": dn_count,
+                "entries": gstn_cdnr,
+            },
             "doc_issues": {
                 "total_issued": len(invoices),
-                "from_serial": invoices[-1].invoice_number if invoices else "—",
-                "to_serial": invoices[0].invoice_number if invoices else "—",
-                "cancelled_count": 0,
-                "net_issued": len(invoices),
+                "from_serial": doc_from,
+                "to_serial": doc_to,
+                "cancelled_count": cancelled_count,
+                "net_issued": net_issue,
+                "credit_note_count": cn_count,
+                "debit_note_count": dn_count,
             },
             "gstn_json_payload": gstn_payload,
         }

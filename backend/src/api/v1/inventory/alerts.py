@@ -5,7 +5,11 @@ from pydantic import BaseModel, Field
 
 from src.database.session import get_db
 from src.api.deps import CurrentUserContext, get_current_user_context
-from src.models import Tenant
+from datetime import datetime, timedelta, timezone
+from sqlalchemy import select, func, and_, or_, desc
+from src.models import Tenant, LiveNotification, Company
+from src.utils.clock import clock
+from src.utils.notifications import add_system_notification
 from src.services.inventory_alert_service import (
     get_tenant_alert_config,
     generate_inventory_alert_signals,
@@ -132,11 +136,122 @@ async def send_test_whatsapp_stock_alert(
         "You will receive automatic alerts when items drop below reorder thresholds or stagnate in inventory."
     )
 
-    delivery = await send_whatsapp_alert_text(target_phone, msg, db=db, tenant_id=ctx.tenant_id)
+    delivery = await send_whatsapp_alert_text(
+        target_phone, msg, db=db, tenant_id=ctx.tenant_id, company_id=ctx.active_company_id
+    )
     if not delivery.get("success"):
         raise HTTPException(
             status_code=502,
             detail=f"WhatsApp test failed: {delivery.get('error', 'Gateway error')}",
         )
 
+    await add_system_notification(
+        db=db,
+        tenant_id=ctx.tenant_id,
+        company_id=ctx.active_company_id,
+        title="📱 WhatsApp Test Ping Dispatched",
+        body=f"Sent to {target_phone}: Verification ping successful.",
+        category="inventory_whatsapp",
+    )
+    await db.commit()
+
     return {"message": f"Test alert successfully sent to {target_phone} via WhatsApp!", "delivery": delivery}
+
+
+@router.get("/history")
+async def get_inventory_alert_history(
+    period: str = Query("7d", description="today, 7d, 30d, all"),
+    channel: Optional[str] = Query(None, description="in_app, whatsapp, or all"),
+    limit: int = Query(50, ge=1, le=200),
+    ctx: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns time-filtered inventory alert dispatch history (In-App Push & WhatsApp)
+    with total counts, channel breakdowns, and recent activity log.
+    """
+    now = clock.now()
+    start_time = None
+    if period == "today":
+        start_time = datetime(now.year, now.month, now.day, 0, 0, 0, tzinfo=now.tzinfo)
+    elif period == "7d":
+        start_time = now - timedelta(days=7)
+    elif period == "30d":
+        start_time = now - timedelta(days=30)
+    # "all" leaves start_time = None
+
+    # Base filters: tenant scoped and optionally company scoped
+    conditions = [
+        LiveNotification.tenant_id == ctx.tenant_id,
+        LiveNotification.category.in_(["inventory", "inventory_whatsapp"]),
+    ]
+    if ctx.active_company_id:
+        first_comp_id = await db.scalar(
+            select(Company.id)
+            .where(Company.tenant_id == ctx.tenant_id)
+            .order_by(Company.created_at.asc())
+            .limit(1)
+        )
+        if ctx.active_company_id == first_comp_id:
+            conditions.append(
+                or_(
+                    LiveNotification.company_id == ctx.active_company_id,
+                    LiveNotification.company_id.is_(None),
+                )
+            )
+        else:
+            conditions.append(LiveNotification.company_id == ctx.active_company_id)
+    if start_time:
+        conditions.append(LiveNotification.created_at >= start_time)
+
+    # 1. Summary aggregations
+    total_q = select(func.count(LiveNotification.id)).where(and_(*conditions))
+    total_count = (await db.scalar(total_q)) or 0
+
+    in_app_q = select(func.count(LiveNotification.id)).where(
+        and_(*conditions, LiveNotification.category == "inventory")
+    )
+    in_app_count = (await db.scalar(in_app_q)) or 0
+
+    wa_q = select(func.count(LiveNotification.id)).where(
+        and_(*conditions, LiveNotification.category == "inventory_whatsapp")
+    )
+    wa_count = (await db.scalar(wa_q)) or 0
+
+    # 2. List recent alerts
+    list_conditions = list(conditions)
+    if channel == "in_app":
+        list_conditions.append(LiveNotification.category == "inventory")
+    elif channel == "whatsapp":
+        list_conditions.append(LiveNotification.category == "inventory_whatsapp")
+
+    query = (
+        select(LiveNotification)
+        .where(and_(*list_conditions))
+        .order_by(desc(LiveNotification.created_at))
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    rows = result.scalars().all()
+
+    alert_items = []
+    for r in rows:
+        ch = "whatsapp" if r.category == "inventory_whatsapp" else "in_app"
+        alert_items.append({
+            "id": str(r.id),
+            "title": r.title,
+            "body": r.body,
+            "category": r.category,
+            "channel": ch,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        })
+
+    return {
+        "period": period,
+        "summary": {
+            "total": total_count,
+            "in_app": in_app_count,
+            "whatsapp": wa_count,
+        },
+        "alerts": alert_items,
+    }

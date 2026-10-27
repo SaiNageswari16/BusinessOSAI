@@ -133,6 +133,7 @@ export function EmployeeSalesReportSuite({ onBack }: EmployeeSalesReportSuitePro
       if (selectedInvoiceType && selectedInvoiceType !== "all") params.invoice_type = selectedInvoiceType;
       if (selectedInvoiceStatus && selectedInvoiceStatus !== "all") params.invoice_status = selectedInvoiceStatus;
       if (searchQuery.trim()) params.search = searchQuery.trim();
+      if (tenant?.id) params.company_id = tenant.id;
 
       const data = await inventoryApi.getEmployeeSalesReport(params);
       setReportData(data);
@@ -146,7 +147,7 @@ export function EmployeeSalesReportSuite({ onBack }: EmployeeSalesReportSuitePro
 
   useEffect(() => {
     void loadReport();
-  }, [startDate, endDate, selectedStaff, selectedInvoiceType, selectedInvoiceStatus]);
+  }, [startDate, endDate, selectedStaff, selectedInvoiceType, selectedInvoiceStatus, tenant?.id]);
 
   // Debounced search
   useEffect(() => {

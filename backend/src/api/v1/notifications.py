@@ -14,6 +14,7 @@ from src.database.session import get_db
 from src.models import (
     LiveNotification,
     Tenant,
+    Company,
     User,
     UserRole,
     Role,
@@ -37,6 +38,7 @@ class NotificationSettingsUpdate(BaseModel):
 class LiveNotificationResponse(BaseModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
+    company_id: Optional[uuid.UUID] = None
     user_id: Optional[uuid.UUID] = None
     title: str
     body: str
@@ -187,10 +189,11 @@ DEFAULT_PUSH_TEMPLATES: List[dict] = [
 @router.get("/live", response_model=List[LiveNotificationResponse])
 async def get_live_notifications(
     limit: int = 50,
+    company_id: Optional[str] = Query(None),
     ctx: CurrentUserContext = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db)
 ):
-    """Fetches the latest live notifications addressed to the current user or general tenant broadcasts."""
+    """Fetches the latest live notifications addressed to the current user or general tenant broadcasts within the active workspace."""
     stmt = (
         select(LiveNotification)
         .where(
@@ -200,19 +203,47 @@ async def get_live_notifications(
                 LiveNotification.user_id.is_(None)
             )
         )
-        .order_by(desc(LiveNotification.created_at))
-        .limit(limit)
     )
+
+    target_cid = None
+    raw_cid = company_id or (str(ctx.active_company_id) if ctx.active_company_id else None)
+    if raw_cid:
+        try:
+            target_cid = uuid.UUID(raw_cid)
+        except Exception:
+            target_cid = None
+
+    if target_cid:
+        first_comp_id = await db.scalar(
+            select(Company.id)
+            .where(Company.tenant_id == ctx.tenant_id)
+            .order_by(Company.created_at.asc())
+            .limit(1)
+        )
+        if target_cid == first_comp_id:
+            # Primary company workspace sees its notifications and legacy notifications
+            stmt = stmt.where(
+                or_(
+                    LiveNotification.company_id == target_cid,
+                    LiveNotification.company_id.is_(None)
+                )
+            )
+        else:
+            # Secondary workspaces strictly only see notifications for their company_id
+            stmt = stmt.where(LiveNotification.company_id == target_cid)
+
+    stmt = stmt.order_by(desc(LiveNotification.created_at)).limit(limit)
     res = await db.execute(stmt)
     return res.scalars().all()
 
 
 @router.post("/read-all")
 async def mark_all_as_read(
+    company_id: Optional[str] = Query(None),
     ctx: CurrentUserContext = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db)
 ):
-    """Marks all live notifications for this user as read."""
+    """Marks all live notifications for this user as read within the active workspace."""
     stmt = (
         update(LiveNotification)
         .where(
@@ -223,8 +254,34 @@ async def mark_all_as_read(
             ),
             LiveNotification.unread == True
         )
-        .values(unread=False)
     )
+
+    target_cid = None
+    raw_cid = company_id or (str(ctx.active_company_id) if ctx.active_company_id else None)
+    if raw_cid:
+        try:
+            target_cid = uuid.UUID(raw_cid)
+        except Exception:
+            target_cid = None
+
+    if target_cid:
+        first_comp_id = await db.scalar(
+            select(Company.id)
+            .where(Company.tenant_id == ctx.tenant_id)
+            .order_by(Company.created_at.asc())
+            .limit(1)
+        )
+        if target_cid == first_comp_id:
+            stmt = stmt.where(
+                or_(
+                    LiveNotification.company_id == target_cid,
+                    LiveNotification.company_id.is_(None)
+                )
+            )
+        else:
+            stmt = stmt.where(LiveNotification.company_id == target_cid)
+
+    stmt = stmt.values(unread=False)
     await db.execute(stmt)
     await db.commit()
     return {"message": "All notifications marked as read."}

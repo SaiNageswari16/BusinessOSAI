@@ -609,13 +609,15 @@ export function AppTopbar({
   };
 
   useEffect(() => {
+    // Reset local notifications when switching active company/workspace so previous company alerts do not trigger toasts
+    setLiveNotifications([]);
     fetchLiveNotifications(true);
     // Poll for notifications every 12 seconds
     const interval = setInterval(() => {
       fetchLiveNotifications(false);
     }, 12000);
     return () => clearInterval(interval);
-  }, []);
+  }, [tenant?.id, (company as any)?.id]);
 
   const handleSendMessage = (e?: React.FormEvent) => {
     if (e) e.preventDefault();

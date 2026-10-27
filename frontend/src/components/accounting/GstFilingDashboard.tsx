@@ -81,7 +81,7 @@ export function GstFilingDashboard() {
       if (res) {
         setSessionStatus(res);
       }
-    } catch {}
+    } catch { }
   };
 
   const loadData = async () => {
@@ -332,22 +332,19 @@ export function GstFilingDashboard() {
       </div>
 
       {/* ── GSTN Portal Live Session Status & OTP Quick Auth Card ── */}
-      <div className={`p-4 rounded-2xl border transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${
-        sessionStatus.is_active
+      <div className={`p-4 rounded-2xl border transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${sessionStatus.is_active
           ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-200'
           : 'bg-amber-500/10 border-amber-500/30 text-amber-950 dark:text-amber-200'
-      }`}>
+        }`}>
         <div className="flex items-center gap-3.5">
-          <div className={`p-2.5 rounded-xl text-white shadow-xs ${
-            sessionStatus.is_active ? 'bg-emerald-600' : 'bg-amber-600'
-          }`}>
+          <div className={`p-2.5 rounded-xl text-white shadow-xs ${sessionStatus.is_active ? 'bg-emerald-600' : 'bg-amber-600'
+            }`}>
             {sessionStatus.is_active ? <ShieldCheck className="w-5 h-5" /> : <Smartphone className="w-5 h-5" />}
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className={`w-2.5 h-2.5 rounded-full ${
-                sessionStatus.is_active ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
-              }`} />
+              <span className={`w-2.5 h-2.5 rounded-full ${sessionStatus.is_active ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                }`} />
               <h4 className="font-bold text-sm">
                 {sessionStatus.is_active ? 'GSTN Portal 6-Hour Session Active' : 'GST Portal Session Inactive / Authorization Required'}
               </h4>
@@ -415,33 +412,30 @@ export function GstFilingDashboard() {
           <div className="flex items-center bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xs">
             <button
               onClick={() => setSelectedInvoiceType('tax_invoice')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                selectedInvoiceType === 'tax_invoice'
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${selectedInvoiceType === 'tax_invoice'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
+                }`}
             >
               <FileCheck className="w-3.5 h-3.5" />
               Tax Invoices (GST Only)
             </button>
             <button
               onClick={() => setSelectedInvoiceType('estimate')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                selectedInvoiceType === 'estimate'
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${selectedInvoiceType === 'estimate'
                   ? 'bg-amber-600 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
+                }`}
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
               Estimates (Non-Tax)
             </button>
             <button
               onClick={() => setSelectedInvoiceType('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                selectedInvoiceType === 'all'
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${selectedInvoiceType === 'all'
                   ? 'bg-indigo-600 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
+                }`}
             >
               <Layers className="w-3.5 h-3.5" />
               All Invoices (Combined)
@@ -497,21 +491,19 @@ export function GstFilingDashboard() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setActiveTab('gstr1')}
-            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all ${
-              activeTab === 'gstr1'
+            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all ${activeTab === 'gstr1'
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-            }`}
+              }`}
           >
-            GSTR-1 (Outward Supplies Return)
+            GSTR-1 (Sales Return)
           </button>
           <button
             onClick={() => setActiveTab('gstr3b')}
-            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all ${
-              activeTab === 'gstr3b'
+            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all ${activeTab === 'gstr3b'
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-            }`}
+              }`}
           >
             GSTR-3B (Monthly Summary & ITC)
           </button>
@@ -566,33 +558,29 @@ export function GstFilingDashboard() {
           <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl w-fit">
             <button
               onClick={() => setGstr1SubTab('b2b')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                gstr1SubTab === 'b2b' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${gstr1SubTab === 'b2b' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
             >
               Table 4: B2B Invoices ({summaryData?.b2b?.count || 0})
             </button>
             <button
               onClick={() => setGstr1SubTab('b2cs')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                gstr1SubTab === 'b2cs' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${gstr1SubTab === 'b2cs' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
             >
               Table 7: B2CS Consumer Sales ({summaryData?.b2cs?.count || 0})
             </button>
             <button
               onClick={() => setGstr1SubTab('hsn')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                gstr1SubTab === 'hsn' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${gstr1SubTab === 'hsn' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
             >
               Table 12: HSN Summary ({summaryData?.hsn_summary?.length || 0})
             </button>
             <button
               onClick={() => setGstr1SubTab('docs')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                gstr1SubTab === 'docs' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${gstr1SubTab === 'docs' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
             >
               Table 13: Document Issue
             </button>
@@ -603,7 +591,7 @@ export function GstFilingDashboard() {
             <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
               <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
                 <div>
-                  <h4 className="font-bold text-slate-900 text-xs">Table 4: Taxable outward supplies made to registered persons (B2B)</h4>
+                  <h4 className="font-bold text-slate-900 text-xs">Table 4: Taxable Sales made to registered persons (B2B)</h4>
                   <p className="text-[11px] text-slate-500">Invoices with valid 15-character GSTIN</p>
                 </div>
                 <span className="text-xs font-extrabold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-200">
@@ -710,7 +698,7 @@ export function GstFilingDashboard() {
           {gstr1SubTab === 'hsn' && (
             <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
               <div className="p-4 border-b border-slate-200 bg-slate-50/50">
-                <h4 className="font-bold text-slate-900 text-xs">Table 12: HSN-wise Summary of Outward Supplies</h4>
+                <h4 className="font-bold text-slate-900 text-xs">Table 12: HSN-wise Summary of Sales</h4>
                 <p className="text-[11px] text-slate-500">Statutory goods classification by HSN code</p>
               </div>
 
@@ -787,10 +775,10 @@ export function GstFilingDashboard() {
       {activeTab === 'gstr3b' && (
         <div className="space-y-4 animate-in fade-in">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Table 3.1: Outward Supplies */}
+            {/* Table 3.1: Sales */}
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
               <div className="flex justify-between items-center border-b pb-3">
-                <h4 className="font-bold text-slate-900 text-xs">Table 3.1: Details of Outward Supplies & Tax Liability</h4>
+                <h4 className="font-bold text-slate-900 text-xs">Table 3.1: Details of Sales & Tax Liability</h4>
                 <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
                   Output Tax
                 </span>

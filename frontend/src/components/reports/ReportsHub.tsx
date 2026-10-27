@@ -117,7 +117,7 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     icon: ShieldCheck,
     badge: "21 Reports",
     reports: [
-      { id: "gstr1", title: "GSTR-1 Outward Supplies", entity: "gstr1", description: "B2B, B2CL, B2CS, export sales and outward supplies return for monthly/quarterly filing.", icon: FileSpreadsheet },
+      { id: "gstr1", title: "GSTR-1 Sales", entity: "gstr1", description: "B2B, B2CL, B2CS, export sales and Sales return for monthly/quarterly filing.", icon: FileSpreadsheet },
       { id: "gstr3b", title: "GSTR-3B Monthly Return", entity: "gstr3b", description: "Auto-computed taxable turnover, outward tax liability, eligible ITC and net cash tax payable.", icon: FileCheck },
       { id: "gstr2b", title: "GSTR-2B Auto-Drafted ITC", entity: "gstr2b", description: "Inward supply ITC matching statement for monthly input tax claim reconciliation.", icon: Layers },
       { id: "gst_sales", title: "GST Sales (With HSN)", entity: "gst_sales", description: "Complete sales tax register with CGST, SGST, IGST, cess & taxable breakdown.", icon: TrendingUp },
@@ -956,8 +956,8 @@ export function ReportsHub() {
                   type="button"
                   onClick={() => setSelectedCategory(isCatSelected ? "" : cat.id)}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${isCatSelected
-                      ? "bg-indigo-50/80 text-indigo-900 font-extrabold"
-                      : "text-slate-700 hover:bg-slate-100/70"
+                    ? "bg-indigo-50/80 text-indigo-900 font-extrabold"
+                    : "text-slate-700 hover:bg-slate-100/70"
                     }`}
                 >
                   <div className="flex items-center gap-2.5">
@@ -993,8 +993,8 @@ export function ReportsHub() {
                             type="button"
                             onClick={() => handleSelectReport(cat.id, item)}
                             className={`w-full text-left px-3 py-2 rounded-lg text-[11px] font-medium transition-all flex items-center justify-between cursor-pointer ${isReportActive
-                                ? "bg-indigo-600 text-white font-bold shadow-md shadow-indigo-200"
-                                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                              ? "bg-indigo-600 text-white font-bold shadow-md shadow-indigo-200"
+                              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                               }`}
                           >
                             <span className="truncate">{item.title}</span>
@@ -1504,17 +1504,17 @@ export function ReportsHub() {
                                     {isStatus ? (
                                       <span
                                         className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${String(val).toLowerCase().includes("cancel") ||
-                                            String(val).toLowerCase().includes("repaid")
-                                            ? "bg-rose-50 text-rose-700 border border-rose-200 font-extrabold"
-                                            : String(val).toLowerCase().includes("paid") ||
-                                              String(val).toLowerCase().includes("completed") ||
-                                              String(val).toLowerCase().includes("active")
-                                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                              : String(val).toLowerCase().includes("pending") ||
-                                                String(val).toLowerCase().includes("partial") ||
-                                                String(val).toLowerCase().includes("overdue")
-                                                ? "bg-amber-50 text-amber-700 border border-amber-200 font-extrabold"
-                                                : "bg-slate-100 text-slate-700"
+                                          String(val).toLowerCase().includes("repaid")
+                                          ? "bg-rose-50 text-rose-700 border border-rose-200 font-extrabold"
+                                          : String(val).toLowerCase().includes("paid") ||
+                                            String(val).toLowerCase().includes("completed") ||
+                                            String(val).toLowerCase().includes("active")
+                                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                            : String(val).toLowerCase().includes("pending") ||
+                                              String(val).toLowerCase().includes("partial") ||
+                                              String(val).toLowerCase().includes("overdue")
+                                              ? "bg-amber-50 text-amber-700 border border-amber-200 font-extrabold"
+                                              : "bg-slate-100 text-slate-700"
                                           }`}
                                       >
                                         {val}

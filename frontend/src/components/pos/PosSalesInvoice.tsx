@@ -2363,15 +2363,16 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       if (!prevItems || prevItems.length === 0) return prevItems;
       let hasChanges = false;
       const updated = prevItems.map((item) => {
-        const rawProdId = item.product_id || item.sku || "";
-        const rawProdName = item.product_name || "";
-        const rawSku = item.sku || "";
+        const rawProdId = item.product_id || "";
+        const rawProdName = item.product_name ? item.product_name.toLowerCase().trim() : "";
+        const rawBarcode = item.barcode ? String(item.barcode).toLowerCase().trim() : "";
 
+        // Strictly match by unique ID, barcode, or exact product name — NEVER by shared SKU alone!
         const matched = products.find(
           (p) =>
-            (rawProdId && (p.id === rawProdId || p.sku === rawProdId)) ||
-            (p.name && rawProdName && p.name.toLowerCase().trim() === rawProdName.toLowerCase().trim()) ||
-            (p.sku && rawSku && p.sku.toLowerCase().trim() === rawSku.toLowerCase().trim())
+            (rawProdId && p.id === rawProdId) ||
+            (rawBarcode && p.barcode && String(p.barcode).toLowerCase().trim() === rawBarcode) ||
+            (rawProdName && p.name && p.name.toLowerCase().trim() === rawProdName)
         );
         if (!matched || item.is_free) return item;
 
@@ -3067,28 +3068,13 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const queryCode = (scannedCode || "").trim();
     if (!queryCode) return;
 
-    // 1. Match in local product list (Prioritizing exact barcode first, then ID, SKU, name)
+    // 1. Exact barcode lookup in local product list
     const cleanQuery = queryCode.toLowerCase();
     let product = products.find(
       (p) => p.barcode && String(p.barcode).trim().toLowerCase() === cleanQuery
     );
-    if (!product) {
-      product = products.find(
-        (p) => p.id && String(p.id).trim().toLowerCase() === cleanQuery
-      );
-    }
-    if (!product) {
-      product = products.find(
-        (p) => p.sku && String(p.sku).trim().toLowerCase() === cleanQuery
-      );
-    }
-    if (!product) {
-      product = products.find(
-        (p) => p.name && String(p.name).trim().toLowerCase() === cleanQuery
-      );
-    }
 
-    // 2. If not found locally, try looking up via backend / master catalog RAG
+    // 2. If not found locally, look up via backend barcode endpoint
     if (!product) {
       toast.info(`Looking up barcode ${queryCode}...`);
       try {
@@ -3101,48 +3087,42 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       }
     }
 
+    // 3. Fallback only if manual unique SKU/ID entry
+    if (!product) {
+      product = products.find(
+        (p) => p.id && String(p.id).trim().toLowerCase() === cleanQuery
+      );
+    }
+    if (!product) {
+      const matchingBySku = products.filter(
+        (p) => p.sku && String(p.sku).trim().toLowerCase() === cleanQuery
+      );
+      if (matchingBySku.length === 1) {
+        product = matchingBySku[0];
+      }
+    }
+
     if (!product) {
       toast.error(`Barcode "${queryCode}" not found in catalog.`);
       return;
     }
 
-    // 3. Auto-add to product line or increment quantity if same exact product is scanned
+    // 3. Strict Barcode Matching: Exact same barcode -> increment! Different barcode -> new line item!
     const isSameScannedProduct = (it: InvoiceItem) => {
-      const itId = it.product_id ? String(it.product_id).trim() : "";
       const itBarcode = it.barcode ? String(it.barcode).trim().toLowerCase() : "";
-      const itSku = it.sku ? String(it.sku).trim().toLowerCase() : "";
-      const itName = it.product_name ? String(it.product_name).trim().toLowerCase() : "";
+      const scannedBarcode = (product.barcode || queryCode) ? String(product.barcode || queryCode).trim().toLowerCase() : "";
 
-      const incomingId = product.id ? String(product.id).trim() : "";
-      const incomingBarcode = product.barcode ? String(product.barcode).trim().toLowerCase() : "";
-      const incomingSku = product.sku ? String(product.sku).trim().toLowerCase() : "";
-      const incomingName = product.name ? String(product.name).trim().toLowerCase() : "";
-
-      // Conflict checks: If physical barcodes differ, they are different products
-      if (incomingBarcode && itBarcode && incomingBarcode !== itBarcode) {
-        return false;
-      }
-      // Conflict checks: If database product IDs differ, they are different products
-      if (incomingId && itId && incomingId !== itId) {
-        return false;
-      }
-      // Conflict checks: If product names differ, they are different products
-      if (incomingName && itName && incomingName !== itName) {
-        return false;
+      // Strict match: If both have barcodes, increment ONLY if exact same barcode!
+      if (scannedBarcode && itBarcode) {
+        return scannedBarcode === itBarcode;
       }
 
-      // Authoritative matches
-      if (incomingId && itId && incomingId === itId) return true;
-      if (incomingBarcode && itBarcode && incomingBarcode === itBarcode) return true;
-
-      // Fallback match by SKU only when neither barcode, ID, nor name contradicted
-      if (incomingSku && itSku && incomingSku === itSku) return true;
-
-      // Fallback match by name if both lack ID, barcode, and SKU
-      if (!incomingId && !itId && !incomingBarcode && !itBarcode && !incomingSku && !itSku && incomingName && itName && incomingName === itName) {
-        return true;
+      // If an existing line item has no barcode, match ONLY if exact product_id matches
+      if (product.id && it.product_id) {
+        return String(product.id).trim() === String(it.product_id).trim();
       }
 
+      // No fallbacks! Different barcode = different item!
       return false;
     };
 
@@ -3173,7 +3153,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           const updatedItem: InvoiceItem = {
             ...existingItem,
             sku: existingItem.sku || product.sku || "",
-            barcode: existingItem.barcode || product.barcode || "",
+            barcode: existingItem.barcode || String(product.barcode || queryCode).trim(),
+            brand: existingItem.brand || product.brand || product.brand_name || "",
             quantity: newQty,
             primary_qty: newPrimaryQty,
             secondary_qty: newSecondaryQty,
@@ -3196,7 +3177,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           product_id: product.id || "",
           product_name: product.name,
           sku: product.sku || "",
-          barcode: product.barcode || "",
+          barcode: String(product.barcode || queryCode).trim(),
+          brand: product.brand || product.brand_name || "",
+          brand_name: product.brand || product.brand_name || "",
           quantity: 1,
           primary_qty: 1,
           secondary_qty: 0,
@@ -4509,7 +4492,6 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         if (!line.product_name && !line.product_id) continue;
         const matched = products.find((p) => {
           if (line.product_id && p.id && String(p.id) === String(line.product_id)) return true;
-          if (line.sku && p.sku && String(p.sku).trim().toLowerCase() === String(line.sku).trim().toLowerCase()) return true;
           if (line.barcode && p.barcode && String(p.barcode).trim().toLowerCase() === String(line.barcode).trim().toLowerCase()) return true;
           if (line.product_name && p.name && String(p.name).trim().toLowerCase() === String(line.product_name).trim().toLowerCase()) return true;
           return false;
@@ -6904,7 +6886,6 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
                     const matchedProduct = products.find((p) => {
                       if (item.product_id && p.id && String(p.id) === String(item.product_id)) return true;
-                      if (item.sku && p.sku && String(p.sku).trim().toLowerCase() === String(item.sku).trim().toLowerCase()) return true;
                       if (item.barcode && p.barcode && String(p.barcode).trim().toLowerCase() === String(item.barcode).trim().toLowerCase()) return true;
                       if (item.product_name && p.name && String(p.name).trim().toLowerCase() === String(item.product_name).trim().toLowerCase()) return true;
                       return false;

@@ -211,6 +211,7 @@ async def check_and_notify_low_stock(
             await add_system_notification(
                 db=db,
                 tenant_id=tenant_id,
+                company_id=company_id,
                 title=title,
                 body=body,
                 category="inventory",
@@ -244,7 +245,19 @@ async def check_and_notify_low_stock(
             ])
 
             wa_msg = "\n".join(lines)
-            await send_whatsapp_alert_text(recipient, wa_msg, db=db, tenant_id=tenant_id, company_id=company_id)
+            wa_delivery = await send_whatsapp_alert_text(recipient, wa_msg, db=db, tenant_id=tenant_id, company_id=company_id)
+            if wa_delivery.get("success"):
+                item_names = ", ".join(i["name"] for i in triggered[:3])
+                if len(triggered) > 3:
+                    item_names += f" and {len(triggered) - 3} more"
+                await add_system_notification(
+                    db=db,
+                    tenant_id=tenant_id,
+                    company_id=company_id,
+                    title="📱 WhatsApp Alert Dispatched to Manager",
+                    body=f"Sent to {recipient}: Low stock alert for {item_names}.",
+                    category="inventory_whatsapp",
+                )
         else:
             logger.info("[Inventory Alert] WhatsApp alert skipped: %s", wa_reason)
 
@@ -443,6 +456,7 @@ async def dispatch_inventory_alert_digest(
     await add_system_notification(
         db=db,
         tenant_id=tenant_id,
+        company_id=company_id,
         title=digest_title,
         body=digest_body,
         category="inventory",
@@ -485,7 +499,16 @@ async def dispatch_inventory_alert_digest(
         ])
 
         wa_text = "\n".join(lines)
-        wa_result = await send_whatsapp_alert_text(recipient, wa_text, db=db, tenant_id=tenant_id)
+        wa_result = await send_whatsapp_alert_text(recipient, wa_text, db=db, tenant_id=tenant_id, company_id=company_id)
+        if wa_result.get("success"):
+            await add_system_notification(
+                db=db,
+                tenant_id=tenant_id,
+                company_id=company_id,
+                title="📱 WhatsApp Stock Health Digest Dispatched",
+                body=f"Sent to {recipient}: Full digest containing {total_alerts} actionable stock alerts.",
+                category="inventory_whatsapp",
+            )
 
     return {
         "success": True,

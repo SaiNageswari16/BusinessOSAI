@@ -606,7 +606,16 @@ export function PosInvoicesHistory() {
                 list.forEach((inv: any) => {
                   if (inv && (inv.id || inv.invoice_number)) {
                     const numStr = String(inv.invoice_number || inv.id || "").toUpperCase().trim();
-                    if (numStr.startsWith("OPN-")) return;
+                    const typeStr = String(inv.invoice_type || inv.doc_type || "").toUpperCase().trim();
+                    if (
+                      numStr.startsWith("OPN-") ||
+                      numStr.startsWith("CN-") ||
+                      numStr.startsWith("CN ") ||
+                      numStr.startsWith("DN-") ||
+                      numStr.startsWith("DN ") ||
+                      typeStr === "CREDIT_NOTE" ||
+                      typeStr === "DEBIT_NOTE"
+                    ) return;
                     const idKey = String(inv.invoice_number || inv.id).toLowerCase().trim();
                     if (!scannedLocalMap.has(idKey)) {
                       scannedLocalMap.set(idKey, inv);
@@ -705,8 +714,18 @@ export function PosInvoicesHistory() {
             if (activeCid && inv.company_id && String(inv.company_id) !== String(activeCid)) {
               return;
             }
-            const invNum = String(inv.invoice_number || "").toUpperCase();
-            const invType = String(inv.invoice_type || inv.doc_type || "").toUpperCase();
+            const invNum = String(inv.invoice_number || "").toUpperCase().trim();
+            const invType = String(inv.invoice_type || inv.doc_type || "").toUpperCase().trim();
+            if (
+              invType === "CREDIT_NOTE" ||
+              invType === "DEBIT_NOTE" ||
+              invNum.startsWith("CN-") ||
+              invNum.startsWith("CN ") ||
+              invNum.startsWith("DN-") ||
+              invNum.startsWith("DN ")
+            ) {
+              return;
+            }
             const isQuote = invType === "QUOTATION" || invNum.startsWith("QT-");
             const isProforma = invType === "PROFORMA" || invNum.startsWith("PI-");
             const resolvedDocType = isQuote ? "quotation" : isProforma ? "proforma" : "tax_invoice";

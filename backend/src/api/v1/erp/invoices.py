@@ -330,6 +330,14 @@ async def list_invoices(
         query = query.where(Invoice.status == status_filter)
     if invoice_type:
         query = query.where(Invoice.invoice_type == invoice_type)
+    else:
+        query = query.where(
+            ~Invoice.invoice_type.in_(["credit_note", "debit_note"]),
+            ~Invoice.invoice_number.ilike("CN-%"),
+            ~Invoice.invoice_number.ilike("CN %"),
+            ~Invoice.invoice_number.ilike("DN-%"),
+            ~Invoice.invoice_number.ilike("DN %"),
+        )
     if date_from:
         query = query.where(Invoice.invoice_date >= date_from)
     if date_to:

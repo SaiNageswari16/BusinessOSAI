@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   CheckCircle2,
   Calendar as CalendarIcon,
+  Clock,
   X,
   CreditCard,
   Percent,
@@ -26,7 +27,7 @@ import {
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
-import { formatDisplayDateTime, getTodayDateString } from "@/lib/utils";
+import { formatDisplayDate, formatSafeTime, formatDisplayDateTime, getTodayDateString } from "@/lib/utils";
 import { inventoryApi } from "@/lib/api-client";
 import { printHtmlInPage } from "@/lib/print-helper";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
@@ -239,10 +240,38 @@ export function SalesSummaryReportSuite({ onBack }: SalesSummaryReportSuiteProps
     }
   };
 
+  // Safe helper to format row Date & Time (guarantees local IST timezone and 12-hour AM/PM)
+  const getFormattedDateTime = (inv: InvoiceReportRow) => {
+    if (inv.date && (inv.date.includes("AM") || inv.date.includes("PM"))) {
+      return inv.date;
+    }
+    const targetDate = inv.raw_date || inv.date;
+    if (targetDate) {
+      const d = formatDisplayDate(targetDate);
+      const t = formatSafeTime(targetDate);
+      if (d && t) return `${d} ${t}`;
+      if (d) return d;
+    }
+    return inv.date || "—";
+  };
+
   // Channel options
   const channelOptions = useMemo(() => {
     const set = new Set<string>();
     invoicesData.forEach((inv) => {
+      const num = (inv.invoice_no || "").trim().toUpperCase();
+      const src = (inv.source || "").trim().toLowerCase();
+      if (
+        num.startsWith("CN-") ||
+        num.startsWith("CN ") ||
+        num.startsWith("DN-") ||
+        num.startsWith("DN ") ||
+        num.startsWith("OPN-") ||
+        src.includes("credit note") ||
+        src.includes("debit note")
+      ) {
+        return;
+      }
       if (inv.source) set.add(inv.source);
     });
     return Array.from(set);
@@ -252,6 +281,8 @@ export function SalesSummaryReportSuite({ onBack }: SalesSummaryReportSuiteProps
   const taxRateOptions = useMemo(() => {
     const set = new Set<string>();
     invoicesData.forEach((inv) => {
+      const num = (inv.invoice_no || "").trim().toUpperCase();
+      if (num.startsWith("CN-") || num.startsWith("DN-") || num.startsWith("OPN-")) return;
       if (inv.tax_rate) set.add(inv.tax_rate);
     });
     return Array.from(set);
@@ -260,6 +291,24 @@ export function SalesSummaryReportSuite({ onBack }: SalesSummaryReportSuiteProps
   // Filtered rows for current active search and channel
   const filteredInvoices = useMemo(() => {
     let list = invoicesData;
+
+    // Exclude Credit Notes and Debit Notes from Sales Summary Report
+    list = list.filter((inv) => {
+      const num = (inv.invoice_no || "").trim().toUpperCase();
+      const src = (inv.source || "").trim().toLowerCase();
+      if (
+        num.startsWith("CN-") ||
+        num.startsWith("CN ") ||
+        num.startsWith("DN-") ||
+        num.startsWith("DN ") ||
+        num.startsWith("OPN-") ||
+        src.includes("credit note") ||
+        src.includes("debit note")
+      ) {
+        return false;
+      }
+      return true;
+    });
 
     // Search query
     if (searchQuery.trim()) {
@@ -351,7 +400,7 @@ export function SalesSummaryReportSuite({ onBack }: SalesSummaryReportSuiteProps
 
       filteredInvoices.forEach((inv) => {
         rows.push([
-          inv.date,
+          getFormattedDateTime(inv),
           inv.invoice_no,
           inv.customer,
           inv.customer_gstin || "—",
@@ -992,7 +1041,10 @@ export function SalesSummaryReportSuite({ onBack }: SalesSummaryReportSuiteProps
 
                             {/* Date & Time */}
                             <td className="py-3 px-3 font-mono text-slate-700 whitespace-nowrap text-[11px]">
-                              {inv.date}
+                              <div className="flex items-center gap-1.5 font-medium">
+                                <CalendarIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span>{getFormattedDateTime(inv)}</span>
+                              </div>
                             </td>
 
                             {/* Invoice No */}

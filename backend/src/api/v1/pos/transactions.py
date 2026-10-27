@@ -473,7 +473,7 @@ async def checkout(
     # 4. Live notification
     msg_title = "POS Refund Processed" if transaction.status == "refunded" else "New POS Order Checked Out"
     msg_body = f"Receipt {transaction.receipt_number} processed. Cashier: {ctx.user.full_name} | Total: ${transaction.total_amount:,.2f}"
-    await add_system_notification(db, ctx.tenant_id, msg_title, msg_body, "pos")
+    await add_system_notification(db, ctx.tenant_id, msg_title, msg_body, "pos", company_id=ctx.active_company_id)
 
     await db.commit()
 

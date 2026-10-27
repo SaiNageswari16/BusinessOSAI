@@ -1016,8 +1016,8 @@ const translations: Record<Language, Record<string, string>> = {
     "HEATMAPS": "Heatmaps",
     "Movement Analytics": "Movement Analytics",
     "MOVEMENT ANALYTICS": "Movement Analytics",
-    "GSTR-1 Outward Supplies": "GSTR-1 Outward Supplies",
-    "GSTR-1 OUTWARD SUPPLIES": "GSTR-1 Outward Supplies",
+    "GSTR-1 Sales": "GSTR-1 Sales",
+    "GSTR-1 Sales": "GSTR-1 Sales",
     "GSTR-3B Return": "GSTR-3B Return",
     "GSTR-3B RETURN": "GSTR-3B Return",
     "GSTR-2B Auto ITC": "GSTR-2B Auto ITC",
@@ -5205,8 +5205,8 @@ const translations: Record<Language, Record<string, string>> = {
     "HEATMAPS": "الخرائط الحرارية",
     "Movement Analytics": "تحليلات الحركة",
     "MOVEMENT ANALYTICS": "تحليلات الحركة",
-    "GSTR-1 Outward Supplies": "إقرار GSTR-1 للتوريدات الصادرة",
-    "GSTR-1 OUTWARD SUPPLIES": "إقرار GSTR-1 للتوريدات الصادرة",
+    "GSTR-1 Sales": "إقرار GSTR-1 للتوريدات الصادرة",
+    "GSTR-1 Sales": "إقرار GSTR-1 للتوريدات الصادرة",
     "GSTR-3B Return": "إقرار GSTR-3B الدوري",
     "GSTR-3B RETURN": "إقرار GSTR-3B الدوري",
     "GSTR-2B Auto ITC": "مطابقة رصيد GSTR-2B الآلية",
@@ -9394,8 +9394,8 @@ const translations: Record<Language, Record<string, string>> = {
     "HEATMAPS": "హీట్‌మ్యాప్‌లు",
     "Movement Analytics": "కదలికల విశ్లేషణ",
     "MOVEMENT ANALYTICS": "కదలికల విశ్లేషణ",
-    "GSTR-1 Outward Supplies": "GSTR-1 అవుట్‌వర్డ్ సరఫరాలు",
-    "GSTR-1 OUTWARD SUPPLIES": "GSTR-1 అవుట్‌వర్డ్ సరఫరాలు",
+    "GSTR-1 Sales": "GSTR-1 అవుట్‌వర్డ్ సరఫరాలు",
+    "GSTR-1 Sales": "GSTR-1 అవుట్‌వర్డ్ సరఫరాలు",
     "GSTR-3B Return": "GSTR-3B రిటర్న్",
     "GSTR-3B RETURN": "GSTR-3B రిటర్న్",
     "GSTR-2B Auto ITC": "GSTR-2B ఆటో ITC క్రెడిట్",
@@ -13583,8 +13583,8 @@ const translations: Record<Language, Record<string, string>> = {
     "HEATMAPS": "हीटमैप",
     "Movement Analytics": "आंदोलन विश्लेषण",
     "MOVEMENT ANALYTICS": "आंदोलन विश्लेषण",
-    "GSTR-1 Outward Supplies": "GSTR-1 जावक आपूर्ति",
-    "GSTR-1 OUTWARD SUPPLIES": "GSTR-1 जावक आपूर्ति",
+    "GSTR-1 Sales": "GSTR-1 जावक आपूर्ति",
+    "GSTR-1 Sales": "GSTR-1 जावक आपूर्ति",
     "GSTR-3B Return": "GSTR-3B रिटर्न",
     "GSTR-3B RETURN": "GSTR-3B रिटर्न",
     "GSTR-2B Auto ITC": "GSTR-2B ऑटो ITC",
@@ -17772,8 +17772,8 @@ const translations: Record<Language, Record<string, string>> = {
     "HEATMAPS": "ಹೀಟ್‌ಮ್ಯಾಪ್‌ಗಳು",
     "Movement Analytics": "ಚಲನೆ ವಿಶ್ಲೇಷಣೆ",
     "MOVEMENT ANALYTICS": "ಚಲನೆ ವಿಶ್ಲೇಷಣೆ",
-    "GSTR-1 Outward Supplies": "GSTR-1 ಹೊರಹೋಗುವ ಸರಬರಾಜು",
-    "GSTR-1 OUTWARD SUPPLIES": "GSTR-1 ಹೊರಹೋಗುವ ಸರಬರಾಜು",
+    "GSTR-1 Sales": "GSTR-1 ಹೊರಹೋಗುವ ಸರಬರಾಜು",
+    "GSTR-1 Sales": "GSTR-1 ಹೊರಹೋಗುವ ಸರಬರಾಜು",
     "GSTR-3B Return": "GSTR-3B ರಿಟರ್ನ್",
     "GSTR-3B RETURN": "GSTR-3B ರಿಟರ್ನ್",
     "GSTR-2B Auto ITC": "GSTR-2B ಆಟೋ ITC",
@@ -21961,8 +21961,8 @@ const translations: Record<Language, Record<string, string>> = {
     "HEATMAPS": "வெப்ப வரைபடங்கள்",
     "Movement Analytics": "இயக்க பகுப்பாய்வு",
     "MOVEMENT ANALYTICS": "இயக்க பகுப்பாய்வு",
-    "GSTR-1 Outward Supplies": "GSTR-1 வெளிச்செல்லும் விநியோகங்கள்",
-    "GSTR-1 OUTWARD SUPPLIES": "GSTR-1 வெளிச்செல்லும் விநியோகங்கள்",
+    "GSTR-1 Sales": "GSTR-1 வெளிச்செல்லும் விநியோகங்கள்",
+    "GSTR-1 Sales": "GSTR-1 வெளிச்செல்லும் விநியோகங்கள்",
     "GSTR-3B Return": "GSTR-3B வருமானம்",
     "GSTR-3B RETURN": "GSTR-3B வருமானம்",
     "GSTR-2B Auto ITC": "GSTR-2B தானியங்கி ITC",
@@ -26150,8 +26150,8 @@ const translations: Record<Language, Record<string, string>> = {
     "HEATMAPS": "ഹീറ്റ്മാപ്പുകൾ",
     "Movement Analytics": "ചലന വിശകലനം",
     "MOVEMENT ANALYTICS": "ചലന വിശകലനം",
-    "GSTR-1 Outward Supplies": "GSTR-1 ഔട്ട്‌വേർഡ് സപ്ലൈസ്",
-    "GSTR-1 OUTWARD SUPPLIES": "GSTR-1 ഔട്ട്‌വേർഡ് സപ്ലൈസ്",
+    "GSTR-1 Sales": "GSTR-1 ഔട്ട്‌വേർഡ് സപ്ലൈസ്",
+    "GSTR-1 Sales": "GSTR-1 ഔട്ട്‌വേർഡ് സപ്ലൈസ്",
     "GSTR-3B Return": "GSTR-3B റിട്ടേൺ",
     "GSTR-3B RETURN": "GSTR-3B റിട്ടേൺ",
     "GSTR-2B Auto ITC": "GSTR-2B ഓട്ടോ ITC",
@@ -30339,8 +30339,8 @@ const translations: Record<Language, Record<string, string>> = {
     "HEATMAPS": "हीटमॅप्स",
     "Movement Analytics": "हालचाल विश्लेषण",
     "MOVEMENT ANALYTICS": "हालचाल विश्लेषण",
-    "GSTR-1 Outward Supplies": "GSTR-1 जावक पुरवठा",
-    "GSTR-1 OUTWARD SUPPLIES": "GSTR-1 जावक पुरवठा",
+    "GSTR-1 Sales": "GSTR-1 जावक पुरवठा",
+    "GSTR-1 Sales": "GSTR-1 जावक पुरवठा",
     "GSTR-3B Return": "GSTR-3B विवरणपत्र",
     "GSTR-3B RETURN": "GSTR-3B विवरणपत्र",
     "GSTR-2B Auto ITC": "GSTR-2B ऑटो ITC",
@@ -33506,18 +33506,18 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     setLanguageState(lang);
   };
 
-    // Pre-normalized map for fast case-insensitive lookup
+  // Pre-normalized map for fast case-insensitive lookup
   const t = (key: string, fallback?: string): string => {
     if (!key) return fallback || "";
     const langDict = translations[language] || translations.en;
-    
+
     // 1. Direct match
     if (langDict[key]) return langDict[key];
-    
+
     // 2. Trimmed match
     const trimmed = key.trim();
     if (langDict[trimmed]) return langDict[trimmed];
-    
+
     // 3. Exact English dictionary lookup
     if (translations.en[key]) {
       const enVal = translations.en[key];
@@ -33560,12 +33560,12 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
       elements.forEach((el) => {
         // Skip user dynamic data containers
         if (el.closest("td") || el.closest("[data-no-translate='true']") || el.closest("pre") || el.closest("code")) return;
-        
+
         // Handle direct text content for simple elements (leaf nodes or buttons with icons)
         if (el.childElementCount <= 2) {
           const firstChild = el.childNodes[el.childNodes.length - 1];
           const textNode = Array.from(el.childNodes).find(n => n.nodeType === Node.TEXT_NODE && n.textContent && n.textContent.trim().length > 1);
-          
+
           if (textNode && textNode.textContent) {
             const raw = textNode.textContent.trim();
             if (!(el as any).__i18n_orig_text) {
@@ -33639,12 +33639,12 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
       elements.forEach((el) => {
         // Skip user dynamic data containers
         if (el.closest("td") || el.closest("[data-no-translate='true']") || el.closest("pre") || el.closest("code")) return;
-        
+
         // Handle direct text content for simple elements (leaf nodes or buttons with icons)
         if (el.childElementCount <= 2) {
           const firstChild = el.childNodes[el.childNodes.length - 1];
           const textNode = Array.from(el.childNodes).find(n => n.nodeType === Node.TEXT_NODE && n.textContent && n.textContent.trim().length > 1);
-          
+
           if (textNode && textNode.textContent) {
             const raw = textNode.textContent.trim();
             if (!(el as any).__i18n_orig_text) {

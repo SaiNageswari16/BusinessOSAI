@@ -13,6 +13,7 @@ async def add_system_notification(
     body: str,
     category: str = "system",
     user_id: uuid.UUID | None = None,
+    company_id: uuid.UUID | None = None,
 ) -> LiveNotification:
     """
     Creates and saves a real-time live notification record in the database.
@@ -37,6 +38,7 @@ async def add_system_notification(
         notif = LiveNotification(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
+            company_id=company_id,
             user_id=user_id,
             title=title,
             body=body,

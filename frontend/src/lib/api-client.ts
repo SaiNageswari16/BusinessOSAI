@@ -6446,6 +6446,24 @@ export const inventoryAlertsApi = {
 
   testWhatsApp: (payload: { phone_number?: string; custom_message?: string }) =>
     request<{ message: string; delivery: any }>("POST", "/inventory/alerts/test-whatsapp", payload),
+
+  getAlertHistory: (period: "today" | "7d" | "30d" | "all" = "7d", channel?: "in_app" | "whatsapp" | "all") =>
+    request<{
+      period: string;
+      summary: {
+        total: number;
+        in_app: number;
+        whatsapp: number;
+      };
+      alerts: Array<{
+        id: string;
+        title: string;
+        body: string;
+        category: string;
+        channel: "in_app" | "whatsapp";
+        created_at: string;
+      }>;
+    }>("GET", "/inventory/alerts/history", undefined, { period, ...(channel && channel !== "all" ? { channel } : {}) }),
 };
 
 // ── Social Media & Multi-Channel Marketing ──────────────────────────────────

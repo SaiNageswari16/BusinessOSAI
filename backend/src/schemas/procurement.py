@@ -499,6 +499,13 @@ class VendorBillResponse(VendorBillBase):
     supplier_name: Optional[str] = None
     # Full vendor party details for the PI preview (GSTIN, address, contact, etc.)
     supplier: Optional[dict] = None
+    supplier_gstin: Optional[str] = None
+    subtotal: Optional[float] = None
+    tax_amount: Optional[float] = None
+    tax_rate: Optional[float] = None
+    cgst: Optional[float] = 0.0
+    sgst: Optional[float] = 0.0
+    igst: Optional[float] = 0.0
     items: Optional[List[PurchaseOrderItemResponse]] = []
     # Exact per-line values captured at entry (MRP / sell price / UOM), keyed by product
     item_overrides: Optional[List[dict]] = None

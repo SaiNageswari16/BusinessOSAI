@@ -2,7 +2,7 @@ import logging
 import requests
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional, Annotated
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
@@ -13,6 +13,7 @@ from src.database.session import get_db
 from src.config import get_settings
 from src.api.deps import CurrentUserContext, get_current_user_context
 from src.models import (
+    Company,
     Employee, AttendanceRecord, LeaveRequest, LeaveBalance, LeavePolicy, SalaryStructure,
     Payslip, PayslipTemplate, Lead, Customer, Branch, Department, POSTransaction,
     LeadActivity, CRMOpportunity, CRMQuotation, CRMSupportTicket, User, Designation, POSPayment
@@ -897,15 +898,33 @@ async def get_report_builder_presets():
 
 
 def _normalize_dt(dt: Any) -> datetime:
+    """Normalizes a filter boundary (start_dt / end_dt) into naive wall-clock time."""
     if dt is None:
-        return clock.utcnow()
+        return clock.now().replace(tzinfo=None)
     if isinstance(dt, datetime):
         if dt.tzinfo is not None:
-            return dt.replace(tzinfo=None)
+            return dt.astimezone(clock.app_timezone()).replace(tzinfo=None)
         return dt
     if hasattr(dt, "year") and hasattr(dt, "month") and hasattr(dt, "day"):
         return datetime.combine(dt, datetime.min.time())
-    return clock.utcnow()
+    return clock.now().replace(tzinfo=None)
+
+
+def _db_timestamp_to_ist(dt: Any) -> datetime:
+    """
+    Converts a database timestamp (stored in UTC) into the application's configured
+    timezone (default Indian Standard Time, UTC+05:30) as a naive wall-clock datetime.
+    """
+    if dt is None:
+        return clock.now().replace(tzinfo=None)
+    if isinstance(dt, datetime):
+        if dt.tzinfo is not None:
+            return dt.astimezone(clock.app_timezone()).replace(tzinfo=None)
+        # Database timestamps in PostgreSQL are UTC instants
+        return dt.replace(tzinfo=timezone.utc).astimezone(clock.app_timezone()).replace(tzinfo=None)
+    if hasattr(dt, "year") and hasattr(dt, "month") and hasattr(dt, "day"):
+        return datetime.combine(dt, datetime.min.time())
+    return clock.now().replace(tzinfo=None)
 
 
 async def _get_all_sales_invoices(
@@ -915,6 +934,7 @@ async def _get_all_sales_invoices(
     search: Optional[str] = None,
     tenant_id: Optional[uuid.UUID] = None,
     company_id: Optional[uuid.UUID] = None,
+    include_notes: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     Consolidates sales records across all sources in the system for the active tenant:
@@ -950,7 +970,7 @@ async def _get_all_sales_invoices(
     pos_list = (await db.execute(stmt_pos)).scalars().all()
 
     for p in pos_list:
-        p_date = _normalize_dt(p.created_at)
+        p_date = _db_timestamp_to_ist(p.created_at)
         if norm_start and p_date < norm_start:
             continue
         if norm_end and p_date > norm_end:
@@ -1025,7 +1045,7 @@ async def _get_all_sales_invoices(
             "total_amount": total,
             "paid_amount": 0.0 if is_pos_cancelled else total,
             "pending_amount": 0.0,
-            "date": p_date.strftime("%d/%m/%Y %H:%M"),
+            "date": p_date.strftime("%d/%m/%Y %I:%M %p"),
             "raw_date": p_date,
             "source": "POS Register",
             "items": pos_items,
@@ -1037,13 +1057,27 @@ async def _get_all_sales_invoices(
         stmt_erp = stmt_erp.where(Invoice.tenant_id == tenant_id)
     if company_id:
         stmt_erp = stmt_erp.where(Invoice.company_id == company_id)
+    if not include_notes:
+        stmt_erp = stmt_erp.where(
+            ~Invoice.invoice_type.in_(["credit_note", "debit_note", "opening_balance"]),
+            ~Invoice.invoice_number.ilike("CN-%"),
+            ~Invoice.invoice_number.ilike("CN %"),
+            ~Invoice.invoice_number.ilike("DN-%"),
+            ~Invoice.invoice_number.ilike("DN %"),
+            ~Invoice.invoice_number.ilike("OPN-%"),
+        )
     if search:
         stmt_erp = stmt_erp.where(or_(Invoice.invoice_number.ilike(f"%{search}%"), Invoice.customer_name.ilike(f"%{search}%"), Invoice.status.ilike(f"%{search}%")))
     stmt_erp = stmt_erp.order_by(Invoice.created_at.desc())
     erp_list = (await db.execute(stmt_erp)).scalars().all()
 
     for inv in erp_list:
-        inv_date = _normalize_dt(inv.created_at or inv.invoice_date)
+        inv_no = (inv.invoice_number or "").strip().upper()
+        inv_type = (inv.invoice_type or "").strip().lower()
+        if not include_notes:
+            if inv_type in ["credit_note", "debit_note", "opening_balance"] or inv_no.startswith(("CN-", "CN ", "DN-", "DN ", "OPN-")):
+                continue
+        inv_date = _db_timestamp_to_ist(inv.created_at or inv.invoice_date)
         if norm_start and inv_date < norm_start:
             continue
         if norm_end and inv_date > norm_end:
@@ -1160,7 +1194,7 @@ async def _get_all_sales_invoices(
             "total_amount": total,
             "paid_amount": 0.0 if is_cancelled else paid_amt,
             "pending_amount": 0.0 if is_cancelled else pending_amt,
-            "date": inv_date.strftime("%d/%m/%Y %H:%M"),
+            "date": inv_date.strftime("%d/%m/%Y %I:%M %p"),
             "raw_date": inv_date,
             "source": "Tax Invoice",
             "items": erp_items,
@@ -1176,7 +1210,7 @@ async def _get_all_sales_invoices(
     mp_list = (await db.execute(stmt_mp)).scalars().all()
 
     for m in mp_list:
-        m_date = _normalize_dt(m.created_at)
+        m_date = _db_timestamp_to_ist(m.created_at)
         if norm_start and m_date < norm_start:
             continue
         if norm_end and m_date > norm_end:
@@ -1235,7 +1269,7 @@ async def _get_all_sales_invoices(
             "total_amount": total,
             "paid_amount": total if (m.order_status or "").lower() != "cancelled" else 0.0,
             "pending_amount": 0.0 if (m.order_status or "").lower() != "cancelled" else total,
-            "date": m_date.strftime("%d/%m/%Y %H:%M"),
+            "date": m_date.strftime("%d/%m/%Y %I:%M %p"),
             "raw_date": m_date,
             "source": "Online Store",
             "items": mp_items,
@@ -1266,7 +1300,7 @@ async def generate_custom_report(
     filters = payload.get("filters") or {}
     search = (filters.get("search") or "").strip()
 
-    now = clock.utcnow()
+    now = clock.now().replace(tzinfo=None)
 
     # ── Date boundaries calculation ──────────────────────────────────────────
     start_dt = None
@@ -1274,16 +1308,19 @@ async def generate_custom_report(
 
     if date_range == "all":
         start_dt = None
-        end_dt = now
+        end_dt = None
     elif date_range == "today":
         start_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_dt = now.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif date_range == "yesterday":
         start_dt = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-        end_dt = start_dt.replace(hour=23, minute=59, second=59)
+        end_dt = start_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif date_range == "this_week":
         start_dt = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_dt = now.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif date_range == "this_month":
         start_dt = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        end_dt = now.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif date_range == "last_month":
         first_this_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         end_dt = first_this_month - timedelta(seconds=1)
@@ -1291,8 +1328,10 @@ async def generate_custom_report(
     elif date_range == "this_quarter":
         quarter_month = ((now.month - 1) // 3) * 3 + 1
         start_dt = now.replace(month=quarter_month, day=1, hour=0, minute=0, second=0, microsecond=0)
+        end_dt = now.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif date_range == "this_year":
         start_dt = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        end_dt = now.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif date_range == "custom" and custom_start and custom_end:
         try:
             if "/" in custom_start:
@@ -1300,20 +1339,22 @@ async def generate_custom_report(
             else:
                 start_dt = datetime.strptime(custom_start, "%Y-%m-%d")
             if "/" in custom_end:
-                end_dt = datetime.strptime(custom_end, "%d/%m/%Y").replace(hour=23, minute=59, second=59)
+                end_dt = datetime.strptime(custom_end, "%d/%m/%Y").replace(hour=23, minute=59, second=59, microsecond=999999)
             else:
-                end_dt = datetime.strptime(custom_end, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+                end_dt = datetime.strptime(custom_end, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999999)
         except Exception:
             start_dt = None
+            end_dt = None
     else:
         start_dt = None
+        end_dt = None
 
     # Base response skeleton
     result: Dict[str, Any] = {
         "entity": entity,
         "reportId": report_id,
         "title": report_id.replace("_", " ").title(),
-        "dateRangeLabel": f"{start_dt.strftime('%d/%m/%Y') if start_dt else 'All Time'} to {end_dt.strftime('%d/%m/%Y')}",
+        "dateRangeLabel": f"{start_dt.strftime('%d/%m/%Y') if start_dt else 'All Time'} to {end_dt.strftime('%d/%m/%Y') if end_dt else 'Present'}",
         "tableColumns": [],
         "tableData": [],
         "summaryTotals": {},
@@ -1333,7 +1374,21 @@ async def generate_custom_report(
         "sales_salesperson", "salesperson_performance", "user_sales",
         "sales_periodic", "sales_gst", "payment_mode_sales", "payment_collection", "cash_bank_transactions"
     ]:
-        tx_list = await _get_all_sales_invoices(db, start_dt, end_dt, search, tenant_id=ctx.tenant_id, company_id=ctx.active_company_id)
+        include_notes = (report_id in ["sales_credit_note", "sales_return"])
+        tx_list = await _get_all_sales_invoices(
+            db, start_dt, end_dt, search, tenant_id=ctx.tenant_id, company_id=ctx.active_company_id, include_notes=include_notes
+        )
+        if report_id in ["sales_summary", "sales_invoice"]:
+            tx_list = [
+                tx for tx in tx_list
+                if not (
+                    str(tx.get("invoice_no", "")).upper().startswith(("CN-", "CN ", "DN-", "DN ", "OPN-"))
+                    or tx.get("is_credit_note") is True
+                    or str(tx.get("invoice_type", "")).lower() in ["credit_note", "debit_note", "opening_balance"]
+                    or "credit note" in str(tx.get("source", "")).lower()
+                    or "debit note" in str(tx.get("source", "")).lower()
+                )
+            ]
         def _is_tx_cancelled(tx_item: Dict[str, Any]) -> bool:
             return bool(
                 tx_item.get("is_cancelled")
@@ -4925,16 +4980,45 @@ async def get_employee_sales_report(
     search: Optional[str] = Query(None, description="Search query across invoice, emp, user, customer"),
     invoice_type: Optional[str] = Query(None, description="Filter by Invoice Type"),
     invoice_status: Optional[str] = Query(None, description="Filter by Invoice Status"),
+    company_id: Optional[str] = Query(None, description="Filter by Active Workspace / Company ID"),
 ):
-    """Real database employee-wise & staff-wise sales report with 100% live database rows."""
+    """Real database employee-wise & staff-wise sales report with 100% live database rows scoped by workspace."""
     from sqlalchemy.orm import selectinload
 
-    # 1. Fetch metadata mappings
-    emps = (await db.execute(select(Employee).where(Employee.tenant_id == ctx.tenant_id))).scalars().all()
+    # Resolve active workspace company isolation
+    target_cid = None
+    raw_cid = company_id or (str(ctx.active_company_id) if ctx.active_company_id else None)
+    if raw_cid:
+        try:
+            target_cid = uuid.UUID(raw_cid)
+        except Exception:
+            target_cid = None
+
+    first_comp_id = None
+    if target_cid:
+        first_comp_id = await db.scalar(
+            select(Company.id)
+            .where(Company.tenant_id == ctx.tenant_id)
+            .order_by(Company.created_at.asc())
+            .limit(1)
+        )
+
+    # 1. Fetch metadata mappings scoped to tenant / workspace
+    emp_stmt = select(Employee).where(Employee.tenant_id == ctx.tenant_id)
+    cust_stmt = select(Customer).where(Customer.tenant_id == ctx.tenant_id)
+    if target_cid:
+        if target_cid == first_comp_id:
+            emp_stmt = emp_stmt.where(or_(Employee.company_id == target_cid, Employee.company_id.is_(None)))
+            cust_stmt = cust_stmt.where(or_(Customer.company_id == target_cid, Customer.company_id.is_(None)))
+        else:
+            emp_stmt = emp_stmt.where(Employee.company_id == target_cid)
+            cust_stmt = cust_stmt.where(Customer.company_id == target_cid)
+
+    emps = (await db.execute(emp_stmt)).scalars().all()
     users = (await db.execute(select(User).where(User.tenant_id == ctx.tenant_id))).scalars().all()
     depts = (await db.execute(select(Department).where(Department.tenant_id == ctx.tenant_id))).scalars().all()
     desigs = (await db.execute(select(Designation).where(Designation.tenant_id == ctx.tenant_id))).scalars().all()
-    customers = (await db.execute(select(Customer).where(Customer.tenant_id == ctx.tenant_id))).scalars().all()
+    customers = (await db.execute(cust_stmt)).scalars().all()
 
     dept_map = {str(d.id): getattr(d, "name", "Department") for d in depts}
     desig_map = {str(d.id): getattr(d, "name", getattr(d, "title", "Executive")) for d in desigs}
@@ -4944,9 +5028,17 @@ async def get_employee_sales_report(
     emp_by_user = {str(e.user_id): e for e in emps if e.user_id}
     emp_by_code = {str(e.employee_code).lower(): e for e in emps if e.employee_code}
 
-    # 2. Fetch POS transactions & ERP Invoices
+    # 2. Fetch POS transactions & ERP Invoices strictly isolated per workspace
     tx_stmt = select(POSTransaction).where(POSTransaction.tenant_id == ctx.tenant_id).options(selectinload(POSTransaction.payments)).order_by(POSTransaction.created_at.desc())
     inv_stmt = select(Invoice).where(Invoice.tenant_id == ctx.tenant_id).order_by(Invoice.created_at.desc())
+
+    if target_cid:
+        if target_cid == first_comp_id:
+            tx_stmt = tx_stmt.where(or_(POSTransaction.company_id == target_cid, POSTransaction.company_id.is_(None)))
+            inv_stmt = inv_stmt.where(or_(Invoice.company_id == target_cid, Invoice.company_id.is_(None)))
+        else:
+            tx_stmt = tx_stmt.where(POSTransaction.company_id == target_cid)
+            inv_stmt = inv_stmt.where(Invoice.company_id == target_cid)
 
     tx_rows = (await db.execute(tx_stmt)).scalars().all()
     inv_rows = (await db.execute(inv_stmt)).scalars().all()

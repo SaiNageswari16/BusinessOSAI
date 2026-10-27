@@ -1018,19 +1018,6 @@ async def process_exchange(
 
     invoice_return.total_amount = round(return_total, 2)
 
-    if original_invoice:
-        original_invoice.status = "exchanged"
-        original_invoice.notes = f"{original_invoice.notes or ''}\n[Exchanged via Return #{return_number}: Value ₹{return_total:,.2f}]".strip()
-
-    # 2. Create new Exchange Invoice for outgoing items
-    try:
-        exchange_inv_number = await generate_number(db, ctx.tenant_id, "invoices", active_cid, fallback_prefix="INV-")
-    except Exception:
-        inv_count = await db.scalar(
-            select(func.count(Invoice.id)).where(Invoice.tenant_id == ctx.tenant_id)
-        ) or 0
-        exchange_inv_number = f"INV-{inv_count + 1:05d}"
-
     exchange_total = 0.0
     for item in payload.exchange_items:
         gross = item.quantity * item.unit_price - item.discount_amount
@@ -1038,35 +1025,82 @@ async def process_exchange(
         exchange_total += gross + tax
 
     difference = round(exchange_total - return_total, 2)
-    amount_paid = max(0, difference)
-    balance_due = max(0, difference)
 
-    exchange_invoice = Invoice(
-        tenant_id=ctx.tenant_id,
-        company_id=active_cid,
-        invoice_number=exchange_inv_number,
-        invoice_type="tax_invoice",
-        status="paid" if difference <= 0.01 else "draft",
-        customer_id=uuid.UUID(str(payload.customer_id)) if payload.customer_id else (original_invoice.customer_id if original_invoice else None),
-        customer_name=customer_name or "Walk-in Customer",
-        customer_phone=cust_phone or None,
-        customer_email=cust_email or None,
-        customer_gstin=cust_gst or None,
-        billing_address=cust_billing_addr or None,
-        shipping_address=cust_shipping_addr or None,
-        invoice_date=clock.today(),
-        due_date=clock.today(),
-        currency_code="INR",
-        subtotal=round(exchange_total, 2),
-        total_amount=round(exchange_total, 2),
-        amount_paid=0,
-        balance_due=round(max(0, difference), 2),
-        reference_number=f"Exchange against {inv_number} (Return: {return_number})",
-        notes=f"Exchange invoice — Returned items via {return_number}, new items issued. Difference: ₹{difference:,.2f}",
-    )
-    db.add(exchange_invoice)
-    await db.flush()
+    target_invoice = original_invoice
+    remaining_lines = []
 
+    if target_invoice:
+        exchange_inv_number = target_invoice.invoice_number
+
+        # 2a. Update original invoice: adjust / remove returned items
+        return_counts: dict[str, float] = {}
+        for r_item in payload.return_items:
+            key = (str(r_item.product_id) if r_item.product_id else "") or (r_item.product_name or "").strip().lower()
+            return_counts[key] = return_counts.get(key, 0.0) + float(r_item.quantity)
+
+        if target_invoice.lines:
+            for l in list(target_invoice.lines):
+                l_key = (str(l.product_id) if l.product_id else "") or (l.product_name or "").strip().lower()
+                ret_qty = return_counts.get(l_key, 0.0)
+                if ret_qty > 0:
+                    l_qty = float(l.quantity or 1.0)
+                    if l_qty <= ret_qty:
+                        return_counts[l_key] -= l_qty
+                        await db.delete(l)
+                    else:
+                        new_qty = l_qty - ret_qty
+                        return_counts[l_key] = 0.0
+                        l.quantity = new_qty
+                        u_price = float(l.unit_price or 0.0)
+                        d_amt = float(l.discount_amount or 0.0)
+                        t_rate = float(l.tax_rate or 0.0)
+                        gross = new_qty * u_price - d_amt
+                        tax = gross * (t_rate / 100.0) if t_rate else 0.0
+                        l.taxable_amount = round(gross, 2)
+                        l.line_total = round(gross + tax, 2)
+                        remaining_lines.append(l)
+                else:
+                    remaining_lines.append(l)
+
+        await db.flush()
+    else:
+        # Fallback when no original invoice exists in system
+        try:
+            exchange_inv_number = await generate_number(db, ctx.tenant_id, "invoices", active_cid, fallback_prefix="INV-")
+        except Exception:
+            inv_count = await db.scalar(
+                select(func.count(Invoice.id)).where(Invoice.tenant_id == ctx.tenant_id)
+            ) or 0
+            exchange_inv_number = f"INV-{inv_count + 1:05d}"
+
+        target_invoice = Invoice(
+            tenant_id=ctx.tenant_id,
+            company_id=active_cid,
+            invoice_number=exchange_inv_number,
+            invoice_type="tax_invoice",
+            status="paid",
+            customer_id=uuid.UUID(str(payload.customer_id)) if payload.customer_id else None,
+            customer_name=customer_name or "Walk-in Customer",
+            customer_phone=cust_phone or None,
+            customer_email=cust_email or None,
+            customer_gstin=cust_gst or None,
+            billing_address=cust_billing_addr or None,
+            shipping_address=cust_shipping_addr or None,
+            invoice_date=clock.today(),
+            due_date=clock.today(),
+            currency_code="INR",
+            subtotal=0,
+            total_amount=0,
+            amount_paid=0,
+            balance_due=0,
+            reference_number=f"Exchange (Return: {return_number})",
+            notes=f"Exchange invoice — Returned items via {return_number}",
+        )
+        db.add(target_invoice)
+        await db.flush()
+
+    # 2b. Add exchange lines to the invoice & deduct stock
+    start_line_idx = len(remaining_lines)
     for idx, item in enumerate(payload.exchange_items):
         gross = item.quantity * item.unit_price - item.discount_amount
         tax = gross * (item.tax_rate / 100.0) if item.tax_rate else 0
@@ -1079,8 +1113,8 @@ async def process_exchange(
                 pass
 
         ex_line = InvoiceLine(
-            invoice_id=exchange_invoice.id,
-            line_number=idx + 1,
+            invoice_id=target_invoice.id,
+            line_number=start_line_idx + idx + 1,
             product_id=product_id_val,
             product_name=item.product_name,
             quantity=item.quantity,
@@ -1091,6 +1125,7 @@ async def process_exchange(
             line_total=round(gross + tax, 2),
         )
         db.add(ex_line)
+        remaining_lines.append(ex_line)
 
         # Deduct stock for exchange items
         if product_id_val:
@@ -1122,85 +1157,38 @@ async def process_exchange(
             except Exception as e:
                 logger.warning(f"Exchange stock deduction error: {e}")
 
-    # 3. Generate linked Credit Note or Debit Note for exchange difference
+    await db.flush()
+
+    # Recalculate invoice totals from active lines
+    tot_subtotal = round(sum(float(l.taxable_amount or 0.0) for l in remaining_lines), 2)
+    tot_tax = round(sum(float(l.line_total or 0.0) - float(l.taxable_amount or 0.0) for l in remaining_lines), 2)
+    tot_grand = round(tot_subtotal + tot_tax, 2)
+
+    target_invoice.subtotal = tot_subtotal
+    target_invoice.total_amount = tot_grand
+    target_invoice.amount_paid = tot_grand
+    target_invoice.balance_due = 0.0
+    target_invoice.status = "paid"
+
+    # If customer paid extra difference, record payment on invoice
+    if difference > 0:
+        diff_pmt = InvoicePayment(
+            tenant_id=ctx.tenant_id,
+            company_id=active_cid,
+            invoice_id=target_invoice.id,
+            payment_date=clock.today(),
+            amount=difference,
+            payment_method=payload.settlement_method or "cash",
+            reference_number=f"EX-{return_number}",
+            notes=f"Exchange differential paid via {(payload.settlement_method or 'cash').upper()} (Return #{return_number})",
+        )
+        db.add(diff_pmt)
+
+    note_text = f"[Exchanged via Return #{return_number} on {clock.today()}: Replaced items. New Total: ₹{tot_grand:,.2f}. Difference: ₹{difference:,.2f} settled via {(payload.settlement_method or 'counter').upper()}]."
+    target_invoice.notes = f"{target_invoice.notes or ''}\n{note_text}".strip()
+
     linked_cn = None
     linked_dn = None
-    if difference < 0:
-        # Store owes refund to customer -> Credit Note
-        refund_amt = round(abs(difference), 2)
-        try:
-            cn_num = await generate_number(db, ctx.tenant_id, "credit_notes", active_cid, fallback_prefix="CN-")
-        except Exception:
-            cn_count = await db.scalar(
-                select(func.count(Invoice.id)).where(
-                    Invoice.tenant_id == ctx.tenant_id,
-                    Invoice.invoice_type == "credit_note"
-                )
-            ) or 0
-            cn_num = f"CN-{cn_count + 1:05d}"
-
-        linked_cn = Invoice(
-            tenant_id=ctx.tenant_id,
-            company_id=active_cid,
-            invoice_number=cn_num,
-            invoice_type="credit_note",
-            status="paid",
-            customer_id=uuid.UUID(str(payload.customer_id)) if payload.customer_id else (original_invoice.customer_id if original_invoice else None),
-            customer_name=customer_name or "Walk-in Customer",
-            customer_phone=cust_phone or None,
-            customer_email=cust_email or None,
-            customer_gstin=cust_gst or None,
-            billing_address=cust_billing_addr or None,
-            shipping_address=cust_shipping_addr or None,
-            invoice_date=clock.today(),
-            due_date=clock.today(),
-            currency_code="INR",
-            subtotal=refund_amt,
-            total_amount=refund_amt,
-            amount_paid=refund_amt,
-            balance_due=0,
-            reference_number=return_number,
-            notes=f"Credit Note for Exchange refund difference against Return #{return_number} (Invoice #{exchange_inv_number})",
-        )
-        db.add(linked_cn)
-    elif difference > 0:
-        # Customer owes extra difference -> Debit Note
-        diff_amt = round(difference, 2)
-        try:
-            dn_num = await generate_number(db, ctx.tenant_id, "debit_notes", active_cid, fallback_prefix="DN-")
-        except Exception:
-            dn_count = await db.scalar(
-                select(func.count(Invoice.id)).where(
-                    Invoice.tenant_id == ctx.tenant_id,
-                    Invoice.invoice_type == "debit_note"
-                )
-            ) or 0
-            dn_num = f"DN-{dn_count + 1:05d}"
-
-        linked_dn = Invoice(
-            tenant_id=ctx.tenant_id,
-            company_id=active_cid,
-            invoice_number=dn_num,
-            invoice_type="debit_note",
-            status="paid",
-            customer_id=uuid.UUID(str(payload.customer_id)) if payload.customer_id else (original_invoice.customer_id if original_invoice else None),
-            customer_name=customer_name or "Walk-in Customer",
-            customer_phone=cust_phone or None,
-            customer_email=cust_email or None,
-            customer_gstin=cust_gst or None,
-            billing_address=cust_billing_addr or None,
-            shipping_address=cust_shipping_addr or None,
-            invoice_date=clock.today(),
-            due_date=clock.today(),
-            currency_code="INR",
-            subtotal=diff_amt,
-            total_amount=diff_amt,
-            amount_paid=diff_amt,
-            balance_due=0,
-            reference_number=return_number,
-            notes=f"Debit Note for Exchange supplementary difference against Return #{return_number} (Invoice #{exchange_inv_number})",
-        )
-        db.add(linked_dn)
 
     await write_audit_log(
         db,
@@ -1231,11 +1219,11 @@ async def process_exchange(
             background_tasks.add_task(_bg_send_invoice_whatsapp, linked_cn.id, ctx.tenant_id, cust_phone)
         if cust_email:
             background_tasks.add_task(_bg_send_invoice_email, linked_cn.id, ctx.tenant_id, cust_email)
-    elif exchange_invoice:
+    elif target_invoice:
         if cust_phone:
-            background_tasks.add_task(_bg_send_invoice_whatsapp, exchange_invoice.id, ctx.tenant_id, cust_phone)
+            background_tasks.add_task(_bg_send_invoice_whatsapp, target_invoice.id, ctx.tenant_id, cust_phone)
         if cust_email:
-            background_tasks.add_task(_bg_send_invoice_email, exchange_invoice.id, ctx.tenant_id, cust_email)
+            background_tasks.add_task(_bg_send_invoice_email, target_invoice.id, ctx.tenant_id, cust_email)
 
     return {
         "return_number": return_number,
@@ -1245,9 +1233,9 @@ async def process_exchange(
         "difference": difference,
         "restocked_count": restocked_count,
         "customer_name": customer_name,
-        "status": "exchanged",
-        "credit_note_number": linked_cn.invoice_number if linked_cn else None,
-        "debit_note_number": linked_dn.invoice_number if linked_dn else None,
-        "message": f"Exchange processed. Return {return_number} → New Invoice {exchange_inv_number}. "
+        "status": "paid",
+        "credit_note_number": None,
+        "debit_note_number": None,
+        "message": f"Exchange processed. Invoice {exchange_inv_number} updated with replacement items. "
                    f"Difference: ₹{difference:,.2f}. {restocked_count} items restocked.",
     }
