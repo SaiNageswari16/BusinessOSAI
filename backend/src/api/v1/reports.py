@@ -19,7 +19,7 @@ from src.models import (
 )
 from src.models.inventory import Product, Warehouse, StockMovement, MasterCatalogProduct
 from src.models.procurement import Supplier, PurchaseOrder, VendorBill, VendorDebitNote
-from src.models.erp import Invoice
+from src.models.erp import Invoice, InvoiceReturn, InvoiceReturnLine
 from src.models.marketplace import MarketplaceOrder
 from src.utils.clock import clock
 
@@ -1001,6 +1001,10 @@ async def _get_all_sales_invoices(
             })
 
         is_pos_cancelled = (p.status or "").lower() in ["cancelled", "canceled", "void", "voided"]
+        pos_cgst = round(tax / 2, 2)
+        pos_sgst = round(tax - pos_cgst, 2)
+        pos_igst = 0.0
+
         all_rows.append({
             "id": str(p.id),
             "invoice_no": p.receipt_number or f"REC-{str(p.id)[:8].upper()}",
@@ -1015,6 +1019,9 @@ async def _get_all_sales_invoices(
             "subtotal": subtotal,
             "discount": disc,
             "tax": tax,
+            "cgst": pos_cgst,
+            "sgst": pos_sgst,
+            "igst": pos_igst,
             "total_amount": total,
             "paid_amount": 0.0 if is_pos_cancelled else total,
             "pending_amount": 0.0,
@@ -1045,15 +1052,17 @@ async def _get_all_sales_invoices(
         disc = float(inv.discount_amount or 0)
         subtotal = float(inv.subtotal or (total + disc))
         # Check authoritative tax fields stored on invoice header
-        has_header_tax = (inv.cgst_amount is not None or inv.sgst_amount is not None or inv.igst_amount is not None)
+        inv_cgst = float(inv.cgst_amount or 0)
+        inv_sgst = float(inv.sgst_amount or 0)
+        inv_igst = float(inv.igst_amount or 0)
+        has_header_tax = (inv_cgst > 0 or inv_sgst > 0 or inv_igst > 0)
         if has_header_tax:
-            tax = float((inv.cgst_amount or 0) + (inv.sgst_amount or 0) + (inv.igst_amount or 0))
+            tax = float(inv_cgst + inv_sgst + inv_igst)
         elif inv.lines and len(inv.lines) > 0:
-            # Sum tax across line items
-            line_tax_sum = sum(
-                float((getattr(l, "cgst_amount", 0) or 0) + (getattr(l, "sgst_amount", 0) or 0) + (getattr(l, "igst_amount", 0) or 0))
-                for l in inv.lines
-            )
+            inv_cgst = sum(float(getattr(l, "cgst_amount", 0) or 0) for l in inv.lines)
+            inv_sgst = sum(float(getattr(l, "sgst_amount", 0) or 0) for l in inv.lines)
+            inv_igst = sum(float(getattr(l, "igst_amount", 0) or 0) for l in inv.lines)
+            line_tax_sum = inv_cgst + inv_sgst + inv_igst
             if line_tax_sum > 0:
                 tax = line_tax_sum
             else:
@@ -1061,8 +1070,19 @@ async def _get_all_sales_invoices(
                     round(float(getattr(l, "taxable_amount", 0) or (float(getattr(l, "quantity", 1) or 1) * float(getattr(l, "unit_price", 0) or 0))) * (float(getattr(l, "tax_rate", 0) or 0) / 100.0), 2)
                     for l in inv.lines
                 )
+                inv_cgst = round(tax / 2, 2)
+                inv_sgst = round(tax - inv_cgst, 2)
+                inv_igst = 0.0
         else:
             tax = 0.0
+            inv_cgst = 0.0
+            inv_sgst = 0.0
+            inv_igst = 0.0
+
+        if (inv_cgst + inv_sgst + inv_igst) <= 0 and tax > 0:
+            inv_cgst = round(tax / 2, 2)
+            inv_sgst = round(tax - inv_cgst, 2)
+            inv_igst = 0.0
         tax = max(0.0, round(tax, 2))
 
         # Compute actual paid and pending amounts from payment records & status
@@ -1134,6 +1154,9 @@ async def _get_all_sales_invoices(
             "subtotal": subtotal,
             "discount": disc,
             "tax": tax,
+            "cgst": inv_cgst,
+            "sgst": inv_sgst,
+            "igst": inv_igst,
             "total_amount": total,
             "paid_amount": 0.0 if is_cancelled else paid_amt,
             "pending_amount": 0.0 if is_cancelled else pending_amt,
@@ -1332,64 +1355,204 @@ async def generate_custom_report(
         total_tx = len(tx_list)
 
         if report_id == "sales_summary":
-            result["title"] = "Sales Summary Report"
+            result["title"] = "Sales Summary & Tax Breakdown Register"
             result["tableColumns"] = [
-                {"header": "Sales Channel / Register", "key": "channel"},
-                {"header": "Total Bills Count", "key": "bills_count"},
-                {"header": "Taxable Value (₹)", "key": "taxable"},
-                {"header": "GST Output (₹)", "key": "tax"},
-                {"header": "Discounts Given (₹)", "key": "discounts"},
-                {"header": "Gross Turnover (₹)", "key": "turnover"},
-                {"header": "Average Order Value (₹)", "key": "aov"},
+                {"header": "Invoice Date", "key": "date"},
+                {"header": "Invoice / Bill #", "key": "invoice_no"},
+                {"header": "Customer Name", "key": "customer"},
+                {"header": "Source / Channel", "key": "source"},
+                {"header": "Payment Mode", "key": "payment_mode"},
+                {"header": "Taxable Base (₹)", "key": "taxable_amount"},
+                {"header": "Tax Rate", "key": "tax_rate"},
+                {"header": "CGST (₹)", "key": "cgst"},
+                {"header": "SGST (₹)", "key": "sgst"},
+                {"header": "IGST (₹)", "key": "igst"},
+                {"header": "Total Tax (₹)", "key": "total_tax"},
+                {"header": "Discount (₹)", "key": "discount"},
+                {"header": "Invoice Total (₹)", "key": "total_amount"},
+                {"header": "Status", "key": "status"},
             ]
-            # Group by source channel on active invoices
-            channels: Dict[str, Dict[str, Any]] = {}
-            for tx in active_tx_list:
-                src = tx.get("source", "POS Register")
-                if src not in channels:
-                    channels[src] = {"count": 0, "taxable": 0.0, "tax": 0.0, "discount": 0.0, "turnover": 0.0}
-                channels[src]["count"] += 1
-                if float(tx.get("tax", 0) or 0) > 0:
-                    channels[src]["taxable"] += float(tx["subtotal"] or 0)
-                channels[src]["tax"] += float(tx["tax"] or 0)
-                channels[src]["discount"] += float(tx["discount"] or 0)
-                channels[src]["turnover"] += float(tx["total_amount"] or 0)
 
-            rows = []
-            for ch_name, data in channels.items():
-                cnt = data["count"]
-                avg_val = data["turnover"] / max(1, cnt)
-                rows.append({
-                    "channel": ch_name,
-                    "bills_count": f"{cnt:,} Active Bills",
-                    "taxable": f"₹{data['taxable']:,.2f}",
-                    "tax": f"₹{data['tax']:,.2f}",
-                    "discounts": f"₹{data['discount']:,.2f}",
-                    "turnover": f"₹{data['turnover']:,.2f}",
-                    "aov": f"₹{avg_val:,.2f}",
+            table_rows = []
+            tot_taxable = 0.0
+            tot_cgst = 0.0
+            tot_sgst = 0.0
+            tot_igst = 0.0
+            tot_tax = 0.0
+            tot_discount = 0.0
+            tot_revenue = 0.0
+
+            # Slabs aggregation dictionary
+            slabs_dict = {
+                "0%": {"slab": "0% (Nil / Exempt)", "invoices": 0, "taxable": 0.0, "cgst": 0.0, "sgst": 0.0, "igst": 0.0, "tax": 0.0, "total": 0.0},
+                "5%": {"slab": "5% GST", "invoices": 0, "taxable": 0.0, "cgst": 0.0, "sgst": 0.0, "igst": 0.0, "tax": 0.0, "total": 0.0},
+                "12%": {"slab": "12% GST", "invoices": 0, "taxable": 0.0, "cgst": 0.0, "sgst": 0.0, "igst": 0.0, "tax": 0.0, "total": 0.0},
+                "18%": {"slab": "18% GST", "invoices": 0, "taxable": 0.0, "cgst": 0.0, "sgst": 0.0, "igst": 0.0, "tax": 0.0, "total": 0.0},
+                "28%": {"slab": "28% GST", "invoices": 0, "taxable": 0.0, "cgst": 0.0, "sgst": 0.0, "igst": 0.0, "tax": 0.0, "total": 0.0},
+            }
+
+            channels_map: Dict[str, Dict[str, Any]] = {}
+
+            for tx in tx_list:
+                is_canc = _is_tx_cancelled(tx)
+
+                inv_tot = float(tx.get("total_amount", 0) or 0)
+                inv_tax = max(0.0, float(tx.get("tax", 0) or 0))
+                inv_disc = float(tx.get("discount", 0) or 0)
+                inv_sub = float(tx.get("subtotal", 0) or 0)
+                taxable = inv_sub if inv_sub > 0 else max(0.0, inv_tot - inv_tax + inv_disc)
+
+                cgst = float(tx.get("cgst", 0) or 0)
+                sgst = float(tx.get("sgst", 0) or 0)
+                igst = float(tx.get("igst", 0) or 0)
+                if (cgst + sgst + igst) <= 0 and inv_tax > 0:
+                    cgst = round(inv_tax / 2, 2)
+                    sgst = round(inv_tax - cgst, 2)
+                    igst = 0.0
+
+                # Determine effective tax rate
+                if taxable > 0 and inv_tax > 0:
+                    calc_rate = round((inv_tax / taxable) * 100)
+                    if calc_rate in [5, 12, 18, 28]:
+                        rate_label = f"{calc_rate}%"
+                    elif 4 <= calc_rate <= 6:
+                        rate_label = "5%"
+                    elif 11 <= calc_rate <= 13:
+                        rate_label = "12%"
+                    elif 17 <= calc_rate <= 19:
+                        rate_label = "18%"
+                    elif 27 <= calc_rate <= 29:
+                        rate_label = "28%"
+                    else:
+                        rate_label = f"{calc_rate}%"
+                elif inv_tax > 0:
+                    rate_label = "18%"
+                else:
+                    rate_label = "0%"
+
+                # Channel grouping
+                ch_name = tx.get("source", "POS Register")
+                if is_canc:
+                    ch_name = "Cancelled Invoices (Repaid)"
+                if ch_name not in channels_map:
+                    channels_map[ch_name] = {"count": 0, "taxable": 0.0, "cgst": 0.0, "sgst": 0.0, "igst": 0.0, "tax": 0.0, "discounts": 0.0, "turnover": 0.0}
+                channels_map[ch_name]["count"] += 1
+
+                if not is_canc:
+                    tot_taxable += taxable
+                    tot_cgst += cgst
+                    tot_sgst += sgst
+                    tot_igst += igst
+                    tot_tax += inv_tax
+                    tot_discount += inv_disc
+                    tot_revenue += inv_tot
+
+                    channels_map[ch_name]["taxable"] += taxable
+                    channels_map[ch_name]["cgst"] += cgst
+                    channels_map[ch_name]["sgst"] += sgst
+                    channels_map[ch_name]["igst"] += igst
+                    channels_map[ch_name]["tax"] += inv_tax
+                    channels_map[ch_name]["discounts"] += inv_disc
+                    channels_map[ch_name]["turnover"] += inv_tot
+
+                    # Slab bucketing
+                    slab_key = rate_label if rate_label in slabs_dict else ("18%" if inv_tax > 0 else "0%")
+                    slabs_dict[slab_key]["invoices"] += 1
+                    slabs_dict[slab_key]["taxable"] += taxable
+                    slabs_dict[slab_key]["cgst"] += cgst
+                    slabs_dict[slab_key]["sgst"] += sgst
+                    slabs_dict[slab_key]["igst"] += igst
+                    slabs_dict[slab_key]["tax"] += inv_tax
+                    slabs_dict[slab_key]["total"] += inv_tot
+                else:
+                    channels_map[ch_name]["turnover"] -= inv_tot
+
+                table_rows.append({
+                    "id": tx.get("id"),
+                    "date": tx.get("date", "—"),
+                    "invoice_no": tx.get("invoice_no", "—"),
+                    "customer": tx.get("customer", "Retail Walk-in"),
+                    "customer_phone": tx.get("customer_phone", "") or "—",
+                    "customer_gstin": tx.get("customer_gstin", "") or "—",
+                    "source": tx.get("source", "Tax Invoice"),
+                    "payment_mode": tx.get("payment_mode", "Cash / UPI") + (" (Repaid)" if is_canc else ""),
+                    "taxable_amount": f"₹{taxable:,.2f}",
+                    "raw_taxable": taxable,
+                    "tax_rate": rate_label,
+                    "cgst": f"₹{cgst:,.2f}",
+                    "raw_cgst": cgst,
+                    "sgst": f"₹{sgst:,.2f}",
+                    "raw_sgst": sgst,
+                    "igst": f"₹{igst:,.2f}",
+                    "raw_igst": igst,
+                    "total_tax": f"₹{inv_tax:,.2f}",
+                    "raw_tax": inv_tax,
+                    "discount": f"₹{inv_disc:,.2f}",
+                    "raw_discount": inv_disc,
+                    "total_amount": f"₹{inv_tot:,.2f}" if not is_canc else f"-₹{inv_tot:,.2f}",
+                    "raw_total": inv_tot if not is_canc else -inv_tot,
+                    "status": "Cancelled & Repaid" if is_canc else tx.get("status", "Paid"),
+                    "items": tx.get("items", []),
                 })
 
-            if cancelled_tx_list:
-                rows.append({
-                    "channel": "Cancelled Invoices (Repaid to Customer)",
-                    "bills_count": f"{total_cancelled_tx:,} Invoices",
-                    "taxable": "₹0.00",
-                    "tax": "₹0.00",
-                    "discounts": "₹0.00",
-                    "turnover": f"-₹{total_cancelled_amount:,.2f}",
-                    "aov": f"-₹{(total_cancelled_amount / max(1, total_cancelled_tx)):,.2f}",
-                })
+            # Format Tax Slabs Summary
+            tax_slabs_rows = [
+                {
+                    "slab": v["slab"],
+                    "invoices_count": f"{v['invoices']:,} Bills",
+                    "taxable": f"₹{v['taxable']:,.2f}",
+                    "cgst": f"₹{v['cgst']:,.2f}",
+                    "sgst": f"₹{v['sgst']:,.2f}",
+                    "igst": f"₹{v['igst']:,.2f}",
+                    "total_tax": f"₹{v['tax']:,.2f}",
+                    "gross_total": f"₹{v['total']:,.2f}",
+                    "raw_taxable": v["taxable"],
+                    "raw_tax": v["tax"],
+                    "raw_total": v["total"],
+                }
+                for k, v in slabs_dict.items() if v["invoices"] > 0 or v["taxable"] > 0
+            ]
 
-            result["tableData"] = rows
+            # Format Channels Summary
+            channels_rows = [
+                {
+                    "channel": ch_key,
+                    "bills_count": f"{ch_val['count']:,} Bills",
+                    "taxable": f"₹{ch_val['taxable']:,.2f}",
+                    "cgst": f"₹{ch_val['cgst']:,.2f}",
+                    "sgst": f"₹{ch_val['sgst']:,.2f}",
+                    "igst": f"₹{ch_val['igst']:,.2f}",
+                    "total_tax": f"₹{ch_val['tax']:,.2f}",
+                    "discounts": f"₹{ch_val['discounts']:,.2f}",
+                    "turnover": f"₹{ch_val['turnover']:,.2f}" if ch_val['turnover'] >= 0 else f"-₹{abs(ch_val['turnover']):,.2f}",
+                    "aov": f"₹{(ch_val['turnover'] / max(1, ch_val['count'])):,.2f}" if ch_val['count'] > 0 else "₹0.00",
+                }
+                for ch_key, ch_val in channels_map.items()
+            ]
+
+            result["tableData"] = table_rows
+            result["taxSlabs"] = tax_slabs_rows
+            result["channelsSummary"] = channels_rows
             result["summaryTotals"] = {
                 "active_invoices": total_active_tx,
                 "cancelled_repaid_invoices": total_cancelled_tx,
-                "net_gross_turnover": f"₹{total_revenue:,.2f}",
+                "total_invoices_count": total_tx,
+                "net_gross_turnover": f"₹{tot_revenue:,.2f}",
+                "raw_gross_turnover": round(tot_revenue, 2),
                 "amount_repaid_cancelled": f"₹{total_cancelled_amount:,.2f}",
-                "total_taxable": f"₹{total_taxable_base:,.2f}",
-                "total_gst": f"₹{total_tax:,.2f}",
-                "total_discounts": f"₹{total_discount:,.2f}",
-                "overall_aov": f"₹{(total_revenue / max(1, total_active_tx)):,.2f}" if total_active_tx > 0 else "₹0.00",
+                "total_taxable": f"₹{tot_taxable:,.2f}",
+                "raw_taxable": round(tot_taxable, 2),
+                "total_cgst": f"₹{tot_cgst:,.2f}",
+                "raw_cgst": round(tot_cgst, 2),
+                "total_sgst": f"₹{tot_sgst:,.2f}",
+                "raw_sgst": round(tot_sgst, 2),
+                "total_igst": f"₹{tot_igst:,.2f}",
+                "raw_igst": round(tot_igst, 2),
+                "total_gst": f"₹{tot_tax:,.2f}",
+                "raw_gst": round(tot_tax, 2),
+                "total_discounts": f"₹{tot_discount:,.2f}",
+                "raw_discount": round(tot_discount, 2),
+                "overall_aov": f"₹{(tot_revenue / max(1, total_active_tx)):,.2f}" if total_active_tx > 0 else "₹0.00",
             }
 
         elif report_id == "sales_invoice":
@@ -1475,7 +1638,57 @@ async def generate_custom_report(
                     "status": "Cancelled & Repaid (Restocked)",
                 })
 
-            # 2. Genuine Sales Returns & Credit Notes from database (negative totals or return slips)
+            # 2. Genuine Sales Returns from InvoiceReturn table
+            try:
+                ret_stmt = (
+                    select(InvoiceReturn)
+                    .options(selectinload(InvoiceReturn.lines), selectinload(InvoiceReturn.invoice))
+                    .where(InvoiceReturn.tenant_id == ctx.tenant_id)
+                )
+                if ctx.active_company_id:
+                    ret_stmt = ret_stmt.where(or_(InvoiceReturn.company_id == ctx.active_company_id, InvoiceReturn.company_id.is_(None)))
+                if start_dt:
+                    ret_stmt = ret_stmt.where(InvoiceReturn.return_date >= start_dt.date())
+                if end_dt:
+                    ret_stmt = ret_stmt.where(InvoiceReturn.return_date <= end_dt.date())
+                db_returns_res = await db.execute(ret_stmt)
+                db_returns = db_returns_res.scalars().all()
+                existing_return_nos = {r["return_no"] for r in ret_rows}
+
+                for db_ret in db_returns:
+                    if db_ret.return_number in existing_return_nos:
+                        continue
+                    existing_return_nos.add(db_ret.return_number)
+                    lines_arr = db_ret.lines or []
+                    item_label = lines_arr[0].product_name if lines_arr else "Returned Merchandise"
+                    if len(lines_arr) > 1:
+                        item_label += f" (+{len(lines_arr)-1} more)"
+                    ret_qty = sum(float(l.quantity or 1) for l in lines_arr) if lines_arr else 1
+                    ret_amt = float(db_ret.total_amount or 0)
+                    tax_rev = sum(float(l.tax_amount or 0) for l in lines_arr)
+                    taxable_val = max(0.0, ret_amt - tax_rev)
+
+                    orig_inv_no = db_ret.invoice.invoice_number if db_ret.invoice else "Direct Return"
+                    cust_name = db_ret.invoice.customer_name if db_ret.invoice else "Customer"
+
+                    ret_rows.append({
+                        "date": db_ret.return_date.isoformat() if db_ret.return_date else "",
+                        "return_no": db_ret.return_number,
+                        "invoice_no": orig_inv_no,
+                        "customer": cust_name,
+                        "items_summary": item_label,
+                        "qty_returned": f"{int(ret_qty) if ret_qty.is_integer() else ret_qty} Units",
+                        "reason": db_ret.reason or "Customer Return",
+                        "disposition": "Restocked to Inventory",
+                        "taxable_val": f"₹{taxable_val:,.2f}",
+                        "tax_reversed": f"₹{tax_rev:,.2f}",
+                        "total_return_val": f"₹{ret_amt:,.2f}",
+                        "status": (db_ret.status or "Processed").title(),
+                    })
+            except Exception as e:
+                logger.warning("Could not query InvoiceReturn table directly: %s", e)
+
+            # 3. Genuine Sales Returns & Credit Notes from database (negative totals or return slips)
             for ctx_inv in tx_list:
                 tot = float(ctx_inv.get("total_amount", 0) or 0)
                 inv_no = str(ctx_inv.get("invoice_no") or "").upper()

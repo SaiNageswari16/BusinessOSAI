@@ -66,6 +66,7 @@ import { CustomerPartyReportsSuite, CustomerReportType } from "./CustomerPartyRe
 import { EmployeeSalesReportSuite } from "./EmployeeSalesReportSuite";
 import { PaymentModeSalesReportSuite } from "./PaymentModeSalesReportSuite";
 import { VendorOutstandingSuite } from "./VendorOutstandingSuite";
+import { SalesSummaryReportSuite } from "./SalesSummaryReportSuite";
 
 // ── Types & Metadata ──────────────────────────────────────────────────────────
 export interface ReportItem {
@@ -398,14 +399,14 @@ export function ReportsHub() {
 
   // Fetch when report selection or filters change
   useEffect(() => {
-    if (activeReport && !GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id) && activeReport.id !== "vendor_outstanding") {
+    if (activeReport && !GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id) && !PAYMENT_MODE_SUITE_IDS.has(activeReport.id) && activeReport.id !== "vendor_outstanding" && activeReport.id !== "sales_summary") {
       loadReport(activeReport);
     }
   }, [activeReport, dateRange, customStartDate, customEndDate, builderEntity, builderGroupBy]);
 
   // Debounce search query so customer name search dynamically updates the live report
   useEffect(() => {
-    if (activeReport && !GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id) && activeReport.id !== "vendor_outstanding") {
+    if (activeReport && !GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id) && !PAYMENT_MODE_SUITE_IDS.has(activeReport.id) && activeReport.id !== "vendor_outstanding" && activeReport.id !== "sales_summary") {
       const timer = setTimeout(() => {
         loadReport(activeReport);
       }, 320);
@@ -617,34 +618,34 @@ export function ReportsHub() {
 
     const cols = reportData.tableColumns || [];
     const tableHeaderHtml = cols.map((c: any) => `<th>${c.header}</th>`).join("");
-    
+
     // Build rows (with nested product tables ONLY if customer 360 statement)
     const tableRowsHtml = reportData.tableData
       .map((row: any, rIdx: number) => {
         const isEven = rIdx % 2 === 0;
         const mainRowHtml = `<tr style="background: ${isEven ? '#ffffff' : '#f8fafc'}; font-weight: 500;">
           ${cols.map((c: any) => {
-            const val = row[c.key] ?? "—";
-            const isNumeric = String(val).includes("₹") || String(val).includes("%");
-            const isStatus = c.key === "status";
-            const isPending = (c.key === "pending_amount" || c.key === "balance") && parseFloat(String(val).replace(/[^0-9.-]/g, "")) > 0;
-            
-            if (isStatus) {
-              const valLower = String(val).toLowerCase();
-              const isPaid = valLower.includes("paid") || valLower.includes("completed");
-              const isCancelled = valLower.includes("cancel") || valLower.includes("repaid");
-              const bgStyle = isCancelled
-                ? 'background: #ffe4e6; color: #be123c; border: 1px solid #fecdd3;'
-                : isPaid
+          const val = row[c.key] ?? "—";
+          const isNumeric = String(val).includes("₹") || String(val).includes("%");
+          const isStatus = c.key === "status";
+          const isPending = (c.key === "pending_amount" || c.key === "balance") && parseFloat(String(val).replace(/[^0-9.-]/g, "")) > 0;
+
+          if (isStatus) {
+            const valLower = String(val).toLowerCase();
+            const isPaid = valLower.includes("paid") || valLower.includes("completed");
+            const isCancelled = valLower.includes("cancel") || valLower.includes("repaid");
+            const bgStyle = isCancelled
+              ? 'background: #ffe4e6; color: #be123c; border: 1px solid #fecdd3;'
+              : isPaid
                 ? 'background: #dcfce7; color: #15803d; border: 1px solid #86efac;'
                 : 'background: #fef3c7; color: #b45309; border: 1px solid #fde68a;';
-              return `<td style="white-space: nowrap;"><span style="display: inline-block; padding: 2px 7px; border-radius: 9999px; font-size: 8px; font-weight: 700; ${bgStyle}">${val}</span></td>`;
-            }
-            if (isPending) {
-              return `<td style="text-align: right; font-weight: 700; color: #be123c;">${val}</td>`;
-            }
-            return `<td style="${isNumeric ? 'text-align: right;' : ''} ${c.key === 'invoice_no' ? 'font-weight: 700; color: #0f172a;' : ''}">${val}</td>`;
-          }).join("")}
+            return `<td style="white-space: nowrap;"><span style="display: inline-block; padding: 2px 7px; border-radius: 9999px; font-size: 8px; font-weight: 700; ${bgStyle}">${val}</span></td>`;
+          }
+          if (isPending) {
+            return `<td style="text-align: right; font-weight: 700; color: #be123c;">${val}</td>`;
+          }
+          return `<td style="${isNumeric ? 'text-align: right;' : ''} ${c.key === 'invoice_no' ? 'font-weight: 700; color: #0f172a;' : ''}">${val}</td>`;
+        }).join("")}
         </tr>`;
 
         // Sub-table for itemized products ONLY in Customer 360 Statement
@@ -671,13 +672,13 @@ export function ReportsHub() {
                     </thead>
                     <tbody>
                       ${row.items.map((it: any, idx: number) => {
-                        const pName = it.name || it.product_name || `Product Item #${idx + 1}`;
-                        const pSku = it.sku || it.product_sku || "—";
-                        const pQty = it.qty ?? it.quantity ?? 1;
-                        const pPrice = typeof it.price === "number" ? formatCurrency(it.price) : (it.price || "₹0.00");
-                        const pTax = typeof it.tax === "number" ? formatCurrency(it.tax) : (it.tax || "₹0.00");
-                        const pTotal = typeof it.total === "number" ? formatCurrency(it.total) : (it.total || "₹0.00");
-                        return `
+            const pName = it.name || it.product_name || `Product Item #${idx + 1}`;
+            const pSku = it.sku || it.product_sku || "—";
+            const pQty = it.qty ?? it.quantity ?? 1;
+            const pPrice = typeof it.price === "number" ? formatCurrency(it.price) : (it.price || "₹0.00");
+            const pTax = typeof it.tax === "number" ? formatCurrency(it.tax) : (it.tax || "₹0.00");
+            const pTotal = typeof it.total === "number" ? formatCurrency(it.total) : (it.total || "₹0.00");
+            return `
                           <tr style="border-bottom: 1px solid #f3e8ff;">
                             <td style="padding: 2.5px 6px; color: #64748b;">${idx + 1}</td>
                             <td style="padding: 2.5px 6px; font-weight: 700; color: #1e1b4b;">${pName}</td>
@@ -688,7 +689,7 @@ export function ReportsHub() {
                             <td style="padding: 2.5px 6px; text-align: right; font-weight: 800; color: #0f172a;">${pTotal}</td>
                           </tr>
                         `;
-                      }).join("")}
+          }).join("")}
                     </tbody>
                   </table>
                 </div>
@@ -904,6 +905,7 @@ export function ReportsHub() {
   const isEmployeeSalesReport = Boolean(activeReport && EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id));
   const isPaymentModeReport = Boolean(activeReport && PAYMENT_MODE_SUITE_IDS.has(activeReport.id));
   const isVendorOutstandingReport = Boolean(activeReport && activeReport.id === "vendor_outstanding");
+  const isSalesSummaryReport = Boolean(activeReport && activeReport.id === "sales_summary");
 
   return (
     <div className="flex flex-1 h-full w-full bg-slate-50 overflow-hidden font-sans">
@@ -953,11 +955,10 @@ export function ReportsHub() {
                 <button
                   type="button"
                   onClick={() => setSelectedCategory(isCatSelected ? "" : cat.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    isCatSelected
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${isCatSelected
                       ? "bg-indigo-50/80 text-indigo-900 font-extrabold"
                       : "text-slate-700 hover:bg-slate-100/70"
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-2.5">
                     <Icon className={`size-4 ${isCatSelected ? "text-indigo-600" : "text-slate-500"}`} />
@@ -968,9 +969,8 @@ export function ReportsHub() {
                       {cat.reports.length}
                     </span>
                     <ChevronDown
-                      className={`size-3.5 text-slate-400 transition-transform duration-200 ${
-                        isCatSelected ? "rotate-180 text-indigo-600" : ""
-                      }`}
+                      className={`size-3.5 text-slate-400 transition-transform duration-200 ${isCatSelected ? "rotate-180 text-indigo-600" : ""
+                        }`}
                     />
                   </div>
                 </button>
@@ -992,11 +992,10 @@ export function ReportsHub() {
                             key={item.id}
                             type="button"
                             onClick={() => handleSelectReport(cat.id, item)}
-                            className={`w-full text-left px-3 py-2 rounded-lg text-[11px] font-medium transition-all flex items-center justify-between cursor-pointer ${
-                              isReportActive
+                            className={`w-full text-left px-3 py-2 rounded-lg text-[11px] font-medium transition-all flex items-center justify-between cursor-pointer ${isReportActive
                                 ? "bg-indigo-600 text-white font-bold shadow-md shadow-indigo-200"
                                 : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                            }`}
+                              }`}
                           >
                             <span className="truncate">{item.title}</span>
                             {isReportActive && <ChevronRight className="size-3 shrink-0" />}
@@ -1104,534 +1103,534 @@ export function ReportsHub() {
         <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
           <PaymentModeSalesReportSuite onBack={() => setActiveReport(null)} />
         </main>
+      ) : isSalesSummaryReport ? (
+        <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+          <SalesSummaryReportSuite onBack={() => setActiveReport(null)} />
+        </main>
       ) : (
         <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
-        {/* Top Action & Filtering Toolbar */}
-        <header className="bg-white border-b border-slate-200 px-5 py-3 shrink-0">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            {/* Title & Description */}
-            <div>
-              <h1 className="text-base font-extrabold text-slate-900">{activeReport.title}</h1>
-              <p className="text-xs text-slate-500 mt-0.5">{activeReport.description}</p>
-            </div>
+          {/* Top Action & Filtering Toolbar */}
+          <header className="bg-white border-b border-slate-200 px-5 py-3 shrink-0">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {/* Title & Description */}
+              <div>
+                <h1 className="text-base font-extrabold text-slate-900">{activeReport.title}</h1>
+                <p className="text-xs text-slate-500 mt-0.5">{activeReport.description}</p>
+              </div>
 
-            {/* Actions: CSV, Print, Refresh */}
-            <div className="flex items-center gap-2">
-              {/* Dropdown for Excel / CSV */}
-              <div className="relative" ref={exportDropdownRef}>
+              {/* Actions: CSV, Print, Refresh */}
+              <div className="flex items-center gap-2">
+                {/* Dropdown for Excel / CSV */}
+                <div className="relative" ref={exportDropdownRef}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowExportDropdown(!showExportDropdown)}
+                    className="h-8 gap-1.5 text-xs font-semibold rounded-xl border-slate-200 hover:bg-slate-100 cursor-pointer"
+                  >
+                    <Download className="size-3.5 text-emerald-600" />
+                    <span>Excel / CSV</span>
+                    <ChevronDown className="size-3 text-slate-400" />
+                  </Button>
+
+                  {showExportDropdown && (
+                    <div className="absolute right-0 mt-1.5 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+                      <button
+                        onClick={() => {
+                          handleExportReport("xlsx");
+                          setShowExportDropdown(false);
+                        }}
+                        className="w-full text-left px-3.5 py-2.5 hover:bg-emerald-50 flex items-center gap-2.5 text-slate-700 font-medium transition-colors cursor-pointer"
+                      >
+                        <div className="p-1 rounded-md bg-emerald-100/70 text-emerald-700 shrink-0">
+                          <FileSpreadsheet className="size-4" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-800">Download Excel</span>
+                          <span className="text-[10px] text-slate-400">Microsoft Excel (.xlsx)</span>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleExportReport("csv");
+                          setShowExportDropdown(false);
+                        }}
+                        className="w-full text-left px-3.5 py-2.5 hover:bg-blue-50 flex items-center gap-2.5 text-slate-700 font-medium transition-colors cursor-pointer border-t border-slate-100"
+                      >
+                        <div className="p-1 rounded-md bg-blue-100/70 text-blue-700 shrink-0">
+                          <FileText className="size-4" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-800">Download CSV</span>
+                          <span className="text-[10px] text-slate-400">Comma Separated Values (.csv)</span>
+                        </div>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setShowExportDropdown(!showExportDropdown)}
-                  className="h-8 gap-1.5 text-xs font-semibold rounded-xl border-slate-200 hover:bg-slate-100 cursor-pointer"
+                  onClick={handlePrintPDF}
+                  className="h-8 gap-1.5 text-xs font-semibold rounded-xl border-slate-200 hover:bg-slate-100"
                 >
-                  <Download className="size-3.5 text-emerald-600" />
-                  <span>Excel / CSV</span>
-                  <ChevronDown className="size-3 text-slate-400" />
+                  <Printer className="size-3.5 text-indigo-600" />
+                  <span>Print PDF</span>
                 </Button>
 
-                {showExportDropdown && (
-                  <div className="absolute right-0 mt-1.5 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
-                    <button
-                      onClick={() => {
-                        handleExportReport("xlsx");
-                        setShowExportDropdown(false);
-                      }}
-                      className="w-full text-left px-3.5 py-2.5 hover:bg-emerald-50 flex items-center gap-2.5 text-slate-700 font-medium transition-colors cursor-pointer"
-                    >
-                      <div className="p-1 rounded-md bg-emerald-100/70 text-emerald-700 shrink-0">
-                        <FileSpreadsheet className="size-4" />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-slate-800">Download Excel</span>
-                        <span className="text-[10px] text-slate-400">Microsoft Excel (.xlsx)</span>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => {
-                        handleExportReport("csv");
-                        setShowExportDropdown(false);
-                      }}
-                      className="w-full text-left px-3.5 py-2.5 hover:bg-blue-50 flex items-center gap-2.5 text-slate-700 font-medium transition-colors cursor-pointer border-t border-slate-100"
-                    >
-                      <div className="p-1 rounded-md bg-blue-100/70 text-blue-700 shrink-0">
-                        <FileText className="size-4" />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-slate-800">Download CSV</span>
-                        <span className="text-[10px] text-slate-400">Comma Separated Values (.csv)</span>
-                      </div>
-                    </button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => loadReport(activeReport)}
+                  disabled={loading}
+                  className="h-8 w-8 rounded-xl border-slate-200 hover:bg-slate-100"
+                  title="Refresh Live Data"
+                >
+                  <RefreshCw className={`size-3.5 text-slate-600 ${loading ? "animate-spin text-indigo-600" : ""}`} />
+                </Button>
+              </div>
+            </div>
+
+            {/* Date Range & Search Filtering Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-2.5 border-t border-slate-100">
+              {/* Date Filters */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-slate-600 flex items-center gap-1">
+                  <CalendarIcon className="size-3.5 text-indigo-500" /> Period:
+                </span>
+
+                <select
+                  value={dateRange}
+                  onChange={(e) => setDateRange(e.target.value)}
+                  className="h-8 px-2.5 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
+                >
+                  <option value="all">All Time (All Recorded Invoices)</option>
+                  <option value="today">Today</option>
+                  <option value="yesterday">Yesterday</option>
+                  <option value="this_week">This Week</option>
+                  <option value="this_month">This Month</option>
+                  <option value="last_month">Last Month</option>
+                  <option value="this_quarter">This Quarter</option>
+                  <option value="this_year">This Financial Year</option>
+                  <option value="custom">📅 Custom Date Range (DD/MM/YYYY)</option>
+                </select>
+
+                {/* Custom Date Pickers strictly in DD/MM/YYYY */}
+                {dateRange === "custom" && (
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-32">
+                      <DatePickerInput
+                        value={customStartDate}
+                        onChange={(val) => setCustomStartDate(val)}
+                        placeholder="DD/MM/YYYY"
+                      />
+                    </div>
+                    <span className="text-xs font-bold text-slate-400">to</span>
+                    <div className="w-32">
+                      <DatePickerInput
+                        value={customEndDate}
+                        onChange={(val) => setCustomEndDate(val)}
+                        placeholder="DD/MM/YYYY"
+                      />
+                    </div>
                   </div>
                 )}
               </div>
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handlePrintPDF}
-                className="h-8 gap-1.5 text-xs font-semibold rounded-xl border-slate-200 hover:bg-slate-100"
-              >
-                <Printer className="size-3.5 text-indigo-600" />
-                <span>Print PDF</span>
-              </Button>
-
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => loadReport(activeReport)}
-                disabled={loading}
-                className="h-8 w-8 rounded-xl border-slate-200 hover:bg-slate-100"
-                title="Refresh Live Data"
-              >
-                <RefreshCw className={`size-3.5 text-slate-600 ${loading ? "animate-spin text-indigo-600" : ""}`} />
-              </Button>
+              {/* Search Input for filtering current table */}
+              <div className="relative w-64">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Filter current report rows..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full h-8 pl-8 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </div>
             </div>
-          </div>
+          </header>
 
-          {/* Date Range & Search Filtering Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-2.5 border-t border-slate-100">
-            {/* Date Filters */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-bold text-slate-600 flex items-center gap-1">
-                <CalendarIcon className="size-3.5 text-indigo-500" /> Period:
-              </span>
-
-              <select
-                value={dateRange}
-                onChange={(e) => setDateRange(e.target.value)}
-                className="h-8 px-2.5 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
-              >
-                <option value="all">All Time (All Recorded Invoices)</option>
-                <option value="today">Today</option>
-                <option value="yesterday">Yesterday</option>
-                <option value="this_week">This Week</option>
-                <option value="this_month">This Month</option>
-                <option value="last_month">Last Month</option>
-                <option value="this_quarter">This Quarter</option>
-                <option value="this_year">This Financial Year</option>
-                <option value="custom">📅 Custom Date Range (DD/MM/YYYY)</option>
-              </select>
-
-              {/* Custom Date Pickers strictly in DD/MM/YYYY */}
-              {dateRange === "custom" && (
-                <div className="flex items-center gap-1.5">
-                  <div className="w-32">
-                    <DatePickerInput
-                      value={customStartDate}
-                      onChange={(val) => setCustomStartDate(val)}
-                      placeholder="DD/MM/YYYY"
-                    />
+          {/* Scrollable Report Canvas */}
+          <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
+            {/* ──────────────────────────────────────────────────────────────────────────
+              CUSTOM REPORT BUILDER INTERACTIVE MODE
+          ────────────────────────────────────────────────────────────────────────── */}
+            {activeReport.id === "custom_builder" && (
+              <div className="bg-white border border-indigo-100 rounded-2xl p-4 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <SlidersHorizontal className="size-4 text-indigo-600" />
+                    <h3 className="text-sm font-bold text-slate-900">Custom Query Configuration</h3>
                   </div>
-                  <span className="text-xs font-bold text-slate-400">to</span>
-                  <div className="w-32">
-                    <DatePickerInput
-                      value={customEndDate}
-                      onChange={(val) => setCustomEndDate(val)}
-                      placeholder="DD/MM/YYYY"
-                    />
+                  <span className="text-xs text-indigo-600 font-semibold bg-indigo-50 px-2.5 py-0.5 rounded-full">
+                    Interactive Drag & Select
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Select Base Entity */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Select Data Entity</label>
+                    <select
+                      value={builderEntity}
+                      onChange={(e) => setBuilderEntity(e.target.value)}
+                      className="w-full h-9 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                    >
+                      <option value="sales">Sales & Billing Transactions</option>
+                      <option value="inventory">Products & Stock Catalog</option>
+                      <option value="purchases">Purchase Orders & GRN</option>
+                      <option value="customers">Customers & Outstanding</option>
+                      <option value="staff">Staff & Cashier Activity</option>
+                    </select>
+                  </div>
+
+                  {/* Group By Option */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Group Records By</label>
+                    <select
+                      value={builderGroupBy}
+                      onChange={(e) => setBuilderGroupBy(e.target.value)}
+                      className="w-full h-9 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                    >
+                      <option value="none">No Grouping (Individual Rows)</option>
+                      <option value="day">By Date / Day</option>
+                      <option value="month">By Calendar Month</option>
+                      <option value="customer">By Customer Account</option>
+                      <option value="category">By Product Category</option>
+                    </select>
+                  </div>
+
+                  {/* Build Action */}
+                  <div className="flex items-end">
+                    <Button
+                      type="button"
+                      onClick={() => loadReport(activeReport)}
+                      className="w-full h-9 gradient-brand text-white font-bold text-xs rounded-xl shadow-md"
+                    >
+                      Generate Custom Query
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+
+
+            {/* ──────────────────────────────────────────────────────────────────────────
+              CUSTOMER 360 STATEMENT & PENDING INVOICES SUMMARY CARD
+          ────────────────────────────────────────────────────────────────────────── */}
+            {reportData?.customerDetails && isCustomer360Statement && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-gradient-to-r from-purple-50/90 via-indigo-50/60 to-white border border-purple-200/90 rounded-2xl p-4 shadow-sm"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  {/* Customer Identity */}
+                  <div className="flex items-center gap-3">
+                    <div className="size-11 rounded-xl bg-purple-700 text-white flex items-center justify-center font-extrabold text-sm shadow-md shadow-purple-200 shrink-0">
+                      <Users className="size-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-extrabold text-slate-900 leading-tight">
+                          {reportData.customerDetails.name}
+                        </h3>
+                        {reportData.customerDetails.pending_invoices_count > 0 ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
+                            <AlertTriangle className="size-3" />
+                            {reportData.customerDetails.pending_invoices_count} Pending Invoices
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                            <CheckCircle2 className="size-3" /> All Invoices Settled
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-500 font-medium mt-1">
+                        <span>Tel: <strong className="text-slate-700">{reportData.customerDetails.phone || "—"}</strong></span>
+                        <span>&bull;</span>
+                        <span>GSTIN: <strong className="text-slate-700">{reportData.customerDetails.gstin || "Unregistered"}</strong></span>
+                        <span>&bull;</span>
+                        <span className="truncate max-w-xs">{reportData.customerDetails.address || ""}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 6 Financial Stat Cards (including Returns and Credit Note Aging) */}
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <div className="bg-white/90 border border-purple-100 px-3 py-1.5 rounded-xl shadow-2xs text-center min-w-[95px]">
+                      <div className="text-[10px] uppercase font-bold text-slate-500">Total Bills</div>
+                      <div className="text-xs font-extrabold text-slate-900 mt-0.5">
+                        {reportData.customerDetails.total_invoices} Invoices
+                      </div>
+                    </div>
+
+                    <div className="bg-white/90 border border-purple-100 px-3 py-1.5 rounded-xl shadow-2xs text-center min-w-[105px]">
+                      <div className="text-[10px] uppercase font-bold text-slate-500">Gross Billed</div>
+                      <div className="text-xs font-extrabold text-slate-900 mt-0.5">
+                        {reportData.customerDetails.total_billed}
+                      </div>
+                    </div>
+
+                    <div className="bg-white/90 border border-emerald-100 px-3 py-1.5 rounded-xl shadow-2xs text-center min-w-[105px]">
+                      <div className="text-[10px] uppercase font-bold text-emerald-600">Settled / Paid</div>
+                      <div className="text-xs font-extrabold text-emerald-700 mt-0.5">
+                        {reportData.customerDetails.total_paid}
+                      </div>
+                    </div>
+
+                    {reportData.customerDetails.total_returns && (
+                      <div className="bg-white/90 border border-slate-200 px-3 py-1.5 rounded-xl shadow-2xs text-center min-w-[95px]">
+                        <div className="text-[10px] uppercase font-bold text-slate-500">Sales Returns</div>
+                        <div className="text-xs font-extrabold text-slate-800 mt-0.5">
+                          {reportData.customerDetails.total_returns}
+                        </div>
+                      </div>
+                    )}
+
+                    {reportData.customerDetails.unadjusted_credit_balance && (
+                      <div className="bg-white/90 border border-indigo-100 px-3 py-1.5 rounded-xl shadow-2xs text-center min-w-[110px]">
+                        <div className="text-[10px] uppercase font-bold text-indigo-600">
+                          Credit Note Bal ({reportData.customerDetails.oldest_credit_days || "Active"})
+                        </div>
+                        <div className="text-xs font-extrabold text-indigo-700 mt-0.5">
+                          {reportData.customerDetails.unadjusted_credit_balance}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="bg-gradient-to-r from-amber-50 to-rose-50 border border-rose-200 px-3.5 py-1.5 rounded-xl shadow-2xs text-center min-w-[125px]">
+                      <div className="text-[10px] uppercase font-extrabold text-rose-700 flex items-center justify-center gap-1">
+                        <Clock className="size-2.5" /> Pending Balance
+                      </div>
+                      <div className="text-xs font-extrabold text-rose-700 mt-0.5">
+                        {reportData.customerDetails.pending_balance}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* ──────────────────────────────────────────────────────────────────────────
+              REPORT DATA TABLE
+          ────────────────────────────────────────────────────────────────────────── */}
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/80 border-b border-slate-200">
+                      <th className="w-8 px-3 py-3 text-[11px] font-bold text-slate-700 uppercase">#</th>
+                      {reportData?.tableColumns?.map((col: any, idx: number) => (
+                        <th
+                          key={idx}
+                          className="px-4 py-3 text-[11px] font-bold text-slate-700 uppercase tracking-wider whitespace-nowrap"
+                        >
+                          {col.header}
+                        </th>
+                      ))}
+                      {isCustomer360Statement && (
+                        <th className="px-3 py-3 text-[11px] font-bold text-slate-700 uppercase text-right">Details</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs text-slate-700 font-medium">
+                    {loading ? (
+                      <tr>
+                        <td
+                          colSpan={(reportData?.tableColumns?.length || 6) + (isCustomer360Statement ? 2 : 1)}
+                          className="px-4 py-12 text-center text-slate-400"
+                        >
+                          <RefreshCw className="size-6 animate-spin mx-auto text-indigo-600 mb-2" />
+                          <span>Querying live database records...</span>
+                        </td>
+                      </tr>
+                    ) : !reportData?.tableData || reportData.tableData.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={(reportData?.tableColumns?.length || 6) + (isCustomer360Statement ? 2 : 1)}
+                          className="px-4 py-12 text-center text-slate-400"
+                        >
+                          <Boxes className="size-8 mx-auto text-slate-300 mb-2" />
+                          <span className="font-semibold">No records found for the selected period.</span>
+                        </td>
+                      </tr>
+                    ) : (
+                      reportData.tableData.map((row: any, rIdx: number) => {
+                        const rowKey = row.id || row.invoice_no || `row-${rIdx}`;
+                        const isRowExpanded = Boolean(expandedInvoices[rowKey]);
+                        const hasItems = Array.isArray(row.items) && row.items.length > 0;
+
+                        return (
+                          <React.Fragment key={rowKey}>
+                            <tr
+                              onClick={() => {
+                                if (isCustomer360Statement && hasItems) toggleInvoice(rowKey);
+                              }}
+                              className={`transition-colors group ${isCustomer360Statement && hasItems ? "cursor-pointer" : ""
+                                } ${isRowExpanded && isCustomer360Statement ? "bg-purple-50/50" : "hover:bg-slate-50/80"
+                                }`}
+                            >
+                              {/* Expand Indicator Icon (Customer 360 Statement only) or Row Number */}
+                              <td className="px-3 py-2.5 text-center text-slate-400">
+                                {isCustomer360Statement && hasItems ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => toggleInvoice(rowKey, e)}
+                                    className="p-1 rounded hover:bg-slate-200/60 text-slate-500 transition-transform"
+                                  >
+                                    <ChevronDown
+                                      className={`size-3.5 transition-transform duration-200 ${isRowExpanded ? "rotate-180 text-purple-700" : "text-slate-400"
+                                        }`}
+                                    />
+                                  </button>
+                                ) : (
+                                  <span className="text-[10px] text-slate-400">{rIdx + 1}</span>
+                                )}
+                              </td>
+
+                              {/* Main Columns */}
+                              {reportData?.tableColumns?.map((col: any, cIdx: number) => {
+                                const val = row[col.key];
+                                const isStatus = col.key === "status";
+                                const isPending = col.key === "pending_amount" || col.key === "balance";
+                                const isNumericPending = isPending && parseFloat(String(val).replace(/[^0-9.-]/g, "")) > 0;
+
+                                return (
+                                  <td key={cIdx} className="px-4 py-2.5 whitespace-nowrap">
+                                    {isStatus ? (
+                                      <span
+                                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${String(val).toLowerCase().includes("cancel") ||
+                                            String(val).toLowerCase().includes("repaid")
+                                            ? "bg-rose-50 text-rose-700 border border-rose-200 font-extrabold"
+                                            : String(val).toLowerCase().includes("paid") ||
+                                              String(val).toLowerCase().includes("completed") ||
+                                              String(val).toLowerCase().includes("active")
+                                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                              : String(val).toLowerCase().includes("pending") ||
+                                                String(val).toLowerCase().includes("partial") ||
+                                                String(val).toLowerCase().includes("overdue")
+                                                ? "bg-amber-50 text-amber-700 border border-amber-200 font-extrabold"
+                                                : "bg-slate-100 text-slate-700"
+                                          }`}
+                                      >
+                                        {val}
+                                      </span>
+                                    ) : isNumericPending ? (
+                                      <span className="font-extrabold text-rose-600">{val}</span>
+                                    ) : (
+                                      <span className={col.key === "invoice_no" ? "font-bold text-slate-900" : ""}>
+                                        {val ?? "—"}
+                                      </span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+
+                              {/* View Products Dropdown Pill (Customer 360 Statement only) */}
+                              {isCustomer360Statement && (
+                                <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                                  {hasItems && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => toggleInvoice(rowKey, e)}
+                                      className="text-[10px] font-bold px-2 py-1 rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 transition-colors cursor-pointer"
+                                    >
+                                      {`${row.items.length} Products`}
+                                    </button>
+                                  )}
+                                </td>
+                              )}
+                            </tr>
+
+                            {/* ── EXPANDED ROW: Bill-Wise Products Drilldown Table (ONLY in Customer 360 Statement) ── */}
+                            {isCustomer360Statement && isRowExpanded && hasItems && (
+                              <tr className="bg-purple-50/30">
+                                <td colSpan={(reportData?.tableColumns?.length || 6) + 2} className="px-4 py-3">
+                                  <div className="bg-white border border-purple-200 rounded-xl p-3.5 shadow-xs space-y-2">
+                                    <div className="flex items-center justify-between border-b border-purple-100 pb-2">
+                                      <div className="flex items-center gap-2">
+                                        <Boxes className="size-3.5 text-purple-700" />
+                                        <h4 className="text-xs font-extrabold text-slate-900">
+                                          Itemized Bill Products for Invoice #{row.invoice_no || row.id}
+                                        </h4>
+                                      </div>
+                                      <span className="text-[10.5px] font-semibold text-slate-500">
+                                        Total Bill Items: <strong>{row.items.length}</strong>
+                                      </span>
+                                    </div>
+
+                                    <table className="w-full text-left text-xs border-collapse">
+                                      <thead>
+                                        <tr className="bg-slate-50 text-[10px] font-bold text-slate-600 uppercase border-b border-slate-200">
+                                          <th className="py-1.5 px-3">#</th>
+                                          <th className="py-1.5 px-3">Product Name</th>
+                                          <th className="py-1.5 px-3">SKU / Code</th>
+                                          <th className="py-1.5 px-3 text-right">Quantity</th>
+                                          <th className="py-1.5 px-3 text-right">Unit Price</th>
+                                          <th className="py-1.5 px-3 text-right">Tax (₹)</th>
+                                          <th className="py-1.5 px-3 text-right">Line Total</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100">
+                                        {row.items.map((it: any, itIdx: number) => {
+                                          const pName = it.name || it.product_name || `Product Item #${itIdx + 1}`;
+                                          const pSku = it.sku || it.product_sku || it.hsn || "—";
+                                          const pQty = it.qty ?? it.quantity ?? 1;
+                                          const pPrice = typeof it.price === "number" ? formatCurrency(it.price) : (it.price || "₹0.00");
+                                          const pTax = typeof it.tax === "number" ? formatCurrency(it.tax) : (it.tax || "₹0.00");
+                                          const pTotal = typeof it.total === "number" ? formatCurrency(it.total) : (it.total || "₹0.00");
+
+                                          return (
+                                            <tr key={itIdx} className="hover:bg-slate-50/60 text-slate-700 font-medium">
+                                              <td className="py-1.5 px-3 text-slate-400 font-bold text-[10px]">{itIdx + 1}</td>
+                                              <td className="py-1.5 px-3 font-bold text-slate-900">{pName}</td>
+                                              <td className="py-1.5 px-3 text-slate-500 text-[11px]">{pSku}</td>
+                                              <td className="py-1.5 px-3 text-right font-semibold">{pQty}</td>
+                                              <td className="py-1.5 px-3 text-right">{pPrice}</td>
+                                              <td className="py-1.5 px-3 text-right text-slate-500">{pTax}</td>
+                                              <td className="py-1.5 px-3 text-right font-extrabold text-slate-900">{pTotal}</td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Summary Footer */}
+              {reportData?.summaryTotals && Object.keys(reportData.summaryTotals).length > 0 && (
+                <div className="bg-slate-50 border-t border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs font-bold text-slate-800">
+                  <span className="text-slate-500 uppercase tracking-wider text-[11px]">
+                    Total Records: {reportData.tableData?.length || 0}
+                  </span>
+                  <div className="flex items-center gap-4">
+                    {Object.entries(reportData.summaryTotals).map(([k, v]: [string, any], idx) => (
+                      <div key={idx} className="flex items-center gap-1.5">
+                        <span className="text-slate-500 font-semibold capitalize">
+                          {k.replace(/_/g, " ")}:
+                        </span>
+                        <span className="text-indigo-600 font-extrabold">{String(v)}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
             </div>
-
-            {/* Search Input for filtering current table */}
-            <div className="relative w-64">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Filter current report rows..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full h-8 pl-8 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-              />
-            </div>
           </div>
-        </header>
-
-        {/* Scrollable Report Canvas */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
-          {/* ──────────────────────────────────────────────────────────────────────────
-              CUSTOM REPORT BUILDER INTERACTIVE MODE
-          ────────────────────────────────────────────────────────────────────────── */}
-          {activeReport.id === "custom_builder" && (
-            <div className="bg-white border border-indigo-100 rounded-2xl p-4 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <SlidersHorizontal className="size-4 text-indigo-600" />
-                  <h3 className="text-sm font-bold text-slate-900">Custom Query Configuration</h3>
-                </div>
-                <span className="text-xs text-indigo-600 font-semibold bg-indigo-50 px-2.5 py-0.5 rounded-full">
-                  Interactive Drag & Select
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Select Base Entity */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Select Data Entity</label>
-                  <select
-                    value={builderEntity}
-                    onChange={(e) => setBuilderEntity(e.target.value)}
-                    className="w-full h-9 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                  >
-                    <option value="sales">Sales & Billing Transactions</option>
-                    <option value="inventory">Products & Stock Catalog</option>
-                    <option value="purchases">Purchase Orders & GRN</option>
-                    <option value="customers">Customers & Outstanding</option>
-                    <option value="staff">Staff & Cashier Activity</option>
-                  </select>
-                </div>
-
-                {/* Group By Option */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Group Records By</label>
-                  <select
-                    value={builderGroupBy}
-                    onChange={(e) => setBuilderGroupBy(e.target.value)}
-                    className="w-full h-9 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                  >
-                    <option value="none">No Grouping (Individual Rows)</option>
-                    <option value="day">By Date / Day</option>
-                    <option value="month">By Calendar Month</option>
-                    <option value="customer">By Customer Account</option>
-                    <option value="category">By Product Category</option>
-                  </select>
-                </div>
-
-                {/* Build Action */}
-                <div className="flex items-end">
-                  <Button
-                    type="button"
-                    onClick={() => loadReport(activeReport)}
-                    className="w-full h-9 gradient-brand text-white font-bold text-xs rounded-xl shadow-md"
-                  >
-                    Generate Custom Query
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-
-
-
-          {/* ──────────────────────────────────────────────────────────────────────────
-              CUSTOMER 360 STATEMENT & PENDING INVOICES SUMMARY CARD
-          ────────────────────────────────────────────────────────────────────────── */}
-          {reportData?.customerDetails && isCustomer360Statement && (
-            <motion.div
-              initial={{ opacity: 0, y: -6 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-gradient-to-r from-purple-50/90 via-indigo-50/60 to-white border border-purple-200/90 rounded-2xl p-4 shadow-sm"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                {/* Customer Identity */}
-                <div className="flex items-center gap-3">
-                  <div className="size-11 rounded-xl bg-purple-700 text-white flex items-center justify-center font-extrabold text-sm shadow-md shadow-purple-200 shrink-0">
-                    <Users className="size-5" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-extrabold text-slate-900 leading-tight">
-                        {reportData.customerDetails.name}
-                      </h3>
-                      {reportData.customerDetails.pending_invoices_count > 0 ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
-                          <AlertTriangle className="size-3" />
-                          {reportData.customerDetails.pending_invoices_count} Pending Invoices
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
-                          <CheckCircle2 className="size-3" /> All Invoices Settled
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-500 font-medium mt-1">
-                      <span>Tel: <strong className="text-slate-700">{reportData.customerDetails.phone || "—"}</strong></span>
-                      <span>&bull;</span>
-                      <span>GSTIN: <strong className="text-slate-700">{reportData.customerDetails.gstin || "Unregistered"}</strong></span>
-                      <span>&bull;</span>
-                      <span className="truncate max-w-xs">{reportData.customerDetails.address || ""}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 6 Financial Stat Cards (including Returns and Credit Note Aging) */}
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <div className="bg-white/90 border border-purple-100 px-3 py-1.5 rounded-xl shadow-2xs text-center min-w-[95px]">
-                    <div className="text-[10px] uppercase font-bold text-slate-500">Total Bills</div>
-                    <div className="text-xs font-extrabold text-slate-900 mt-0.5">
-                      {reportData.customerDetails.total_invoices} Invoices
-                    </div>
-                  </div>
-
-                  <div className="bg-white/90 border border-purple-100 px-3 py-1.5 rounded-xl shadow-2xs text-center min-w-[105px]">
-                    <div className="text-[10px] uppercase font-bold text-slate-500">Gross Billed</div>
-                    <div className="text-xs font-extrabold text-slate-900 mt-0.5">
-                      {reportData.customerDetails.total_billed}
-                    </div>
-                  </div>
-
-                  <div className="bg-white/90 border border-emerald-100 px-3 py-1.5 rounded-xl shadow-2xs text-center min-w-[105px]">
-                    <div className="text-[10px] uppercase font-bold text-emerald-600">Settled / Paid</div>
-                    <div className="text-xs font-extrabold text-emerald-700 mt-0.5">
-                      {reportData.customerDetails.total_paid}
-                    </div>
-                  </div>
-
-                  {reportData.customerDetails.total_returns && (
-                    <div className="bg-white/90 border border-slate-200 px-3 py-1.5 rounded-xl shadow-2xs text-center min-w-[95px]">
-                      <div className="text-[10px] uppercase font-bold text-slate-500">Sales Returns</div>
-                      <div className="text-xs font-extrabold text-slate-800 mt-0.5">
-                        {reportData.customerDetails.total_returns}
-                      </div>
-                    </div>
-                  )}
-
-                  {reportData.customerDetails.unadjusted_credit_balance && (
-                    <div className="bg-white/90 border border-indigo-100 px-3 py-1.5 rounded-xl shadow-2xs text-center min-w-[110px]">
-                      <div className="text-[10px] uppercase font-bold text-indigo-600">
-                        Credit Note Bal ({reportData.customerDetails.oldest_credit_days || "Active"})
-                      </div>
-                      <div className="text-xs font-extrabold text-indigo-700 mt-0.5">
-                        {reportData.customerDetails.unadjusted_credit_balance}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="bg-gradient-to-r from-amber-50 to-rose-50 border border-rose-200 px-3.5 py-1.5 rounded-xl shadow-2xs text-center min-w-[125px]">
-                    <div className="text-[10px] uppercase font-extrabold text-rose-700 flex items-center justify-center gap-1">
-                      <Clock className="size-2.5" /> Pending Balance
-                    </div>
-                    <div className="text-xs font-extrabold text-rose-700 mt-0.5">
-                      {reportData.customerDetails.pending_balance}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {/* ──────────────────────────────────────────────────────────────────────────
-              REPORT DATA TABLE
-          ────────────────────────────────────────────────────────────────────────── */}
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50/80 border-b border-slate-200">
-                    <th className="w-8 px-3 py-3 text-[11px] font-bold text-slate-700 uppercase">#</th>
-                    {reportData?.tableColumns?.map((col: any, idx: number) => (
-                      <th
-                        key={idx}
-                        className="px-4 py-3 text-[11px] font-bold text-slate-700 uppercase tracking-wider whitespace-nowrap"
-                      >
-                        {col.header}
-                      </th>
-                    ))}
-                    {isCustomer360Statement && (
-                      <th className="px-3 py-3 text-[11px] font-bold text-slate-700 uppercase text-right">Details</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs text-slate-700 font-medium">
-                  {loading ? (
-                    <tr>
-                      <td
-                        colSpan={(reportData?.tableColumns?.length || 6) + (isCustomer360Statement ? 2 : 1)}
-                        className="px-4 py-12 text-center text-slate-400"
-                      >
-                        <RefreshCw className="size-6 animate-spin mx-auto text-indigo-600 mb-2" />
-                        <span>Querying live database records...</span>
-                      </td>
-                    </tr>
-                  ) : !reportData?.tableData || reportData.tableData.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={(reportData?.tableColumns?.length || 6) + (isCustomer360Statement ? 2 : 1)}
-                        className="px-4 py-12 text-center text-slate-400"
-                      >
-                        <Boxes className="size-8 mx-auto text-slate-300 mb-2" />
-                        <span className="font-semibold">No records found for the selected period.</span>
-                      </td>
-                    </tr>
-                  ) : (
-                    reportData.tableData.map((row: any, rIdx: number) => {
-                      const rowKey = row.id || row.invoice_no || `row-${rIdx}`;
-                      const isRowExpanded = Boolean(expandedInvoices[rowKey]);
-                      const hasItems = Array.isArray(row.items) && row.items.length > 0;
-
-                      return (
-                        <React.Fragment key={rowKey}>
-                          <tr
-                            onClick={() => {
-                              if (isCustomer360Statement && hasItems) toggleInvoice(rowKey);
-                            }}
-                            className={`transition-colors group ${
-                              isCustomer360Statement && hasItems ? "cursor-pointer" : ""
-                            } ${
-                              isRowExpanded && isCustomer360Statement ? "bg-purple-50/50" : "hover:bg-slate-50/80"
-                            }`}
-                          >
-                            {/* Expand Indicator Icon (Customer 360 Statement only) or Row Number */}
-                            <td className="px-3 py-2.5 text-center text-slate-400">
-                              {isCustomer360Statement && hasItems ? (
-                                <button
-                                  type="button"
-                                  onClick={(e) => toggleInvoice(rowKey, e)}
-                                  className="p-1 rounded hover:bg-slate-200/60 text-slate-500 transition-transform"
-                                >
-                                  <ChevronDown
-                                    className={`size-3.5 transition-transform duration-200 ${
-                                      isRowExpanded ? "rotate-180 text-purple-700" : "text-slate-400"
-                                    }`}
-                                  />
-                                </button>
-                              ) : (
-                                <span className="text-[10px] text-slate-400">{rIdx + 1}</span>
-                              )}
-                            </td>
-
-                            {/* Main Columns */}
-                            {reportData?.tableColumns?.map((col: any, cIdx: number) => {
-                              const val = row[col.key];
-                              const isStatus = col.key === "status";
-                              const isPending = col.key === "pending_amount" || col.key === "balance";
-                              const isNumericPending = isPending && parseFloat(String(val).replace(/[^0-9.-]/g, "")) > 0;
-
-                              return (
-                                <td key={cIdx} className="px-4 py-2.5 whitespace-nowrap">
-                                  {isStatus ? (
-                                    <span
-                                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                        String(val).toLowerCase().includes("cancel") ||
-                                        String(val).toLowerCase().includes("repaid")
-                                          ? "bg-rose-50 text-rose-700 border border-rose-200 font-extrabold"
-                                          : String(val).toLowerCase().includes("paid") ||
-                                            String(val).toLowerCase().includes("completed") ||
-                                            String(val).toLowerCase().includes("active")
-                                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                          : String(val).toLowerCase().includes("pending") ||
-                                            String(val).toLowerCase().includes("partial") ||
-                                            String(val).toLowerCase().includes("overdue")
-                                          ? "bg-amber-50 text-amber-700 border border-amber-200 font-extrabold"
-                                          : "bg-slate-100 text-slate-700"
-                                      }`}
-                                    >
-                                      {val}
-                                    </span>
-                                  ) : isNumericPending ? (
-                                    <span className="font-extrabold text-rose-600">{val}</span>
-                                  ) : (
-                                    <span className={col.key === "invoice_no" ? "font-bold text-slate-900" : ""}>
-                                      {val ?? "—"}
-                                    </span>
-                                  )}
-                                </td>
-                              );
-                            })}
-
-                            {/* View Products Dropdown Pill (Customer 360 Statement only) */}
-                            {isCustomer360Statement && (
-                              <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                                {hasItems && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => toggleInvoice(rowKey, e)}
-                                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 transition-colors cursor-pointer"
-                                  >
-                                    {`${row.items.length} Products`}
-                                  </button>
-                                )}
-                              </td>
-                            )}
-                          </tr>
-
-                          {/* ── EXPANDED ROW: Bill-Wise Products Drilldown Table (ONLY in Customer 360 Statement) ── */}
-                          {isCustomer360Statement && isRowExpanded && hasItems && (
-                            <tr className="bg-purple-50/30">
-                              <td colSpan={(reportData?.tableColumns?.length || 6) + 2} className="px-4 py-3">
-                                <div className="bg-white border border-purple-200 rounded-xl p-3.5 shadow-xs space-y-2">
-                                  <div className="flex items-center justify-between border-b border-purple-100 pb-2">
-                                    <div className="flex items-center gap-2">
-                                      <Boxes className="size-3.5 text-purple-700" />
-                                      <h4 className="text-xs font-extrabold text-slate-900">
-                                        Itemized Bill Products for Invoice #{row.invoice_no || row.id}
-                                      </h4>
-                                    </div>
-                                    <span className="text-[10.5px] font-semibold text-slate-500">
-                                      Total Bill Items: <strong>{row.items.length}</strong>
-                                    </span>
-                                  </div>
-
-                                  <table className="w-full text-left text-xs border-collapse">
-                                    <thead>
-                                      <tr className="bg-slate-50 text-[10px] font-bold text-slate-600 uppercase border-b border-slate-200">
-                                        <th className="py-1.5 px-3">#</th>
-                                        <th className="py-1.5 px-3">Product Name</th>
-                                        <th className="py-1.5 px-3">SKU / Code</th>
-                                        <th className="py-1.5 px-3 text-right">Quantity</th>
-                                        <th className="py-1.5 px-3 text-right">Unit Price</th>
-                                        <th className="py-1.5 px-3 text-right">Tax (₹)</th>
-                                        <th className="py-1.5 px-3 text-right">Line Total</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                      {row.items.map((it: any, itIdx: number) => {
-                                        const pName = it.name || it.product_name || `Product Item #${itIdx + 1}`;
-                                        const pSku = it.sku || it.product_sku || it.hsn || "—";
-                                        const pQty = it.qty ?? it.quantity ?? 1;
-                                        const pPrice = typeof it.price === "number" ? formatCurrency(it.price) : (it.price || "₹0.00");
-                                        const pTax = typeof it.tax === "number" ? formatCurrency(it.tax) : (it.tax || "₹0.00");
-                                        const pTotal = typeof it.total === "number" ? formatCurrency(it.total) : (it.total || "₹0.00");
-
-                                        return (
-                                          <tr key={itIdx} className="hover:bg-slate-50/60 text-slate-700 font-medium">
-                                            <td className="py-1.5 px-3 text-slate-400 font-bold text-[10px]">{itIdx + 1}</td>
-                                            <td className="py-1.5 px-3 font-bold text-slate-900">{pName}</td>
-                                            <td className="py-1.5 px-3 text-slate-500 text-[11px]">{pSku}</td>
-                                            <td className="py-1.5 px-3 text-right font-semibold">{pQty}</td>
-                                            <td className="py-1.5 px-3 text-right">{pPrice}</td>
-                                            <td className="py-1.5 px-3 text-right text-slate-500">{pTax}</td>
-                                            <td className="py-1.5 px-3 text-right font-extrabold text-slate-900">{pTotal}</td>
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Summary Footer */}
-            {reportData?.summaryTotals && Object.keys(reportData.summaryTotals).length > 0 && (
-              <div className="bg-slate-50 border-t border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs font-bold text-slate-800">
-                <span className="text-slate-500 uppercase tracking-wider text-[11px]">
-                  Total Records: {reportData.tableData?.length || 0}
-                </span>
-                <div className="flex items-center gap-4">
-                  {Object.entries(reportData.summaryTotals).map(([k, v]: [string, any], idx) => (
-                    <div key={idx} className="flex items-center gap-1.5">
-                      <span className="text-slate-500 font-semibold capitalize">
-                        {k.replace(/_/g, " ")}:
-                      </span>
-                      <span className="text-indigo-600 font-extrabold">{String(v)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </main>
+        </main>
       )}
     </div>
   );

@@ -36,6 +36,7 @@ class SalesReturnLineCreate(BaseModel):
     batch_number: Optional[str] = None
     quantity: float = Field(gt=0, description="Quantity being returned")
     unit_price: float = 0
+    original_unit_price: Optional[float] = None
     tax_rate: float = 0
     tax_amount: float = 0
     discount_amount: float = 0
@@ -54,6 +55,8 @@ class SalesReturnCreate(BaseModel):
     settlement_method: str = "cash"  # cash | upi | store_credit | credit_note | exchange
     reason: Optional[str] = None
     notes: Optional[str] = None
+    discount_amount: Optional[float] = 0.0
+    total_return_amount: Optional[float] = None
     items: List[SalesReturnLineCreate] = []
 
 
@@ -72,6 +75,7 @@ class ExchangeCreate(BaseModel):
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
     customer_id: Optional[str] = None
+    discount_amount: Optional[float] = 0.0
     return_items: List[SalesReturnLineCreate] = []
     exchange_items: List[ExchangeItemCreate] = []
     settlement_method: str = "cash"  # How to handle difference
@@ -405,10 +409,13 @@ async def create_sales_return(
     db.add(invoice_return)
     await db.flush()
 
+    total_discount_amount = float(payload.discount_amount or 0.0)
     for item in payload.items:
         line_total = float(item.line_total or (item.quantity * item.unit_price - item.discount_amount))
         tax_amount = float(item.tax_amount or (line_total * item.tax_rate / 100.0 if item.tax_rate else 0))
         total_return_amount += line_total
+        if float(item.discount_amount or 0) > 0 and total_discount_amount == 0.0:
+            total_discount_amount += float(item.discount_amount)
 
         product_id_val = None
         if item.product_id:
@@ -497,6 +504,7 @@ async def create_sales_return(
             due_date=return_date_val,
             currency_code="INR",
             subtotal=round(total_return_amount, 2),
+            discount_amount=round(total_discount_amount, 2),
             total_amount=round(total_return_amount, 2),
             amount_paid=round(total_return_amount, 2),
             balance_due=0,
@@ -775,7 +783,7 @@ async def get_invoice_for_return(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:invoices"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Look up an invoice or POS receipt by ID or number for processing a return. Returns invoice details with real line items."""
+    """Look up an invoice or POS receipt by ID or number for processing a return. Returns invoice details with real line items and proportional discount allocation."""
     clean_term = invoice_id_or_number.strip()
     invoice = await _lookup_original_invoice(db, ctx.tenant_id, clean_term, clean_term, company_id=ctx.active_company_id)
 
@@ -787,6 +795,60 @@ async def get_invoice_for_return(
             or "pos" in (invoice.notes or "").lower()
         )
         total_tax = float(invoice.cgst_amount or 0) + float(invoice.sgst_amount or 0) + float(invoice.igst_amount or 0)
+        inv_subtotal = float(invoice.subtotal or 0)
+        inv_discount = float(invoice.discount_amount or 0)
+        inv_total = float(invoice.total_amount or 0)
+        inv_round_off = float(invoice.round_off or 0)
+
+        lines_list = invoice.lines or []
+        sum_gross = sum(float(l.unit_price or 0) * float(l.quantity or 1) for l in lines_list)
+        sum_line_disc = sum(float(l.discount_amount or 0) for l in lines_list)
+
+        # Net amount customer actually paid for the billed items
+        net_expected_total = inv_total if inv_total > 0 else max(0.0, sum_gross - inv_discount)
+        total_discount_to_apportion = max(0.0, round(sum_gross - net_expected_total, 2))
+
+        items_out = []
+        running_refund_sum = 0.0
+        for idx, line in enumerate(lines_list):
+            qty = float(line.quantity or 1)
+            unit_p = float(line.unit_price or 0)
+            line_gross = round(qty * unit_p, 2)
+
+            if sum_gross > 0 and total_discount_to_apportion > 0:
+                line_disc = round(total_discount_to_apportion * (line_gross / sum_gross), 2)
+            else:
+                line_disc = float(line.discount_amount or 0)
+
+            net_line_tot = max(0.0, round(line_gross - line_disc, 2))
+
+            # Adjust any remaining 1-cent rounding difference on the last line so sum exactly matches net total paid
+            if idx == len(lines_list) - 1 and sum_gross > 0 and net_expected_total > 0:
+                expected_last = round(net_expected_total - running_refund_sum, 2)
+                if expected_last >= 0:
+                    net_line_tot = expected_last
+                    line_disc = max(0.0, round(line_gross - net_line_tot, 2))
+
+            running_refund_sum += net_line_tot
+            unit_refund_rate = round(net_line_tot / qty, 2) if qty > 0 else unit_p
+
+            items_out.append({
+                "product_id": str(line.product_id) if line.product_id else None,
+                "product_name": line.product_name or "Product",
+                "product_sku": line.product_sku or "",
+                "hsn_code": line.hsn_code or "",
+                "batch_number": line.batch_number,
+                "quantity": qty,
+                "unit_price": unit_p,
+                "original_unit_price": unit_p,
+                "discount_amount": line_disc,
+                "unit_refund_rate": unit_refund_rate,
+                "tax_rate": float(line.tax_rate or 0),
+                "taxable_amount": float(line.taxable_amount or (unit_p * qty)),
+                "line_total": net_line_tot,
+                "gross_line_total": line_gross,
+            })
+
         return {
             "id": str(invoice.id),
             "invoice_number": invoice.invoice_number,
@@ -800,25 +862,15 @@ async def get_invoice_for_return(
             "customer_id": str(invoice.customer_id) if invoice.customer_id else None,
             "customer_gstin": invoice.customer_gstin or "",
             "status": invoice.status,
-            "subtotal": float(invoice.subtotal or 0),
+            "subtotal": inv_subtotal,
+            "discount_amount": inv_discount,
+            "discount_value": float(invoice.discount_value or 0),
+            "discount_type": invoice.discount_type or "percent",
+            "round_off": inv_round_off,
             "tax_amount": total_tax,
-            "total_amount": float(invoice.total_amount or 0),
-            "items": [
-                {
-                    "product_id": str(line.product_id) if line.product_id else None,
-                    "product_name": line.product_name or "Product",
-                    "product_sku": line.product_sku or "",
-                    "hsn_code": line.hsn_code or "",
-                    "batch_number": line.batch_number,
-                    "quantity": float(line.quantity),
-                    "unit_price": float(line.unit_price),
-                    "discount_amount": float(line.discount_amount or 0),
-                    "tax_rate": float(line.tax_rate or 0),
-                    "taxable_amount": float(line.taxable_amount or (line.unit_price * line.quantity)),
-                    "line_total": float(line.line_total or (line.unit_price * line.quantity)),
-                }
-                for line in (invoice.lines or [])
-            ],
+            "total_amount": inv_total,
+            "amount_paid": float(invoice.amount_paid or 0),
+            "items": items_out,
         }
 
     # Standalone POS Transaction fallback if no ERP invoice exists
@@ -857,6 +909,52 @@ async def get_invoice_for_return(
     cust_addr = pos_tx.customer.address if pos_tx.customer else ""
     cust_gst = pos_tx.customer.gst_number if pos_tx.customer else ""
 
+    pos_total = float(pos_tx.total_amount or 0)
+    pos_disc = float(pos_tx.discount_amount or 0)
+    pos_items_list = pos_tx.items or []
+    pos_sum_gross = sum(float(it.unit_price or 0) * float(it.quantity or 1) for it in pos_items_list)
+    pos_expected_total = pos_total if pos_total > 0 else max(0.0, pos_sum_gross - pos_disc)
+    pos_total_disc_apportion = max(0.0, round(pos_sum_gross - pos_expected_total, 2))
+
+    pos_items_out = []
+    pos_running_refund = 0.0
+    for idx, it in enumerate(pos_items_list):
+        qty = float(it.quantity or 1)
+        unit_p = float(it.unit_price or 0)
+        line_gross = round(qty * unit_p, 2)
+
+        if pos_sum_gross > 0 and pos_total_disc_apportion > 0:
+            line_disc = round(pos_total_disc_apportion * (line_gross / pos_sum_gross), 2)
+        else:
+            line_disc = float(it.discount or 0)
+
+        net_line_tot = max(0.0, round(line_gross - line_disc, 2))
+        if idx == len(pos_items_list) - 1 and pos_sum_gross > 0 and pos_expected_total > 0:
+            expected_last = round(pos_expected_total - pos_running_refund, 2)
+            if expected_last >= 0:
+                net_line_tot = expected_last
+                line_disc = max(0.0, round(line_gross - net_line_tot, 2))
+
+        pos_running_refund += net_line_tot
+        unit_refund_rate = round(net_line_tot / qty, 2) if qty > 0 else unit_p
+
+        pos_items_out.append({
+            "product_id": str(it.product_id) if it.product_id else None,
+            "product_name": prod_map.get(it.product_id, {}).get("name") or "Store Product",
+            "product_sku": prod_map.get(it.product_id, {}).get("sku") or "",
+            "hsn_code": prod_map.get(it.product_id, {}).get("hsn_code") or "",
+            "batch_number": None,
+            "quantity": qty,
+            "unit_price": unit_p,
+            "original_unit_price": unit_p,
+            "discount_amount": line_disc,
+            "unit_refund_rate": unit_refund_rate,
+            "tax_rate": 0,
+            "taxable_amount": float(it.subtotal or line_gross),
+            "line_total": net_line_tot,
+            "gross_line_total": line_gross,
+        })
+
     return {
         "id": str(pos_tx.id),
         "invoice_number": pos_tx.receipt_number,
@@ -871,24 +969,11 @@ async def get_invoice_for_return(
         "customer_gstin": cust_gst,
         "status": pos_tx.status,
         "subtotal": float(pos_tx.subtotal or 0),
+        "discount_amount": pos_disc,
+        "round_off": 0.0,
         "tax_amount": float(pos_tx.tax_amount or 0),
-        "total_amount": float(pos_tx.total_amount or 0),
-        "items": [
-            {
-                "product_id": str(it.product_id) if it.product_id else None,
-                "product_name": prod_map.get(it.product_id, {}).get("name") or "Store Product",
-                "product_sku": prod_map.get(it.product_id, {}).get("sku") or "",
-                "hsn_code": prod_map.get(it.product_id, {}).get("hsn_code") or "",
-                "batch_number": None,
-                "quantity": float(it.quantity or 1),
-                "unit_price": float(it.unit_price or 0),
-                "discount_amount": float(it.discount or 0),
-                "tax_rate": 0,
-                "taxable_amount": float(it.subtotal or (it.unit_price * it.quantity)),
-                "line_total": float(it.subtotal or (it.unit_price * it.quantity)),
-            }
-            for it in (pos_tx.items or [])
-        ],
+        "total_amount": pos_total,
+        "items": pos_items_out,
     }
 
 

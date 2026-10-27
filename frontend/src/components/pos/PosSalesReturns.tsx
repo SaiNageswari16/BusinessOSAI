@@ -352,6 +352,9 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
           customer_name: inv.customer_name || inv.customer?.name || (matchingPos?.customer?.name) || "Walk-in Guest",
           customer_phone: inv.customer_phone || inv.customer?.phone || (matchingPos?.customer?.phone) || "",
           customer_address: inv.billing_address || inv.customer?.address || "",
+          subtotal: Number(inv.subtotal || (matchingPos ? matchingPos.subtotal : 0) || 0),
+          discount_amount: Number(inv.discount_amount || (matchingPos ? matchingPos.discount_amount : 0) || 0),
+          round_off: Number(inv.round_off || 0),
           total_amount: Number(inv.total_amount || (matchingPos ? matchingPos.total_amount : 0) || 0),
           items: (inv.lines && inv.lines.length > 0) ? inv.lines : (inv.items || matchingPos?.items || []),
         });
@@ -376,6 +379,8 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
           customer_name: pos.customer?.name || "Walk-in Guest",
           customer_phone: pos.customer?.phone || "",
           customer_address: pos.customer?.address || "",
+          subtotal: Number(pos.subtotal || 0),
+          discount_amount: Number(pos.discount_amount || 0),
           total_amount: Number(pos.total_amount || 0),
           created_at: pos.created_at,
           invoice_date: pos.created_at ? pos.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
@@ -498,23 +503,64 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
           discount_amount: 0,
           subtotal: tot,
           line_total: tot,
+          gross_line_total: tot,
         },
       ];
     }
-    return raw.map((it: any, idx: number) => {
+
+    // 1. Calculate sum of raw gross line values
+    let sumGross = 0;
+    const prepped = raw.map((it: any, idx: number) => {
       const pQty = Number(it.quantity || it.qty || 1);
       const pRate = Number(it.unit_price || it.price || it.rate || 0);
       const pTaxRate = (it.tax_rate !== undefined && it.tax_rate !== null)
         ? Number(it.tax_rate)
         : ((it.gst_rate !== undefined && it.gst_rate !== null) ? Number(it.gst_rate) : 0);
-      const pDiscount = Number(it.discount_amount || it.discount_value || it.discount || 0);
-      
-      const rawLineTotal = Number(it.line_total || it.total_amount);
-      const pLineTotal = (!isNaN(rawLineTotal) && rawLineTotal > 0)
-        ? rawLineTotal
-        : Math.max(0, pQty * pRate - pDiscount);
+      const pLineDiscount = Number(it.discount_amount || it.discount_value || it.discount || 0);
+      const lineGross = Number((pQty * pRate).toFixed(2));
+      sumGross += lineGross;
+      return {
+        it,
+        idx,
+        pQty,
+        pRate,
+        pTaxRate,
+        pLineDiscount,
+        lineGross,
+      };
+    });
 
-      const unitRefundRate = pQty > 0 ? (pLineTotal / pQty) : pRate;
+    // 2. Identify the true net amount the customer paid for this bill
+    const billedNetPaid = Number(
+      selectedBill.total_amount !== undefined
+        ? selectedBill.total_amount
+        : (selectedBill.grand_total !== undefined ? selectedBill.grand_total : selectedBill.total)
+    );
+    const billDiscountHeader = Number(selectedBill.discount_amount || 0);
+
+    // If customer paid less than sumGross, the difference is the total discount & deductions
+    const totalDiscountToApportion = (billedNetPaid > 0 && billedNetPaid < sumGross)
+      ? Number((sumGross - billedNetPaid).toFixed(2))
+      : billDiscountHeader;
+
+    let runningApportionedDiscount = 0;
+
+    return prepped.map(({ it, idx, pQty, pRate, pTaxRate, pLineDiscount, lineGross }) => {
+      let apportionedDiscount = 0;
+      if (sumGross > 0 && totalDiscountToApportion > 0) {
+        if (idx === prepped.length - 1) {
+          // Last item takes remainder to guarantee exact rounding to 0.01 matching billedNetPaid
+          apportionedDiscount = Math.max(0, Number((totalDiscountToApportion - runningApportionedDiscount).toFixed(2)));
+        } else {
+          apportionedDiscount = Number(((lineGross / sumGross) * totalDiscountToApportion).toFixed(2));
+          runningApportionedDiscount += apportionedDiscount;
+        }
+      } else {
+        apportionedDiscount = pLineDiscount;
+      }
+
+      const netLineTotal = Math.max(0, Number((lineGross - apportionedDiscount).toFixed(2)));
+      const unitRefundRate = pQty > 0 ? Number((netLineTotal / pQty).toFixed(2)) : pRate;
 
       return {
         id: it.id || it.product_id || `item-${idx}`,
@@ -524,28 +570,38 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
         hsn_code: it.hsn_code || it.hsn || "",
         batch_number: it.batch_number,
         purchased_qty: pQty,
-        unit_price: pRate,
-        unit_refund_rate: unitRefundRate,
+        unit_price: pRate, // Original undiscounted unit price
+        unit_refund_rate: unitRefundRate, // Actual net discounted unit rate
         tax_rate: pTaxRate,
-        discount_amount: pDiscount,
-        line_total: pLineTotal,
-        subtotal: Number(it.taxable_amount || (pTaxRate > 0 ? (pLineTotal / (1 + pTaxRate / 100)) : pLineTotal)),
+        discount_amount: apportionedDiscount, // Proportional discount allocated to this item
+        gross_line_total: lineGross,
+        line_total: netLineTotal, // Actual net amount paid for this line
+        subtotal: Number(it.taxable_amount || (pTaxRate > 0 ? (netLineTotal / (1 + pTaxRate / 100)) : netLineTotal)),
       };
     });
   }, [selectedBill]);
 
-  // Compute live return totals — refund strictly matches original billed invoice price
+  // Compute live return totals — refund strictly matches original billed invoice price after discount
   const returnTotals = useMemo(() => {
+    let gross_total = 0;
+    let discount_reversed = 0;
     let subtotal = 0;
     let tax_amount = 0;
     let restock_count = 0;
     let total_items = 0;
+    let total_refund = 0;
 
+    let allItemsSelected = true;
     selectedBillNormalizedItems.forEach((it) => {
       const state = returnItemsState[it.id];
+      if (!state || !state.selected || state.returned_qty < it.purchased_qty) {
+        allItemsSelected = false;
+      }
       if (state && state.selected && state.returned_qty > 0) {
         const itemRefundTotal = Number((it.unit_refund_rate * state.returned_qty).toFixed(2));
-        
+        const itemGross = Number((it.unit_price * state.returned_qty).toFixed(2));
+        const itemDisc = Math.max(0, Number((itemGross - itemRefundTotal).toFixed(2)));
+
         let itemTax = 0;
         let itemSubtotal = itemRefundTotal;
         if (it.tax_rate > 0) {
@@ -553,24 +609,37 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
           itemTax = Number((itemRefundTotal - itemSubtotal).toFixed(2));
         }
 
+        gross_total += itemGross;
+        discount_reversed += itemDisc;
         subtotal += itemSubtotal;
         tax_amount += itemTax;
+        total_refund += itemRefundTotal;
         total_items += state.returned_qty;
         if (state.restock_disposition === "restock") {
           restock_count += state.returned_qty;
         }
+      } else {
+        allItemsSelected = false;
       }
     });
 
-    const total_refund = Number((subtotal + tax_amount).toFixed(2));
+    const billedNetPaid = Number(selectedBill?.total_amount || selectedBill?.grand_total || 0);
+    // If 100% of all purchased items on the bill are selected, clamp total_refund to billedNetPaid exactly
+    if (allItemsSelected && billedNetPaid > 0 && selectedBillNormalizedItems.length > 0) {
+      total_refund = billedNetPaid;
+      discount_reversed = Math.max(0, Number((gross_total - billedNetPaid).toFixed(2)));
+    }
+
     return {
+      gross_total: Number(gross_total.toFixed(2)),
+      discount_reversed: Number(discount_reversed.toFixed(2)),
       subtotal: Number(subtotal.toFixed(2)),
       tax_amount: Number(tax_amount.toFixed(2)),
-      total_refund,
+      total_refund: Number(total_refund.toFixed(2)),
       restock_count,
       total_items,
     };
-  }, [selectedBillNormalizedItems, returnItemsState]);
+  }, [selectedBillNormalizedItems, returnItemsState, selectedBill]);
 
   // Compute live exchange totals
   const exchangeTotals = useMemo(() => {
@@ -709,6 +778,8 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
             itemTax = Number((lineTot - itemSubtotal).toFixed(2));
           }
 
+          const lineDisc = Math.max(0, Number(((it.unit_price - it.unit_refund_rate) * state.returned_qty).toFixed(2)));
+
           returnedItemsList.push({
             id: `ret-item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             product_id: it.product_id,
@@ -718,8 +789,9 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
             purchased_qty: it.purchased_qty,
             returned_qty: state.returned_qty,
             unit_price: it.unit_refund_rate,
+            original_unit_price: it.unit_price,
             tax_rate: it.tax_rate,
-            discount_amount: 0,
+            discount_amount: lineDisc,
             subtotal: itemSubtotal,
             tax_amount: itemTax,
             total_amount: lineTot,
@@ -735,8 +807,10 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
             batch_number: it.batch_number,
             quantity: state.returned_qty,
             unit_price: it.unit_refund_rate,
+            original_unit_price: it.unit_price,
             tax_rate: it.tax_rate,
             tax_amount: itemTax,
+            discount_amount: lineDisc,
             line_total: lineTot,
             reason: state.reason,
             disposition: state.restock_disposition,
@@ -754,6 +828,8 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
         settlement_method: settlementMethod,
         reason: returnNotes.trim() || "Customer Return",
         notes: returnNotes.trim() || undefined,
+        discount_amount: returnTotals.discount_reversed,
+        total_return_amount: returnTotals.total_refund,
         items: apiItems,
       };
 
@@ -848,9 +924,10 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
             sku: it.sku,
             purchased_qty: it.purchased_qty,
             returned_qty: state.returned_qty,
-            unit_price: it.unit_price,
+            unit_price: it.unit_refund_rate,
+            original_unit_price: it.unit_price,
             tax_rate: it.tax_rate,
-            discount_amount: 0,
+            discount_amount: Math.max(0, Number(((it.unit_price - it.unit_refund_rate) * state.returned_qty).toFixed(2))),
             subtotal: itemSubtotal,
             tax_amount: itemTax,
             total_amount: lineTot,
@@ -863,9 +940,11 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
             product_name: it.product_name,
             sku: it.sku,
             quantity: state.returned_qty,
-            unit_price: it.unit_price,
+            unit_price: it.unit_refund_rate,
+            original_unit_price: it.unit_price,
             tax_rate: it.tax_rate,
             tax_amount: itemTax,
+            discount_amount: Math.max(0, Number(((it.unit_price - it.unit_refund_rate) * state.returned_qty).toFixed(2))),
             line_total: lineTot,
             disposition: state.restock_disposition,
           });
@@ -888,6 +967,7 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
           original_invoice_number: selectedBill.invoice_number || selectedBill.receipt_number,
           customer_name: selectedBill.customer_name || selectedBill.customer?.name || "Customer",
           customer_phone: selectedBill.customer_phone || selectedBill.phone || "",
+          discount_amount: returnTotals.discount_reversed,
           settlement_method: exchangeSettlementMethod,
           reason: returnNotes.trim() || "Merchandise Exchange",
           notes: returnNotes.trim() || undefined,
@@ -1570,7 +1650,12 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
             </div>
 
             {/* Step 2: Select Items to Return */}
-            {selectedBill && (
+            {selectedBill && (() => {
+              const billedAmt = Number(selectedBill.total_amount || selectedBill.grand_total || 0);
+              const hasDiscountOnBill = returnTotals.discount_reversed > 0 || (Number(selectedBill.discount_amount || 0) > 0) || (billedAmt > 0 && billedAmt < returnTotals.gross_total);
+              const totalDiscountAmt = returnTotals.discount_reversed > 0 ? returnTotals.discount_reversed : (Number(selectedBill.discount_amount || 0) || (billedAmt > 0 && returnTotals.gross_total > billedAmt ? Number((returnTotals.gross_total - billedAmt).toFixed(2)) : 0));
+
+              return (
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -1579,10 +1664,45 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                       Check items, adjust returned quantity, select return reason, and set stock condition.
                     </p>
                   </div>
-                  <span className="text-xs font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
-                    Return Value: {formatCurrency(returnTotals.total_refund)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {hasDiscountOnBill && (
+                      <span className="text-[11px] font-bold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-full border border-purple-200">
+                        🏷️ Discounted Bill
+                      </span>
+                    )}
+                    <span className="text-xs font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
+                      Return Value: {formatCurrency(returnTotals.total_refund)}
+                    </span>
+                  </div>
                 </div>
+
+                {/* Discounted Bill Notice */}
+                {hasDiscountOnBill && (
+                  <div className="bg-gradient-to-r from-purple-50 via-indigo-50/60 to-purple-50 border border-purple-200/90 rounded-xl p-3.5 flex items-start gap-3 text-xs text-purple-950 shadow-2xs">
+                    <div className="p-1.5 rounded-lg bg-purple-600 text-white shrink-0 mt-0.5 shadow-xs">
+                      <Percent className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="font-extrabold text-purple-950 flex items-center gap-2">
+                        <span>Discounted Bill Notice — Net Refund Protection</span>
+                        <span className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-purple-200/70 text-purple-800">
+                          Auto-Apportioned
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-purple-800 leading-relaxed">
+                        This bill was billed with a discount. Customer paid{" "}
+                        <strong className="text-purple-950 font-mono">
+                          {formatCurrency(billedAmt || returnTotals.total_refund)}
+                        </strong>{" "}
+                        (Gross Items: <span className="font-mono">{formatCurrency(returnTotals.gross_total)}</span>, Total Discount:{" "}
+                        <span className="text-rose-600 font-bold font-mono">
+                          -{formatCurrency(totalDiscountAmt)}
+                        </span>
+                        ). Refund unit rates below are automatically calculated at the <strong>exact discounted rate</strong> paid by the customer, ensuring the refund matches what was billed.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="border border-slate-200 rounded-xl overflow-hidden">
                   <table className="w-full text-left text-xs text-slate-700">
@@ -1592,8 +1712,12 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                         <th className="py-3 px-3">Product Name & SKU</th>
                         <th className="py-3 px-3 text-center">Sold Qty</th>
                         <th className="py-3 px-3 text-center w-28">Return Qty</th>
-                        <th className="py-3 px-3 text-right">Unit Rate</th>
-                        <th className="py-3 px-3 text-right">Refund Total</th>
+                        <th className="py-3 px-3 text-right">Original Rate</th>
+                        {hasDiscountOnBill && (
+                          <th className="py-3 px-3 text-right text-purple-700">Discount Apportioned</th>
+                        )}
+                        <th className="py-3 px-3 text-right font-bold text-slate-900">Net Refund Rate</th>
+                        <th className="py-3 px-3 text-right font-bold text-rose-600">Refund Total</th>
                         <th className="py-3 px-3">Return Reason</th>
                         <th className="py-3 px-3">Inventory Condition</th>
                       </tr>
@@ -1609,6 +1733,7 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
 
                         const refundRate = it.unit_refund_rate || it.unit_price;
                         const lineTot = Number((refundRate * st.returned_qty).toFixed(2));
+                        const discountPerUnit = Math.max(0, Number((it.unit_price - refundRate).toFixed(2)));
 
                         return (
                           <tr
@@ -1656,10 +1781,24 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                                 className="w-20 text-center py-1 text-xs font-bold border border-slate-200 rounded-lg bg-white disabled:bg-slate-100"
                               />
                             </td>
-                            <td className="py-3 px-3 text-right font-mono font-semibold">
+                            <td className="py-3 px-3 text-right font-mono font-medium text-slate-600">
+                              {formatCurrency(it.unit_price)}
+                            </td>
+                            {hasDiscountOnBill && (
+                              <td className="py-3 px-3 text-right font-mono font-bold text-purple-700">
+                                {discountPerUnit > 0 ? (
+                                  <span className="bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded text-[11px]">
+                                    -{formatCurrency(discountPerUnit)}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
+                              </td>
+                            )}
+                            <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">
                               {formatCurrency(refundRate)}
                             </td>
-                            <td className="py-3 px-3 text-right font-mono font-bold text-rose-600">
+                            <td className="py-3 px-3 text-right font-mono font-black text-rose-600">
                               {formatCurrency(lineTot)}
                             </td>
                             <td className="py-3 px-3">
@@ -1710,7 +1849,20 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                     Selected: <span className="font-bold text-slate-900">{returnTotals.total_items} item(s)</span> (
                     <span className="font-bold text-emerald-600">{returnTotals.restock_count} restoring to inventory</span>)
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex flex-wrap items-center gap-4">
+                    {hasDiscountOnBill && (
+                      <>
+                        <div>
+                          Gross Items: <span className="font-mono font-bold text-slate-700">{formatCurrency(returnTotals.gross_total)}</span>
+                        </div>
+                        <div>
+                          Discount Deducted:{" "}
+                          <span className="font-mono font-bold text-purple-700">
+                            -{formatCurrency(returnTotals.discount_reversed)}
+                          </span>
+                        </div>
+                      </>
+                    )}
                     <div>
                       Taxable: <span className="font-mono font-bold">{formatCurrency(returnTotals.subtotal)}</span>
                     </div>
@@ -1718,7 +1870,7 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                       Tax Reversal:{" "}
                       <span className="font-mono font-bold text-emerald-600">{formatCurrency(returnTotals.tax_amount)}</span>
                     </div>
-                    <div>
+                    <div className="bg-rose-50 border border-rose-200 px-3 py-1 rounded-lg">
                       Return Credit Total:{" "}
                       <span className="font-mono font-black text-rose-600 text-sm">
                         {formatCurrency(returnTotals.total_refund)}
@@ -1727,7 +1879,8 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                   </div>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* Step 3 (FOR EXCHANGE ONLY): Select Replacement / Exchange Items */}
             {selectedBill && activeTab === "exchange" && (
