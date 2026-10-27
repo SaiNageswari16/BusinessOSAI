@@ -1277,9 +1277,9 @@ async def create_invoice(
         await db.execute(delete(InvoiceLine).where(InvoiceLine.invoice_id == existing_inv.id))
 
         # ── Party integrity guard ──
-        # When editing an invoice that is already linked to a customer, a request carrying a
-        # DIFFERENT customer (e.g. the POS terminal's currently-selected party) must not steal
-        # the invoice's party fields — that is what corrupted LTV for real customers.
+        # ── Party integrity guard ──
+        # When editing an invoice, accidental re-assignments from background context are prevented,
+        # but intentional edits (explicit edit mode or deliberate switch to Walk-in Customer) are allowed.
         current_cust_obj = None
         if existing_inv.customer_id:
             current_cust_obj = await db.scalar(
@@ -1297,7 +1297,10 @@ async def create_invoice(
             stored_name=existing_inv.customer_name,
             stored_phone=existing_inv.customer_phone,
         )
-        if not party_same:
+
+        allow_party_change = is_explicit_edit or is_generic_walkin
+
+        if not party_same and not allow_party_change:
             logger.warning(
                 "Blocked party re-assignment on invoice %s: request customer_id=%s (party %r/%r) "
                 "does not match current customer %s (%s)",
@@ -1308,13 +1311,16 @@ async def create_invoice(
 
         for k, v in inv_data.items():
             if k not in ("id", "created_at", "tenant_id"):
-                # Never overwrite existing valid customer details with null or empty values
                 if k in PARTY_FIELDS:
-                    if not party_same:
+                    if not party_same and not allow_party_change:
                         continue  # keep the existing linked party untouched
-                    if v is None or (isinstance(v, str) and not v.strip()):
-                        if getattr(existing_inv, k, None):
-                            continue
+                    # When intentionally switching to Walk-in, clear out customer_id, customer_gstin, customer_email
+                    if is_generic_walkin and k in ("customer_id", "customer_gstin", "customer_email"):
+                        setattr(existing_inv, k, None)
+                        continue
+                    if is_generic_walkin and k == "customer_name":
+                        setattr(existing_inv, k, "Walk-in Customer")
+                        continue
                 setattr(existing_inv, k, v)
         invoice = existing_inv
     elif existing_inv and not is_explicit_edit:
@@ -1709,18 +1715,19 @@ async def update_invoice(
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
-    if invoice.status in ("paid", "voided", "cancelled"):
+    if invoice.status in ("voided", "cancelled"):
         raise HTTPException(status_code=400, detail=f"Cannot update a {invoice.status} invoice")
 
     updates = payload.model_dump(exclude_unset=True, exclude={"lines"})
 
     # ── Party integrity guard ──
-    # Party fields may only be changed to a coherent party (explicit customer_id that
-    # aligns with name/phone, or same identity). A payload that merely repeats a DIFFERENT
-    # customer's details — e.g. an active POS party — must not re-assign the billed party.
+    # Party fields may only be changed to a coherent party or intentionally switched to Walk-in Customer.
     party_keys_touched = [k for k in updates if k in PARTY_FIELDS]
     keep_party = False
-    if party_keys_touched:
+    new_cust_name = str(updates.get("customer_name") or "").strip().lower()
+    is_walkin_change = new_cust_name in ("walk-in customer", "walk-in guest", "walk-in", "walkin customer", "walkin", "cash customer", "guest")
+
+    if party_keys_touched and not is_walkin_change:
         current_cust_obj = None
         if invoice.customer_id:
             current_cust_obj = await db.scalar(
@@ -1747,6 +1754,12 @@ async def update_invoice(
     old_values = {k: getattr(invoice, k) for k in updates}
     for key, value in updates.items():
         if keep_party and key in PARTY_FIELDS:
+            continue
+        if is_walkin_change and key in ("customer_id", "customer_gstin", "customer_email"):
+            setattr(invoice, key, None)
+            continue
+        if is_walkin_change and key == "customer_name":
+            setattr(invoice, key, "Walk-in Customer")
             continue
         setattr(invoice, key, value)
 

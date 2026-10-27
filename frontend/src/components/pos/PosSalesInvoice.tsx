@@ -4624,14 +4624,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const isRecreateMode = Boolean(isRecreatingInvoice);
 
       // ── Party integrity lock ──
-      // Re-saving an EXISTING bill (edit mode / settlement flow) must keep the ORIGINAL
-      // billed party. The POS terminal's currently-selected customer must never
-      // re-attribute another customer's invoice — that is what corrupted LTV / order
-      // counts ("hijacked by ABC"). Backend mirrors this: a mismatched party payload is
-      // ignored for invoices already linked to a customer.
-      const lockSrc = (settlingInvoice && !isRecreatingInvoice)
-        ? settlingInvoice
-        : (isEditMode ? (activeEditingInvoice || editingInvoice) : null);
+      // Locking is only applied when settling an invoice through the quick collect dialog.
+      // In explicit invoice EDIT mode, the user is intentionally changing invoice details,
+      // including switching the customer to Walk-in Customer or another party.
+      const lockSrc = (settlingInvoice && !isRecreatingInvoice) ? settlingInvoice : null;
       const lockedParty: { id: string | null; name: string; phone: string | null; email: string | null; gst: string | null } | null =
         lockSrc && (lockSrc.customer_id || lockSrc.customer_name)
           ? {
@@ -4723,11 +4719,21 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           print_template_id: currentTemplateId,
           template_id: currentTemplateId,
         },
-        customer_id: lockedParty ? (lockedParty.id && isValidUUID(lockedParty.id) ? lockedParty.id : null) : ((customer?.id && isValidUUID(customer.id)) ? customer.id : null),
-        customer_name: lockedParty ? lockedParty.name : (customer?.name || "Walk-in Customer"),
-        customer_phone: lockedParty ? (lockedParty.phone ?? null) : (customer?.phone || null),
-        customer_email: lockedParty ? (lockedParty.email ?? null) : (customer?.email || null),
-        customer_gstin: lockedParty ? (lockedParty.gst ?? null) : (selectedBillingAddress?.gst_number || customer?.gst_number || null),
+        customer_id: lockedParty
+          ? (lockedParty.id && isValidUUID(lockedParty.id) ? lockedParty.id : null)
+          : (isWalkIn ? null : ((customer?.id && isValidUUID(customer.id)) ? customer.id : null)),
+        customer_name: lockedParty
+          ? lockedParty.name
+          : (isWalkIn ? "Walk-in Customer" : (customer?.name || "Walk-in Customer")),
+        customer_phone: lockedParty
+          ? (lockedParty.phone ?? null)
+          : (customer?.phone || null),
+        customer_email: lockedParty
+          ? (lockedParty.email ?? null)
+          : (isWalkIn ? null : (customer?.email || null)),
+        customer_gstin: lockedParty
+          ? (lockedParty.gst ?? null)
+          : (isWalkIn ? null : (selectedBillingAddress?.gst_number || customer?.gst_number || null)),
         billing_address: formattedBillingAddress,
         shipping_address: formattedShippingAddress,
         invoice_date: invoiceDate,
