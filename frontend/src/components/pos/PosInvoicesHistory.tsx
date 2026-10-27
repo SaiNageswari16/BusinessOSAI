@@ -678,9 +678,10 @@ export function PosInvoicesHistory() {
       // 2. Fetch remote ERP Invoices & POS transaction history from Backend API in parallel
       let invoiceItems: any[] = [];
       let posItems: any[] = [];
+      const activeCid = currentCompanyId && currentCompanyId !== "default" ? currentCompanyId : undefined;
       try {
         const [apiRes, posHist]: [any, any] = await Promise.all([
-          invoicesApi.listInvoices({ page_size: 1000 }).catch(() => null),
+          invoicesApi.listInvoices({ page_size: 1000, company_id: activeCid }).catch(() => null),
           posApi.getHistory({ limit: 500 }).catch(() => null),
         ]);
         invoiceItems = apiRes?.items || apiRes?.data?.items || apiRes?.data || (Array.isArray(apiRes) ? apiRes : []);
@@ -700,6 +701,10 @@ export function PosInvoicesHistory() {
       }
         if (Array.isArray(invoiceItems) && invoiceItems.length > 0) {
           invoiceItems.forEach((inv: any) => {
+            // Strictly guard: only process invoices belonging to the active company
+            if (activeCid && inv.company_id && String(inv.company_id) !== String(activeCid)) {
+              return;
+            }
             const invNum = String(inv.invoice_number || "").toUpperCase();
             const invType = String(inv.invoice_type || inv.doc_type || "").toUpperCase();
             const isQuote = invType === "QUOTATION" || invNum.startsWith("QT-");
@@ -872,8 +877,8 @@ export function PosInvoicesHistory() {
               secondary_number: secondaryNumber,
               is_thermal: isThermal,
               print_mode: isThermal ? "thermal" : "a4",
-              customer_name: inv.customer_name || inv.customer?.name || (matchedTx?.customer?.name) || (localMatch?.customer_name && localMatch.customer_name !== "Walk-in Customer" ? localMatch.customer_name : "") || "Walk-in Customer",
-              customer_phone: inv.customer?.phone || inv.customer_phone || (matchedTx?.customer?.phone) || (localMatch?.customer_phone || ""),
+              customer_name: inv.customer_name || inv.customer?.name || (matchedTx?.customer?.name) || (localMatch && (!localMatch.company_id || String(localMatch.company_id) === String(inv.company_id)) ? localMatch.customer_name : "") || "Walk-in Customer",
+              customer_phone: inv.customer?.phone || inv.customer_phone || (matchedTx?.customer?.phone) || (localMatch && (!localMatch.company_id || String(localMatch.company_id) === String(inv.company_id)) ? localMatch.customer_phone : "") || "",
               customer_email: inv.customer?.email || inv.customer_email || (matchedTx?.customer?.email) || (localMatch?.customer_email || ""),
               customer_company: inv.customer?.company || inv.customer_company || (localMatch?.customer_company || ""),
               customer_gstin: inv.customer?.tax_number || inv.customer?.gst_number || inv.customer_gstin || (localMatch?.customer_gstin || ""),
@@ -1027,6 +1032,10 @@ export function PosInvoicesHistory() {
 
       localRecords.forEach((inv) => {
         if (!inv) return;
+        // Strict tenant isolation guard for local storage
+        if (activeCid && (inv as any).company_id && String((inv as any).company_id) !== String(activeCid)) {
+          return;
+        }
         const invNum = inv.invoice_number;
         const refNum = (inv as any).reference_number;
         const recNum = (inv as any).receipt_number;
@@ -1039,6 +1048,12 @@ export function PosInvoicesHistory() {
           (id && aliasMap.get(String(id).toLowerCase().trim()));
 
         if (remote) {
+          if (activeCid && remote.company_id && String(remote.company_id) !== String(activeCid)) {
+            return;
+          }
+          if ((inv as any).company_id && remote.company_id && String((inv as any).company_id) !== String(remote.company_id)) {
+            return;
+          }
           if ((inv as any).print_status) {
             remote.print_status = (inv as any).print_status;
           }
@@ -1061,7 +1076,7 @@ export function PosInvoicesHistory() {
           if ((inv as any).invoice_type) remote.invoice_type = (inv as any).invoice_type;
           if ((inv as any).is_credit_note !== undefined) remote.is_credit_note = (inv as any).is_credit_note;
           if ((inv as any).payments) remote.payments = (inv as any).payments;
-          if (inv.customer_name && inv.customer_name !== "Walk-in Customer" && (!remote.customer_name || remote.customer_name === "Walk-in Customer")) {
+          if (inv.customer_name && !remote.customer_name) {
             remote.customer_name = inv.customer_name;
           }
           if (inv.customer_phone && !remote.customer_phone) {

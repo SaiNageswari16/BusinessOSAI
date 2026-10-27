@@ -253,7 +253,8 @@ export function WhatsappCampaigns() {
     void fetchSessions();
     void fetchLeads();
     void fetchAutomationSettings();
-  }, [tenant?.id]);
+  }, [tenant?.id, (tenant as any)?.company_id, tenant?.name]);
+
 
   const fetchActiveChats = async () => {
     if (!activeSessionId) return;

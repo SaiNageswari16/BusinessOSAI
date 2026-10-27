@@ -26,7 +26,7 @@ try:
 except ImportError:
     FPDF = None
 
-from src.models import Tenant, Customer, Lead, LeadActivity, CRMQuotation
+from src.models import Tenant, Customer, Lead, LeadActivity, CRMQuotation, Company
 from src.services.invoice_pdf import get_active_invoice_template
 from src.utils.email import send_email
 from src.utils.notifications import add_system_notification
@@ -453,11 +453,23 @@ async def send_quotation_whatsapp(
     if len(clean_phone) == 10 and not clean_phone.startswith("91"):
         clean_phone = f"91{clean_phone}"
 
-    tenant = await db.get(Tenant, quote.tenant_id)
-    tenant_allowed_sessions = list((tenant.settings or {}).get("whatsapp_web_sessions") or []) if tenant else []
-    session_id = await _get_gateway_session_id(tenant_allowed_sessions)
+    allowed_sessions = []
+    comp_id = getattr(quote, "company_id", None)
+    if comp_id:
+        comp = await db.get(Company, comp_id)
+        if comp and comp.whatsapp_settings:
+            allowed_sessions = list(comp.whatsapp_settings.get("whatsapp_web_sessions") or [])
+    if not allowed_sessions:
+        first_comp_id = await db.scalar(
+            select(Company.id).where(Company.tenant_id == quote.tenant_id).order_by(Company.created_at.asc()).limit(1)
+        )
+        if not comp_id or comp_id == first_comp_id:
+            tenant = await db.get(Tenant, quote.tenant_id)
+            allowed_sessions = list((tenant.settings or {}).get("whatsapp_web_sessions") or []) if tenant else []
+
+    session_id = await _get_gateway_session_id(allowed_sessions)
     if not session_id:
-        raise QuotationSendError("No active WhatsApp session connected for this organization. Please connect WhatsApp from CRM -> WhatsApp Automation.")
+        raise QuotationSendError("No active WhatsApp session connected for this organization workspace. Please connect WhatsApp from CRM -> WhatsApp Automation.")
 
     # Reuse the exact saved PDF from disk
     pdf_bytes, file_path = await get_or_create_quotation_pdf(quote, db, force_regenerate=False)

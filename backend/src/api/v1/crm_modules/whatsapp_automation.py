@@ -3,16 +3,16 @@ import uuid
 import logging
 import httpx
 from datetime import datetime, timezone
-from typing import Annotated, Dict, Any, List
+from typing import Annotated, Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from pydantic import BaseModel, Field
-from sqlalchemy import select, update
+from sqlalchemy import select, update, or_
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.session import get_db
 from src.api.deps import CurrentUserContext, require_permission
-from src.models import Tenant, User, Lead, LeadActivity
+from src.models import Tenant, User, Lead, LeadActivity, Company
 from src.utils.clock import clock
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,21 @@ def _gateway_client() -> httpx.AsyncClient:
     """Return a fresh httpx client with correct transport for local gateway."""
     transport = httpx.AsyncHTTPTransport(retries=1)
     return httpx.AsyncClient(transport=transport, timeout=10.0)
+
+
+async def _resolve_company_for_ctx(ctx: CurrentUserContext, db: AsyncSession) -> Optional[Company]:
+    """Resolve the active Company for the current user context, strictly scoped to current tenant."""
+    if ctx.active_company_id:
+        comp = await db.get(Company, ctx.active_company_id)
+        if comp and comp.tenant_id == ctx.tenant_id:
+            return comp
+    comp = await db.scalar(
+        select(Company)
+        .where(Company.tenant_id == ctx.tenant_id)
+        .order_by(Company.created_at.asc())
+        .limit(1)
+    )
+    return comp
 
 
 
@@ -81,44 +96,63 @@ async def inbound_webhook(
     if not session_id or not from_phone:
         return {"success": False, "detail": "Invalid session_id or phone number"}
 
-    # 1. Match Tenant by session_id in settings
-    matched_tenant = None
-    res = await db.execute(select(Tenant))
-    tenants = res.scalars().all()
-    for t in tenants:
-        if t.settings and isinstance(t.settings, dict):
-            active_sessions = t.settings.get("whatsapp_web_sessions") or []
-            if session_id in active_sessions or (session_id.startswith("91") and session_id[2:] in active_sessions) or (f"91{session_id}" in active_sessions):
-                matched_tenant = t
+    # 1. Match Company by session_id in Company.whatsapp_settings
+    matched_company = None
+    matched_tenant_id = None
+
+    comp_res = await db.execute(select(Company))
+    companies = comp_res.scalars().all()
+    for c in companies:
+        if c.whatsapp_settings and isinstance(c.whatsapp_settings, dict):
+            c_sessions = c.whatsapp_settings.get("whatsapp_web_sessions") or []
+            if session_id in c_sessions or (session_id.startswith("91") and session_id[2:] in c_sessions) or (f"91{session_id}" in c_sessions):
+                matched_company = c
+                matched_tenant_id = c.tenant_id
                 break
 
-    if not matched_tenant:
-        logger.warning(f"Session {session_id} is not mapped to any Tenant settings. Rejecting webhook to prevent cross-tenant leak.")
+    # Fallback to Tenant.settings for legacy backwards compatibility
+    if not matched_tenant_id:
+        t_res = await db.execute(select(Tenant))
+        for t in t_res.scalars().all():
+            if t.settings and isinstance(t.settings, dict):
+                t_sessions = t.settings.get("whatsapp_web_sessions") or []
+                if session_id in t_sessions or (session_id.startswith("91") and session_id[2:] in t_sessions) or (f"91{session_id}" in t_sessions):
+                    matched_tenant_id = t.id
+                    matched_company = await db.scalar(
+                        select(Company).where(Company.tenant_id == t.id).order_by(Company.created_at.asc()).limit(1)
+                    )
+                    break
+
+    if not matched_tenant_id:
+        logger.warning(f"Session {session_id} is not mapped to any workspace settings. Rejecting webhook to prevent cross-tenant/workspace leak.")
         return {"success": False, "detail": "Session not mapped to any organization"}
 
-    # 2. Match (or create) Lead by clean phone number
-    stmt = select(Lead).where(
-        Lead.tenant_id == matched_tenant.id,
-        Lead.phone == from_phone
-    )
+    # 2. Match (or create) Lead strictly scoped to matched tenant and company
+    lead_filter = [Lead.tenant_id == matched_tenant_id, Lead.phone == from_phone]
+    if matched_company:
+        lead_filter.append(or_(Lead.company_id == matched_company.id, Lead.company_id == None))
+
+    stmt = select(Lead).where(*lead_filter).order_by(Lead.created_at.desc())
     res = await db.execute(stmt)
     lead = res.scalars().first()
 
     if not lead:
-        # Resolve owner agent if mapped
+        # Resolve owner agent if mapped in company settings
         owner_agent_id = None
-        if matched_tenant.settings and isinstance(matched_tenant.settings, dict):
-            agent_sessions = matched_tenant.settings.get("agent_whatsapp_sessions") or {}
-            agent_str = agent_sessions.get(session_id)
-            if agent_str:
-                try:
-                    owner_agent_id = uuid.UUID(agent_str)
-                except ValueError:
-                    pass
+        agent_sessions = {}
+        if matched_company and matched_company.whatsapp_settings:
+            agent_sessions = matched_company.whatsapp_settings.get("agent_whatsapp_sessions") or {}
+        agent_str = agent_sessions.get(session_id) or agent_sessions.get(session_id[2:] if session_id.startswith("91") else f"91{session_id}")
+        if agent_str:
+            try:
+                owner_agent_id = uuid.UUID(agent_str)
+            except ValueError:
+                pass
 
-        # Create new Lead
+        # Create new Lead with strict workspace attribution
         lead = Lead(
-            tenant_id=matched_tenant.id,
+            tenant_id=matched_tenant_id,
+            company_id=matched_company.id if matched_company else None,
             name=payload.profile_name or f"WhatsApp Guest ({from_phone})",
             phone=from_phone,
             source="WhatsApp",
@@ -130,11 +164,11 @@ async def inbound_webhook(
         db.add(lead)
         await db.commit()
         await db.refresh(lead)
-        logger.info(f"🆕 Created new Lead from WhatsApp webhook: {lead.name} ({from_phone})")
+        logger.info(f"🆕 Created new Lead from WhatsApp webhook: {lead.name} ({from_phone}) in workspace {matched_company.name if matched_company else 'N/A'}")
 
     # 3. Log Activity as LeadActivity (whatsapp_received)
     activity = LeadActivity(
-        tenant_id=matched_tenant.id,
+        tenant_id=matched_tenant_id,
         lead_id=lead.id,
         activity_type="whatsapp_received",
         summary=payload.body[:500], # crm_lead_activities summary is varchar(500)
@@ -143,6 +177,7 @@ async def inbound_webhook(
     db.add(activity)
     await db.commit()
     return {"success": True, "lead_id": str(lead.id)}
+
 
 
 # Session Management Proxy Endpoints
@@ -157,49 +192,65 @@ async def start_session(
     if not clean_id:
         raise HTTPException(status_code=400, detail="Invalid session_id format")
 
-    # Disassociate session from any other tenant to ensure strict uniqueness
-    other_tenants_res = await db.execute(select(Tenant).where(Tenant.id != ctx.tenant_id))
-    other_tenants = other_tenants_res.scalars().all()
-    for ot in other_tenants:
-        if ot.settings and isinstance(ot.settings, dict):
-            ot_settings = dict(ot.settings)
-            ot_sessions = list(ot_settings.get("whatsapp_web_sessions") or [])
-            ot_agent_sessions = dict(ot_settings.get("agent_whatsapp_sessions") or {})
+    comp = await _resolve_company_for_ctx(ctx, db)
+    if not comp:
+        raise HTTPException(status_code=404, detail="Active company workspace not found")
+
+    # 1. Disassociate session from any other company to ensure strict 1-to-1 workspace mapping
+    other_comps_res = await db.execute(select(Company).where(Company.id != comp.id))
+    for oc in other_comps_res.scalars().all():
+        if oc.whatsapp_settings and isinstance(oc.whatsapp_settings, dict):
+            oc_ws = dict(oc.whatsapp_settings)
+            oc_sessions = list(oc_ws.get("whatsapp_web_sessions") or [])
+            oc_agents = dict(oc_ws.get("agent_whatsapp_sessions") or {})
             changed = False
             for num_var in (clean_id, clean_id[2:] if clean_id.startswith("91") else None, f"91{clean_id}"):
-                if num_var and num_var in ot_sessions:
-                    ot_sessions.remove(num_var)
+                if num_var and num_var in oc_sessions:
+                    oc_sessions.remove(num_var)
                     changed = True
-                if num_var and num_var in ot_agent_sessions:
-                    del ot_agent_sessions[num_var]
+                if num_var and num_var in oc_agents:
+                    del oc_agents[num_var]
                     changed = True
             if changed:
-                ot_settings["whatsapp_web_sessions"] = ot_sessions
-                ot_settings["agent_whatsapp_sessions"] = ot_agent_sessions
-                ot.settings = ot_settings
-                flag_modified(ot, "settings")
+                oc_ws["whatsapp_web_sessions"] = oc_sessions
+                oc_ws["agent_whatsapp_sessions"] = oc_agents
+                oc.whatsapp_settings = oc_ws
+                flag_modified(oc, "whatsapp_settings")
 
-    # Load and update Tenant settings
-    stmt = select(Tenant).where(Tenant.id == ctx.tenant_id)
-    res = await db.execute(stmt)
-    tenant = res.scalars().first()
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    # Clean legacy session list in tenant settings if present
+    tenant = await db.get(Tenant, ctx.tenant_id)
+    if tenant and tenant.settings:
+        t_settings = dict(tenant.settings)
+        t_sessions = list(t_settings.get("whatsapp_web_sessions") or [])
+        t_agents = dict(t_settings.get("agent_whatsapp_sessions") or {})
+        changed = False
+        for num_var in (clean_id, clean_id[2:] if clean_id.startswith("91") else None, f"91{clean_id}"):
+            if num_var and num_var in t_sessions:
+                t_sessions.remove(num_var)
+                changed = True
+            if num_var and num_var in t_agents:
+                del t_agents[num_var]
+                changed = True
+        if changed:
+            t_settings["whatsapp_web_sessions"] = t_sessions
+            t_settings["agent_whatsapp_sessions"] = t_agents
+            tenant.settings = t_settings
+            flag_modified(tenant, "settings")
 
-    settings = dict(tenant.settings or {})
-    
-    # Store session ownership map
-    active_sessions = list(settings.get("whatsapp_web_sessions") or [])
+    # 2. Store session ownership into active company settings
+    comp_ws = dict(comp.whatsapp_settings or {})
+    active_sessions = list(comp_ws.get("whatsapp_web_sessions") or [])
     if clean_id not in active_sessions:
         active_sessions.append(clean_id)
-    settings["whatsapp_web_sessions"] = active_sessions
+    comp_ws["whatsapp_web_sessions"] = active_sessions
+    comp_ws["whatsapp_session_id"] = clean_id
 
-    agent_sessions = dict(settings.get("agent_whatsapp_sessions") or {})
+    agent_sessions = dict(comp_ws.get("agent_whatsapp_sessions") or {})
     agent_sessions[clean_id] = str(ctx.user.id)
-    settings["agent_whatsapp_sessions"] = agent_sessions
+    comp_ws["agent_whatsapp_sessions"] = agent_sessions
 
-    tenant.settings = settings
-    flag_modified(tenant, "settings")
+    comp.whatsapp_settings = comp_ws
+    flag_modified(comp, "whatsapp_settings")
     await db.commit()
 
     # Proxy to NodeJS gateway
@@ -217,22 +268,31 @@ async def get_sessions(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))],
     db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(Tenant).where(Tenant.id == ctx.tenant_id)
-    res = await db.execute(stmt)
-    tenant = res.scalars().first()
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    comp = await _resolve_company_for_ctx(ctx, db)
+    if not comp:
+        return {}
 
-    settings = dict(tenant.settings or {})
-    db_sessions = list(settings.get("whatsapp_web_sessions") or [])
-    agent_sessions = dict(settings.get("agent_whatsapp_sessions") or {})
+    comp_ws = dict(comp.whatsapp_settings or {})
+    db_sessions = list(comp_ws.get("whatsapp_web_sessions") or [])
+    agent_sessions = dict(comp_ws.get("agent_whatsapp_sessions") or {})
 
-    # Agents only see their own active session
-    import src.models as models
-    from src.database.base import EntityStatus
+    # If this company has no sessions, and this is the tenant's primary company,
+    # adopt legacy sessions from Tenant.settings so existing setups are preserved
+    if not db_sessions and ctx.is_primary_company:
+        tenant = await db.get(Tenant, ctx.tenant_id)
+        if tenant and tenant.settings:
+            legacy_sessions = list(tenant.settings.get("whatsapp_web_sessions") or [])
+            if legacy_sessions:
+                db_sessions = legacy_sessions
+                agent_sessions = dict(tenant.settings.get("agent_whatsapp_sessions") or {})
+                comp_ws["whatsapp_web_sessions"] = db_sessions
+                comp_ws["agent_whatsapp_sessions"] = agent_sessions
+                comp.whatsapp_settings = comp_ws
+                flag_modified(comp, "whatsapp_settings")
+                await db.commit()
+
+    # Agents only see their own active session if not admin
     is_admin = False
-    
-    # Resolve user roles to see if admin/manager
     user_stmt = select(User).where(User.id == ctx.user.id)
     user_res = await db.execute(user_stmt)
     curr_user = user_res.scalars().first()
@@ -240,7 +300,6 @@ async def get_sessions(
         is_admin = True
 
     if not is_admin:
-        # Filter sessions owned by current user
         agent_id_str = str(ctx.user.id)
         db_sessions = [num for num in db_sessions if agent_sessions.get(num) == agent_id_str]
 
@@ -254,11 +313,10 @@ async def get_sessions(
     except Exception as e:
         logger.warning(f"Failed to fetch session list from gateway: {e}")
 
-    # Build responsive status object: strictly scoped to db_sessions of current tenant
+    # Build responsive status object: strictly scoped to db_sessions of current company workspace
     all_nums = list(dict.fromkeys(db_sessions))
     result = {}
     for num in all_nums:
-        # Match directly or by checking country code variant
         status_info = gateway_sessions.get(num)
         if not status_info:
             if num.startswith("91") and num[2:] in gateway_sessions:
@@ -268,7 +326,6 @@ async def get_sessions(
             else:
                 status_info = {"status": "DISCONNECTED", "qr": None, "info": None}
 
-        # Add owner metadata
         owner_agent_name = "System Auto-Assigned"
         owner_id = agent_sessions.get(num) or (agent_sessions.get(num[2:]) if num.startswith("91") else agent_sessions.get(f"91{num}"))
         if owner_id:
@@ -282,26 +339,28 @@ async def get_sessions(
             "status": status_info.get("status", "DISCONNECTED"),
             "qr": status_info.get("qr"),
             "info": status_info.get("info"),
-            "owner_name": owner_agent_name
+            "owner_name": owner_agent_name,
+            "company_id": str(comp.id),
+            "company_name": comp.name,
         }
     return result
 
 
 async def _verify_tenant_session(clean_id: str, ctx: CurrentUserContext, db: AsyncSession) -> bool:
-    """Verify that a given session ID belongs to the current tenant."""
-    stmt = select(Tenant).where(Tenant.id == ctx.tenant_id)
-    res = await db.execute(stmt)
-    tenant = res.scalars().first()
-    if not tenant or not tenant.settings:
-        return False
-    active_sessions = list(tenant.settings.get("whatsapp_web_sessions") or [])
-    # Check matching direct or with/without 91
-    if clean_id in active_sessions:
-        return True
-    if clean_id.startswith("91") and clean_id[2:] in active_sessions:
-        return True
-    if f"91{clean_id}" in active_sessions:
-        return True
+    """Verify that a given session ID belongs to the current company workspace."""
+    comp = await _resolve_company_for_ctx(ctx, db)
+    if comp and comp.whatsapp_settings:
+        active_sessions = list(comp.whatsapp_settings.get("whatsapp_web_sessions") or [])
+        for num_var in (clean_id, clean_id[2:] if clean_id.startswith("91") else None, f"91{clean_id}"):
+            if num_var and num_var in active_sessions:
+                return True
+    if ctx.is_primary_company:
+        tenant = await db.get(Tenant, ctx.tenant_id)
+        if tenant and tenant.settings:
+            active_sessions = list(tenant.settings.get("whatsapp_web_sessions") or [])
+            for num_var in (clean_id, clean_id[2:] if clean_id.startswith("91") else None, f"91{clean_id}"):
+                if num_var and num_var in active_sessions:
+                    return True
     return False
 
 
@@ -313,25 +372,46 @@ async def logout_session(
 ):
     clean_id = _clean_digits(session_id)
     
-    # Remove from Tenant settings
-    stmt = select(Tenant).where(Tenant.id == ctx.tenant_id)
-    res = await db.execute(stmt)
-    tenant = res.scalars().first()
-    if tenant:
-        settings = dict(tenant.settings or {})
-        active_sessions = list(settings.get("whatsapp_web_sessions") or [])
-        agent_sessions = dict(settings.get("agent_whatsapp_sessions") or {})
+    comp = await _resolve_company_for_ctx(ctx, db)
+    if comp and comp.whatsapp_settings:
+        comp_ws = dict(comp.whatsapp_settings)
+        active_sessions = list(comp_ws.get("whatsapp_web_sessions") or [])
+        agent_sessions = dict(comp_ws.get("agent_whatsapp_sessions") or {})
 
-        if clean_id in active_sessions:
-            active_sessions.remove(clean_id)
-        if clean_id in agent_sessions:
-            del agent_sessions[clean_id]
+        for num_var in (clean_id, clean_id[2:] if clean_id.startswith("91") else None, f"91{clean_id}"):
+            if num_var and num_var in active_sessions:
+                active_sessions.remove(num_var)
+            if num_var and num_var in agent_sessions:
+                del agent_sessions[num_var]
 
-        settings["whatsapp_web_sessions"] = active_sessions
-        settings["agent_whatsapp_sessions"] = agent_sessions
-        tenant.settings = settings
-        flag_modified(tenant, "settings")
+        comp_ws["whatsapp_web_sessions"] = active_sessions
+        comp_ws["agent_whatsapp_sessions"] = agent_sessions
+        if comp_ws.get("whatsapp_session_id") == clean_id:
+            comp_ws["whatsapp_session_id"] = ""
+        comp.whatsapp_settings = comp_ws
+        flag_modified(comp, "whatsapp_settings")
         await db.commit()
+
+    # Also clean from tenant settings if present
+    tenant = await db.get(Tenant, ctx.tenant_id)
+    if tenant and tenant.settings:
+        t_settings = dict(tenant.settings)
+        t_sessions = list(t_settings.get("whatsapp_web_sessions") or [])
+        t_agents = dict(t_settings.get("agent_whatsapp_sessions") or {})
+        changed = False
+        for num_var in (clean_id, clean_id[2:] if clean_id.startswith("91") else None, f"91{clean_id}"):
+            if num_var and num_var in t_sessions:
+                t_sessions.remove(num_var)
+                changed = True
+            if num_var and num_var in t_agents:
+                del t_agents[num_var]
+                changed = True
+        if changed:
+            t_settings["whatsapp_web_sessions"] = t_sessions
+            t_settings["agent_whatsapp_sessions"] = t_agents
+            tenant.settings = t_settings
+            flag_modified(tenant, "settings")
+            await db.commit()
 
     # Call NodeJS logout
     try:
@@ -341,6 +421,7 @@ async def logout_session(
     except Exception as e:
         logger.warning(f"Gateway logout failed for {clean_id}: {e}")
         return {"success": True, "message": "Cleared locally, gateway was unreachable."}
+
 
 
 @router.get("/sessions/{session_id}/contacts")
@@ -374,22 +455,25 @@ async def sync_contacts(
     if not is_valid:
         raise HTTPException(status_code=403, detail="Unauthorized access to this WhatsApp session.")
 
+    comp = await _resolve_company_for_ctx(ctx, db)
     imported_count = 0
     for item in payload.contacts:
         clean_phone = _clean_digits(item.number)
         if not clean_phone:
             continue
             
-        stmt = select(Lead).where(
-            Lead.tenant_id == ctx.tenant_id,
-            Lead.phone == clean_phone
-        )
+        lead_filter = [Lead.tenant_id == ctx.tenant_id, Lead.phone == clean_phone]
+        if comp:
+            lead_filter.append(or_(Lead.company_id == comp.id, Lead.company_id == None))
+
+        stmt = select(Lead).where(*lead_filter)
         res = await db.execute(stmt)
         lead = res.scalars().first()
         
         if not lead:
             lead = Lead(
                 tenant_id=ctx.tenant_id,
+                company_id=comp.id if comp else None,
                 name=item.name or f"WhatsApp Contact ({clean_phone})",
                 phone=clean_phone,
                 source="WhatsApp",
@@ -404,6 +488,7 @@ async def sync_contacts(
         await db.commit()
         
     return {"success": True, "message": f"Successfully imported {imported_count} contacts as CRM leads."}
+
 
 
 # Chat Messages Endpoint (Fetches live history from gateway first, falls back to DB)
@@ -485,10 +570,12 @@ async def send_message(
         raise HTTPException(status_code=400, detail="Cannot send empty message")
 
     # 1. Ensure Lead exists in Database
-    stmt = select(Lead).where(
-        Lead.tenant_id == ctx.tenant_id,
-        Lead.phone == clean_phone
-    )
+    comp = await _resolve_company_for_ctx(ctx, db)
+    lead_filter = [Lead.tenant_id == ctx.tenant_id, Lead.phone == clean_phone]
+    if comp:
+        lead_filter.append(or_(Lead.company_id == comp.id, Lead.company_id == None))
+
+    stmt = select(Lead).where(*lead_filter)
     res = await db.execute(stmt)
     lead = res.scalars().first()
 
@@ -496,6 +583,7 @@ async def send_message(
         # Create Lead
         lead = Lead(
             tenant_id=ctx.tenant_id,
+            company_id=comp.id if comp else None,
             name=f"WhatsApp Contact ({clean_phone})",
             phone=clean_phone,
             source="WhatsApp",
@@ -506,6 +594,7 @@ async def send_message(
         db.add(lead)
         await db.commit()
         await db.refresh(lead)
+
 
     # 2. Proxy to NodeJS gateway
     try:
@@ -574,16 +663,19 @@ async def send_media(
         )
 
     # 1. Ensure Lead exists in Database
-    stmt = select(Lead).where(
-        Lead.tenant_id == ctx.tenant_id,
-        Lead.phone == clean_phone
-    )
+    comp = await _resolve_company_for_ctx(ctx, db)
+    lead_filter = [Lead.tenant_id == ctx.tenant_id, Lead.phone == clean_phone]
+    if comp:
+        lead_filter.append(or_(Lead.company_id == comp.id, Lead.company_id == None))
+
+    stmt = select(Lead).where(*lead_filter)
     res = await db.execute(stmt)
     lead = res.scalars().first()
 
     if not lead:
         lead = Lead(
             tenant_id=ctx.tenant_id,
+            company_id=comp.id if comp else None,
             name=f"WhatsApp Contact ({clean_phone})",
             phone=clean_phone,
             source="WhatsApp",
@@ -594,6 +686,7 @@ async def send_media(
         db.add(lead)
         await db.commit()
         await db.refresh(lead)
+
 
     # 2. Proxy to NodeJS gateway (send raw mimeType + data + fileName + caption)
     try:
@@ -683,17 +776,9 @@ async def get_automation_settings(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("view:crm_leads"))],
     db: AsyncSession = Depends(get_db)
 ):
-    """Retrieve WhatsApp Master Toggle and Automated Dispatch Settings."""
-    from src.models import Company
-    stmt = select(Tenant).where(Tenant.id == ctx.tenant_id)
-    res = await db.execute(stmt)
-    tenant = res.scalars().first()
-
-    # Also look at active company
-    comp = None
-    comp_stmt = select(Company).where(Company.tenant_id == ctx.tenant_id)
-    comp_res = await db.execute(comp_stmt)
-    comp = comp_res.scalars().first()
+    """Retrieve WhatsApp Master Toggle and Automated Dispatch Settings for active workspace."""
+    comp = await _resolve_company_for_ctx(ctx, db)
+    tenant = await db.get(Tenant, ctx.tenant_id)
 
     tenant_settings = (tenant.settings or {}) if tenant else {}
     comp_settings = (comp.whatsapp_settings or {}) if (comp and comp.whatsapp_settings) else {}
@@ -730,36 +815,35 @@ async def update_automation_settings(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_leads"))],
     db: AsyncSession = Depends(get_db)
 ):
-    """Update WhatsApp Master Toggle and Automated Dispatch Settings across Company and Tenant."""
-    from src.models import Company
-    
-    # Update Tenant
-    stmt = select(Tenant).where(Tenant.id == ctx.tenant_id)
-    res = await db.execute(stmt)
-    tenant = res.scalars().first()
-    if tenant:
-        t_settings = dict(tenant.settings or {})
-        t_settings["whatsapp_enabled"] = payload.whatsapp_enabled
-        t_settings["whatsapp_settings"] = payload.whatsapp_settings
-        tenant.settings = t_settings
-        flag_modified(tenant, "settings")
-
-    # Update all Companies in this tenant
-    comp_stmt = select(Company).where(Company.tenant_id == ctx.tenant_id)
-    comp_res = await db.execute(comp_stmt)
-    companies = comp_res.scalars().all()
-    for comp in companies:
+    """Update WhatsApp Master Toggle and Automated Dispatch Settings for active workspace."""
+    comp = await _resolve_company_for_ctx(ctx, db)
+    if comp:
         comp.whatsapp_enabled = payload.whatsapp_enabled
-        comp.whatsapp_settings = payload.whatsapp_settings
+        comp_ws = dict(comp.whatsapp_settings or {})
+        comp_ws.update(payload.whatsapp_settings)
+        comp.whatsapp_settings = comp_ws
         flag_modified(comp, "whatsapp_settings")
+
+    # Also keep Tenant defaults aligned if primary workspace
+    if ctx.is_primary_company:
+        tenant = await db.get(Tenant, ctx.tenant_id)
+        if tenant:
+            t_settings = dict(tenant.settings or {})
+            t_settings["whatsapp_enabled"] = payload.whatsapp_enabled
+            current_t_wa = dict(t_settings.get("whatsapp_settings") or {})
+            current_t_wa.update(payload.whatsapp_settings)
+            t_settings["whatsapp_settings"] = current_t_wa
+            tenant.settings = t_settings
+            flag_modified(tenant, "settings")
 
     await db.commit()
     return {
         "success": True,
-        "message": "WhatsApp automation settings saved successfully.",
+        "message": f"WhatsApp automation settings saved for {comp.name if comp else 'workspace'}.",
         "whatsapp_enabled": payload.whatsapp_enabled,
         "whatsapp_settings": payload.whatsapp_settings
     }
+
 
 
 # ─── Template Management Endpoints ──────────────────────────────────────────

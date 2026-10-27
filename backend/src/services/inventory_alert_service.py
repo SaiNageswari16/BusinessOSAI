@@ -34,17 +34,26 @@ GATEWAY_URL = _raw_gateway_url.replace("localhost", "127.0.0.1")
 async def get_active_whatsapp_session(
     db: Optional[AsyncSession] = None,
     tenant_id: Optional[uuid.UUID] = None,
+    company_id: Optional[uuid.UUID] = None,
 ) -> Optional[str]:
     """
     Return the session ID of the CONNECTED or AUTHENTICATED WhatsApp session.
-    Strictly isolated per workspace/tenant when db and tenant_id are provided.
+    Strictly isolated per workspace/company and tenant when db and tenant_id are provided.
     """
     try:
         tenant_allowed_sessions = None
         if db is not None and tenant_id is not None:
-            tenant = await db.get(Tenant, tenant_id)
-            if tenant and tenant.settings:
-                tenant_allowed_sessions = tenant.settings.get("whatsapp_web_sessions") or []
+            if company_id:
+                comp = await db.get(Company, company_id)
+                if comp and comp.whatsapp_settings:
+                    c_sessions = list(comp.whatsapp_settings.get("whatsapp_web_sessions") or [])
+                    if c_sessions:
+                        tenant_allowed_sessions = c_sessions
+            if tenant_allowed_sessions is None:
+                # Fallback to primary company or tenant settings
+                tenant = await db.get(Tenant, tenant_id)
+                if tenant and tenant.settings:
+                    tenant_allowed_sessions = tenant.settings.get("whatsapp_web_sessions") or []
 
         async with httpx.AsyncClient(timeout=3.0) as http:
             resp = await http.get(f"{GATEWAY_URL}/sessions")
@@ -52,7 +61,7 @@ async def get_active_whatsapp_session(
                 return None
             sessions = resp.json()
 
-            # 1. Multi-tenant isolation: Check tenant's explicitly linked sessions
+            # 1. Multi-tenant / Multi-workspace isolation: Check explicitly linked sessions
             if tenant_allowed_sessions is not None:
                 for sid in tenant_allowed_sessions:
                     info = sessions.get(sid) or (sessions.get(sid[2:]) if sid.startswith("91") else sessions.get(f"91{sid}"))
@@ -60,7 +69,6 @@ async def get_active_whatsapp_session(
                         return sid
                 return None
 
-            # No tenant context or no tenant sessions configured
             return None
     except Exception as exc:
         logger.warning("[Inventory Alert] WhatsApp Gateway session check error: %s", exc)
@@ -72,10 +80,11 @@ async def send_whatsapp_alert_text(
     message: str,
     db: Optional[AsyncSession] = None,
     tenant_id: Optional[uuid.UUID] = None,
+    company_id: Optional[uuid.UUID] = None,
 ) -> Dict[str, Any]:
     """
     Directly dispatches a formatted text notification to a recipient WhatsApp number.
-    Ensures strict tenant session isolation.
+    Ensures strict workspace and tenant session isolation.
     """
     if not recipient_phone:
         return {"success": False, "error": "No recipient phone number provided"}
@@ -84,7 +93,8 @@ async def send_whatsapp_alert_text(
     if len(clean_phone) == 10:
         clean_phone = f"91{clean_phone}"
 
-    session_id = await get_active_whatsapp_session(db=db, tenant_id=tenant_id)
+    session_id = await get_active_whatsapp_session(db=db, tenant_id=tenant_id, company_id=company_id)
+
     if not session_id:
         logger.info("[Inventory Alert] WhatsApp Gateway has no active session connected. Skipping WhatsApp dispatch.")
         return {"success": False, "error": "WhatsApp Gateway not connected"}
@@ -234,7 +244,7 @@ async def check_and_notify_low_stock(
             ])
 
             wa_msg = "\n".join(lines)
-            await send_whatsapp_alert_text(recipient, wa_msg, db=db, tenant_id=tenant_id)
+            await send_whatsapp_alert_text(recipient, wa_msg, db=db, tenant_id=tenant_id, company_id=company_id)
         else:
             logger.info("[Inventory Alert] WhatsApp alert skipped: %s", wa_reason)
 

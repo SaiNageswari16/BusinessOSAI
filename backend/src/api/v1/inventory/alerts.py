@@ -41,7 +41,7 @@ async def get_inventory_alert_configuration(
 ):
     """Retrieve organization-wide inventory alerting settings & WhatsApp configuration."""
     cfg = await get_tenant_alert_config(db, ctx.tenant_id)
-    session_id = await get_active_whatsapp_session(db=db, tenant_id=ctx.tenant_id)
+    session_id = await get_active_whatsapp_session(db=db, tenant_id=ctx.tenant_id, company_id=ctx.active_company_id)
     return {
         "config": cfg,
         "whatsapp_connected": bool(session_id),

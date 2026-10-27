@@ -639,27 +639,32 @@ async def get_active_org_whatsapp_session(
             select(Company).where(Company.tenant_id == tenant_id).order_by(Company.created_at.asc()).limit(1)
         )
 
-    # 1. Gather all Organization-level WhatsApp sessions
+    # 1. Gather all Organization-level WhatsApp sessions for this company
     org_sessions: list[str] = []
-    for s in tenant_settings.get("whatsapp_web_sessions") or []:
-        if s and str(s) not in org_sessions:
-            org_sessions.append(str(s))
-
-    default_sess = tenant_settings.get("default_whatsapp_session") or tenant_settings.get("whatsapp_session_id")
-    if default_sess and str(default_sess) not in org_sessions:
-        org_sessions.insert(0, str(default_sess))
-
     if company:
         comp_wa = getattr(company, "whatsapp_settings", {}) or {}
         if isinstance(comp_wa, dict):
-            comp_sess = comp_wa.get("session_id") or comp_wa.get("whatsapp_session_id")
-            if comp_sess and str(comp_sess) not in org_sessions:
-                org_sessions.insert(0, str(comp_sess))
             for cs in comp_wa.get("whatsapp_web_sessions") or []:
                 if cs and str(cs) not in org_sessions:
                     org_sessions.append(str(cs))
+            comp_sess = comp_wa.get("session_id") or comp_wa.get("whatsapp_session_id")
+            if comp_sess and str(comp_sess) not in org_sessions:
+                org_sessions.insert(0, str(comp_sess))
 
-    # Official Organization Session only: Strictly per organization / tenant with zero fallbacks
+    # If company has no specific sessions, only fall back to tenant settings if company is primary
+    if not org_sessions:
+        first_comp_id = await db.scalar(
+            select(Company.id).where(Company.tenant_id == tenant_id).order_by(Company.created_at.asc()).limit(1)
+        )
+        if not company or company.id == first_comp_id:
+            for s in tenant_settings.get("whatsapp_web_sessions") or []:
+                if s and str(s) not in org_sessions:
+                    org_sessions.append(str(s))
+            default_sess = tenant_settings.get("default_whatsapp_session") or tenant_settings.get("whatsapp_session_id")
+            if default_sess and str(default_sess) not in org_sessions:
+                org_sessions.insert(0, str(default_sess))
+
+    # Official Organization Session only: Strictly per organization workspace with zero cross-leakage
     session_id = await _get_gateway_session_id(org_sessions) if org_sessions else None
     return session_id
 

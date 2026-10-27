@@ -455,11 +455,20 @@ async def dispatch_multi_channel_reminder(
             logger.info("Payment reminder WhatsApp skipped for invoice %s: %s", invoice.invoice_number, wa_disallow_reason)
         else:
             try:
-                # Query tenant settings to find sessions belonging ONLY to this organization
-                tenant = await db.scalar(select(Tenant).where(Tenant.id == invoice.tenant_id))
+                # Query company settings to find sessions belonging ONLY to this workspace organization
                 allowed_sessions = []
-                if tenant and tenant.settings and isinstance(tenant.settings, dict):
-                    allowed_sessions = tenant.settings.get("whatsapp_web_sessions") or []
+                if invoice.company_id:
+                    comp = await db.get(Company, invoice.company_id)
+                    if comp and comp.whatsapp_settings:
+                        allowed_sessions = list(comp.whatsapp_settings.get("whatsapp_web_sessions") or [])
+                if not allowed_sessions:
+                    first_comp_id = await db.scalar(
+                        select(Company.id).where(Company.tenant_id == invoice.tenant_id).order_by(Company.created_at.asc()).limit(1)
+                    )
+                    if not invoice.company_id or invoice.company_id == first_comp_id:
+                        tenant = await db.scalar(select(Tenant).where(Tenant.id == invoice.tenant_id))
+                        if tenant and tenant.settings and isinstance(tenant.settings, dict):
+                            allowed_sessions = list(tenant.settings.get("whatsapp_web_sessions") or [])
 
                 # Check connected sessions in gateway
                 async with httpx.AsyncClient(timeout=10.0) as http:
@@ -467,19 +476,12 @@ async def dispatch_multi_channel_reminder(
                     target_session_id = None
                     if sess_resp.status_code == 200:
                         live_sessions = sess_resp.json()
-                        # Strict multi-tenancy: Only use session owned by this specific tenant
+                        # Strict workspace multi-tenancy: Only use session owned by this specific company workspace
                         for sid in allowed_sessions:
                             info = live_sessions.get(sid)
                             if isinstance(info, dict) and info.get("status") in ("CONNECTED", "AUTHENTICATED"):
                                 target_session_id = sid
                                 break
-
-                        if not target_session_id:
-                            # Check if session ID contains the tenant ID prefix
-                            for sid, info in live_sessions.items():
-                                if str(invoice.tenant_id) in sid and isinstance(info, dict) and info.get("status") in ("CONNECTED", "AUTHENTICATED"):
-                                    target_session_id = sid
-                                    break
 
                     if target_session_id:
                         post_resp = await http.post(
