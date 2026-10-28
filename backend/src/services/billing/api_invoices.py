@@ -56,6 +56,7 @@ from src.services.billing.schemas import (
     GatewayConfigResponse,
     InvoiceCreate,
     InvoiceListResponse,
+    InvoiceRecordPaymentIn,
     InvoiceResponse,
     InvoiceSettlementCreate,
     InvoiceUpdate,
@@ -730,6 +731,319 @@ async def settle_invoice(invoice_id: str, payload: InvoiceSettlementCreate,
         "bill_settled": bill_settled,
         "events": events,
     }
+
+
+async def _record_invoice_leg(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    inv: "Invoice",
+    *,
+    method: str,
+    amount: Decimal,
+    reference: str | None,
+    paid_at: datetime | None,
+    cashier_id: uuid.UUID | None = None,
+) -> dict:
+    """Apply one payment leg to an invoice (shared by recordPayment, batch
+    settlement, and the single-invoice settle above).
+
+    The leg is clamped to the outstanding balance; when the invoice reaches
+    full payment its linked bill (if any) is settled through the bill
+    settlement service so the two registers cannot drift. Returns a small
+    result dict; the caller publishes any ``invoice.paid`` event and
+    commits.
+    """
+    amount = max(Decimal("0"), amount)
+    balance = max(Decimal("0"),
+                  Decimal(str(inv.grand_total or 0)) - Decimal(str(inv.paid_amount or 0)))
+    allocated = min(amount, balance)
+    if allocated > 0:
+        inv.payments.append(InvoicePayment(
+            tenant_id=tenant_id,
+            invoice_id=inv.id,
+            method=method,
+            amount=allocated,
+            reference=reference,
+            paid_at=paid_at or datetime.now(timezone.utc),
+        ))
+        inv.paid_amount = Decimal(str(inv.paid_amount or 0)) + allocated
+    fully = (
+        Decimal(str(inv.grand_total or 0)) > 0
+        and Decimal(str(inv.paid_amount or 0)) >= Decimal(str(inv.grand_total or 0))
+    )
+    if fully:
+        inv.status = InvoiceStatus.SETTLED
+    elif Decimal(str(inv.paid_amount or 0)) > 0:
+        inv.status = InvoiceStatus.PARTIAL
+    await db.flush()
+
+    bill_settled = False
+    if inv.bill_id and fully:
+        bill = await svc.load_bill(db, tenant_id, inv.bill_id)
+        if bill is not None and status_value(bill.status) != BillStatus.SETTLED:
+            try:
+                await svc.settle_bill(
+                    db, tenant_id, bill,
+                    payments=[{"method": method, "amount": float(inv.grand_total or 0)}],
+                    cashier_id=cashier_id,
+                )
+                bill_settled = True
+            except svc.BillingError:
+                bill_settled = False
+    await db.commit()
+    return {
+        "allocated": allocated,
+        "fully": fully,
+        "bill_settled": bill_settled,
+        "status": status_value(inv.status),
+    }
+
+
+@router.post("/invoices/{invoice_id}/payments", tags=["invoices"])
+async def record_invoice_payment(invoice_id: str, payload: InvoiceRecordPaymentIn,
+                                 identity: CurrentIdentity, db: DbDep):
+    """Record a single payment leg against one invoice (retail recordPayment).
+
+    Clamped to the outstanding balance; a leg that settles the invoice
+    publishes ``invoice.paid`` and settles the linked bill if there is one.
+    """
+    identity.require("process:payments")
+    inv = await _resolve_invoice(db, identity.tenant_id, invoice_id)
+    if inv is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if status_value(inv.status) in (InvoiceStatus.VOID.value, InvoiceStatus.REFUNDED.value):
+        raise HTTPException(status_code=409,
+                            detail=f"Cannot record a payment on a {status_value(inv.status)} invoice")
+
+    res = await _record_invoice_leg(
+        db, identity.tenant_id, inv,
+        method=(payload.payment_method or "cash").lower(),
+        amount=Decimal(str(payload.amount)),
+        reference=payload.reference_number,
+        paid_at=payload.payment_date,
+        cashier_id=identity.user_id,
+    )
+    events = []
+    if res["fully"]:
+        event = Event(
+            type="invoice.paid",
+            tenant_id=identity.tenant_id,
+            outlet_id=inv.outlet_id,
+            data={
+                "invoice_id": str(inv.id),
+                "invoice_number": inv.invoice_number,
+                "bill_id": str(inv.bill_id) if inv.bill_id else None,
+                "method": (payload.payment_method or "cash").lower(),
+                "amount": float(res["allocated"]),
+                "grand_total": float(inv.grand_total or 0),
+                "paid_amount": float(inv.paid_amount or 0),
+                "bill_settled": res["bill_settled"],
+            },
+            source_service="billing",
+        )
+        _outbox(db, event)
+        await db.commit()
+        await bus.publish(event, local=True)
+        events.append("invoice.paid")
+    remaining = float(max(
+        Decimal("0"),
+        Decimal(str(inv.grand_total or 0)) - Decimal(str(inv.paid_amount or 0)),
+    ))
+    return {
+        "message": "Payment recorded" + ("" if res["fully"] else " (partially)"),
+        "allocated": float(res["allocated"]),
+        "remaining": remaining,
+        "status": res["status"],
+        "bill_settled": res["bill_settled"],
+        "events": events,
+    }
+
+
+@router.post("/invoices/settlement", tags=["invoices"])
+async def settle_invoice_batch(payload: InvoiceSettlementCreate,
+                               identity: CurrentIdentity, db: DbDep):
+    """One payment amount across several invoices (retail settleInvoices).
+
+    The payload carries an explicit ``allocations`` list (one leg per
+    invoice) when the settlement screen allocated the amount itself, or the
+    customer filter + ``payment_amount`` for a FIFO walk: oldest open
+    invoices first, until the amount is exhausted. Every leg shares one
+    reference number so the settlement voucher (``GET
+    /invoices/settlement/{voucher_number}``) can reconstruct the whole
+    event. Fully-settled invoices publish ``invoice.paid`` as in the
+    single-invoice flow.
+    """
+    identity.require("process:payments")
+    method = (payload.payment_method or "cash").lower()
+    reference = payload.reference_number or f"STL-{str(uuid.uuid4())[:8].upper()}"
+
+    targets: list[tuple["Invoice", Decimal]] = []
+    if payload.allocations:
+        for a in payload.allocations:
+            ref = a.get("invoice_id")
+            amount = Decimal(str(a.get("amount_allocated") or 0))
+            if not ref or amount <= 0:
+                continue
+            inv = await _resolve_invoice(db, identity.tenant_id, str(ref))
+            if inv is None:
+                raise HTTPException(status_code=404, detail=f"Invoice {ref} not found")
+            if status_value(inv.status) in (InvoiceStatus.VOID.value,
+                                            InvoiceStatus.REFUNDED.value):
+                raise HTTPException(status_code=409,
+                                    detail=f"Invoice {inv.invoice_number} is {status_value(inv.status)}")
+            targets.append((inv, amount))
+    else:
+        # FIFO: open invoices of this customer, oldest first, until the
+        # payment amount is used up.
+        uid = _parse_uuid(payload.customer_id or "")
+        open_stmt = select(Invoice).where(
+            Invoice.tenant_id == identity.tenant_id,
+            Invoice.status.in_([InvoiceStatus.DRAFT.value, InvoiceStatus.PARTIAL.value]),
+        )
+        if uid:
+            open_stmt = open_stmt.where(Invoice.customer_id == uid)
+        elif payload.customer_phone:
+            open_stmt = open_stmt.where(Invoice.customer_phone == payload.customer_phone)
+        elif payload.customer_name:
+            open_stmt = open_stmt.where(Invoice.customer_name.ilike(f"%{payload.customer_name}%"))
+        open_invs = (await db.execute(open_stmt)).scalars().all()
+        remaining = Decimal(str(payload.payment_amount))
+        for inv in sorted(open_invs, key=lambda i: (i.dated or i.created_at, i.created_at)):
+            balance = max(Decimal("0"),
+                          Decimal(str(inv.grand_total or 0)) - Decimal(str(inv.paid_amount or 0)))
+            if balance <= 0 or remaining <= 0:
+                continue
+            leg = min(balance, remaining)
+            targets.append((inv, leg))
+            remaining -= leg
+
+    if not targets:
+        raise HTTPException(status_code=400, detail="No invoices to settle")
+
+    legs = []
+    settled_count = 0
+    for inv, leg_amount in targets:
+        res = await _record_invoice_leg(
+            db, identity.tenant_id, inv,
+            method=method, amount=leg_amount,
+            reference=reference,
+            paid_at=payload.payment_date,
+            cashier_id=identity.user_id,
+        )
+        legs.append({
+            "invoice_id": str(inv.id),
+            "invoice_number": inv.invoice_number,
+            "allocated": float(res["allocated"]),
+            "status": res["status"],
+            "bill_settled": res["bill_settled"],
+        })
+        if res["fully"]:
+            settled_count += 1
+            event = Event(
+                type="invoice.paid",
+                tenant_id=identity.tenant_id,
+                outlet_id=inv.outlet_id,
+                data={
+                    "invoice_id": str(inv.id),
+                    "invoice_number": inv.invoice_number,
+                    "bill_id": str(inv.bill_id) if inv.bill_id else None,
+                    "method": method,
+                    "amount": float(res["allocated"]),
+                    "grand_total": float(inv.grand_total or 0),
+                    "paid_amount": float(inv.paid_amount or 0),
+                    "bill_settled": res["bill_settled"],
+                },
+                source_service="billing",
+            )
+            _outbox(db, event)
+            await db.commit()
+            await bus.publish(event, local=True)
+
+    return {
+        "message": f"Settled {settled_count} invoice(s) across {len(legs)} leg(s)",
+        "voucher_number": reference,
+        "method": method,
+        "legs": legs,
+        "settled_count": settled_count,
+    }
+
+
+@router.post("/invoices/{invoice_id}/send", tags=["invoices"])
+async def send_invoice(invoice_id: str, payload: dict,
+                       identity: CurrentIdentity, db: DbDep):
+    """Dispatch the invoice to the customer (multi-channel; retail sendInvoice).
+
+    Channel delivery (WhatsApp / email) lands with the notifications service,
+    which is not in the fleet yet — so this validates the invoice, echoes
+    back which channels were requested, and degrades to 503 instead of a
+    fake success or a 404.
+    """
+    identity.require("process:payments")
+    inv = await _resolve_invoice(db, identity.tenant_id, invoice_id)
+    if inv is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    phone = (payload.get("recipient_phone") or inv.customer_phone)
+    email = payload.get("recipient_email")
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error": {
+                "code": "NOTIFICATIONS_NOT_AVAILABLE",
+                "message": "Invoice dispatch is not wired yet; no message was sent",
+            },
+            "invoice_id": str(inv.id),
+            "invoice_number": inv.invoice_number,
+            "requested": {
+                "whatsapp": bool(payload.get("send_whatsapp")),
+                "email": bool(payload.get("send_email")),
+                "phone": phone,
+                "email_addr": email,
+            },
+        },
+    )
+
+
+@router.post("/invoices/{invoice_id}/send-to-whatsapp", tags=["invoices"])
+async def send_invoice_whatsapp(invoice_id: str,
+                                identity: CurrentIdentity, db: DbDep,
+                                phone: str | None = None):
+    """WhatsApp a copy of the invoice (retail sendInvoiceToWhatsApp). 503
+    stub until the notifications service ships — see ``/send`` above."""
+    identity.require("process:payments")
+    inv = await _resolve_invoice(db, identity.tenant_id, invoice_id)
+    if inv is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    target = phone or inv.customer_phone
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error": {"code": "NOTIFICATIONS_NOT_AVAILABLE",
+                       "message": "WhatsApp delivery is not wired yet"},
+            "invoice_id": str(inv.id),
+            "target_phone": target,
+        },
+    )
+
+
+@router.post("/invoices/{invoice_id}/send-email", tags=["invoices"])
+async def send_invoice_email(invoice_id: str,
+                             identity: CurrentIdentity, db: DbDep,
+                             email: str | None = None):
+    """Email a copy of the invoice (retail sendInvoiceEmail). 503 stub until
+    the notifications service ships — see ``/send`` above."""
+    identity.require("process:payments")
+    inv = await _resolve_invoice(db, identity.tenant_id, invoice_id)
+    if inv is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error": {"code": "NOTIFICATIONS_NOT_AVAILABLE",
+                       "message": "Email delivery is not wired yet"},
+            "invoice_id": str(inv.id),
+            "target_email": email,
+        },
+    )
 
 
 @router.post("/invoices/{invoice_id}/void", response_model=InvoiceResponse,

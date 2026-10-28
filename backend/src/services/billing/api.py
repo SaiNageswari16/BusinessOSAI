@@ -43,6 +43,7 @@ from src.services.billing.models import (
     TipConfig,
     DiscountType,
     PaymentMethod,
+    PaymentStatus,
 )
 from src.services.billing.schemas import (
     BillCreate,

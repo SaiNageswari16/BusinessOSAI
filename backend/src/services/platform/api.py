@@ -494,16 +494,27 @@ async def my_module_status(
         select(TenantModuleState).where(TenantModuleState.tenant_id == parsed_tenant)
     )
     rows = list(res.scalars().all())
-    return {
-        "tenant_id": str(parsed_tenant),
-        "modules": [
-            {
-                "module_key": row.plugin_id,
-                "state": str(getattr(row.state, "value", row.state)),
-            }
-            for row in rows
-        ],
-    }
+    modules = [
+        {
+            "module_key": row.plugin_id,
+            "state": str(getattr(row.state, "value", row.state)),
+        }
+        for row in rows
+    ]
+    # Global kill-switches block the gate for EVERY tenant regardless of
+    # per-tenant rows — so report them here too, otherwise a ribbon built
+    # from this endpoint keeps showing tabs the gate would 404. A kill-
+    # switched module that also has a tenant row keeps the tenant row's
+    # state (the gate consults the kill-switch first, but either way the
+    # answer is "blocked", so the UI only needs to know it is not active).
+    have = {m["module_key"] for m in modules}
+    ks_res = await session.execute(
+        select(PluginManifest).where(PluginManifest.is_active.is_(False))
+    )
+    for ks in ks_res.scalars():
+        if ks.id not in have:
+            modules.append({"module_key": ks.id, "state": "kill_switched"})
+    return {"tenant_id": str(parsed_tenant), "modules": modules}
 
 
 # ─── Tenant Roster (full auth-service list, paged) ─────────────────────────

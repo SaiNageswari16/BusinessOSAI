@@ -29,6 +29,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
+from src.services.event_bus.bus import Event, bus
 from src.services.shared.base import ErrorDetail, ErrorEnvelope
 from src.services.shared.identity import Identity, bearer_scheme, _decode, dev_fallback_enabled, build_dev_fallback_identity
 from src.services.shared.registry import (
@@ -119,6 +120,66 @@ async def _module_gate_allows(
     return allowed
 
 
+# ─── Gate-invalidation channel (0.13) ─────────────────────────────────────────
+#
+# The module gate above is a *cache* with a short TTL. Without a push channel,
+# a platform suspend of a tenant's module takes up to ``_MODULE_GATE_TTL_SECONDS``
+# to bite on every running gateway replica. The platform service publishes a
+# module-lifecycle event the moment a state changes (durable, via its own
+# outbox); this handler is the gateway's consumer and evicts the matching cache
+# key in real time.
+#
+# The eviction is idempotent and cheap, so no durable dedupe ledger is needed
+# here — a redelivered event just evicts an already-evicted key, which is a
+# no-op. (A data-plane service that *writes* on an event would need the ledger;
+# the gateway only ever drops cache.)
+#
+# Multi-replica note: the bus fan-outs one consumer group per service, so an
+# event is delivered to a *single* gateway replica. That replica evicts
+# immediately; the others still rely on the TTL window. A fleet-wide immediate
+# evict would need a shared-bus topic every replica consumes — out of scope for
+# now, and the TTL is the documented backstop.
+
+
+@bus.on(
+    "platform.module.activated",
+    "platform.module.suspended",
+    "platform.module.archived",
+    "platform.module.kill_switch",
+)
+async def _on_module_lifecycle(event: Event) -> None:
+    """Evict the cached module-gate decision when platform changes a module.
+
+    Tenant-scoped events (activate/suspend/archive) carry ``tenant_id``; the
+    global kill-switch event carries none, so it clears the whole module key
+    across every tenant.
+    """
+    data = event.data or {}
+    module_key = data.get("module_key") or data.get("plugin_id")
+    tenant = event.tenant_id
+    if module_key is None:
+        return  # nothing to match a cache key on; fail safe (leave cache)
+    if tenant is not None:
+        _module_gate_invalidate(str(tenant), module_key)
+    else:
+        # Kill switch: this module is off for everyone — evict its key
+        # across all tenants without touching other modules.
+        _module_gate_invalidate(None, module_key)
+    logger.info(
+        "gateway: evicted module-gate cache for %s %s",
+        f"tenant {tenant} " if tenant is not None else "",
+        module_key,
+    )
+
+
+def _gateway_redis_url() -> str | None:
+    """Same resolution as the shared service_app helper, inlined so the
+    gateway stays a standalone app (it does not go through build_service)."""
+    if os.environ.get("REDIS_ENABLED", "true").lower() == "false":
+        return None
+    return os.environ.get("REDIS_URL") or "redis://localhost:6379/0"
+
+
 def create_gateway() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -126,7 +187,15 @@ def create_gateway() -> FastAPI:
             timeout=httpx.Timeout(SERVICE_TIMEOUT),
             limits=httpx.Limits(max_connections=200, max_keepalive_connections=50),
         )
+        # Subscribe to the bus so a platform module-lifecycle change evicts the
+        # gateway's module-gate cache in real time (0.13). The gateway uses its
+        # own consumer group ("gateway") so it receives its own copy of events
+        # the platform service publishes; a shared group would load-balance a
+        # platform event away to one service and the gate would go stale.
+        bus.configure(_gateway_redis_url(), "gateway")
+        await bus.start()
         yield
+        await bus.stop()
         await app.state.http.aclose()
 
     gateway = FastAPI(

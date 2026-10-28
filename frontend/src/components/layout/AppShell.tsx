@@ -33,6 +33,7 @@ import { AiAssistant } from "./AiAssistant";
 import { useAuth } from "@/hooks/use-auth";
 import { usePermissions } from "@/hooks/use-permissions";
 import { resolveTenantNavigation } from "@/lib/modules";
+import { modulesApi } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -57,13 +58,41 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { user, isAuthenticated, logout, switchOutlet } = useAuth();
   const { hasPermission } = usePermissions();
 
+  // Per-tenant module state from the platform control plane. Modules in a
+  // state other than "active" (suspended / archived / migrating / failed)
+  // must not render their ribbon tab — the gateway already 404s the page;
+  // this hides the tab. Fail-open (empty list → all tabs shown) when the
+  // platform is unreachable or the tenant has no module rows ("unmanaged
+  // tenant = active by default", same convention as the gate).
+  const [suspendedModules, setSuspendedModules] = useState<string[]>([]);
+
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    if (!user?.tenantId) return;
+    let cancelled = false;
+    modulesApi
+      .me()
+      .then((res) => {
+        if (cancelled) return;
+        setSuspendedModules(
+          res.modules.filter((m) => m.state !== "active").map((m) => m.module_key)
+        );
+      })
+      .catch(() => {
+        // modulesApi.me() already fail-opens; belt-and-braces.
+        if (!cancelled) setSuspendedModules([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.tenantId]);
+
   const navItems = useMemo(() => {
-    return resolveTenantNavigation(undefined, hasPermission);
-  }, [hasPermission]);
+    return resolveTenantNavigation(undefined, hasPermission, suspendedModules);
+  }, [hasPermission, suspendedModules]);
 
   useEffect(() => {
     if (typeof localStorage !== "undefined") {

@@ -14,6 +14,7 @@ logging.basicConfig(
 
 from src.services.platform import models  # noqa: F401
 from src.services.platform.api import router
+from src.services.platform.outbox import OutboxRelay
 from src.services.shared.registry import get_descriptor
 from src.services.shared.service_app import create_service_app
 
@@ -33,6 +34,8 @@ from src.services.shared.service_db import ServiceDatabase
 
 db = ServiceDatabase("platform", _dsn)
 
+_relay = OutboxRelay(db)
+
 
 async def _on_startup(app=None):
     from src.services.shared.service_factory import session_factory
@@ -41,6 +44,13 @@ async def _on_startup(app=None):
     maker = session_factory("platform")
     async with maker() as session:
         await PlatformService.seed_defaults(session)
+    # Start the outbox relay so pending module-lifecycle events reach the
+    # event bus (and the gateway's gate-cache invalidation channel).
+    await _relay.start()
+
+
+async def _on_shutdown(app=None):
+    await _relay.stop()
 
 
 app = create_service_app(
@@ -48,6 +58,7 @@ app = create_service_app(
     db=db,
     routers=[router],
     on_startup=_on_startup,
+    on_shutdown=_on_shutdown,
 )
 
 if __name__ == "__main__":

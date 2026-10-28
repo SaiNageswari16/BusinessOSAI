@@ -34,9 +34,34 @@ export const ALL_NAV_ITEMS: NavItemDef[] = [
   { to: "/settings", label: "Settings", moduleKey: "core", requiredPermission: "org:settings:view" },
 ];
 
+/**
+ * Ribbon moduleKey → the platform registry module keys that gate the tabs
+ * carrying that key.
+ *
+ * The platform service's module state (TenantModuleState.plugin_id, surfaced
+ * by GET /platform/tenants/me/modules) is keyed on the registry's
+ * module_key. Most ribbon moduleKeys match a module_key verbatim ("staff",
+ * "pos", "inventory", "reports", "restaurant"). Two diverge: the ribbon's
+ * "crm" tab is gated by the registry's "customers" key. A ribbon item hides
+ * when *any* of its mapped keys is suspended — so a suspended "customers"
+ * module hides the CRM tab, and a suspended "staff" module hides the Staff
+ * tab, exactly matching the gateway's per-tenant module gate.
+ */
+const RIBBON_GATE_KEYS: Record<string, string[]> = {
+  crm: ["crm", "customers"],
+};
+
+/** The platform module keys that gate a ribbon item (mapped, else itself). */
+export function ribbonGateKeys(moduleKey: string): string[] {
+  return (RIBBON_GATE_KEYS[moduleKey] ?? [moduleKey]).map((k) => k.toLowerCase());
+}
+
 export function resolveTenantNavigation(
   enabledModules: string[] = ["restaurant", "pos", "inventory", "crm", "staff", "reports"],
-  hasPermission: (perm: string) => boolean = () => true
+  hasPermission: (perm: string) => boolean = () => true,
+  // Module keys the caller's tenant has suspended/archived in the platform
+  // service (from GET /platform/tenants/me/modules, "active" entries excluded).
+  suspendedModules: string[] = []
 ): NavItemDef[] {
   const enabledSet = new Set(enabledModules.map((m) => m.toLowerCase()));
 
@@ -44,13 +69,23 @@ export function resolveTenantNavigation(
   enabledSet.add("core");
   enabledSet.add("ai");
 
+  // A tenant-suspended module must vanish from the ribbon even when the
+  // user's role still carries its permission — the gate hides the page, the
+  // ribbon is what hides the tab.
+  const suspendedSet = new Set(suspendedModules.map((m) => m.toLowerCase()));
+
   return ALL_NAV_ITEMS.filter((item) => {
     // 1. Module gating
     if (!enabledSet.has(item.moduleKey.toLowerCase())) {
       return false;
     }
 
-    // 2. Permission gating
+    // 2. Per-tenant module-state gating (platform suspension)
+    if (ribbonGateKeys(item.moduleKey).some((k) => suspendedSet.has(k))) {
+      return false;
+    }
+
+    // 3. Permission gating
     if (item.requiredPermission && !hasPermission(item.requiredPermission)) {
       return false;
     }

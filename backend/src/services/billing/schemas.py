@@ -780,6 +780,18 @@ class SetActivePrintTemplate(BaseModel):
     category: str = "thermal"
 
 
+class InvoiceRecordPaymentIn(BaseModel):
+    """One payment leg recorded against a single invoice (retail
+    recordPayment shape). The amount is clamped to the outstanding balance;
+    a full payment settles the invoice."""
+
+    amount: float = Field(gt=0)
+    payment_date: datetime | None = None
+    payment_method: str = "cash"
+    reference_number: str | None = Field(default=None, max_length=200)
+    notes: str | None = Field(default=None, max_length=500)
+
+
 class InvoiceSettlementCreate(BaseModel):
     """Settle one invoice (or a FIFO batch of a customer's invoices). The
     retail settleInvoices payload also carries customer-level fields; they

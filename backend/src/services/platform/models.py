@@ -143,3 +143,31 @@ class PlatformAuditEntry(ServiceBase, TimestampMixin):
     target_id: Mapped[str] = mapped_column(String(100), nullable=False)
     details: Mapped[dict] = mapped_column(JSONB, default=dict)
     ip_address: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+
+class OutboxMessage(ServiceBase, TimestampMixin):
+    """Transactional outbox for platform control-plane events.
+
+    Every module-lifecycle change (activate / suspend / archive / kill-switch)
+    writes a row in the *same transaction* as the state change; a background
+    relay polls pending rows and pushes them to the event bus. This is what
+    makes the gate-invalidation channel (0.13) durable: a crash between the
+    state commit and a direct bus publish no longer loses the event.
+
+    Status transitions: pending -> published (relay succeeded) / dead
+    (retries exhausted).
+    """
+
+    __tablename__ = "outbox_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    type: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    source_service: Mapped[str] = mapped_column(String(50), default="platform")
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False, index=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)

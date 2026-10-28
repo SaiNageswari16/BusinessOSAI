@@ -24,6 +24,8 @@ from src.services.platform.models import (
     _utcnow,
 )
 from src.services.shared.registry import all_services, base_url
+from src.services.event_bus.bus import Event, bus
+from src.services.platform.outbox import record_event
 from src.utils.security import (
     create_access_token,
     decode_access_token,
@@ -350,7 +352,17 @@ class PlatformService:
             details={"is_active": is_active},
         )
         session.add(audit)
+        # The kill switch flips the whole vertical off for EVERY tenant, so the
+        # invalidation event carries no tenant_id — the gateway evicts the
+        # module key across its whole cache.
+        event = Event(
+            type="platform.module.kill_switch",
+            data={"plugin_id": plugin_id, "module_key": plugin_id, "is_active": is_active},
+            source_service="platform",
+        )
+        await record_event(session, type=event.type, data=event.data, event_id=event.event_id)
         await session.commit()
+        await bus.publish(event, local=True)
         return manifest
 
     @staticmethod
@@ -446,7 +458,19 @@ class PlatformService:
             details={"resolved_plugin": resolved_plugin_id, "version": manifest.version, "config": config},
         )
         session.add(audit)
+        # Gate-invalidation channel: a module that just went active changes the
+        # answer to the gateway's /module-gate/check, so evict that tenant's
+        # cached decision rather than waiting out the TTL window.
+        event = Event(
+            type="platform.module.activated",
+            tenant_id=tenant_id,
+            data={"plugin_id": plugin_id, "module_key": plugin_id},
+            source_service="platform",
+        )
+        await record_event(session, type=event.type, data=event.data,
+                           tenant_id=tenant_id, event_id=event.event_id)
         await session.commit()
+        await bus.publish(event, local=True)
         return state_row
 
     @staticmethod
@@ -498,7 +522,20 @@ class PlatformService:
             target_id=f"{tenant_id}:{plugin_id}",
         )
         session.add(audit)
+        # Suspend is exactly the case the invalidation channel exists for: the
+        # gateway may be holding a cached "allowed" for this (tenant, module)
+        # and would otherwise keep serving the suspended module until the TTL
+        # expires.
+        event = Event(
+            type="platform.module.suspended",
+            tenant_id=tenant_id,
+            data={"plugin_id": plugin_id, "module_key": plugin_id},
+            source_service="platform",
+        )
+        await record_event(session, type=event.type, data=event.data,
+                           tenant_id=tenant_id, event_id=event.event_id)
         await session.commit()
+        await bus.publish(event, local=True)
         return state_row
 
     @staticmethod
@@ -548,7 +585,19 @@ class PlatformService:
             target_id=f"{tenant_id}:{plugin_id}",
         )
         session.add(audit)
+        # Archived is the terminal "off" state — the gateway must stop serving
+        # this module for the tenant, so the invalidation event carries the
+        # tenant's key and the gateway evicts the cached "allowed" decision.
+        event = Event(
+            type="platform.module.archived",
+            tenant_id=tenant_id,
+            data={"plugin_id": plugin_id, "module_key": plugin_id},
+            source_service="platform",
+        )
+        await record_event(session, type=event.type, data=event.data,
+                           tenant_id=tenant_id, event_id=event.event_id)
         await session.commit()
+        await bus.publish(event, local=True)
         return state_row
 
     @staticmethod
