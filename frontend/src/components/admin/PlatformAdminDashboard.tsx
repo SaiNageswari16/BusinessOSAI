@@ -602,19 +602,132 @@ export function PlatformAdminDashboard() {
       if (!res.ok) throw new Error("Failed to generate official PDF");
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
-      const printWindow = window.open(blobUrl, "_blank");
-      if (!printWindow) {
-        const link = document.createElement("a");
-        link.href = blobUrl;
-        link.download = `Master_SLA_Agreement_${invoiceNum || "Contract"}.pdf`;
-        link.click();
-      }
-      toast.success("Official vector PDF contract generated and opened for printing!");
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `Official_SLA_Tax_Invoice_${invoiceNum || "Agreement"}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.open(blobUrl, "_blank");
+      toast.success("Official vector PDF contract generated and downloaded!");
     } catch (err: any) {
       toast.error(err.message || "Failed to generate agreement PDF");
     } finally {
       setDownloadingPdf(false);
     }
+  };
+
+  // Dedicated clean A4 Single-Page Print Handler
+  const handlePrintAgreementDocument = () => {
+    const docEl = document.getElementById("tenant-agreement-printable-document");
+    if (!docEl) {
+      window.print();
+      return;
+    }
+
+    const printIframe = document.createElement("iframe");
+    printIframe.style.position = "fixed";
+    printIframe.style.right = "0";
+    printIframe.style.bottom = "0";
+    printIframe.style.width = "0";
+    printIframe.style.height = "0";
+    printIframe.style.border = "0";
+    document.body.appendChild(printIframe);
+
+    const doc = printIframe.contentWindow?.document;
+    if (!doc) {
+      window.print();
+      return;
+    }
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Official Master SLA Agreement & Tax Invoice - ${showInvoiceAgreementModal?.invoice_number || "Agreement"}</title>
+          <script src="https://cdn.tailwindcss.com"></script>
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 8mm 10mm;
+            }
+            *, *::before, *::after {
+              box-sizing: border-box;
+            }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+              color: #0f172a;
+              background: #ffffff;
+              margin: 0;
+              padding: 0;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            @media print {
+              body { margin: 0; padding: 0; }
+              #tenant-agreement-printable-document {
+                border: none !important;
+                box-shadow: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                max-width: 100% !important;
+              }
+            }
+          </style>
+        </head>
+        <body class="p-2 bg-white text-slate-900">
+          ${docEl.outerHTML}
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    setTimeout(() => {
+      try {
+        printIframe.contentWindow?.focus();
+        printIframe.contentWindow?.print();
+      } catch (e) {
+        window.print();
+      } finally {
+        setTimeout(() => {
+          if (document.body.contains(printIframe)) {
+            document.body.removeChild(printIframe);
+          }
+        }, 1500);
+      }
+    }, 450);
+  };
+
+  // High-Fidelity Official PDF Download matching preview 100%
+  const handleDownloadAgreementPdf = async () => {
+    if (!showInvoiceAgreementModal) return;
+    const docEl = document.getElementById("tenant-agreement-printable-document");
+    setDownloadingPdf(true);
+    try {
+      if (docEl) {
+        // @ts-ignore
+        const html2pdfModule = await import("html2pdf.js");
+        const html2pdf = html2pdfModule.default || html2pdfModule;
+        const opt = {
+          margin: [6, 8, 6, 8],
+          filename: `Official_SLA_Tax_Invoice_${showInvoiceAgreementModal.invoice_number || "Draft"}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, logging: false },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+        await html2pdf().set(opt).from(docEl).save();
+        toast.success("Official PDF contract downloaded matching preview 100%!");
+        return;
+      }
+    } catch (clientErr) {
+      console.warn("Client PDF generation fallback to server endpoint:", clientErr);
+    }
+    // Server streaming fallback
+    await handlePrintOrDownloadAgreementPdf(
+      showInvoiceAgreementModal.tenant_id,
+      showInvoiceAgreementModal.invoice_number
+    );
   };
 
   // WhatsApp Share Dispatch Helper
@@ -3305,8 +3418,8 @@ export function PlatformAdminDashboard() {
                   {/* Print Visual Layout */}
                   <Button
                     size="sm"
-                    onClick={() => window.print()}
-                    className="h-8.5 px-3.5 text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-md flex items-center gap-1.5"
+                    onClick={handlePrintAgreementDocument}
+                    className="h-8.5 px-3.5 text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-md flex items-center gap-1.5 cursor-pointer"
                   >
                     <Printer className="w-4 h-4" /> Print / Save PDF
                   </Button>
@@ -3315,13 +3428,8 @@ export function PlatformAdminDashboard() {
                   <Button
                     size="sm"
                     disabled={downloadingPdf}
-                    onClick={() =>
-                      handlePrintOrDownloadAgreementPdf(
-                        showInvoiceAgreementModal.tenant_id,
-                        showInvoiceAgreementModal.invoice_number
-                      )
-                    }
-                    className="h-8.5 px-3.5 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 shadow-md flex items-center gap-1.5"
+                    onClick={handleDownloadAgreementPdf}
+                    className="h-8.5 px-3.5 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 shadow-md flex items-center gap-1.5 cursor-pointer"
                   >
                     <Download className="w-4 h-4" />
                     {downloadingPdf ? "Generating PDF..." : "Download Official PDF"}
@@ -3446,15 +3554,18 @@ export function PlatformAdminDashboard() {
               </div>
 
               {/* Printable Document Container */}
-              <div className="p-8 sm:p-12 space-y-8 bg-white text-slate-900 font-sans print:p-0 print:m-0">
+              <div
+                id="tenant-agreement-printable-document"
+                className="p-6 sm:p-8 space-y-4 bg-white text-slate-900 font-sans print:p-0 print:m-0 print:space-y-3"
+              >
                 {/* Document Header */}
-                <div className="flex flex-col sm:flex-row justify-between items-start gap-6 border-b border-slate-200 pb-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-4 border-b border-slate-200 pb-4">
                   <div>
                     <div className="flex items-center gap-3">
                       <img src="/Logo.png" alt="IoTRONCS" className="h-9 w-auto object-contain" />
                     </div>
 
-                    <div className="mt-4 text-xs text-slate-600 space-y-0.5">
+                    <div className="mt-3 text-xs text-slate-600 space-y-0.5">
                       <p className="font-semibold text-slate-800">{showInvoiceAgreementModal.provider_name}</p>
                       <p>{showInvoiceAgreementModal.provider_address}</p>
                       <p><strong>GSTIN:</strong> {showInvoiceAgreementModal.provider_tax_id} • <strong>CIN:</strong> {showInvoiceAgreementModal.provider_cin}</p>
@@ -3462,11 +3573,11 @@ export function PlatformAdminDashboard() {
                     </div>
                   </div>
 
-                  <div className="text-left sm:text-right space-y-1">
-                    <span className="inline-block px-3 py-1 text-[11px] font-extrabold uppercase rounded-full bg-purple-100 text-purple-900 border border-purple-300">
+                  <div className="flex flex-col items-end text-right space-y-1">
+                    <span className="inline-block px-3 py-1 text-[11px] font-extrabold uppercase rounded-full bg-purple-100 text-purple-900 border border-purple-300 self-end">
                       Official Tax Invoice & SLA Draft
                     </span>
-                    <div className="mt-2 text-xs text-slate-700 space-y-1">
+                    <div className="mt-2 text-xs text-slate-700 space-y-0.5 text-right w-full">
                       <div><strong>Invoice #:</strong> <span className="font-mono font-bold text-slate-900">{showInvoiceAgreementModal.invoice_number}</span></div>
                       <div><strong>SLA Agreement #:</strong> <span className="font-mono font-bold text-slate-900">{showInvoiceAgreementModal.agreement_number}</span></div>
                       <div><strong>Issue Date:</strong> {showInvoiceAgreementModal.issue_date}</div>
@@ -3477,12 +3588,12 @@ export function PlatformAdminDashboard() {
                 </div>
 
                 {/* Client / Subscriber Details */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 bg-slate-50 p-5 rounded-xl border border-slate-200 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
                   <div>
-                    <h3 className="font-bold text-slate-900 uppercase text-[11px] tracking-wider mb-2 flex items-center gap-1.5">
+                    <h3 className="font-bold text-slate-900 uppercase text-[11px] tracking-wider mb-1.5 flex items-center gap-1.5">
                       <Building className="w-3.5 h-3.5 text-purple-700" /> Billed To & Licensed Entity
                     </h3>
-                    <div className="space-y-1 text-slate-700">
+                    <div className="space-y-0.5 text-slate-700">
                       <p className="font-bold text-sm text-slate-900">{showInvoiceAgreementModal.client_company_name}</p>
                       <p><strong>Workspace:</strong> {showInvoiceAgreementModal.tenant_name} (<code className="font-mono text-purple-700">{showInvoiceAgreementModal.tenant_slug}</code>)</p>
                       <p><strong>Authorized Admin:</strong> {showInvoiceAgreementModal.client_admin_name} ({showInvoiceAgreementModal.client_admin_email})</p>
@@ -3492,10 +3603,10 @@ export function PlatformAdminDashboard() {
                   </div>
 
                   <div>
-                    <h3 className="font-bold text-slate-900 uppercase text-[11px] tracking-wider mb-2 flex items-center gap-1.5">
+                    <h3 className="font-bold text-slate-900 uppercase text-[11px] tracking-wider mb-1.5 flex items-center gap-1.5">
                       <Calendar className="w-3.5 h-3.5 text-purple-700" /> Subscription Term & Validity
                     </h3>
-                    <div className="space-y-1 text-slate-700">
+                    <div className="space-y-0.5 text-slate-700">
                       <p><strong>Plan Tier:</strong> <span className="font-bold uppercase text-purple-700">{showInvoiceAgreementModal.plan}</span></p>
                       <p><strong>Tenure Duration:</strong> <span className="font-bold text-slate-900">{showInvoiceAgreementModal.tenure_value} {showInvoiceAgreementModal.tenure_unit.toUpperCase()}</span></p>
                       <p><strong>Start Date:</strong> {formatDisplayDate(showInvoiceAgreementModal.subscription_start_date)}</p>
@@ -3506,11 +3617,11 @@ export function PlatformAdminDashboard() {
                 </div>
 
                 {/* Itemized Modules & Scope of License */}
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <h3 className="font-bold text-slate-900 uppercase text-xs tracking-wider">Licensed Enterprise Modules</h3>
-                  <div className="flex flex-wrap gap-2 p-3.5 rounded-xl border border-slate-200 bg-slate-50/50">
+                  <div className="flex flex-wrap gap-1.5 p-2.5 rounded-xl border border-slate-200 bg-slate-50/50">
                     {showInvoiceAgreementModal.enabled_modules.map((mod) => (
-                      <span key={mod} className="px-2.5 py-1 text-xs font-bold rounded-lg bg-white border border-slate-200 text-purple-900 shadow-2xs">
+                      <span key={mod} className="px-2 py-0.5 text-[11px] font-bold rounded-md bg-white border border-slate-200 text-purple-900 shadow-2xs">
                         ✓ {mod.toUpperCase()}
                       </span>
                     ))}
@@ -3518,50 +3629,50 @@ export function PlatformAdminDashboard() {
                 </div>
 
                 {/* Financial Commercials Table */}
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <h3 className="font-bold text-slate-900 uppercase text-xs tracking-wider">Financial Breakdown</h3>
                   <table className="w-full text-xs text-left border border-slate-200 rounded-lg overflow-hidden">
                     <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10.5px]">
                       <tr>
-                        <th className="py-2.5 px-4">Description</th>
-                        <th className="py-2.5 px-4">Tenure Term</th>
-                        <th className="py-2.5 px-4 text-right">Tax Rate</th>
-                        <th className="py-2.5 px-4 text-right">Amount ({showInvoiceAgreementModal.currency})</th>
+                        <th className="py-2 px-3">Description</th>
+                        <th className="py-2 px-3">Tenure Term</th>
+                        <th className="py-2 px-3 text-right">Tax Rate</th>
+                        <th className="py-2 px-3 text-right">Amount ({showInvoiceAgreementModal.currency})</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
                       <tr>
-                        <td className="py-3 px-4 font-semibold text-slate-800">
+                        <td className="py-2 px-3 font-semibold text-slate-800">
                           {showInvoiceAgreementModal.plan.toUpperCase()} Enterprise Cloud Subscription License
-                          <div className="text-[10.5px] text-slate-500 font-normal">
+                          <div className="text-[10px] text-slate-500 font-normal">
                             Includes AI Copilot, POS, Inventory, Accounting, HRMS, and IoT integration.
                           </div>
                         </td>
-                        <td className="py-3 px-4">{showInvoiceAgreementModal.tenure_value} {showInvoiceAgreementModal.tenure_unit}</td>
-                        <td className="py-3 px-4 text-right">{showInvoiceAgreementModal.tax_rate}%</td>
-                        <td className="py-3 px-4 text-right font-mono font-bold">{showInvoiceAgreementModal.billing_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        <td className="py-2 px-3">{showInvoiceAgreementModal.tenure_value} {showInvoiceAgreementModal.tenure_unit}</td>
+                        <td className="py-2 px-3 text-right">{showInvoiceAgreementModal.tax_rate}%</td>
+                        <td className="py-2 px-3 text-right font-mono font-bold">{showInvoiceAgreementModal.billing_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                       </tr>
                     </tbody>
                     <tfoot className="bg-slate-50 font-semibold text-slate-800 border-t border-slate-200">
                       <tr>
-                        <td colSpan={3} className="py-2 px-4 text-right text-slate-600">Subtotal</td>
-                        <td className="py-2 px-4 text-right font-mono">{showInvoiceAgreementModal.currency} {showInvoiceAgreementModal.billing_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        <td colSpan={3} className="py-1.5 px-3 text-right text-slate-600">Subtotal</td>
+                        <td className="py-1.5 px-3 text-right font-mono">{showInvoiceAgreementModal.currency} {showInvoiceAgreementModal.billing_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                       </tr>
                       <tr>
-                        <td colSpan={3} className="py-2 px-4 text-right text-slate-600">Goods & Service Tax (GST / Tax {showInvoiceAgreementModal.tax_rate}%)</td>
-                        <td className="py-2 px-4 text-right font-mono">{showInvoiceAgreementModal.currency} {showInvoiceAgreementModal.tax_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        <td colSpan={3} className="py-1.5 px-3 text-right text-slate-600">Goods & Service Tax (GST / Tax {showInvoiceAgreementModal.tax_rate}%)</td>
+                        <td className="py-1.5 px-3 text-right font-mono">{showInvoiceAgreementModal.currency} {showInvoiceAgreementModal.tax_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                       </tr>
                       <tr className="bg-purple-50 text-purple-950 font-bold text-sm border-t border-purple-200">
-                        <td colSpan={3} className="py-3 px-4 text-right">Grand Total Due / Settled</td>
-                        <td className="py-3 px-4 text-right font-mono font-extrabold">{showInvoiceAgreementModal.currency} {showInvoiceAgreementModal.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        <td colSpan={3} className="py-2 px-3 text-right">Grand Total Due / Settled</td>
+                        <td className="py-2 px-3 text-right font-mono font-extrabold">{showInvoiceAgreementModal.currency} {showInvoiceAgreementModal.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                       </tr>
                     </tfoot>
                   </table>
                 </div>
 
                 {/* Master SLA & Terms Draft */}
-                <div className="p-5 rounded-xl border border-slate-200 bg-slate-50/70 text-[11px] text-slate-600 space-y-2 leading-relaxed">
-                  <h4 className="font-bold text-slate-900 uppercase text-xs">Master Cloud Service Level Agreement (SLA) & Terms</h4>
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 text-[10.5px] text-slate-600 space-y-1.5 leading-relaxed">
+                  <h4 className="font-bold text-slate-900 uppercase text-[11px]">Master Cloud Service Level Agreement (SLA) & Terms</h4>
                   <p>
                     <strong>1. Service Availability:</strong> IoTRONCS guarantees {showInvoiceAgreementModal.sla_tier} uptime across all provisioned modules, calculated per calendar month excluding scheduled maintenance.
                   </p>
@@ -3577,18 +3688,18 @@ export function PlatformAdminDashboard() {
                 </div>
 
                 {/* Signature and Authorization Block */}
-                <div className="pt-6 border-t border-slate-200 grid grid-cols-2 gap-12 text-xs">
+                <div className="pt-4 border-t border-slate-200 grid grid-cols-2 gap-8 text-xs">
                   <div>
-                    <p className="text-slate-500 font-semibold mb-12">For and on behalf of <strong className="text-slate-800">IOTRONICS PRIVATE LIMITED</strong></p>
-                    <div className="border-t border-slate-300 pt-2 flex items-center justify-between">
+                    <p className="text-slate-500 font-semibold mb-8">For and on behalf of <strong className="text-slate-800">IOTRONICS PRIVATE LIMITED</strong></p>
+                    <div className="border-t border-slate-300 pt-1.5 flex items-center justify-between">
                       <span className="font-bold text-slate-900">Authorized Signatory & Seal</span>
                       <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Digitally Verified</span>
                     </div>
                   </div>
 
                   <div>
-                    <p className="text-slate-500 font-semibold mb-12">Acknowledged and Accepted on behalf of <strong className="text-slate-800">{showInvoiceAgreementModal.client_company_name}</strong></p>
-                    <div className="border-t border-slate-300 pt-2 flex items-center justify-between">
+                    <p className="text-slate-500 font-semibold mb-8">Acknowledged and Accepted on behalf of <strong className="text-slate-800">{showInvoiceAgreementModal.client_company_name}</strong></p>
+                    <div className="border-t border-slate-300 pt-1.5 flex items-center justify-between">
                       <span className="font-bold text-slate-900">{showInvoiceAgreementModal.client_admin_name}</span>
                       <span className="text-[10px] text-slate-500">Client Signature</span>
                     </div>

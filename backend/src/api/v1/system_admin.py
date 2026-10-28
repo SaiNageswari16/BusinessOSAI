@@ -1289,32 +1289,35 @@ def generate_subscription_sla_pdf(tenant: Tenant, owner: User | None, sub_data: 
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        rightMargin=36,
-        leftMargin=36,
-        topMargin=28,
-        bottomMargin=28,
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=22,
+        bottomMargin=22,
     )
 
+    from pathlib import Path
+    from reportlab.platypus import Image as RLImage
+
     h1 = ParagraphStyle('DocH1', fontName='Helvetica-Bold', fontSize=15, leading=18, textColor=colors.HexColor('#0f172a'))
-    h_sub = ParagraphStyle('DocHSub', fontName='Helvetica', fontSize=7.5, leading=10, textColor=colors.HexColor('#64748b'))
-    badge = ParagraphStyle('DocBadge', fontName='Helvetica-Bold', fontSize=7, leading=9, textColor=colors.HexColor('#581c87'), alignment=2)
-    meta_r = ParagraphStyle('DocMetaR', fontName='Helvetica', fontSize=7.5, leading=10, textColor=colors.HexColor('#334155'), alignment=2)
+    h_sub = ParagraphStyle('DocHSub', fontName='Helvetica', fontSize=7.2, leading=9.8, textColor=colors.HexColor('#64748b'))
+    badge = ParagraphStyle('DocBadge', fontName='Helvetica-Bold', fontSize=7.2, leading=9.2, textColor=colors.HexColor('#581c87'), alignment=1)
+    meta_r = ParagraphStyle('DocMetaR', fontName='Helvetica', fontSize=7.2, leading=9.8, textColor=colors.HexColor('#334155'), alignment=2)
     
-    box_title = ParagraphStyle('BoxTitle', fontName='Helvetica-Bold', fontSize=8, leading=10, textColor=colors.HexColor('#6d28d9'))
-    box_p = ParagraphStyle('BoxP', fontName='Helvetica', fontSize=7.5, leading=10.5, textColor=colors.HexColor('#1e293b'))
+    box_title = ParagraphStyle('BoxTitle', fontName='Helvetica-Bold', fontSize=7.8, leading=9.8, textColor=colors.HexColor('#6d28d9'))
+    box_p = ParagraphStyle('BoxP', fontName='Helvetica', fontSize=7.2, leading=10, textColor=colors.HexColor('#1e293b'))
     
-    sec_h = ParagraphStyle('SecH', fontName='Helvetica-Bold', fontSize=8, leading=10, textColor=colors.HexColor('#0f172a'))
+    sec_h = ParagraphStyle('SecH', fontName='Helvetica-Bold', fontSize=7.8, leading=9.8, textColor=colors.HexColor('#0f172a'))
     
-    th_l = ParagraphStyle('THL', fontName='Helvetica-Bold', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#1e293b'))
-    th_r = ParagraphStyle('THR', fontName='Helvetica-Bold', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#1e293b'), alignment=2)
-    td_l = ParagraphStyle('TDL', fontName='Helvetica', fontSize=7.5, leading=10, textColor=colors.HexColor('#1e293b'))
-    td_r = ParagraphStyle('TDR', fontName='Helvetica', fontSize=7.5, leading=10, textColor=colors.HexColor('#1e293b'), alignment=2)
-    td_tot = ParagraphStyle('TDTot', fontName='Helvetica-Bold', fontSize=8.5, leading=11, textColor=colors.HexColor('#581c87'), alignment=2)
+    th_l = ParagraphStyle('THL', fontName='Helvetica-Bold', fontSize=7.2, leading=9.2, textColor=colors.HexColor('#1e293b'))
+    th_r = ParagraphStyle('THR', fontName='Helvetica-Bold', fontSize=7.2, leading=9.2, textColor=colors.HexColor('#1e293b'), alignment=2)
+    td_l = ParagraphStyle('TDL', fontName='Helvetica', fontSize=7.2, leading=9.5, textColor=colors.HexColor('#1e293b'))
+    td_r = ParagraphStyle('TDR', fontName='Helvetica', fontSize=7.2, leading=9.5, textColor=colors.HexColor('#1e293b'), alignment=2)
+    td_tot = ParagraphStyle('TDTot', fontName='Helvetica-Bold', fontSize=8.2, leading=10.5, textColor=colors.HexColor('#581c87'), alignment=2)
     
-    clause_p = ParagraphStyle('ClauseP', fontName='Helvetica', fontSize=6.8, leading=9.2, textColor=colors.HexColor('#334155'))
+    clause_p = ParagraphStyle('ClauseP', fontName='Helvetica', fontSize=6.5, leading=8.8, textColor=colors.HexColor('#334155'))
     
-    sig_h = ParagraphStyle('SigH', fontName='Helvetica-Bold', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#0f172a'))
-    sig_sub = ParagraphStyle('SigSub', fontName='Helvetica', fontSize=7, leading=9, textColor=colors.HexColor('#64748b'))
+    sig_h = ParagraphStyle('SigH', fontName='Helvetica-Bold', fontSize=7.2, leading=9.2, textColor=colors.HexColor('#0f172a'))
+    sig_sub = ParagraphStyle('SigSub', fontName='Helvetica', fontSize=6.8, leading=8.8, textColor=colors.HexColor('#64748b'))
 
     story = []
 
@@ -1322,11 +1325,34 @@ def generate_subscription_sla_pdf(tenant: Tenant, owner: User | None, sub_data: 
     sla_num = sub_data.get("agreement_number", f"SLA-2026-{str(tenant.id)[-6:].upper()}")
     issue_date = clean_date_str(sub_data.get("issue_date") or sub_data.get("subscription_start_date"))
     pay_status = sub_data.get("payment_status", "PAID").upper()
-    pay_method = sub_data.get("payment_method", "Razorpay Online")
+    pay_method = sub_data.get("payment_method", "Bank Transfer")
 
-    header_left = [
-        Paragraph("<font color='#6d28d9'><b>IOTRONICS</b></font> <font color='#059669'><b>PRIVATE LIMITED</b></font>", h1),
-        Paragraph("<font color='#64748b'>Enterprise Cloud Business Operating System</font>", h_sub),
+    logo_path = None
+    try:
+        candidates = [
+            Path(__file__).resolve().parents[4] / "frontend" / "public" / "Logo.png",
+            Path("frontend/public/Logo.png").resolve(),
+            Path("public/Logo.png").resolve(),
+            Path("/app/frontend/public/Logo.png"),
+            Path("Logo.png").resolve(),
+        ]
+        for c in candidates:
+            if c.exists():
+                logo_path = str(c)
+                break
+    except Exception:
+        logo_path = None
+
+    header_brand = []
+    if logo_path:
+        try:
+            header_brand.append(RLImage(logo_path, width=110, height=30))
+        except Exception:
+            header_brand.append(Paragraph("<font color='#6d28d9'><b>IOTRONICS</b></font> <font color='#059669'><b>PRIVATE LIMITED</b></font>", h1))
+    else:
+        header_brand.append(Paragraph("<font color='#6d28d9'><b>IOTRONICS</b></font> <font color='#059669'><b>PRIVATE LIMITED</b></font>", h1))
+
+    header_left = header_brand + [
         Spacer(1, 3),
         Paragraph("<b>IOTRONICS PRIVATE LIMITED</b>", h_sub),
         Paragraph("Kukatpally, Madhapur, Phase II, Hyderabad, Telangana 500081", h_sub),
@@ -1334,9 +1360,29 @@ def generate_subscription_sla_pdf(tenant: Tenant, owner: User | None, sub_data: 
         Paragraph("<b>Support & Billing:</b> iotroncspvtltd@gmail.com", h_sub),
     ]
 
+    badge_table = Table([[Paragraph("OFFICIAL TAX INVOICE & SLA DRAFT", badge)]], colWidths=[180], hAlign='RIGHT')
+    badge_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#faf5ff')),
+        ('BOX', (0,0), (-1,-1), 0.8, colors.HexColor('#d8b4fe')),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0), (-1,-1), 2.5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 2.5),
+    ]))
+
+    badge_wrapper = Table([[badge_table]], colWidths=[215])
+    badge_wrapper.setStyle(TableStyle([
+        ('ALIGN', (0,0), (-1,-1), 'RIGHT'),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('LEFTPADDING', (0,0), (-1,-1), 0),
+        ('RIGHTPADDING', (0,0), (-1,-1), 0),
+        ('TOPPADDING', (0,0), (-1,-1), 0),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+    ]))
+
     header_right = [
-        Paragraph("<font color='#581c87'><b>OFFICIAL TAX INVOICE & SLA DRAFT</b></font>", badge),
-        Spacer(1, 3),
+        badge_wrapper,
+        Spacer(1, 4),
         Paragraph(f"<b>Invoice #:</b> <font color='#0f172a'><b>{inv_num}</b></font>", meta_r),
         Paragraph(f"<b>SLA Agreement #:</b> <font color='#0f172a'><b>{sla_num}</b></font>", meta_r),
         Paragraph(f"<b>Issue Date:</b> {issue_date}", meta_r),
@@ -1344,30 +1390,28 @@ def generate_subscription_sla_pdf(tenant: Tenant, owner: User | None, sub_data: 
         Paragraph(f"<b>Payment Method:</b> {pay_method}", meta_r),
     ]
 
-    header_table = Table([[header_left, header_right]], colWidths=[310, 213])
+    header_table = Table([[header_left, header_right]], colWidths=[320, 215])
     header_table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 0),
-        ('TOPPADDING', (0,0), (-1,-1), 0),
-        ('LEFTPADDING', (0,0), (-1,-1), 0),
-        ('RIGHTPADDING', (0,0), (-1,-1), 0),
+        ('PADDING', (0,0), (-1,-1), 0),
+        ('ALIGN', (1,0), (1,-1), 'RIGHT'),
     ]))
     story.append(header_table)
-    story.append(Spacer(1, 6))
-    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#e2e8f0'), spaceBefore=2, spaceAfter=6))
+    story.append(Spacer(1, 4))
+    story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor('#e2e8f0'), spaceBefore=2, spaceAfter=4))
 
-    # Two-Column Client Details Box
+    # Two-Column Client Details Box (Two distinct cards separated by a gap)
     client_name = sub_data.get("client_company_name") or tenant.name
     admin_name = owner.full_name if owner else "Admin"
     admin_email = owner.email if owner else ""
     client_gstin = sub_data.get("client_tax_id") or ""
     client_addr = sub_data.get("client_billing_address") or ""
     
-    t_val = sub_data.get("tenure_value", 12)
-    t_unit = str(sub_data.get("tenure_unit", "months")).upper()
+    t_val = sub_data.get("tenure_value", 1)
+    t_unit = str(sub_data.get("tenure_unit", "years")).upper()
     start_str = clean_date_str(sub_data.get("subscription_start_date"))
     exp_str = clean_date_str(tenant.subscription_expires_at.strftime("%Y-%m-%d") if tenant.subscription_expires_at else None)
-    sla_tier = sub_data.get("sla_tier", "Enterprise Gold (99.9% Uptime SLA)")
+    sla_tier = sub_data.get("sla_tier", "Enterprise Gold (99.9% Uptime)")
 
     col1 = [
         Paragraph("<b>BILLED TO & LICENSED ENTITY</b>", box_title),
@@ -1377,9 +1421,9 @@ def generate_subscription_sla_pdf(tenant: Tenant, owner: User | None, sub_data: 
         Paragraph(f"<b>Authorized Admin:</b> {admin_name} ({admin_email})", box_p),
     ]
     if client_gstin:
-        col1.append(Paragraph(f"<b>Client GSTIN:</b> {client_gstin}", box_p))
+        col1.append(Paragraph(f"<b>GSTIN / Tax ID:</b> {client_gstin}", box_p))
     if client_addr:
-        col1.append(Paragraph(f"<b>Billing Address:</b> {client_addr}", box_p))
+        col1.append(Paragraph(f"<b>Address:</b> {client_addr}", box_p))
 
     col2 = [
         Paragraph("<b>SUBSCRIPTION TERM & VALIDITY</b>", box_title),
@@ -1391,35 +1435,69 @@ def generate_subscription_sla_pdf(tenant: Tenant, owner: User | None, sub_data: 
         Paragraph(f"<b>Guaranteed SLA:</b> {sla_tier}", box_p),
     ]
 
-    box_table = Table([[col1, col2]], colWidths=[255, 255])
-    box_table.setStyle(TableStyle([
+    col1_table = Table([[col1]], colWidths=[260])
+    col1_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
         ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('PADDING', (0,0), (-1,-1), 6),
+        ('PADDING', (0,0), (-1,-1), 4.5),
+    ]))
+
+    col2_table = Table([[col2]], colWidths=[260])
+    col2_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
+        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('PADDING', (0,0), (-1,-1), 4.5),
+    ]))
+
+    box_table = Table([[col1_table, '', col2_table]], colWidths=[260, 15, 260])
+    box_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('PADDING', (0,0), (-1,-1), 0),
     ]))
     story.append(box_table)
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1, 4))
 
     # Licensed Modules
     story.append(Paragraph("<b>LICENSED ENTERPRISE MODULES</b>", sec_h))
     story.append(Spacer(1, 2))
-    enabled_mods = (tenant.settings or {}).get("enabled_modules") or ["dashboard", "pos", "inventory", "operations", "crm", "marketplace", "accounting", "hrms", "iot", "analytics", "erp", "settings"]
-    mods_text = "   ".join([f"✓ {str(m).replace('_', ' ').upper()}" for m in enabled_mods])
-    mod_table = Table([[Paragraph(f"<font color='#581c87' size='6.8'><b>{mods_text}</b></font>", box_p)]], colWidths=[523])
-    mod_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#faf5ff')),
-        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#f3e8ff')),
-        ('PADDING', (0,0), (-1,-1), 4),
+    enabled_mods = (tenant.settings or {}).get("enabled_modules") or ["erp", "pos", "inventory", "procurement", "crm", "social_media", "marketplace", "accounting", "hrms", "iot", "reports", "settings"]
+    pill_style = ParagraphStyle('ModPill', fontName='Helvetica-Bold', fontSize=6.2, leading=8.2, textColor=colors.HexColor('#581c87'), alignment=1)
+    
+    r1_mods = enabled_mods[:6]
+    r2_mods = enabled_mods[6:12]
+    pill_cells_r1 = [Table([[Paragraph(f"✓ {str(m).replace('_', ' ').upper()}", pill_style)]], colWidths=[84]) for m in r1_mods]
+    pill_cells_r2 = [Table([[Paragraph(f"✓ {str(m).replace('_', ' ').upper()}", pill_style)]], colWidths=[84]) for m in r2_mods]
+    
+    for p in pill_cells_r1 + pill_cells_r2:
+        p.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#ffffff')),
+            ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+            ('PADDING', (0,0), (-1,-1), 1.8),
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+    
+    mod_table_rows = [pill_cells_r1]
+    if pill_cells_r2:
+        mod_table_rows.append(pill_cells_r2)
+    mod_outer_table = Table(mod_table_rows, colWidths=[89]*len(pill_cells_r1))
+    mod_outer_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
+        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+        ('PADDING', (0,0), (-1,-1), 3),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
     ]))
-    story.append(mod_table)
-    story.append(Spacer(1, 6))
+    story.append(mod_outer_table)
+    story.append(Spacer(1, 4))
 
     # Financial Commercials Table
     story.append(Paragraph("<b>FINANCIAL BREAKDOWN</b>", sec_h))
     story.append(Spacer(1, 2))
 
-    billing_amt = float(sub_data.get("billing_amount", 50000.0))
+    billing_amt = float(sub_data.get("billing_amount", 5509.0))
     tax_rate = float(sub_data.get("tax_rate", 18.0))
     tax_amt = float(sub_data.get("tax_amount", round(billing_amt * (tax_rate / 100.0), 2)))
     tot_amt = float(sub_data.get("total_amount", round(billing_amt + tax_amt, 2)))
@@ -1428,7 +1506,7 @@ def generate_subscription_sla_pdf(tenant: Tenant, owner: User | None, sub_data: 
     fin_rows = [
         [Paragraph("<b>DESCRIPTION</b>", th_l), Paragraph("<b>TENURE TERM</b>", th_l), Paragraph("<b>TAX RATE</b>", th_r), Paragraph(f"<b>AMOUNT ({curr})</b>", th_r)],
         [
-            Paragraph(f"<b>{tenant.plan.upper()} Enterprise Cloud Subscription License</b><br/><font size='6.5' color='#64748b'>Includes AI Copilot, POS, Inventory, Accounting, HRMS, and IoT Integration.</font>", td_l),
+            Paragraph(f"<b>{tenant.plan.upper()} Enterprise Cloud Subscription License</b><br/><font size='6.2' color='#64748b'>Includes AI Copilot, POS, Inventory, Accounting, HRMS, and IoT Integration.</font>", td_l),
             Paragraph(f"{t_val} {t_unit.lower()}", td_l),
             Paragraph(f"{tax_rate:.0f}%", td_r),
             Paragraph(f"{billing_amt:,.2f}", td_r)
@@ -1438,53 +1516,53 @@ def generate_subscription_sla_pdf(tenant: Tenant, owner: User | None, sub_data: 
         [Paragraph("", td_l), Paragraph("<b>Grand Total Due / Settled</b>", td_tot), Paragraph("", td_r), Paragraph(f"<b>{curr} {tot_amt:,.2f}</b>", td_tot)],
     ]
 
-    fin_table = Table(fin_rows, colWidths=[270, 75, 65, 113])
+    fin_table = Table(fin_rows, colWidths=[275, 75, 65, 120])
     fin_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f8fafc')),
         ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
         ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#f1f5f9')),
         ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor('#faf5ff')),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('PADDING', (0,0), (-1,-1), 3.5),
+        ('PADDING', (0,0), (-1,-1), 3),
     ]))
     story.append(fin_table)
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1, 4))
 
     # Master SLA Clauses
     story.append(Paragraph("<b>MASTER CLOUD SERVICE LEVEL AGREEMENT (SLA) & TERMS</b>", sec_h))
     story.append(Spacer(1, 2))
     clauses = [
-        "<b>1. Service Availability:</b> LazyMonkeyAI guarantees " + str(sla_tier) + " uptime across all provisioned modules, calculated per calendar month excluding scheduled maintenance.",
+        "<b>1. Service Availability:</b> IoTRONCS guarantees " + str(sla_tier) + " uptime across all provisioned modules, calculated per calendar month excluding scheduled maintenance.",
         "<b>2. Data Isolation & Security:</b> All client workspace data is encrypted at rest (AES-256) and in transit (TLS 1.3). The client retains 100% exclusive proprietary ownership of all transaction, inventory, and employee records.",
         "<b>3. Tenure & Renewal:</b> This cloud subscription is active for the tenure length of " + f"{t_val} {t_unit.lower()}" + " ending on " + str(exp_str) + ".",
         "<b>4. Compliance Standards:</b> The platform operates in compliance with SOC 2 Type II, ISO 27001, and GDPR data privacy frameworks."
     ]
     clauses_flow = [Paragraph(c, clause_p) for c in clauses]
-    sla_table = Table([[clauses_flow]], colWidths=[523])
+    sla_table = Table([[clauses_flow]], colWidths=[535])
     sla_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
         ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
-        ('PADDING', (0,0), (-1,-1), 4.5),
+        ('PADDING', (0,0), (-1,-1), 3.5),
     ]))
     story.append(sla_table)
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 6))
 
     # Signature Block
     sig1 = [
         Paragraph("For and on behalf of <b>IOTRONICS PRIVATE LIMITED</b>", sig_sub),
-        Spacer(1, 12),
-        Paragraph("<b>Authorized Signatory & Seal</b> <font color='#16a34a' size='6.5'><b>[Digitally Verified]</b></font>", sig_h),
+        Spacer(1, 10),
+        Paragraph("<b>Authorized Signatory & Seal</b>   <font color='#16a34a' size='6.8'><b>[Digitally Verified]</b></font>", sig_h),
     ]
     sig2 = [
         Paragraph(f"Acknowledged and Accepted on behalf of <b>{client_name}</b>", sig_sub),
-        Spacer(1, 12),
-        Paragraph(f"<b>{admin_name}</b> <font color='#64748b' size='6.5'>Client Signature</font>", sig_h),
+        Spacer(1, 10),
+        Paragraph(f"<b>{admin_name}</b>   <font color='#64748b' size='6.8'>Client Signature</font>", sig_h),
     ]
-    sig_table = Table([[sig1, sig2]], colWidths=[255, 255])
+    sig_table = Table([[sig1, sig2]], colWidths=[267, 268])
     sig_table.setStyle(TableStyle([
         ('LINEABOVE', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('PADDING', (0,0), (-1,-1), 3),
+        ('PADDING', (0,0), (-1,-1), 2.5),
     ]))
     story.append(sig_table)
 

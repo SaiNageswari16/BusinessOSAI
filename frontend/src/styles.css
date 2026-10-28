@@ -310,3 +310,26 @@ body::-webkit-scrollbar {
   height: 0px !important;
   background: transparent !important;
 }
+
+/* ==========================================================================
+   TENANT AGREEMENT MODAL PRINT ISOLATION
+   ========================================================================== */
+@media print {
+  body:has(#tenant-agreement-printable-document) * {
+    visibility: hidden !important;
+  }
+  body:has(#tenant-agreement-printable-document) #tenant-agreement-printable-document,
+  body:has(#tenant-agreement-printable-document) #tenant-agreement-printable-document * {
+    visibility: visible !important;
+  }
+  body:has(#tenant-agreement-printable-document) #tenant-agreement-printable-document {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 10px !important;
+    background: #ffffff !important;
+  }
+}
+
