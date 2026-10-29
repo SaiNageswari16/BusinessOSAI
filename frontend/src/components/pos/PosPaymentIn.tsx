@@ -1294,7 +1294,6 @@ export function PosPaymentIn() {
                     <th className="py-3.5 px-4 text-right text-emerald-700">Credit (+) In</th>
                     <th className="py-3.5 px-4 text-right text-rose-700">Debit (-) Out</th>
                     <th className="py-3.5 px-4 text-right text-amber-700">Due Amount</th>
-                    <th className="py-3.5 px-4 text-right text-indigo-900">Running Balance</th>
                     <th className="py-3.5 px-4 text-center">Tender / Mode</th>
                     <th className="py-3.5 px-4 text-right">Receipt</th>
                   </tr>
@@ -1302,7 +1301,7 @@ export function PosPaymentIn() {
                 <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
                   {filteredPayments.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="text-center py-12 text-slate-400 text-sm">
+                      <td colSpan={8} className="text-center py-12 text-slate-400 text-sm">
                         No ledger transactions found for the selected filter.
                       </td>
                     </tr>
@@ -1373,19 +1372,6 @@ export function PosPaymentIn() {
                           ) : p.due_amount === 0 ? (
                             <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 rounded-md font-mono text-xs font-bold shadow-2xs">
                               ₹0.00 <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-600">(Cleared)</span>
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">—</span>
-                          )}
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-black">
-                          {p.running_balance != null ? (
-                            <span className={`px-2.5 py-0.5 rounded-md font-mono text-xs font-bold shadow-2xs ${
-                              p.running_balance >= 0 
-                                ? "text-emerald-800 bg-emerald-50/80 border border-emerald-200" 
-                                : "text-rose-800 bg-rose-50/80 border border-rose-200"
-                            }`}>
-                              {p.running_balance >= 0 ? "+" : ""}{formatCurrency(p.running_balance)}
                             </span>
                           ) : (
                             <span className="text-slate-300">—</span>
