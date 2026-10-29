@@ -2063,10 +2063,10 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         </div>
       )}
 
-      {/* Top 2-Column Section: Bill From / Vendor Party + Document Metadata */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        {/* Bill From / Vendor Party Card (2 Cols on lg) */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 space-y-3">
+      {/* Top 2-Column Section: Bill From / Vendor Party + Document Metadata (50/50 Balanced Layout) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {/* Bill From / Vendor Party Card (50% on lg) */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 space-y-3">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
               <Building className="w-4 h-4 text-blue-600" />
@@ -2076,21 +2076,21 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             <button
               type="button"
               onClick={() => setIsAddVendorOpen(true)}
-              className="text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1 rounded-xl transition-all flex items-center gap-1"
+              className="text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" /> Add New Vendor
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-3">
             <div>
               <label className="text-[11px] font-semibold text-slate-500 block mb-1">
-                Select Vendor / Supplier
+                Select Vendor / Supplier <span className="text-rose-500 font-bold">*</span>
               </label>
               <select
                 value={selectedSupplierId}
                 onChange={(e) => setSelectedSupplierId(e.target.value)}
-                className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
               >
                 <option value="">-- Select Vendor / Supplier Party --</option>
                 {suppliers.map((s) => (
@@ -2103,8 +2103,12 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
 
             {selectedSupplier ? (
               <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100 space-y-1 text-xs">
-                <div className="font-extrabold text-slate-900">{selectedSupplier.name}</div>
-                <div className="text-slate-600 text-[11px]">Phone: {selectedSupplier.phone || "N/A"}</div>
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-slate-900">{selectedSupplier.name}</span>
+                  {selectedSupplier.phone && (
+                    <span className="text-slate-600 text-[11px]">Phone: {selectedSupplier.phone}</span>
+                  )}
+                </div>
                 {selectedSupplier.tax_number && (
                   <div className="font-mono text-blue-700 font-bold text-[11px]">
                     GSTIN: {selectedSupplier.tax_number}
@@ -2115,14 +2119,14 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                 )}
               </div>
             ) : (
-              <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-xs text-slate-400 flex items-center justify-center italic">
+              <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-xs text-slate-400 flex items-center justify-center italic">
                 Select an existing vendor or click "+ Add New Vendor"
               </div>
             )}
           </div>
         </div>
 
-        {/* Document Metadata Card (1 Col on lg) */}
+        {/* Document Metadata Card (50% on lg) */}
         <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 space-y-3">
           <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 flex items-center gap-2">
             <FileText className="w-4 h-4 text-emerald-600" /> Document Metadata
@@ -2152,40 +2156,43 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             </div>
           </div>
 
-          <div>
-            <label className="text-[11px] font-semibold text-slate-500 block mb-1 flex items-center gap-1">
-              <MapPin className="size-3 text-indigo-600" /> {docType === "PR" ? "Target Delivery Store / Depot" : docType === "PO" ? "Receiving Store / Branch / Godown" : "Inward Store / Branch"}
-            </label>
-            <select
-              value={selectedLocation || selectedStore}
-              onChange={(e) => {
-                setSelectedLocation(e.target.value);
-                setSelectedStore(e.target.value);
-              }}
-              className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              {stores.map((s) => (
-                <option key={s.id} value={s.name}>
-                  {s.displayName}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {docType === "PINV" && (
-            <div>
-              <label className="text-[11px] font-semibold text-slate-500 block mb-1">
-                Original Vendor Bill / Ref No
+          {/* Inward Store / Branch and Original Vendor Bill / Ref No divided in half */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className={cn(docType !== "PINV" && "sm:col-span-2")}>
+              <label className="text-[11px] font-semibold text-slate-500 block mb-1 flex items-center gap-1">
+                <MapPin className="size-3 text-indigo-600" /> {docType === "PR" ? "Target Delivery Store / Depot" : docType === "PO" ? "Receiving Store / Branch / Godown" : "Inward Store / Branch"}
               </label>
-              <input
-                type="text"
-                placeholder="e.g. VEND-9821"
-                value={originalRefNo}
-                onChange={(e) => setOriginalRefNo(e.target.value)}
-                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs outline-none"
-              />
+              <select
+                value={selectedLocation || selectedStore}
+                onChange={(e) => {
+                  setSelectedLocation(e.target.value);
+                  setSelectedStore(e.target.value);
+                }}
+                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {stores.map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {s.displayName}
+                  </option>
+                ))}
+              </select>
             </div>
-          )}
+
+            {docType === "PINV" && (
+              <div>
+                <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+                  Original Vendor Bill / Ref No
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. VEND-9821"
+                  value={originalRefNo}
+                  onChange={(e) => setOriginalRefNo(e.target.value)}
+                  className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs outline-none"
+                />
+              </div>
+            )}
+          </div>
 
           {!showDueDate ? (
             <button
