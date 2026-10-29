@@ -2128,9 +2128,25 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
 
         {/* Document Metadata Card (50% on lg) */}
         <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 space-y-3">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 flex items-center gap-2">
-            <FileText className="w-4 h-4 text-emerald-600" /> Document Metadata
-          </h2>
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-emerald-600" /> Document Metadata
+            </h2>
+
+            {!showDueDate ? (
+              <button
+                type="button"
+                onClick={() => setShowDueDate(true)}
+                className="text-xs font-bold text-sky-600 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 border border-sky-200 px-3 py-1 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Due Date
+              </button>
+            ) : (
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-emerald-600" /> Due Date Active
+              </span>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -2194,15 +2210,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             )}
           </div>
 
-          {!showDueDate ? (
-            <button
-              type="button"
-              onClick={() => setShowDueDate(true)}
-              className="w-full py-2 px-3 border-2 border-dashed border-sky-400/90 hover:border-sky-500 bg-sky-50/20 hover:bg-sky-50/60 text-sky-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-            >
-              <Plus className="size-3.5" /> Add Due Date
-            </button>
-          ) : (
+          {showDueDate && (
             <div className="space-y-1.5 p-2 bg-slate-50/80 rounded-xl border border-slate-200/90 animate-in fade-in duration-150">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
