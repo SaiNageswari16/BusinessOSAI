@@ -39,7 +39,7 @@ import {
   Sliders,
 } from "lucide-react";
 import { useStoreLocations } from "@/hooks/use-store-locations";
-import { inventoryApi, posApi } from "@/lib/api-client";
+import { inventoryApi, posApi, procurementApi } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { cn } from "@/lib/utils";
@@ -198,6 +198,16 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [shareModalDoc, setShareModalDoc] = useState<any | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [purchaseSettings, setPurchaseSettings] = useState<PurchaseInvoiceSettings>(() => loadStoredPurchaseInvoiceSettings());
+
+  useEffect(() => {
+    procurementApi.getPurchaseInvoiceSettings()
+      .then((serverData) => {
+        if (serverData && typeof serverData === "object") {
+          setPurchaseSettings((prev) => ({ ...prev, ...serverData }));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const handleUpdate = (e: any) => {
@@ -379,7 +389,9 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       const idSet = new Set<string>();
 
       try {
-        const invRes: any = await inventoryApi.getProducts({ page_size: 1000 });
+        // Fetch the FULL Product Master catalog (backend caps at 50000) so the
+        // multi-select import can find every product, not just the first 1000.
+        const invRes: any = await inventoryApi.getProducts({ page_size: 50000 });
         const invItems = invRes?.items || (Array.isArray(invRes) ? invRes : []);
         if (Array.isArray(invItems)) {
           invItems.forEach((p: any) => {
@@ -426,6 +438,18 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
     } finally {
       setIsLoadingProducts(false);
     }
+  };
+
+  // Open the multi-select import modal ONLY after the Product Master list has
+  // actually finished loading — otherwise the catalog can appear empty and the
+  // import silently does nothing. This is the single reliable import path.
+  const openProductCatalog = async () => {
+    const loaded = await loadProducts();
+    if (loaded.length === 0) {
+      toast.warning("Product Master has no products yet. Add items in Inventory → Product Master first.");
+    }
+    setMultiProductPage(1);
+    setIsMultiProductModalOpen(true);
   };
 
   useEffect(() => {
@@ -808,20 +832,42 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       return;
     }
 
-    const newItems: ProcurementItem[] = [];
+    // Compute the merged result once, outside the state updater.
+    const base = items.filter((it) => it.product_id || (it.product_name && it.product_name.trim().length > 0));
+    const next: ProcurementItem[] = [...base];
+    let addedCount = 0;
+    let mergedCount = 0;
+    let skippedCount = 0;
+
     selectedIds.forEach((pid) => {
       const prod = products.find((p) => String(p.id) === String(pid));
-      if (prod) {
-        const qty = Math.max(1, Number(selectedProductQuantities[pid]) || 1);
-        const costPrice = Number((prod as any).purchase_price || (prod as any).cost_price || prod.selling_price || prod.price || prod.mrp || 0);
-        const mrpVal = Number(prod.mrp || prod.selling_price || costPrice || 0);
+      if (!prod) { skippedCount++; return; }
 
-        const chosenBatch = selectedProductBatches[pid];
-        const batchNumber = chosenBatch?.batch_number || (prod as any).stock_batch_number || (prod as any).batch_number || "";
-        const effectiveCostPrice = (chosenBatch?.cost_price && Number(chosenBatch.cost_price) > 0) ? Number(chosenBatch.cost_price) : costPrice;
-        const effectiveMrp = (chosenBatch?.mrp && Number(chosenBatch.mrp) > 0) ? Number(chosenBatch.mrp) : mrpVal;
+      const qty = Math.max(1, Number(selectedProductQuantities[pid]) || 1);
+      const costPrice = Number((prod as any).purchase_price || (prod as any).cost_price || prod.selling_price || prod.price || prod.mrp || 0);
+      const mrpVal = Number(prod.mrp || prod.selling_price || costPrice || 0);
 
-        newItems.push({
+      const chosenBatch = selectedProductBatches[pid];
+      const batchNumber = chosenBatch?.batch_number || (prod as any).stock_batch_number || (prod as any).batch_number || "";
+      const effectiveCostPrice = (chosenBatch?.cost_price && Number(chosenBatch.cost_price) > 0) ? Number(chosenBatch.cost_price) : costPrice;
+      const effectiveMrp = (chosenBatch?.mrp && Number(chosenBatch.mrp) > 0) ? Number(chosenBatch.mrp) : mrpVal;
+
+      // MERGE: if the same product (+ batch) already exists, update its quantity
+      // in place instead of appending a duplicate row with qty 1.
+      const existingIdx = next.findIndex(
+        (it) => String(it.product_id) === String(prod.id) &&
+                String(it.batch_number || "") === String(batchNumber || "")
+      );
+      if (existingIdx >= 0) {
+        next[existingIdx] = {
+          ...next[existingIdx],
+          quantity: qty,
+          unit_price: effectiveCostPrice,
+          mrp: effectiveMrp,
+        };
+        mergedCount++;
+      } else {
+        next.push({
           id: Math.random().toString(36).substring(2, 9),
           product_id: prod.id,
           product_name: prod.name,
@@ -839,15 +885,19 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           discount_type: "percent",
           tax_rate: getEffectiveTaxRate(prod),
         });
+        addedCount++;
       }
     });
 
-    setItems((prev) => {
-      const filteredPrev = prev.filter((it) => it.product_id || (it.product_name && it.product_name.trim().length > 0));
-      return [...filteredPrev, ...newItems];
-    });
-
-    toast.success(`Added ${newItems.length} product(s) to line items!`);
+    setItems(next);
+    toast.success(
+      `${addedCount + mergedCount} product(s) imported${mergedCount ? ` — ${mergedCount} merged into existing rows` : ""}.`
+    );
+    if (skippedCount > 0) {
+      toast.warning(
+        `${skippedCount} selected product(s) not found in the loaded Product Master list — they were skipped. Refresh the catalog and try again.`
+      );
+    }
     setSelectedProductQuantities({});
     setSelectedProductBatches({});
     setIsMultiProductModalOpen(false);
@@ -2562,8 +2612,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                                       type="button"
                                       onMouseDown={(e) => {
                                         e.preventDefault();
-                                        loadProducts();
-                                        setIsMultiProductModalOpen(true);
+                                        openProductCatalog();
                                         setActiveSearchRowId(null);
                                       }}
                                       className="font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer"
@@ -2825,10 +2874,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                     <div className="flex items-center justify-center gap-2">
                       <button
                         type="button"
-                        onClick={() => {
-                          loadProducts();
-                          setIsMultiProductModalOpen(true);
-                        }}
+                        onClick={() => openProductCatalog()}
                         className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer"
                       >
                         <Boxes className="w-4 h-4" /> Open Multi-Product Catalog
@@ -2873,10 +2919,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             </button>
             <button
               type="button"
-              onClick={() => {
-                loadProducts();
-                setIsMultiProductModalOpen(true);
-              }}
+              onClick={() => openProductCatalog()}
               className="px-3.5 py-1.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl shadow-2xs flex items-center gap-1.5 cursor-pointer"
             >
               <Boxes className="w-3.5 h-3.5" /> Select Multiple Products

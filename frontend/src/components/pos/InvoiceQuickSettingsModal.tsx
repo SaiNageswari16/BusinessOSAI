@@ -80,6 +80,15 @@ export interface InvoiceSettings {
   suffix: string;
   padding?: number;
 
+  // B2B & B2C Separate Numbering Series
+  separateB2BSequenceEnabled?: boolean;
+  b2bPrefix?: string;
+  b2bSequenceNumber?: number;
+  b2bPadding?: number;
+  b2cPrefix?: string;
+  b2cSequenceNumber?: number;
+  b2cPadding?: number;
+
   // Quotation & Document Numbering
   quotationPrefix?: string;
   quotationSequenceNumber?: number;
@@ -131,6 +140,14 @@ export const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
   sequenceNumber: 1,
   suffix: "",
   padding: 4,
+
+  separateB2BSequenceEnabled: false,
+  b2bPrefix: "B2B-",
+  b2bSequenceNumber: 1,
+  b2bPadding: 4,
+  b2cPrefix: "INV-",
+  b2cSequenceNumber: 1,
+  b2cPadding: 4,
 
   quotationPrefix: "QT-",
   quotationSequenceNumber: 1,
@@ -1350,6 +1367,134 @@ export function InvoiceQuickSettingsModal({
                   )}
                 </div>
 
+                {/* 1.1 B2B vs B2C Separate Series & Prefix Configuration */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-700">🏢 B2B / 🛒 B2C Switch</span>
+                        <h3 className="text-xs font-bold text-slate-800">Separate B2B & B2C Invoice Series</h3>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Assign independent numbering prefixes for GST registered parties (B2B) vs retail walk-in consumers (B2C).
+                      </p>
+                    </div>
+
+                    {/* Toggle Switch */}
+                    <button
+                      type="button"
+                      onClick={() => handleToggle("separateB2BSequenceEnabled" as any)}
+                      className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200 cursor-pointer ${
+                        draftSettings.separateB2BSequenceEnabled ? "bg-purple-600" : "bg-slate-300"
+                      }`}
+                    >
+                      <div
+                        className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ${
+                          draftSettings.separateB2BSequenceEnabled ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {draftSettings.separateB2BSequenceEnabled && (
+                    <div className="pt-2 border-t border-slate-100 space-y-4 animate-in fade-in">
+                      {/* B2B Registered Business Series */}
+                      <div className="p-3 bg-purple-50/50 rounded-xl border border-purple-100 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-purple-900 flex items-center gap-1.5">
+                            <span>🏢 B2B Registered Tax Invoice Series</span>
+                          </span>
+                          <span className="font-mono text-xs font-bold text-purple-700 bg-white px-2 py-0.5 rounded border border-purple-200">
+                            {(draftSettings.b2bPrefix || "B2B-")}{String(draftSettings.b2bSequenceNumber || 1).padStart(draftSettings.b2bPadding ?? 4, "0")}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 block mb-1">B2B Prefix</label>
+                            <input
+                              type="text"
+                              value={draftSettings.b2bPrefix !== undefined ? draftSettings.b2bPrefix : "B2B-"}
+                              onChange={(e) => setDraftSettings(prev => ({ ...prev, b2bPrefix: e.target.value.toUpperCase() }))}
+                              placeholder="B2B-"
+                              className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 block mb-1">Next B2B Number</label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={draftSettings.b2bSequenceNumber ?? 1}
+                              onChange={(e) => setDraftSettings(prev => ({ ...prev, b2bSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) }))}
+                              className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 block mb-1">Digits Padding</label>
+                            <select
+                              value={draftSettings.b2bPadding ?? 4}
+                              onChange={(e) => setDraftSettings(prev => ({ ...prev, b2bPadding: parseInt(e.target.value, 10) || 4 }))}
+                              className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2 text-xs font-bold text-slate-800 outline-none focus:border-purple-500"
+                            >
+                              <option value={4}>4 Digits (e.g. 0001)</option>
+                              <option value={5}>5 Digits (e.g. 00001)</option>
+                              <option value={6}>6 Digits (e.g. 000001)</option>
+                              <option value={3}>3 Digits (e.g. 001)</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* B2C Consumer Retail Series */}
+                      <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-100 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                            <span>🛒 B2C Retail / Consumer Invoice Series</span>
+                          </span>
+                          <span className="font-mono text-xs font-bold text-emerald-700 bg-white px-2 py-0.5 rounded border border-emerald-200">
+                            {(draftSettings.b2cPrefix || "RET-")}{String(draftSettings.b2cSequenceNumber || 1).padStart(draftSettings.b2cPadding ?? 4, "0")}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 block mb-1">B2C Prefix</label>
+                            <input
+                              type="text"
+                              value={draftSettings.b2cPrefix !== undefined ? draftSettings.b2cPrefix : "RET-"}
+                              onChange={(e) => setDraftSettings(prev => ({ ...prev, b2cPrefix: e.target.value.toUpperCase() }))}
+                              placeholder="RET-"
+                              className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-emerald-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 block mb-1">Next B2C Number</label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={draftSettings.b2cSequenceNumber ?? 1}
+                              onChange={(e) => setDraftSettings(prev => ({ ...prev, b2cSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) }))}
+                              className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-emerald-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 block mb-1">Digits Padding</label>
+                            <select
+                              value={draftSettings.b2cPadding ?? 4}
+                              onChange={(e) => setDraftSettings(prev => ({ ...prev, b2cPadding: parseInt(e.target.value, 10) || 4 }))}
+                              className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2 text-xs font-bold text-slate-800 outline-none focus:border-emerald-500"
+                            >
+                              <option value={4}>4 Digits (e.g. 0001)</option>
+                              <option value={5}>5 Digits (e.g. 00001)</option>
+                              <option value={6}>6 Digits (e.g. 000001)</option>
+                              <option value={3}>3 Digits (e.g. 001)</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Quotation & Proposal Sequence Numbering Card */}
                 <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-3">
                   <div className="flex items-center justify-between">
@@ -2069,14 +2214,20 @@ export function InvoiceQuickSettingsModal({
                     </label>
 
                     {/* Serial / IMEI */}
-                    <label className="flex items-center gap-2.5 p-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50/70 cursor-pointer transition-colors">
+                    <label className="flex items-center justify-between p-2.5 rounded-lg border border-indigo-200 bg-indigo-50/40 hover:bg-indigo-50 cursor-pointer transition-colors col-span-1 sm:col-span-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">📱</span>
+                        <div>
+                          <span className="text-xs font-bold text-slate-900 block">Serial / IMEI No. Column</span>
+                          <span className="text-[10px] text-slate-500">Print device IMEI, barcode serials, and MAC addresses on invoice item rows</span>
+                        </div>
+                      </div>
                       <input
                         type="checkbox"
                         checked={draftSettings.showSerialNo}
                         onChange={() => handleToggle("showSerialNo")}
                         className="w-4 h-4 rounded text-indigo-600 accent-indigo-600 cursor-pointer"
                       />
-                      <span className="text-xs font-bold text-slate-800">Serial / IMEI No.</span>
                     </label>
 
                     {/* Warranty */}

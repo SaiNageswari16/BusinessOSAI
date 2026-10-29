@@ -25,11 +25,13 @@ import {
   Boxes,
   Truck,
   RotateCcw,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { getTenantIdFromStorage, getCompanyIdFromStorage } from "@/lib/receipt-template-store";
+import { procurementApi } from "@/lib/api-client";
 import { WordInvoiceStudioModal } from "../pos/WordInvoiceStudioModal";
 
 export interface ItemCustomColumn {
@@ -127,8 +129,16 @@ export function getPurchaseInvoiceSettingsStorageKey(tenantId?: string, companyI
 
 export function loadStoredPurchaseInvoiceSettings(tenantId?: string, companyId?: string): PurchaseInvoiceSettings {
   try {
-    const key = getPurchaseInvoiceSettingsStorageKey(tenantId, companyId);
-    const raw = localStorage.getItem(key) || (key !== "pos_purchase_quick_settings" ? localStorage.getItem("pos_purchase_quick_settings") : null);
+    const tid = tenantId || getTenantIdFromStorage();
+    const cid = companyId || getCompanyIdFromStorage();
+    const key = getPurchaseInvoiceSettingsStorageKey(tid, cid);
+    let raw = localStorage.getItem(key);
+    if (!raw && tid && cid) {
+      raw = localStorage.getItem(`pos_purchase_quick_settings_${tid}`);
+    }
+    if (!raw && !tid) {
+      raw = localStorage.getItem("pos_purchase_quick_settings");
+    }
     if (raw) {
       const parsed = JSON.parse(raw);
       return { ...DEFAULT_PURCHASE_INVOICE_SETTINGS, ...parsed };
@@ -141,13 +151,15 @@ export function loadStoredPurchaseInvoiceSettings(tenantId?: string, companyId?:
 
 export function saveStoredPurchaseInvoiceSettings(settings: PurchaseInvoiceSettings, tenantId?: string, companyId?: string) {
   try {
-    const key = getPurchaseInvoiceSettingsStorageKey(tenantId, companyId);
+    const tid = tenantId || getTenantIdFromStorage();
+    const cid = companyId || getCompanyIdFromStorage();
+    const key = getPurchaseInvoiceSettingsStorageKey(tid, cid);
     localStorage.setItem(key, JSON.stringify(settings));
-    if (key !== "pos_purchase_quick_settings") {
-      localStorage.setItem("pos_purchase_quick_settings", JSON.stringify(settings));
+    if (tid && key !== `pos_purchase_quick_settings_${tid}`) {
+      localStorage.setItem(`pos_purchase_quick_settings_${tid}`, JSON.stringify(settings));
     }
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("bos-purchase-settings-updated", { detail: { settings, key } }));
+      window.dispatchEvent(new CustomEvent("bos-purchase-settings-updated", { detail: { settings, key, tenantId: tid, companyId: cid } }));
       window.dispatchEvent(new CustomEvent("bos-purchase-invoice-settings-changed", { detail: settings }));
     }
   } catch (err) {
@@ -172,12 +184,29 @@ export function PurchaseInvoiceQuickSettingsModal({
   const [settings, setSettings] = useState<PurchaseInvoiceSettings>(() => loadStoredPurchaseInvoiceSettings());
   const [isWordStudioOpen, setIsWordStudioOpen] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      setSettings(loadStoredPurchaseInvoiceSettings());
+      const tid = tenant?.id || getTenantIdFromStorage();
+      const cid = getCompanyIdFromStorage();
+      const local = loadStoredPurchaseInvoiceSettings(tid, cid);
+      setSettings(local);
+
+      // Revalidate from backend API for this active organization
+      procurementApi.getPurchaseInvoiceSettings(cid)
+        .then((serverData) => {
+          if (serverData && typeof serverData === "object") {
+            const merged = { ...DEFAULT_PURCHASE_INVOICE_SETTINGS, ...serverData };
+            setSettings(merged);
+            saveStoredPurchaseInvoiceSettings(merged, tid, cid);
+          }
+        })
+        .catch((err) => {
+          console.warn("Could not sync purchase invoice settings from API:", err);
+        });
     }
-  }, [isOpen]);
+  }, [isOpen, tenant?.id]);
 
   if (!isOpen) return null;
 
@@ -224,11 +253,28 @@ export function PurchaseInvoiceQuickSettingsModal({
     toast.info("Custom column removed");
   };
 
-  const handleSave = () => {
-    saveStoredPurchaseInvoiceSettings(settings, tenant?.id);
-    if (onSaved) onSaved(settings);
-    toast.success("Purchase invoice settings and columns saved successfully!");
-    onClose();
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const tid = tenant?.id || getTenantIdFromStorage();
+      const cid = getCompanyIdFromStorage();
+      saveStoredPurchaseInvoiceSettings(settings, tid, cid);
+
+      try {
+        await procurementApi.updatePurchaseInvoiceSettings(settings, cid);
+      } catch (apiErr) {
+        console.warn("Could not persist purchase invoice settings to backend database:", apiErr);
+      }
+
+      if (onSaved) onSaved(settings);
+      toast.success("Purchase invoice settings and columns saved successfully!");
+      onClose();
+    } catch (err) {
+      console.error("Save settings failed:", err);
+      toast.error("Failed to save purchase invoice settings");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleResetToDefaults = () => {
@@ -685,9 +731,11 @@ export function PurchaseInvoiceQuickSettingsModal({
             <button
               type="button"
               onClick={handleSave}
-              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+              disabled={isSaving}
+              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
             >
-              <Check className="size-4" /> Save Settings
+              {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+              <span>{isSaving ? "Saving..." : "Save Settings"}</span>
             </button>
           </div>
         </div>

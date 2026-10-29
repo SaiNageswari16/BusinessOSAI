@@ -5234,11 +5234,12 @@ export const accountingApi = {
 
 export const bankApi = {
   // Bank Accounts
-  listBankAccounts: (params?: { page?: number; page_size?: number; status?: string; search?: string }) =>
+  listBankAccounts: (params?: { page?: number; page_size?: number; status?: string; search?: string; company_id?: string }) =>
     request<PaginatedResponse<BankAccountRecord>>("GET", "/bank/accounts", undefined, params),
   getBankAccount: (id: string) => request<BankAccountRecord>("GET", `/bank/accounts/${id}`),
   createBankAccount: (data: Partial<BankAccountRecord>) => request<BankAccountRecord>("POST", "/bank/accounts", data),
   updateBankAccount: (id: string, data: Partial<BankAccountRecord>) => request<BankAccountRecord>("PATCH", `/bank/accounts/${id}`, data),
+  deleteBankAccount: (id: string) => request<void>("DELETE", `/bank/accounts/${id}`),
   setDefaultBankAccount: (id: string) => request<BankAccountRecord>("POST", `/bank/accounts/${id}/set-default`),
 
   // Transactions
@@ -5665,6 +5666,10 @@ export const procurementApi = {
   getVendorSummary: (vendorId: string) => request<any>("GET", `/erp/procurement/vendors/${vendorId}/summary`),
   listVendorPayments: () => request<any>("GET", "/erp/procurement/payments"),
   recordVendorPayment: (vendorId: string, data: any) => request<any>("POST", `/erp/procurement/vendors/${vendorId}/payments`, data),
+  getPurchaseInvoiceSettings: (companyId?: string) =>
+    request<any>("GET", "/erp/procurement/settings/purchase-invoice", undefined, companyId ? { company_id: companyId } : undefined),
+  updatePurchaseInvoiceSettings: (data: any, companyId?: string) =>
+    request<any>("PUT", "/erp/procurement/settings/purchase-invoice", data, companyId ? { company_id: companyId } : undefined),
 };
 
 export const deliveryChallanApi = {

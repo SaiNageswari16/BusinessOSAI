@@ -111,6 +111,7 @@ export function WordInvoiceDocument({
   dynamicBank = "",
   currency = { symbol: "₹", code: "INR" },
   template,
+  f,
   paperSize = 'A4',
   orientation = 'portrait',
 }: WordInvoiceDocumentProps) {
@@ -693,8 +694,29 @@ export function WordInvoiceDocument({
   };
 
   const enabledCols = React.useMemo(() => {
-    const baseCols = (config?.columns || DEFAULT_WORD_COLUMNS).filter((c) => c.enabled);
-    if (!isPurchaseDoc) return baseCols;
+    let baseCols = (config?.columns || DEFAULT_WORD_COLUMNS).filter((c) => c.enabled);
+    if (!isPurchaseDoc) {
+      // Honored Design-tab "Table Columns & Fields" toggles so the printed
+      // columns always match what the user selected on the template page.
+      if (f) {
+        const salesAllowed = (key: string) => {
+          switch (key) {
+            case "hsn":
+              return f.showHSN !== false;
+            case "mrp":
+              return f.showMRP !== false;
+            case "tax_rate":
+              return f.showTaxSplit !== false;
+            case "description":
+              return f.showItemDescription !== false;
+            default:
+              return true;
+          }
+        };
+        baseCols = baseCols.filter((c) => salesAllowed(c.fieldKey));
+      }
+      return baseCols;
+    }
     const pSettings = loadStoredPurchaseInvoiceSettings();
 
     const isFieldAllowed = (key: string) => {
@@ -752,7 +774,7 @@ export function WordInvoiceDocument({
       }));
     }
     return combined;
-  }, [config, isPurchaseDoc]);
+  }, [config, isPurchaseDoc, f]);
   const enabledSections = [...(config?.sections || DEFAULT_WORD_SECTIONS)].sort((a, b) => a.order - b.order).filter((s) => s.enabled);
 
   // Accent Color Helpers
