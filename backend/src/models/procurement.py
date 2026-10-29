@@ -123,9 +123,6 @@ class PurchaseRequest(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMix
     company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
     request_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     status: Mapped[str] = mapped_column(String(50), default="Draft") # Draft, Pending Approval, Approved, Rejected
-    reference_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    vendor_bill_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_vendor_bills.id", ondelete="SET NULL"), nullable=True)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     total_amount: Mapped[float] = mapped_column(Numeric(15, 2), default=0.0)
     
     items: Mapped[list["PurchaseRequestItem"]] = relationship(back_populates="purchase_request", cascade="all, delete-orphan")
@@ -188,9 +185,6 @@ class PurchaseOrder(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin
     delivery_date: Mapped[datetime | None] = mapped_column(DateTime)
     total_amount: Mapped[float] = mapped_column(Numeric(15, 2), default=0.0)
     status: Mapped[str] = mapped_column(String(50), default="Draft") # Draft, Sent, Partially Received, Fully Received, Billed, Cancelled
-    reference_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    vendor_bill_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_vendor_bills.id", ondelete="SET NULL"), nullable=True)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     
     items: Mapped[list["PurchaseOrderItem"]] = relationship(back_populates="purchase_order", cascade="all, delete-orphan")
 
@@ -220,15 +214,12 @@ class GoodsReceivedNote(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampM
     
     grn_number: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
     purchase_order_id = mapped_column(ForeignKey("erp_purchase_orders.id", ondelete="RESTRICT"), nullable=False)
-    purchase_order: Mapped[PurchaseOrder] = relationship()
+    purchase_order: Mapped[PurchaseOrder] = relationship(foreign_keys=[purchase_order_id])
     company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
     
     received_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     received_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="Draft") # Draft, Verified, Returned
-    reference_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    vendor_bill_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_vendor_bills.id", ondelete="SET NULL"), nullable=True)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     
     items: Mapped[list["GoodsReceivedNoteItem"]] = relationship(back_populates="grn", cascade="all, delete-orphan")
 
@@ -254,7 +245,7 @@ class PurchaseReturn(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixi
     
     return_number: Mapped[str] = mapped_column(String(100), nullable=False)
     purchase_order_id = mapped_column(ForeignKey("erp_purchase_orders.id", ondelete="RESTRICT"), nullable=False)
-    purchase_order: Mapped[PurchaseOrder] = relationship()
+    purchase_order: Mapped[PurchaseOrder] = relationship(foreign_keys=[purchase_order_id])
     company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
     
     return_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -284,7 +275,7 @@ class VendorBill(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     
     bill_number: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
     purchase_order_id = mapped_column(ForeignKey("erp_purchase_orders.id", ondelete="RESTRICT"), nullable=False)
-    purchase_order: Mapped[PurchaseOrder] = relationship()
+    purchase_order: Mapped[PurchaseOrder] = relationship(foreign_keys=[purchase_order_id])
     company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
     
     # 3-Way Match: GRN → Bill link. Optional so legacy bills without GRN are not broken.
@@ -297,9 +288,6 @@ class VendorBill(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     total_amount: Mapped[float] = mapped_column(Numeric(15, 2), default=0.0)
     paid_amount: Mapped[float] = mapped_column(Numeric(15, 2), default=0.0)
     status: Mapped[str] = mapped_column(String(50), default="Draft") # Draft, Unpaid, Partially Paid, Paid, Overdue
-    reference_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    vendor_bill_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_vendor_bills.id", ondelete="SET NULL"), nullable=True)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Exact per-line values as recorded at entry time (MRP / sell price / UOM), so
     # reopening the bill for edit restores the exact same numbers without falling
