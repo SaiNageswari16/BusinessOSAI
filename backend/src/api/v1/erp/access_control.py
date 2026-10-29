@@ -6,6 +6,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -118,9 +119,40 @@ async def _role_to_response(db: AsyncSession, role: Role) -> RoleResponse:
     )
 
 
+async def _resolve_target_tenant_and_company(
+    db: AsyncSession,
+    ctx: CurrentUserContext,
+    company_id: uuid.UUID | None = None,
+    all_workspaces: bool = False,
+) -> tuple[uuid.UUID, uuid.UUID | None]:
+    raw_cid = company_id or (None if all_workspaces else ctx.active_company_id)
+    effective_tenant_id = ctx.tenant_id
+    target_cid: uuid.UUID | None = None
+
+    if raw_cid:
+        comp = await db.get(Company, raw_cid)
+        if comp:
+            target_cid = comp.id
+            if comp.tenant_id:
+                effective_tenant_id = comp.tenant_id
+        else:
+            t_obj = await db.get(Tenant, raw_cid)
+            if t_obj:
+                effective_tenant_id = t_obj.id
+                p_comp = await db.scalar(
+                    select(Company.id)
+                    .where(Company.tenant_id == t_obj.id)
+                    .order_by(Company.created_at.asc())
+                    .limit(1)
+                )
+                target_cid = p_comp
+
+    return effective_tenant_id, target_cid
+
+
 async def _user_to_response(db: AsyncSession, user: User) -> UserResponse:
     from src.schemas.erp import RoleSummary
-    from src.models import Company, Tenant
+    from src.models import Company, Employee, Tenant
 
     result = await db.execute(
         select(UserRole).options(selectinload(UserRole.role)).where(UserRole.user_id == user.id)
@@ -132,13 +164,33 @@ async def _user_to_response(db: AsyncSession, user: User) -> UserResponse:
             user_company_id = ur.company_id
             break
 
+    if not user_company_id:
+        emp_cid = await db.scalar(
+            select(Employee.company_id).where(
+                Employee.user_id == user.id,
+                Employee.company_id.is_not(None),
+            ).limit(1)
+        )
+        if emp_cid:
+            user_company_id = emp_cid
+
+    tenant = await db.get(Tenant, user.tenant_id)
+    if not user_company_id and tenant and tenant.slug != "system":
+        p_comp = await db.scalar(
+            select(Company.id)
+            .where(Company.tenant_id == user.tenant_id)
+            .order_by(Company.created_at.asc())
+            .limit(1)
+        )
+        if p_comp:
+            user_company_id = p_comp
+
     company_name = None
     if user_company_id:
         c_obj = await db.get(Company, user_company_id)
         if c_obj:
             company_name = c_obj.name
 
-    tenant = await db.get(Tenant, user.tenant_id)
     if not company_name and tenant:
         company_name = tenant.name
 
@@ -147,8 +199,8 @@ async def _user_to_response(db: AsyncSession, user: User) -> UserResponse:
             id=ur.role.id,
             name=ur.role.name,
             is_default=ur.is_default,
-            company_id=ur.company_id,
-            company_name=company_name if ur.company_id == user_company_id else None
+            company_id=ur.company_id or user_company_id,
+            company_name=company_name if (ur.company_id == user_company_id or not ur.company_id) else None
         )
         for ur in user_roles
     ]
@@ -198,8 +250,10 @@ async def list_roles(
     db: Annotated[AsyncSession, Depends(get_db)],
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
+    company_id: uuid.UUID | None = Query(None, description="Filter roles by active company/tenant"),
 ):
-    query = select(Role).where(Role.tenant_id == ctx.tenant_id)
+    effective_tenant_id, _ = await _resolve_target_tenant_and_company(db, ctx, company_id)
+    query = select(Role).where(Role.tenant_id == effective_tenant_id)
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(query.order_by(Role.name).offset((page - 1) * page_size).limit(page_size))
     roles = result.scalars().all()
@@ -214,9 +268,10 @@ async def create_role(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     assert_role_name_allowed(payload.name)
+    effective_tenant_id, _ = await _resolve_target_tenant_and_company(db, ctx)
 
     role = Role(
-        tenant_id=ctx.tenant_id,
+        tenant_id=effective_tenant_id,
         name=payload.name.strip(),
         description=payload.description,
         status=_parse_entity_status(payload.status),
@@ -232,7 +287,7 @@ async def create_role(
     if payload.enabled_modules is not None or payload.enabled_tabs is not None:
         from sqlalchemy.orm.attributes import flag_modified
         from src.models import Tenant
-        tenant = await db.get(Tenant, ctx.tenant_id)
+        tenant = await db.get(Tenant, effective_tenant_id)
         if tenant:
             t_settings = dict(tenant.settings or {})
             if payload.enabled_modules is not None:
@@ -258,13 +313,17 @@ async def update_role(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:roles"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    role = await db.scalar(select(Role).where(Role.id == role_id, Role.tenant_id == ctx.tenant_id))
+    effective_tenant_id, _ = await _resolve_target_tenant_and_company(db, ctx)
+    role = await db.scalar(select(Role).where(Role.id == role_id, Role.tenant_id == effective_tenant_id))
+    if not role and getattr(ctx.user, "is_platform_admin", False):
+        role = await db.scalar(select(Role).where(Role.id == role_id))
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
+    role_tenant_id = role.tenant_id or effective_tenant_id
     if role.is_system:
-        actor_is_super = await user_has_super_admin_role(db, ctx.user.id, ctx.tenant_id)
+        actor_is_super = await user_has_super_admin_role(db, ctx.user.id, role_tenant_id) or getattr(ctx.user, "is_platform_admin", False)
         if not can_manage_super_admin(
-            is_tenant_owner=ctx.user.is_tenant_owner,
+            is_tenant_owner=ctx.user.is_tenant_owner or getattr(ctx.user, "is_platform_admin", False),
             has_super_admin_role=actor_is_super,
         ):
             raise HTTPException(status_code=403, detail="Only the tenant owner or Super Admin can modify system roles")
@@ -291,7 +350,7 @@ async def update_role(
     if payload.enabled_modules is not None or payload.enabled_tabs is not None:
         from sqlalchemy.orm.attributes import flag_modified
         from src.models import Tenant
-        tenant = await db.get(Tenant, ctx.tenant_id)
+        tenant = await db.get(Tenant, role_tenant_id)
         if tenant:
             t_settings = dict(tenant.settings or {})
             if payload.enabled_modules is not None:
@@ -316,7 +375,10 @@ async def delete_role(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:roles"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    role = await db.scalar(select(Role).where(Role.id == role_id, Role.tenant_id == ctx.tenant_id))
+    effective_tenant_id, _ = await _resolve_target_tenant_and_company(db, ctx)
+    role = await db.scalar(select(Role).where(Role.id == role_id, Role.tenant_id == effective_tenant_id))
+    if not role and getattr(ctx.user, "is_platform_admin", False):
+        role = await db.scalar(select(Role).where(Role.id == role_id))
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
     if role.is_system:
@@ -325,7 +387,7 @@ async def delete_role(
     # Clean up tenant role_modules and role_tabs settings if present
     from sqlalchemy.orm.attributes import flag_modified
     from src.models import Tenant
-    tenant = await db.get(Tenant, ctx.tenant_id)
+    tenant = await db.get(Tenant, role.tenant_id or effective_tenant_id)
     if tenant and tenant.settings:
         t_settings = dict(tenant.settings)
         changed = False
@@ -365,15 +427,47 @@ async def list_users(
     company_id: uuid.UUID | None = Query(None, description="Filter by company / workspace"),
     all_workspaces: bool = Query(False, description="Whether to include users from all workspaces"),
 ):
-    query = select(User).where(User.tenant_id == ctx.tenant_id)
+    from src.models import Employee
+
+    effective_tenant_id, target_cid = await _resolve_target_tenant_and_company(
+        db, ctx, company_id, all_workspaces
+    )
+
+    # Always exclude Platform Super Admin accounts from company/workspace-level user lists
+    query = select(User).where(
+        User.tenant_id == effective_tenant_id,
+        User.is_platform_admin == False,
+    )
     if search:
         query = query.where(User.full_name.ilike(f"%{search}%") | User.email.ilike(f"%{search}%"))
 
-    target_cid = company_id or (None if all_workspaces else ctx.active_company_id)
     if target_cid:
-        # Include users assigned to target_cid or tenant owners
-        subq = select(UserRole.user_id).where(UserRole.company_id == target_cid)
-        query = query.where((User.id.in_(subq)) | (User.is_tenant_owner == True))
+        role_subq = select(UserRole.user_id).where(UserRole.company_id == target_cid)
+        emp_subq = select(Employee.user_id).where(
+            Employee.company_id == target_cid,
+            Employee.user_id.is_not(None),
+        )
+        tenant_obj = await db.get(Tenant, effective_tenant_id)
+        primary_comp = await db.scalar(
+            select(Company.id)
+            .where(Company.tenant_id == effective_tenant_id)
+            .order_by(Company.created_at.asc())
+            .limit(1)
+        )
+        # Only include tenant owner for dedicated client tenants (not the 'system' platform tenant)
+        # and only when viewing that client tenant's primary company and the owner isn't assigned elsewhere
+        if tenant_obj and tenant_obj.slug != "system" and target_cid == primary_comp:
+            other_comp_subq = select(UserRole.user_id).where(
+                UserRole.company_id.is_not(None),
+                UserRole.company_id != target_cid,
+            )
+            query = query.where(
+                User.id.in_(role_subq)
+                | User.id.in_(emp_subq)
+                | ((User.is_tenant_owner == True) & (~User.id.in_(other_comp_subq)))
+            )
+        else:
+            query = query.where(User.id.in_(role_subq) | User.id.in_(emp_subq))
 
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(query.order_by(User.full_name).offset((page - 1) * page_size).limit(page_size))
@@ -389,8 +483,11 @@ async def create_user(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:users"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    effective_tenant_id, resolved_cid = await _resolve_target_tenant_and_company(
+        db, ctx, payload.company_id
+    )
     existing = await db.scalar(
-        select(User).where(User.tenant_id == ctx.tenant_id, User.email == payload.email.lower())
+        select(User).where(User.tenant_id == effective_tenant_id, User.email == payload.email.lower())
     )
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered for this tenant")
@@ -402,43 +499,17 @@ async def create_user(
     if payload.role_ids:
         await validate_role_assignment(
             db,
-            tenant_id=ctx.tenant_id,
+            tenant_id=effective_tenant_id,
             actor_user_id=ctx.user.id,
-            actor_is_tenant_owner=ctx.user.is_tenant_owner,
+            actor_is_tenant_owner=ctx.user.is_tenant_owner or getattr(ctx.user, "is_platform_admin", False),
             role_ids=payload.role_ids,
         )
     else:
         raise HTTPException(status_code=400, detail="At least one role must be assigned")
 
-    # Determine activation mode: "direct" | "otp" | "invite"
-    act_mode = (payload.activation_mode or ("invite" if payload.send_invite else "direct")).lower().strip()
-    temp_password = payload.password or secrets.token_urlsafe(12)
-    
-    if act_mode == "direct":
-        is_verified = True
-        verification_code = None
-        verification_code_expires_at = None
-        must_change_password = payload.must_change_password if payload.must_change_password is not None else False
-    elif act_mode == "otp":
-        is_verified = False
-        verification_code = f"{secrets.randbelow(900000) + 100000}"
-        verification_code_expires_at = datetime.now(timezone.utc) + timedelta(days=7)
-        must_change_password = payload.must_change_password if payload.must_change_password is not None else False
-    else: # invite
-        is_verified = False
-        verification_code = f"{secrets.randbelow(900000) + 100000}"
-        verification_code_expires_at = datetime.now(timezone.utc) + timedelta(days=7)
-        must_change_password = payload.must_change_password if payload.must_change_password is not None else True
-
-    if payload.is_verified is not None:
-        is_verified = payload.is_verified
-        if is_verified:
-            verification_code = None
-            verification_code_expires_at = None
-
-    target_tenant_id = ctx.tenant_id
+    target_tenant_id = effective_tenant_id
     assigned_cid = payload.company_id or ctx.active_company_id
-    final_company_id = None
+    final_company_id = resolved_cid
     if assigned_cid:
         try:
             cid_uuid = uuid.UUID(str(assigned_cid))
@@ -461,6 +532,52 @@ async def create_user(
                         target_tenant_id = valid_company.tenant_id
         except (ValueError, TypeError):
             final_company_id = None
+
+    # Check organization's First-Time Login OTP MFA policy for this tenant/roles
+    otp_policy_enabled, otp_expiry_days = await is_first_time_otp_enabled_for_user(
+        db, target_tenant_id, payload.role_ids
+    )
+
+    # Determine activation mode: "direct" | "otp" | "invite"
+    if payload.is_tenant_owner:
+        # Organization Admins never require first-time OTP
+        act_mode = "direct"
+        is_verified = True
+        verification_code = None
+        verification_code_expires_at = None
+        must_change_password = payload.must_change_password if payload.must_change_password is not None else False
+    else:
+        default_mode = "invite" if payload.send_invite else ("otp" if otp_policy_enabled else "direct")
+        act_mode = (payload.activation_mode or default_mode).lower().strip()
+
+        if act_mode == "direct":
+            is_verified = True
+            verification_code = None
+            verification_code_expires_at = None
+            must_change_password = payload.must_change_password if payload.must_change_password is not None else False
+        elif act_mode == "otp":
+            is_verified = False
+            verification_code = f"{secrets.randbelow(900000) + 100000}"
+            verification_code_expires_at = datetime.now(timezone.utc) + timedelta(days=otp_expiry_days)
+            must_change_password = payload.must_change_password if payload.must_change_password is not None else False
+        else:  # invite
+            if otp_policy_enabled:
+                is_verified = False
+                verification_code = f"{secrets.randbelow(900000) + 100000}"
+                verification_code_expires_at = datetime.now(timezone.utc) + timedelta(days=otp_expiry_days)
+            else:
+                is_verified = True
+                verification_code = None
+                verification_code_expires_at = None
+            must_change_password = payload.must_change_password if payload.must_change_password is not None else True
+
+        if payload.is_verified is not None:
+            is_verified = payload.is_verified
+            if is_verified:
+                verification_code = None
+                verification_code_expires_at = None
+
+    temp_password = payload.password or secrets.token_urlsafe(12)
 
     user = User(
         tenant_id=target_tenant_id,
@@ -873,9 +990,14 @@ async def reset_org_user_password(
 async def list_workspaces(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:workspaces", "manage:workspaces", "view:settings", "manage:settings", "view:erp", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: uuid.UUID | None = Query(None, description="Filter workspaces by company"),
 ):
     from src.models import Workspace
-    result = await db.execute(select(Workspace).where(Workspace.tenant_id == ctx.tenant_id))
+    effective_tenant_id, target_cid = await _resolve_target_tenant_and_company(db, ctx, company_id)
+    query = select(Workspace).where(Workspace.tenant_id == effective_tenant_id)
+    if target_cid:
+        query = query.where(Workspace.company_id == target_cid)
+    result = await db.execute(query)
     return result.scalars().all()
 
 
@@ -886,9 +1008,10 @@ async def create_workspace(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from src.models import Workspace
+    effective_tenant_id, target_cid = await _resolve_target_tenant_and_company(db, ctx, payload.company_id)
     workspace = Workspace(
-        tenant_id=ctx.tenant_id,
-        company_id=payload.company_id,
+        tenant_id=effective_tenant_id,
+        company_id=payload.company_id or target_cid,
         branch_id=payload.branch_id,
         name=payload.name,
         theme=payload.theme,
@@ -993,15 +1116,138 @@ async def delete_api_key(
     await db.flush()
 
 
-# ─── MFA Policies Endpoints ───────────────────────────────────────
+# ─── MFA Policies Endpoints & Helpers ─────────────────────────────
+
+class FirstTimeOtpPolicyPayload(BaseModel):
+    enabled: bool = False
+    channels: str = "Email & WhatsApp"
+    otp_expiry_days: int = 7
+
+
+async def is_first_time_otp_enabled_for_user(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    role_ids: list[uuid.UUID] | None = None,
+) -> tuple[bool, int]:
+    """
+    Returns (is_enabled, otp_expiry_days) for first-time user login OTP verification
+    for the given tenant and optional role IDs.
+    By default, newly onboarded tenants have First-Time OTP disabled until enabled
+    by the Organization Admin in MFA Policies.
+    """
+    from src.models import Tenant, MfaPolicy
+
+    tenant = await db.get(Tenant, tenant_id)
+    settings_dict = dict(tenant.settings or {}) if tenant else {}
+    otp_cfg = settings_dict.get("mfa_first_time_otp")
+    otp_days = 7
+    if isinstance(otp_cfg, dict):
+        try:
+            otp_days = max(1, min(30, int(otp_cfg.get("otp_expiry_days", 7))))
+        except (ValueError, TypeError):
+            otp_days = 7
+        if otp_cfg.get("enabled") is True:
+            return True, otp_days
+
+    # Also check active MfaPolicy records in this tenant that specify OTP / First-Time
+    policies_res = await db.execute(
+        select(MfaPolicy).where(
+            MfaPolicy.tenant_id == tenant_id,
+            MfaPolicy.status == EntityStatus.ACTIVE,
+        )
+    )
+    active_policies = policies_res.scalars().all()
+    role_set = {uuid.UUID(str(r)) for r in (role_ids or []) if r}
+    for pol in active_policies:
+        methods_str = (pol.methods or "").lower()
+        if "otp" in methods_str or "first-time" in methods_str or "first time" in methods_str:
+            if pol.role_id is None or (role_set and pol.role_id in role_set):
+                return True, otp_days
+
+    return False, otp_days
+
+
+@router.get("/mfa-policies/first-time-otp")
+async def get_first_time_otp_policy(
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:mfa_policies", "manage:mfa_policies", "view:settings", "manage:settings", "view:erp", "manage:erp", "view:users", "manage:users"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: str | None = Query(default=None),
+):
+    from src.models import Tenant, MfaPolicy
+    effective_tenant_id, _ = await _resolve_target_tenant_and_company(db, ctx, company_id)
+    tenant = await db.get(Tenant, effective_tenant_id)
+    t_settings = dict(tenant.settings or {}) if tenant else {}
+    cfg = t_settings.get("mfa_first_time_otp")
+    if not isinstance(cfg, dict):
+        # Check if an active global MFA policy with OTP exists
+        enabled, otp_days = await is_first_time_otp_enabled_for_user(db, effective_tenant_id)
+        cfg = {
+            "enabled": enabled,
+            "channels": "Email & WhatsApp",
+            "otp_expiry_days": otp_days,
+        }
+    return {
+        "enabled": bool(cfg.get("enabled", False)),
+        "channels": str(cfg.get("channels", "Email & WhatsApp")),
+        "otp_expiry_days": int(cfg.get("otp_expiry_days", 7)),
+        "admin_exempt_on_onboarding": True,
+    }
+
+
+@router.put("/mfa-policies/first-time-otp")
+async def update_first_time_otp_policy(
+    payload: FirstTimeOtpPolicyPayload,
+    ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:mfa_policies", "manage:settings", "manage:erp", "manage:users"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: str | None = Query(default=None),
+):
+    from sqlalchemy.orm.attributes import flag_modified
+    from src.models import Tenant, MfaPolicy
+
+    effective_tenant_id, _ = await _resolve_target_tenant_and_company(db, ctx, company_id)
+    tenant = await db.get(Tenant, effective_tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Workspace tenant not found")
+
+    t_settings = dict(tenant.settings or {})
+    otp_days = max(1, min(30, int(payload.otp_expiry_days or 7)))
+    t_settings["mfa_first_time_otp"] = {
+        "enabled": bool(payload.enabled),
+        "channels": payload.channels or "Email & WhatsApp",
+        "otp_expiry_days": otp_days,
+        "updated_by": str(ctx.user.id),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    tenant.settings = t_settings
+    flag_modified(tenant, "settings")
+
+    # Sync any global First-Time Login OTP policy row so the policy cards reflect the toggle
+    policies_res = await db.execute(
+        select(MfaPolicy).where(MfaPolicy.tenant_id == effective_tenant_id, MfaPolicy.role_id.is_(None))
+    )
+    for pol in policies_res.scalars().all():
+        m_str = (pol.methods or "").lower()
+        if "otp" in m_str or "first-time" in m_str:
+            pol.status = EntityStatus.ACTIVE if payload.enabled else EntityStatus.INACTIVE
+
+    await db.commit()
+    return {
+        "enabled": bool(payload.enabled),
+        "channels": payload.channels or "Email & WhatsApp",
+        "otp_expiry_days": otp_days,
+        "admin_exempt_on_onboarding": True,
+    }
+
 
 @router.get("/mfa-policies", response_model=list[MfaPolicyResponse])
 async def list_mfa_policies(
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("view:mfa_policies", "manage:mfa_policies", "view:settings", "manage:settings", "view:erp", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: str | None = Query(default=None),
 ):
     from src.models import MfaPolicy
-    result = await db.execute(select(MfaPolicy).where(MfaPolicy.tenant_id == ctx.tenant_id))
+    effective_tenant_id, _ = await _resolve_target_tenant_and_company(db, ctx, company_id)
+    result = await db.execute(select(MfaPolicy).where(MfaPolicy.tenant_id == effective_tenant_id))
     return result.scalars().all()
 
 
@@ -1010,10 +1256,14 @@ async def create_mfa_policy(
     payload: MfaPolicyCreate,
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:mfa_policies", "manage:settings", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: str | None = Query(default=None),
 ):
-    from src.models import MfaPolicy
+    from sqlalchemy.orm.attributes import flag_modified
+    from src.models import MfaPolicy, Tenant
+
+    effective_tenant_id, _ = await _resolve_target_tenant_and_company(db, ctx, company_id)
     policy = MfaPolicy(
-        tenant_id=ctx.tenant_id,
+        tenant_id=effective_tenant_id,
         role_id=payload.role_id,
         methods=payload.methods,
         timeout=payload.timeout,
@@ -1021,6 +1271,20 @@ async def create_mfa_policy(
         status=EntityStatus(payload.status),
     )
     db.add(policy)
+
+    # If a global First-Time OTP policy is created, sync tenant.settings["mfa_first_time_otp"]
+    if payload.role_id is None and ("otp" in (payload.methods or "").lower() or "first-time" in (payload.methods or "").lower()):
+        tenant = await db.get(Tenant, effective_tenant_id)
+        if tenant:
+            t_settings = dict(tenant.settings or {})
+            existing_cfg = dict(t_settings.get("mfa_first_time_otp") or {})
+            existing_cfg["enabled"] = payload.status == "active"
+            existing_cfg.setdefault("channels", "Email & WhatsApp")
+            existing_cfg.setdefault("otp_expiry_days", 7)
+            t_settings["mfa_first_time_otp"] = existing_cfg
+            tenant.settings = t_settings
+            flag_modified(tenant, "settings")
+
     await db.flush()
     return policy
 
@@ -1031,10 +1295,14 @@ async def update_mfa_policy(
     payload: MfaPolicyCreate,  # Reuse create payload for simple patch updates
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:mfa_policies", "manage:settings", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: str | None = Query(default=None),
 ):
-    from src.models import MfaPolicy
+    from sqlalchemy.orm.attributes import flag_modified
+    from src.models import MfaPolicy, Tenant
+
+    effective_tenant_id, _ = await _resolve_target_tenant_and_company(db, ctx, company_id)
     policy = await db.scalar(
-        select(MfaPolicy).where(MfaPolicy.id == policy_id, MfaPolicy.tenant_id == ctx.tenant_id)
+        select(MfaPolicy).where(MfaPolicy.id == policy_id, MfaPolicy.tenant_id == effective_tenant_id)
     )
     if not policy:
         raise HTTPException(status_code=404, detail="MFA Policy not found")
@@ -1045,6 +1313,18 @@ async def update_mfa_policy(
     policy.restrict_ip = payload.restrict_ip
     policy.status = EntityStatus(payload.status)
 
+    if payload.role_id is None and ("otp" in (payload.methods or "").lower() or "first-time" in (payload.methods or "").lower()):
+        tenant = await db.get(Tenant, effective_tenant_id)
+        if tenant:
+            t_settings = dict(tenant.settings or {})
+            existing_cfg = dict(t_settings.get("mfa_first_time_otp") or {})
+            existing_cfg["enabled"] = payload.status == "active"
+            existing_cfg.setdefault("channels", "Email & WhatsApp")
+            existing_cfg.setdefault("otp_expiry_days", 7)
+            t_settings["mfa_first_time_otp"] = existing_cfg
+            tenant.settings = t_settings
+            flag_modified(tenant, "settings")
+
     await db.flush()
     return policy
 
@@ -1054,15 +1334,32 @@ async def delete_mfa_policy(
     policy_id: uuid.UUID,
     ctx: Annotated[CurrentUserContext, Depends(require_any_permission("manage:mfa_policies", "manage:settings", "manage:erp"))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: str | None = Query(default=None),
 ):
-    from src.models import MfaPolicy
+    from sqlalchemy.orm.attributes import flag_modified
+    from src.models import MfaPolicy, Tenant
+
+    effective_tenant_id, _ = await _resolve_target_tenant_and_company(db, ctx, company_id)
     policy = await db.scalar(
-        select(MfaPolicy).where(MfaPolicy.id == policy_id, MfaPolicy.tenant_id == ctx.tenant_id)
+        select(MfaPolicy).where(MfaPolicy.id == policy_id, MfaPolicy.tenant_id == effective_tenant_id)
     )
     if not policy:
         raise HTTPException(status_code=404, detail="MFA Policy not found")
+
+    was_global_otp = policy.role_id is None and ("otp" in (policy.methods or "").lower() or "first-time" in (policy.methods or "").lower())
     await db.delete(policy)
+    if was_global_otp:
+        tenant = await db.get(Tenant, effective_tenant_id)
+        if tenant:
+            t_settings = dict(tenant.settings or {})
+            existing_cfg = dict(t_settings.get("mfa_first_time_otp") or {})
+            existing_cfg["enabled"] = False
+            t_settings["mfa_first_time_otp"] = existing_cfg
+            tenant.settings = t_settings
+            flag_modified(tenant, "settings")
+
     await db.flush()
+
 
 
 

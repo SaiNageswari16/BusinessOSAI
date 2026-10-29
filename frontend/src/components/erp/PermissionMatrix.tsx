@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ShieldCheck, Check, X, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
+import { useTenant } from "@/contexts/tenant-context";
+import { getWorkspaceHeaders } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/contexts/i18n-context";
 import { useCurrency } from "@/hooks/use-currency";
@@ -296,6 +298,7 @@ export function PermissionMatrix({ tab = "permission_matrix" }: { tab?: string }
   const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const { accessToken } = useAuth();
+  const { tenant } = useTenant();
   const [roles, setRoles] = useState<RoleItem[]>([]);
   const [allPermissions, setAllPermissions] = useState<Permission[]>([]);
   const [loading, setLoading] = useState(false);
@@ -306,12 +309,15 @@ export function PermissionMatrix({ tab = "permission_matrix" }: { tab?: string }
     setLoading(true);
     setError(null);
     try {
+      const activeCid = tenant?.id || localStorage.getItem("bos_active_company_id") || "";
+      const cidParam = activeCid ? `&company_id=${encodeURIComponent(activeCid)}` : "";
+      const wsHeaders = getWorkspaceHeaders(accessToken);
       const [rolesRes, permsRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/erp/roles?page=1&page_size=100`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
+        fetch(`${API_BASE_URL}/erp/roles?page=1&page_size=100${cidParam}`, {
+          headers: wsHeaders,
         }),
         fetch(`${API_BASE_URL}/erp/permissions`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
+          headers: wsHeaders,
         }),
       ]);
       if (!rolesRes.ok) throw new Error("Failed to load roles");
@@ -330,7 +336,7 @@ export function PermissionMatrix({ tab = "permission_matrix" }: { tab?: string }
   useEffect(() => {
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken]);
+  }, [accessToken, tenant?.id]);
 
   return (
     <div className="space-y-6">

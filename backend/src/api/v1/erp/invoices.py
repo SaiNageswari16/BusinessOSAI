@@ -1653,6 +1653,42 @@ async def create_invoice(
     except Exception as emp_err:
         logger.warning(f"Sales rep points update warning: {emp_err}")
 
+    # 6. GL: post the sale (Dr AR / Cr Sales + GST) and any payment received up
+    #    front. Best-effort — a posting failure must never break invoice creation.
+    if initial_status in ("paid", "partially_paid") and inv_type_str not in credit_doc_types:
+        try:
+            from src.services import gl_service
+            await gl_service.post_invoice_sale(
+                db,
+                tenant_id=ctx.tenant_id,
+                company_id=active_cid,
+                invoice=invoice,
+                created_by=ctx.user.id if getattr(ctx, "user", None) else None,
+            )
+            # Wallet receipts are internal ledger adjustments (no cash/bank moves);
+            # everything else books a money-in entry against AR.
+            if actual_paid > 0.01 and pay_method_lower != "wallet":
+                pay_in_date = invoice.invoice_date
+                if not isinstance(pay_in_date, date):
+                    try:
+                        pay_in_date = date.fromisoformat(str(invoice.invoice_date)[:10])
+                    except Exception:
+                        pay_in_date = clock.today()
+                await gl_service.post_payment_in(
+                    db,
+                    tenant_id=ctx.tenant_id,
+                    company_id=active_cid,
+                    payment_amount=actual_paid,
+                    payment_date=pay_in_date,
+                    reference=invoice_number,
+                    description=f"Payment received with Invoice {invoice_number} ({pay_method_lower or 'cash'})",
+                    payment_method=pay_method_lower or "cash",
+                    counterparty=inv_data.get("customer_name") or "Walk-in Customer",
+                    created_by=ctx.user.id if getattr(ctx, "user", None) else None,
+                )
+        except Exception as gl_err:
+            logger.warning(f"GL posting for invoice {invoice_number} skipped: {gl_err}")
+
     await write_audit_log(
         db,
         tenant_id=ctx.tenant_id,
@@ -2128,6 +2164,28 @@ async def create_payment_settlement(
         if wallet:
             wallet.balance = max(0.0, float(wallet.balance or 0.0) - total_amount)
 
+    # 2b. GL: book the received settlement (Dr Cash/Bank, Cr AR + Cr customer
+    #     deposit for surplus). Wallet-settled receipts are internal ledger
+    #     movements, so no GL/bank entry is created for them.
+    if pay_method.lower() != "wallet" and (total_allocated > 0.01 or surplus > 0.01):
+        try:
+            from src.services import gl_service
+            await gl_service.post_settlement_in(
+                db,
+                tenant_id=ctx.tenant_id,
+                company_id=ctx.active_company_id,
+                amount_allocated=total_allocated,
+                surplus=surplus,
+                payment_date=pay_date,
+                reference=voucher_num,
+                description=f"Settlement voucher {voucher_num} — {pay_method} ({len(covered)} invoice(s) covered)",
+                payment_method=pay_method,
+                counterparty=(payload.customer_name or "Walk-in Customer"),
+                created_by=ctx.user.id if getattr(ctx, "user", None) else None,
+            )
+        except Exception as gl_err:
+            logger.warning(f"GL posting for settlement {voucher_num} skipped: {gl_err}")
+
     await write_audit_log(
         db,
         tenant_id=ctx.tenant_id,
@@ -2434,6 +2492,28 @@ async def add_payment(
         invoice.status = "paid"
     elif invoice.amount_paid > 0:
         invoice.status = "partially_paid"
+
+    # 6. GL: book the received payment (Dr Cash/Bank, Cr AR) so receipts land in
+    #    the ledger and bank reconciliation has data. Wallet settlements are an
+    #    internal ledger adjustment — no cash/bank movement, so no GL/bank entry.
+    pay_method_gl = (payload.payment_method or "cash").lower()
+    if pay_method_gl not in ("wallet",):
+        try:
+            from src.services import gl_service
+            await gl_service.post_payment_in(
+                db,
+                tenant_id=ctx.tenant_id,
+                company_id=invoice.company_id or ctx.active_company_id,
+                payment_amount=pay_amount,
+                payment_date=payload.payment_date or clock.today(),
+                reference=invoice.invoice_number,
+                description=f"Payment received for Invoice {invoice.invoice_number} ({pay_method_gl})",
+                payment_method=pay_method_gl,
+                counterparty=invoice.customer_name or "Walk-in Customer",
+                created_by=ctx.user.id if getattr(ctx, "user", None) else None,
+            )
+        except Exception as gl_err:
+            logger.warning(f"GL posting for invoice payment {invoice.invoice_number} skipped: {gl_err}")
 
     # Cascade sync to Customer.outstanding_balance if linked to a Customer
     try:

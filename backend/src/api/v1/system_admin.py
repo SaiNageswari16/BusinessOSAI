@@ -536,6 +536,11 @@ async def create_platform_tenant(
             "enabled_modules": payload.enabled_modules,
             "created_by_platform_admin": str(ctx.user.id),
             "subscription": sub_data,
+            "mfa_first_time_otp": {
+                "enabled": False,
+                "channels": "Email & WhatsApp",
+                "otp_expiry_days": 7,
+            },
         },
     )
     db.add(tenant)
@@ -544,13 +549,10 @@ async def create_platform_tenant(
     # 1. Super Admin Role
     super_role = await create_super_admin_role(db, tenant.id)
 
-    # 2. Owner User
+    # 2. Owner User (Org Admin does not require first-time OTP on tenant onboarding)
     user_status = UserStatus.ACTIVE if tenant_status == TenantStatus.ACTIVE else UserStatus.SUSPENDED
-    import secrets
     from src.services.credential_dispatcher import dispatch_user_onboarding_credentials
     import asyncio
-
-    verification_code = f"{secrets.randbelow(900000) + 100000}"
 
     owner = User(
         tenant_id=tenant.id,
@@ -560,10 +562,10 @@ async def create_platform_tenant(
         phone=payload.owner_phone,
         avatar_initials="".join(p[0].upper() for p in (payload.owner_full_name or "Admin").split()[:2] if p),
         status=user_status,
-        must_change_password=True,
-        is_verified=False,
-        verification_code=verification_code,
-        verification_code_expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        must_change_password=False,
+        is_verified=True,
+        verification_code=None,
+        verification_code_expires_at=None,
         is_tenant_owner=True,
     )
     db.add(owner)
@@ -618,14 +620,14 @@ async def create_platform_tenant(
     await db.commit()
     await db.refresh(tenant)
 
-    # Simultaneously dispatch credentials, 6-digit OTP, and invoice agreement details via WhatsApp & Email
+    # Simultaneously dispatch credentials and invoice agreement details via WhatsApp & Email (no OTP required for Org Admin)
     try:
         dispatch_results = await dispatch_user_onboarding_credentials(
             db=db,
             user=owner,
             tenant=tenant,
             temp_password=payload.owner_password,
-            verification_code=verification_code,
+            verification_code="",
             is_platform_level=True,
             invoice_details=sub_data,
         )
@@ -2378,23 +2380,20 @@ async def approve_tenant_registration(
         db.add(branch)
         await db.flush()
 
-    # Ensure owner user has primary branch & role assignment, set verification OTP
+    # Ensure owner user has primary branch & role assignment (Org Admin does not require first-time OTP)
     owner = next((u for u in tenant.users if u.is_tenant_owner), None)
-    verification_code = None
     temp_password = None
     if owner:
         import secrets
-        from datetime import timedelta
         from src.services.credential_dispatcher import dispatch_user_onboarding_credentials
         from src.utils.security import hash_password
 
         temp_password = f"Admin@{secrets.token_hex(4).upper()}!"
-        verification_code = f"{secrets.randbelow(900000) + 100000}"
         owner.password_hash = hash_password(temp_password)
-        owner.is_verified = False
-        owner.verification_code = verification_code
-        owner.verification_code_expires_at = datetime.now(timezone.utc) + timedelta(days=7)
-        owner.must_change_password = True
+        owner.is_verified = True
+        owner.verification_code = None
+        owner.verification_code_expires_at = None
+        owner.must_change_password = False
 
         existing_branch_link = await db.scalar(
             select(UserBranch).where(UserBranch.user_id == owner.id, UserBranch.branch_id == branch.id)
@@ -2404,8 +2403,8 @@ async def approve_tenant_registration(
 
     await db.commit()
 
-    # Dispatch simultaneous WhatsApp + Email verification code & credentials (Level 1: Platform God Mode)
-    if owner and verification_code and temp_password:
+    # Dispatch simultaneous WhatsApp + Email credentials (no OTP required for Org Admin)
+    if owner and temp_password:
         try:
             from src.services.credential_dispatcher import dispatch_user_onboarding_credentials
             asyncio.create_task(
@@ -2414,14 +2413,14 @@ async def approve_tenant_registration(
                     user=owner,
                     tenant=tenant,
                     temp_password=temp_password,
-                    verification_code=verification_code,
+                    verification_code="",
                     is_platform_level=True,
                 )
             )
         except Exception as dispatch_err:
             logger.warning("Platform tenant approval credential dispatch failed: %s", dispatch_err)
 
-    return MessageResponse(message=f"Workspace '{tenant.name}' approved successfully with {len(approved_mods)} active modules. Activation credentials & OTP dispatched to {owner.email if owner else 'admin'}.")
+    return MessageResponse(message=f"Workspace '{tenant.name}' approved successfully with {len(approved_mods)} active modules. Login credentials dispatched to {owner.email if owner else 'admin'}.")
 
 
 

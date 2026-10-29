@@ -461,10 +461,12 @@ class BankAccountCreate(BaseModel):
     company_id: uuid.UUID | None = None
     chart_of_account_id: uuid.UUID | None = None
     name: str = Field(min_length=1, max_length=150)
+    account_holder_name: str | None = Field(default=None, max_length=150)
     account_number: str | None = Field(default=None, max_length=50)
     ifsc_code: str | None = Field(default=None, max_length=20)
     bank_name: str | None = Field(default=None, max_length=150)
     branch_name: str | None = Field(default=None, max_length=150)
+    upi_id: str | None = Field(default=None, max_length=100)
     account_type: str = "checking"
     currency_code: str = "INR"
     opening_balance: float = 0
@@ -475,10 +477,12 @@ class BankAccountCreate(BaseModel):
 
 class BankAccountUpdate(BaseModel):
     name: str | None = None
+    account_holder_name: str | None = None
     account_number: str | None = None
     ifsc_code: str | None = None
     bank_name: str | None = None
     branch_name: str | None = None
+    upi_id: str | None = None
     account_type: str | None = None
     currency_code: str | None = None
     chart_of_account_id: uuid.UUID | None = None
@@ -495,10 +499,12 @@ class BankAccountResponse(ORMModel):
     company_id: uuid.UUID | None
     chart_of_account_id: uuid.UUID | None
     name: str
+    account_holder_name: str | None = None
     account_number: str | None
     ifsc_code: str | None
     bank_name: str | None
     branch_name: str | None
+    upi_id: str | None = None
     account_type: str
     currency_code: str
     opening_balance: float

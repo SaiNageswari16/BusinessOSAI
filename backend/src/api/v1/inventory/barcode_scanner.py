@@ -335,26 +335,31 @@ async def _async_bg_enrich_full_barcode(barcode: str):
         logger.warning(f"Full background enrichment failed for {barcode}: {ex}")
 
 
-# 1. Barcode Lookup Endpoint - Fast DB + Web Search
+# 1. Barcode Lookup Endpoint - Fast DB + Optional Web Search
 @router.get("/products/barcode/{raw_barcode}", response_model=ProductBarcodeLookupResponse)
 async def lookup_product_by_barcode(
     raw_barcode: str,
+    inventory_only: bool = False,
     ctx: Optional[CurrentUserContext] = Depends(get_current_user_context),
     db: AsyncSession = Depends(get_db)
 ):
     clean_barcode = raw_barcode.strip()
-    variants = [
-        clean_barcode,
-        clean_barcode.lstrip('0'),
-        '0' + clean_barcode if not clean_barcode.startswith('0') else clean_barcode,
-    ]
+    variants = (
+        [clean_barcode]
+        if inventory_only
+        else [
+            clean_barcode,
+            clean_barcode.lstrip('0'),
+            '0' + clean_barcode if not clean_barcode.startswith('0') else clean_barcode,
+        ]
+    )
 
-    # Tier 1: Local Tenant Products Table
+    # Tier 1: Local Tenant Products Table (strictly by barcode, no SKU fallback)
     prod = None
     for code in variants:
         if not code:
             continue
-        filters = [or_(Product.barcode == code, Product.sku == code)]
+        filters = [Product.barcode == code]
         if ctx and ctx.tenant_id:
             filters.append(Product.tenant_id == ctx.tenant_id)
         if ctx and ctx.active_company_id:
@@ -377,6 +382,7 @@ async def lookup_product_by_barcode(
             c_res = await db.execute(select(ProductCategory.name).where(ProductCategory.id == prod.category_id))
             category_name = c_res.scalar() or ""
 
+        on_hand = prod.on_hand_stock if getattr(prod, "on_hand_stock", None) is not None else (prod.initial_stock or 0)
         return ProductBarcodeLookupResponse(
             success=True,
             product={
@@ -385,6 +391,7 @@ async def lookup_product_by_barcode(
                 "name": prod.name,
                 "sku": prod.sku or "",
                 "brand": brand_name,
+                "brand_name": brand_name,
                 "category": category_name,
                 "hsn_code": prod.hsn_code or "",
                 "uom": prod.uom.name if prod.uom else "Pcs",
@@ -392,11 +399,28 @@ async def lookup_product_by_barcode(
                 "package_size": prod.short_description or "",
                 "mrp": float(prod.mrp or 0.0),
                 "selling_price": float(prod.selling_price or 0.0),
+                "wholesale_price": float(getattr(prod, "wholesale_price", 0.0) or 0.0),
+                "b2b_price": float(getattr(prod, "b2b_price", 0.0) or 0.0),
                 "gst": float(prod.tax_percent or 0.0),
-                "stock": prod.initial_stock or 0,
+                "tax_percent": float(prod.tax_percent or 0.0),
+                "discount_value": float(getattr(prod, "discount_value", 0.0) or 0.0),
+                "discount_type": getattr(prod, "discount_type", "amount") or "amount",
+                "stock": on_hand,
+                "on_hand_stock": on_hand,
+                "initial_stock": prod.initial_stock or 0,
+                "reorder_level": getattr(prod, "reorder_level", 5) or 5,
+                "specifications": getattr(prod, "specifications", None),
                 "image": prod.image_url or "/static/uploads/products/default_product.jpg",
                 "source": "DATABASE"
             }
+        )
+
+    # If caller requested strictly tenant inventory only (e.g. Sales Invoice / POS Terminal), stop here — never run RAG / Master Catalog search
+    if inventory_only:
+        return ProductBarcodeLookupResponse(
+            success=False,
+            message=f"Barcode '{clean_barcode}' not found in inventory.",
+            product=None
         )
 
     # Tier 2: Global Master Catalog Table in PostgreSQL (erp_master_catalog)

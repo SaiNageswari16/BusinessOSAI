@@ -5,7 +5,9 @@ import {
   Check, Lock, Unlock, ChevronRight, AlertTriangle, Layers,
 } from "lucide-react";
 import { useAuth, canAssignSuperAdmin } from "@/contexts/auth-context";
+import { useTenant } from "@/contexts/tenant-context";
 import { useRbac } from "@/contexts/rbac-context";
+import { getWorkspaceHeaders } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/contexts/i18n-context";
@@ -903,6 +905,7 @@ export function RolesPermissions() {
   const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const { accessToken, user: currentUser } = useAuth();
+  const { tenant } = useTenant();
   const { hasPermission } = useRbac();
   const canManageSuperAdmin = canAssignSuperAdmin(currentUser);
   const canManageRoles = hasPermission("manage:roles");
@@ -919,7 +922,7 @@ export function RolesPermissions() {
   const [error, setError] = useState<string | null>(null);
 
   const authHeaders = accessToken
-    ? { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }
+    ? getWorkspaceHeaders(accessToken, { "Content-Type": "application/json" })
     : undefined;
 
   const filteredRoles = roles.filter((r) =>
@@ -935,15 +938,18 @@ export function RolesPermissions() {
     setError(null);
 
     try {
+      const activeCid = tenant?.id || localStorage.getItem("bos_active_company_id") || "";
+      const cidParam = activeCid ? `&company_id=${encodeURIComponent(activeCid)}` : "";
+      const wsHeaders = getWorkspaceHeaders(accessToken);
       const [rolesRes, permissionsRes, usersRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/erp/roles?page=1&page_size=100`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
+        fetch(`${API_BASE_URL}/erp/roles?page=1&page_size=100${cidParam}`, {
+          headers: wsHeaders,
         }),
         fetch(`${API_BASE_URL}/erp/permissions`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
+          headers: wsHeaders,
         }),
-        fetch(`${API_BASE_URL}/erp/users?page=1&page_size=100`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
+        fetch(`${API_BASE_URL}/erp/users?page=1&page_size=100${cidParam}`, {
+          headers: wsHeaders,
         }),
 
       ]);
@@ -987,7 +993,7 @@ export function RolesPermissions() {
   useEffect(() => {
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken]);
+  }, [accessToken, tenant?.id]);
 
   const saveRole = async (payload: RoleFormPayload) => {
     if (!accessToken) return;

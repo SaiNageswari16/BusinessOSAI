@@ -73,7 +73,7 @@ import {
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
-import { resolveImageUrl, invoicesApi, inventoryApi, printTemplatesApi } from "@/lib/api-client";
+import { resolveImageUrl, invoicesApi, inventoryApi, printTemplatesApi, bankApi, BankAccountRecord } from "@/lib/api-client";
 import { formatDisplayDate } from "@/lib/utils";
 import {
   getActiveBillingGst,
@@ -84,6 +84,8 @@ import {
   syncPrintTemplatesFromBackend,
   RECEIPT_THEME_PRESETS,
   GLOBAL_INVOICE_TEMPLATES,
+  CURATED_BUILTIN_TEMPLATE_IDS,
+  DEPRECATED_BUILTIN_TEMPLATE_IDS,
   setActiveInvoicePrintTemplate,
   type ReceiptTemplate,
 } from "@/lib/receipt-template-store";
@@ -93,6 +95,7 @@ import { MargPharmaTemplate } from "@/components/pos/invoice-templates/MargPharm
 import { FmcgDistributorTemplate } from "@/components/pos/invoice-templates/FmcgDistributorTemplate";
 import { ParleDistributorTemplate } from "@/components/pos/invoice-templates/ParleDistributorTemplate";
 import { AgriSeedsTemplate } from "@/components/pos/invoice-templates/AgriSeedsTemplate";
+import { GstTallyTemplate } from "@/components/pos/invoice-templates/GstTallyTemplate";
 import { PdfStationeryOverlayTemplate } from "@/components/pos/invoice-templates/PdfStationeryOverlayTemplate";
 import { WordInvoiceDocument } from "@/components/pos/invoice-templates/WordInvoiceDocument";
 import { PdfTemplateOverlayModal } from "@/components/pos/PdfTemplateOverlayModal";
@@ -376,60 +379,18 @@ export const THEME_STORE_BACKGROUNDS: ThemeStoreItem[] = [
     iconType: "none",
   },
   {
-    id: "ts-jain",
-    name: "Jain theme",
-    category: "Devotional & Vedic",
-    badge: "POPULAR",
-    primaryColor: "#c2410c",
-    paperBgColor: "#fffbeb",
-    watermarkText: "॥ ॐ अर्हं नमः ॥",
-    decorativeHeader: "॥ ॐ णमोकाराय नमः ॥ अहिंसा परमो धर्मः ॥",
-    themeStyle: "jain",
-    description: "Traditional Jain auspicious spiritual border with golden Navkar mantra background.",
-    previewGradient: "from-amber-100 via-orange-50 to-amber-200",
-    iconType: "jain",
-  },
-  {
-    id: "ts-maharashtra",
-    name: "Maharashtra",
-    category: "Cultural & Heritage",
-    badge: "ROYAL",
-    primaryColor: "#ea580c",
-    paperBgColor: "#fff7ed",
-    watermarkText: "॥ छत्रपती शिवाजी महाराज ॥",
-    decorativeHeader: "॥ जय भवानी जय शिवाजी ॥",
-    themeStyle: "maharashtra",
-    description: "Royal Maratha saffron heritage border with auspicious Raigad fort motif background.",
-    previewGradient: "from-orange-100 via-amber-50 to-orange-200",
-    iconType: "maharashtra",
-  },
-  {
-    id: "ts-ganesh",
-    name: "Ganesh Chaturthi",
-    category: "Festive & Auspicious",
-    badge: "FESTIVE",
-    primaryColor: "#b91c1c",
-    paperBgColor: "#fef2f2",
-    watermarkText: "॥ श्री गणेशाय नमः ॥",
-    decorativeHeader: "॥ श्री गणेशाय नमः ॥ ॐ गं गणपतये नमः ॥",
-    themeStyle: "ganesh",
-    description: "Vedic Shree Ganesha blessing watermark with auspicious vermilion floral border.",
-    previewGradient: "from-red-100 via-rose-50 to-red-200",
-    iconType: "ganesh",
-  },
-  {
-    id: "ts-hindu-god",
-    name: "Hindu God",
-    category: "Devotional & Vedic",
-    badge: "AUSPICIOUS",
-    primaryColor: "#b45309",
-    paperBgColor: "#fefce8",
-    watermarkText: "॥ महालक्ष्मी प्रसन्न ॥",
-    decorativeHeader: "॥ ॐ श्रीं ह्रीं क्लीं महालक्ष्म्यै नमः ॥ शुभ लाभ ॥",
-    themeStyle: "hindu_god",
-    description: "Goddess Laxmi prosperity & divine blessings background art with golden temple arch.",
-    previewGradient: "from-amber-100 via-yellow-50 to-amber-200",
-    iconType: "hindu_god",
+    id: "ts-corporate",
+    name: "Corporate Minimal",
+    category: "Modern Corporate",
+    badge: "CLEAN",
+    primaryColor: "#4f46e5",
+    paperBgColor: "#ffffff",
+    watermarkText: "AUTHENTIC TAX INVOICE",
+    decorativeHeader: "OFFICIAL COMMERCIAL INVOICE",
+    themeStyle: "corporate",
+    description: "Crisp contemporary geometric background with sleek high-contrast borders.",
+    previewGradient: "from-indigo-50 via-slate-50 to-blue-100",
+    iconType: "corporate",
   },
   {
     id: "ts-shubh-labh",
@@ -441,7 +402,7 @@ export const THEME_STORE_BACKGROUNDS: ThemeStoreItem[] = [
     watermarkText: "॥ शुभ लाभ ॥",
     decorativeHeader: "॥ श्री ॥ शुभ लाभ ॥ रिद्धि सिद्धि ॥",
     themeStyle: "shubh_labh",
-    description: "Traditional Indian vyapar invoice with swastik, rangoli, and prosperity blessings.",
+    description: "Traditional Indian vyapar invoice with auspicious prosperity blessings.",
     previewGradient: "from-rose-100 via-red-50 to-orange-100",
     iconType: "shubh_labh",
   },
@@ -459,198 +420,50 @@ export const THEME_STORE_BACKGROUNDS: ThemeStoreItem[] = [
     previewGradient: "from-yellow-100 via-amber-50 to-yellow-200",
     iconType: "royal_gold",
   },
-  {
-    id: "ts-corporate",
-    name: "Corporate Minimal",
-    category: "Modern Corporate",
-    primaryColor: "#4f46e5",
-    paperBgColor: "#ffffff",
-    watermarkText: "AUTHENTIC TAX INVOICE",
-    decorativeHeader: "OFFICIAL COMMERCIAL INVOICE",
-    themeStyle: "corporate",
-    description: "Crisp contemporary geometric background with sleek high-contrast borders.",
-    previewGradient: "from-indigo-50 via-slate-50 to-blue-100",
-    iconType: "corporate",
-  },
 ];
 
 const INITIAL_TEMPLATES: PrintTemplate[] = [
   // ─── 1. GST & COMMERCIAL INVOICES ───
   ...(GLOBAL_INVOICE_TEMPLATES as any[]),
   {
-    id: "tpl-inv-stylish",
-    name: "Stylish Theme",
+    id: "tpl-inv-gst-tally",
+    name: "GST Tally (myBillBook Style)",
     category: "invoices",
     docType: "invoice",
-    description: "Modern card-style design with clean borders, high-contrast headers, and highlighted totals.",
-    isDefault: false,
-    paperSize: "A4",
-    orientation: "portrait",
-    margins: "normal",
-    primaryColor: "#4f46e5",
-    paperBgColor: "#ffffff",
-    fontFamily: "Inter, sans-serif",
-    headerTitle: "TAX INVOICE",
-    storeName: "",
-    storeAddress: "",
-    storePhone: "",
-    gstin: "",
-    footerText: "Thank you for shopping with us!",
-    thankYouNote: "Thank you for shopping with us!",
-    termsText: "1. Goods once sold will not be taken back.\n2. Interest @ 18% p.a. charged after due date.",
-    bankDetails: "Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003",
-    customTaglineText: "Quality Products Everyday",
-    themeName: "stylish",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-inv-luxury",
-    name: "Luxury Theme",
-    category: "invoices",
-    docType: "invoice",
-    description: "Elegant royal design with primary gold borders, premium serif fonts, and high-end aesthetics.",
-    isDefault: false,
-    paperSize: "A4",
-    orientation: "portrait",
-    margins: "normal",
-    primaryColor: "#b45309",
-    fontFamily: "Playfair Display, serif",
-    headerTitle: "TAX INVOICE",
-    storeName: "",
-    storeAddress: "",
-    storePhone: "",
-    gstin: "",
-    footerText: "We value your premium association.",
-    thankYouNote: "We value your premium association.",
-    termsText: "All claims subject to Cuddapah jurisdiction only.",
-    bankDetails: "Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003",
-    themeName: "luxury",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showSignature: true, showBankDetails: true },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-inv-adv-tally",
-    name: "Advanced GST (Tally) Theme",
-    category: "invoices",
-    docType: "invoice",
-    description: "Classic grid accounting format matching standard traditional business ERP systems with clear double borders.",
-    isDefault: false,
-    paperSize: "A4",
-    orientation: "portrait",
-    margins: "normal",
-    primaryColor: "#0f172a",
-    fontFamily: "Inter, sans-serif",
-    headerTitle: "TAX INVOICE",
-    storeName: "Smart Commercial Hub",
-    storeAddress: "KK Street, Proddatur, YSR, Cuddapah, Andhra Pradesh, 516360",
-    storePhone: "9849344919",
-    gstin: "37AAFCOE694G1Z4",
-    footerText: "Original for Recipient",
-    thankYouNote: "Thank you for your business!",
-    termsText: "E. & O.E. All disputes subject to Cuddapah jurisdiction only.",
-    bankDetails: "Bank: Axis Bank | A/C: 912010023456 | IFSC: UTIB0000021",
-    themeName: "adv_tally",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTaxSplit: true, showHSN: true, showBankDetails: true },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-inv-adv-gst",
-    name: "Advanced GST Theme",
-    category: "invoices",
-    docType: "invoice",
-    description: "High-information layout featuring complete CGST/SGST/IGST tax splits and detailed party balance reporting.",
-    isDefault: false,
-    paperSize: "A4",
-    orientation: "portrait",
-    margins: "normal",
-    primaryColor: "#2563eb",
-    fontFamily: "Inter, sans-serif",
-    headerTitle: "TAX INVOICE (GST COMPLIANT)",
-    storeName: "Smart Enterprise ERP",
-    storeAddress: "KK Street, Proddatur, YSR, Cuddapah, Andhra Pradesh, 516360",
-    storePhone: "9849344919",
-    gstin: "37AAFCOE694G1Z4",
-    footerText: "Computer Generated Invoice",
-    thankYouNote: "Thank you for your valued association.",
-    termsText: "E. & O.E. All disputes subject to local jurisdiction only.",
-    bankDetails: "Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003",
-    themeName: "adv_gst",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTaxSplit: true, showPartyBalance: true, showBankDetails: true },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-inv-billbook",
-    name: "BillBook Theme",
-    category: "invoices",
-    docType: "invoice",
-    description: "Standard commercial print format with clear highlighted headers and client copies indicator.",
-    isDefault: false,
-    paperSize: "A4",
-    orientation: "portrait",
-    margins: "normal",
-    primaryColor: "#0284c7",
-    fontFamily: "Inter, sans-serif",
-    headerTitle: "TAX INVOICE",
-    storeName: "Smart Bazaar Commercial",
-    storeAddress: "KK Street, Proddatur, YSR, Cuddapah, Andhra Pradesh, 516360",
-    storePhone: "9849344919",
-    gstin: "37AAFCOE694G1Z4",
-    footerText: "Original for Recipient Copy",
-    thankYouNote: "Thank you for choosing us!",
-    termsText: "Interest will be charged @ 2% per month after due date.",
-    bankDetails: "Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003",
-    themeName: "billbook",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showBankDetails: true },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-inv-modern",
-    name: "Modern Theme",
-    category: "invoices",
-    docType: "invoice",
-    description: "Sleek modern design featuring soft gray backgrounds, rounded cards, and clean typography.",
-    isDefault: false,
-    paperSize: "A4",
-    orientation: "portrait",
-    margins: "normal",
-    primaryColor: "#475569",
-    fontFamily: "Outfit, sans-serif",
-    headerTitle: "TAX INVOICE",
-    storeName: "Smart Bazaar",
-    storeAddress: "KK Street, Proddatur, YSR, Cuddapah, Andhra Pradesh, 516360",
-    storePhone: "9849344919",
-    gstin: "37AAFCOE694G1Z4",
-    footerText: "Thank you for choosing Smart Bazaar!",
-    thankYouNote: "Thank you for choosing Smart Bazaar!",
-    termsText: "Subject to local terms and conditions.",
-    bankDetails: "Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003",
-    themeName: "modern",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showBankDetails: true },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-inv-simple",
-    name: "Simple Theme",
-    category: "invoices",
-    docType: "invoice",
-    description: "Clean, no-nonsense minimal print style with simple border lines, perfect for black & white printing.",
+    description: "Advanced GST / Tally A4 format matching myBillBook: party bill-to/ship-to, HSN + GST slab summary, amount-in-words, and previous/current party balance.",
     isDefault: false,
     paperSize: "A4",
     orientation: "portrait",
     margins: "narrow",
-    primaryColor: "#1e293b",
+    primaryColor: "#0f172a",
+    paperBgColor: "#ffffff",
     fontFamily: "Inter, sans-serif",
-    headerTitle: "INVOICE",
-    storeName: "Smart Bazaar Retail",
-    storeAddress: "KK Street, Proddatur, YSR Cuddapah, AP",
-    storePhone: "9849344919",
-    gstin: "37AAFCOE694G1Z4",
-    footerText: "Thank you!",
-    termsText: "All disputes subject to local jurisdiction only.",
-    bankDetails: "",
-    themeName: "simple",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTerms: false },
+    headerTitle: "TAX INVOICE",
+    themeName: "gst_tally",
+    fields: {
+      ...DEFAULT_ELEMENT_TOGGLES,
+      showHSN: true,
+      showTaxSplit: true,
+      showBankDetails: true,
+      showPartyBalance: true,
+      showItemDescription: true,
+      showBillTo: true,
+      showShipTo: true,
+      showPlaceOfSupply: true,
+      showPartyPhone: true,
+      showPartyGstin: true,
+      showItemIndex: true,
+      showItemQty: true,
+      showItemRate: true,
+      showGstRateCol: true,
+      showSubtotal: true,
+      showTaxableAmount: true,
+      showTaxBreakup: true,
+      showTotalAmount: true,
+      showAmountInWords: true,
+      showReceivedAmount: true,
+      showBalanceAmount: true,
+    },
     createdAt: new Date().toISOString(),
   },
   {
@@ -753,154 +566,6 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     gstin: "37AAFCOE694G1Z4",
     themeName: "agri_seeds",
     fields: { ...DEFAULT_ELEMENT_TOGGLES, showHSN: true },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-inv-culture-up",
-    name: "Uttar Pradesh GST Theme",
-    category: "invoices",
-    docType: "invoice",
-    description: "Regional Uttar Pradesh state-compliant design with Devnagari Sanskrit shloka headers and state tax stamps.",
-    isDefault: false,
-    paperSize: "A4",
-    orientation: "portrait",
-    margins: "normal",
-    primaryColor: "#ea580c",
-    fontFamily: "Inter, sans-serif",
-    headerTitle: "TAX INVOICE (UTTAR PRADESH)",
-    storeName: "Smart Traders UP",
-    storeAddress: "Shop 14, Mandi Parishad, Sector 18, Noida, Uttar Pradesh (09)",
-    storePhone: "9849344919",
-    gstin: "09AAFCOE694G1Z4",
-    footerText: "उत्तर प्रदेश राज्य माल एवं सेवा कर नियमावली के अंतर्गत जारी",
-    thankYouNote: "शुभ यात्रा • आपकी सेवा में सदैव तत्पर",
-    themeName: "culture_up",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTaxSplit: true, showHSN: true },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-inv-culture-god",
-    name: "Shubh Labh Vedic Theme",
-    category: "invoices",
-    docType: "invoice",
-    description: "Traditional Indian business invoice with Shree Ganesh and Shubh-Labh blessings auspicious headers.",
-    isDefault: false,
-    paperSize: "A4",
-    orientation: "portrait",
-    margins: "normal",
-    primaryColor: "#b91c1c",
-    fontFamily: "Inter, sans-serif",
-    headerTitle: "॥ श्री ॥ TAX INVOICE",
-    storeName: "Shree Laxmi Commercials",
-    storeAddress: "KK Street, Proddatur, YSR Cuddapah, AP",
-    storePhone: "9849344919",
-    gstin: "37AAFCOE694G1Z4",
-    footerText: "॥ शुभम् भवतु ॥ धन्यवाद ॥",
-    thankYouNote: "Thank you for your blessed association!",
-    themeName: "culture_god",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showBankDetails: true },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-inv-minimal",
-    name: "Minimalist Clean Theme",
-    category: "invoices",
-    docType: "invoice",
-    description: "Ultra-clean borderless contemporary layout with ample whitespace and sleek line dividers.",
-    isDefault: false,
-    paperSize: "A4",
-    orientation: "portrait",
-    margins: "wide",
-    primaryColor: "#64748b",
-    fontFamily: "Inter, sans-serif",
-    headerTitle: "INVOICE",
-    storeName: "Smart Minimalist Co.",
-    storeAddress: "Tech Park, Noida, UP",
-    storePhone: "9849344919",
-    themeName: "minimal",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTerms: false },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-inv-elegant",
-    name: "Elegant Corporate Theme",
-    category: "invoices",
-    docType: "invoice",
-    description: "Deep violet executive layout featuring distinguished corporate styling and high-contrast tables.",
-    isDefault: false,
-    paperSize: "A4",
-    orientation: "portrait",
-    margins: "normal",
-    primaryColor: "#7c3aed",
-    fontFamily: "Inter, sans-serif",
-    headerTitle: "OFFICIAL TAX INVOICE",
-    storeName: "Smart Enterprise Holdings",
-    storeAddress: "Executive Suites, Cyber City, Hyderabad",
-    storePhone: "9849344919",
-    gstin: "36DYHPR6361D1Z6",
-    themeName: "elegant",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showSignature: true, showBankDetails: true },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-inv-compact",
-    name: "Compact Dense Grid Theme",
-    category: "invoices",
-    docType: "invoice",
-    description: "High-density invoice format designed to pack large numbers of item rows into a single A4 sheet.",
-    isDefault: false,
-    paperSize: "A4",
-    orientation: "portrait",
-    margins: "narrow",
-    primaryColor: "#1e1b4b",
-    fontFamily: "Inter, sans-serif",
-    headerTitle: "TAX INVOICE",
-    storeName: "Smart Wholesale Depot",
-    storeAddress: "APMC Yard, Proddatur",
-    storePhone: "9849344919",
-    themeName: "compact",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showHSN: true, showTaxSplit: true },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-inv-clean-slate",
-    name: "Clean Slate Theme",
-    category: "invoices",
-    docType: "invoice",
-    description: "Slate gray structured invoice with rounded element blocks and balanced information hierarchy.",
-    isDefault: false,
-    paperSize: "A4",
-    orientation: "portrait",
-    margins: "normal",
-    primaryColor: "#334155",
-    fontFamily: "Outfit, sans-serif",
-    headerTitle: "TAX INVOICE",
-    storeName: "Smart Slate Retail",
-    storeAddress: "Main Market, Proddatur, AP",
-    storePhone: "9849344919",
-    themeName: "clean_slate",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-inv-emerald-corp",
-    name: "Emerald Corporate Theme",
-    category: "invoices",
-    docType: "invoice",
-    description: "Modern corporate green theme with emerald headers, clean borders, and statutory GST badges.",
-    isDefault: false,
-    paperSize: "A4",
-    orientation: "portrait",
-    margins: "normal",
-    primaryColor: "#047857",
-    fontFamily: "Inter, sans-serif",
-    headerTitle: "TAX INVOICE (GST)",
-    storeName: "Smart Green Commercials",
-    storeAddress: "Green Valley Plaza, Hyderabad",
-    storePhone: "9849344919",
-    gstin: "36AAACH694G1Z4",
-    themeName: "emerald_corp",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTaxSplit: true, showBankDetails: true },
     createdAt: new Date().toISOString(),
   },
 
@@ -1055,97 +720,6 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     fields: { ...DEFAULT_ELEMENT_TOGGLES, showTerms: false, showProductImage: false, showSignature: false },
     createdAt: new Date().toISOString(),
   },
-  {
-    id: "tpl-thm-80-grocery",
-    name: "80mm Supermarket / Grocery Slip",
-    category: "thermal",
-    docType: "thermal",
-    description: "Retail grocery thermal receipt with MRP comparison, savings banner, loyalty points, and UPI QR code.",
-    isDefault: false,
-    paperSize: "80mm",
-    orientation: "portrait",
-    margins: "none",
-    primaryColor: "#000000",
-    fontFamily: "monospace",
-    fontDensity: "normal",
-    printClarity: "ultra_dark",
-    dividerStyle: "double",
-    headerTitle: "RETAIL TAX INVOICE",
-    storeName: "Smart Supermarket",
-    branchName: "Supermarket Counter",
-    storeAddress: "Main Road, Proddatur, AP",
-    storePhone: "9849344919",
-    gstin: "37AAFCOE694G1Z4",
-    thankYouNote: "THANK YOU! YOU SAVED MONEY TODAY!",
-    termsText: "Perishables once sold cannot be exchanged.",
-    upiId: "9849344919@okaxis",
-    googleReviewUrl: "https://g.page/r/smart-supermarket/review",
-    customFields: [
-      { id: "cf-1", name: "FSSAI Lic", value: "10019043002871", enabled: true },
-    ],
-    customItemColumns: [
-      { id: "col-1", name: "Rack", enabled: true },
-    ],
-    themeName: "supermarket",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showMRP: true, showDiscountBadge: true, showSavingsBanner: true, showLoyaltyPoints: true, showQR: true, showTerms: true },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-thm-80-pharma",
-    name: "80mm Pharma & Medical Slip",
-    category: "thermal",
-    docType: "thermal",
-    description: "Pharma medical store slip with Batch No, Expiry Date, HSN Code, and Drug License details.",
-    isDefault: false,
-    paperSize: "80mm",
-    orientation: "portrait",
-    margins: "none",
-    primaryColor: "#000000",
-    fontFamily: "monospace",
-    fontDensity: "compact",
-    printClarity: "ultra_dark",
-    dividerStyle: "solid",
-    headerTitle: "PHARMA RETAIL INVOICE",
-    storeName: "Smart Medical & Pharma",
-    branchName: "Pharmacy Wing",
-    storeAddress: "Hospital Road, Proddatur, AP",
-    storePhone: "9849344919",
-    gstin: "37AAFCOE694G1Z4",
-    thankYouNote: "WISHING YOU A SPEEDY RECOVERY!",
-    termsText: "Schedule H & H1 drugs sold against valid prescription only. Medicines without batch details not accepted for return.",
-    upiId: "9849344919@okaxis",
-    customFields: [
-      { id: "cf-1", name: "D.L. No", value: "20B-18492 / 21B-18493", enabled: true },
-    ],
-    customItemColumns: [
-      { id: "col-1", name: "Schedule", enabled: true },
-    ],
-    themeName: "pharma",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showHSN: true, showTaxSplit: true, showBatchNo: true, showExpDate: true, showTerms: true },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-thm-80-kot",
-    name: "80mm Restaurant KOT Slip",
-    category: "thermal",
-    docType: "thermal",
-    description: "Kitchen Order Ticket (KOT) format with table number, steward name, and item modifiers.",
-    isDefault: false,
-    paperSize: "80mm",
-    orientation: "portrait",
-    margins: "none",
-    primaryColor: "#000000",
-    fontFamily: "monospace",
-    fontDensity: "large",
-    printClarity: "ultra_dark",
-    dividerStyle: "solid",
-    headerTitle: "KITCHEN ORDER TICKET",
-    storeName: "Smart Restaurant & Cafe",
-    storeAddress: "Table #12 | Steward: Alex",
-    themeName: "classic",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showTaxSplit: false, showTotals: false },
-    createdAt: new Date().toISOString(),
-  },
 
   // ─── 3. PRODUCT BARCODE LABELS ───
   {
@@ -1181,31 +755,6 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     createdAt: new Date().toISOString(),
   },
   {
-    id: "tpl-bar-trendy-offer",
-    name: "Trendy Retail Tag (Centered SP & MRP)",
-    category: "barcodes",
-    docType: "barcode",
-    description: "Apparel & retail dual/single tag with centered Store Name, Product Name, and inline SP & MRP pricing.",
-    isDefault: false,
-    paperSize: "50x25mm",
-    labelWidthMm: 50,
-    labelHeightMm: 25,
-    labelLayout: "1up",
-    orientation: "landscape",
-    margins: "none",
-    primaryColor: "#0f172a",
-    fontFamily: "Inter, sans-serif",
-    textAlign: "center",
-    spPrefix: "SP: ",
-    mrpPrefix: "MRP: ",
-    spBadgeStyle: "none",
-    showMrpStrike: false,
-    priceLayout: "center_offer",
-    themeName: "trendy_offer",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES, showSKU: false },
-    createdAt: new Date().toISOString(),
-  },
-  {
     id: "tpl-bar-dual-trendy",
     name: "Trendy Dual-Roll Tag (100x25mm / 2-Up)",
     category: "barcodes",
@@ -1228,69 +777,6 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     priceLayout: "center_offer",
     themeName: "trendy_offer",
     fields: { ...DEFAULT_ELEMENT_TOGGLES, showSKU: false },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-bar-std",
-    name: "Standard 2x1 Inch Tag (50x25mm)",
-    category: "barcodes",
-    docType: "barcode",
-    description: "Standard 50mm x 25mm product sticker with Code-128 barcode, MRP and Selling Price.",
-    isDefault: false,
-    paperSize: "50x25mm",
-    labelWidthMm: 50,
-    labelHeightMm: 25,
-    labelLayout: "1up",
-    orientation: "landscape",
-    margins: "none",
-    primaryColor: "#000000",
-    fontFamily: "Inter, sans-serif",
-    storeName: "Smart Bazaar",
-    customTaglineText: "100% Genuine Quality",
-    themeName: "modern",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-bar-apparel",
-    name: "Jewelry & Apparel Tag (38x25mm)",
-    category: "barcodes",
-    docType: "barcode",
-    description: "Compact sticker layout for jewelry items, accessories, and apparel tags.",
-    isDefault: false,
-    paperSize: "38x25mm",
-    labelWidthMm: 38,
-    labelHeightMm: 25,
-    labelLayout: "1up",
-    orientation: "landscape",
-    margins: "none",
-    primaryColor: "#000000",
-    fontFamily: "Inter, sans-serif",
-    storeName: "Smart Apparel",
-    customTaglineText: "SIZE: L | COLOR: BLUE",
-    themeName: "compact",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-bar-cargo",
-    name: "Large Cargo Pallet Tag (100x50mm)",
-    category: "barcodes",
-    docType: "barcode",
-    description: "High-visibility 4x2 inch tag for warehouse pallets, batch crates, and heavy cartons.",
-    isDefault: false,
-    paperSize: "100x50mm",
-    labelWidthMm: 100,
-    labelHeightMm: 50,
-    labelLayout: "1up",
-    orientation: "landscape",
-    margins: "narrow",
-    primaryColor: "#0f172a",
-    fontFamily: "Inter, sans-serif",
-    storeName: "Smart Bazaar Logistics",
-    customTaglineText: "FRAGILE / HANDLE WITH CARE",
-    themeName: "advanced",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES },
     createdAt: new Date().toISOString(),
   },
   {
@@ -1331,24 +817,6 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     storeName: "Smart Bazaar",
     customTaglineText: "Scan to Pay / Verify Batch",
     themeName: "modern",
-    fields: { ...DEFAULT_ELEMENT_TOGGLES },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "tpl-qr-bin",
-    name: "Warehouse Bin QR Tag (75x50mm)",
-    category: "qrcodes",
-    docType: "qrcode",
-    description: "3-inch QR label for warehouse rack/shelf location mapping and inventory scans.",
-    isDefault: false,
-    paperSize: "75x50mm",
-    orientation: "landscape",
-    margins: "narrow",
-    primaryColor: "#0f172a",
-    fontFamily: "Inter, sans-serif",
-    storeName: "SMART LOGISTICS HUB",
-    customTaglineText: "AISLE 4 - RACK B - BIN 09",
-    themeName: "advanced",
     fields: { ...DEFAULT_ELEMENT_TOGGLES },
     createdAt: new Date().toISOString(),
   },
@@ -1549,8 +1017,173 @@ const COLOR_SWATCHES = [
   { label: "Black", value: "#18181b" },
 ];
 
+/**
+ * Prune legacy / near-duplicate built-in templates that the designer no longer
+ * ships. A template survives when it is a user-created design (Word Studio
+ * `wordConfig`, PDF stationery overlay, or a backend org template that isn't
+ * one of the built-in `tpl-` ids) or its id is in the curated keep-list.
+ * Everything else (the old generic repeats: stylish, luxury, adv-tally,
+ * adv-gst, billbook, minimal, elegant, clean-slate, emerald-corp,
+ * culture-up, culture-god, and the trimmed thermal/barcode/qr variants)
+ * is dropped from the picker.
+ */
+function pruneLegacyTemplates(list: PrintTemplate[]): PrintTemplate[] {
+  if (!Array.isArray(list) || list.length === 0) return list;
+  const keep = new Set(CURATED_BUILTIN_TEMPLATE_IDS);
+  const deprecated = new Set(DEPRECATED_BUILTIN_TEMPLATE_IDS);
+  const seen = new Set<string>();
+
+  const first = list.filter((t: any) => {
+    if (!t || !t.id) return true;
+    // 1. Hard blocklist wins outright — these specific legacy ids are always
+    //    dropped, even when the org DB returned a wordConfig/word-copy of them.
+    if (deprecated.has(t.id)) return false;
+    // 2. User-created / organization templates: always keep.
+    const isUserWordDesign = Boolean(t.wordConfig) || Boolean(t.isWordTemplate);
+    const isPdfOverlay = Boolean(t.isPdfStationeryOverlay) || Boolean(t.pdfBackgroundDataUrl);
+    // 3. Built-in ids not on the curated list get pruned (unless user design).
+    const looksBuiltin = /^tpl-/.test(t.id);
+    if (looksBuiltin && !isUserWordDesign && !isPdfOverlay && !keep.has(t.id)) return false;
+    // 4. Dedupe identical display names within the same document category so
+    //    synced org copies don't produce "Custom Word-Designed Invoice" x2.
+    const key = `${t.category || t.docType}::${String(t.name || "").trim().toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return first;
+}
+
+/**
+ * Enterprise template-library helpers: group the active doc-type's templates
+ * into meaningful sections and render a small document thumbnail per card.
+ */
+function buildTemplateGroups(templates: PrintTemplate[], docType: DocumentType): Array<{ title: string; items: PrintTemplate[] }> {
+  const invoiceGroup = (tpl: any): string => {
+    const theme = tpl.themeName || "";
+    if (theme === "gst_tally" || tpl.id === "tpl-inv-gst-tally") return "Signature · GST / Tally";
+    if (["marg_pharma", "fmcg_distributor", "parle_teal", "agri_seeds"].includes(theme)) return "Industry Templates";
+    if (theme === "pdf_overlay" || tpl.isPdfStationeryOverlay || tpl.id === "tpl-inv-pdf-overlay") return "PDF Stationery Overlay";
+    if (theme === "word_studio" || tpl.wordConfig || tpl.isWordTemplate || tpl.id === "tpl-word-default") return "Word Studio";
+    return "My Templates";
+  };
+
+  if (docType !== "invoice") {
+    return [{ title: "All Layouts", items: templates }];
+  }
+
+  const order = ["Signature · GST / Tally", "Industry Templates", "Word Studio", "PDF Stationery Overlay", "My Templates"];
+  const byGroup = new Map<string, PrintTemplate[]>();
+  templates.forEach((tpl: any) => {
+    const g = invoiceGroup(tpl);
+    if (!byGroup.has(g)) byGroup.set(g, []);
+    byGroup.get(g)!.push(tpl);
+  });
+  return order
+    .filter((g) => byGroup.has(g))
+    .map((g) => ({ title: g, items: byGroup.get(g)! }));
+}
+
+function TemplateThumb({ tpl, selected }: { tpl: any; selected: boolean }) {
+  const color = tpl.primaryColor || "#4f46e5";
+  const isLabel = tpl.docType === "barcode" || tpl.docType === "qrcode" || tpl.docType === "pricetag";
+  const isThermal = tpl.docType === "thermal" || tpl.category === "thermal";
+  const sizeChip = isLabel ? "50×25" : isThermal ? "80mm" : tpl.paperSize || "A4";
+  const frame = `shrink-0 rounded-md border-2 bg-white shadow-2xs overflow-hidden ${selected ? "border-indigo-500" : "border-slate-200 dark:border-slate-600"}`;
+
+  if (isThermal) {
+    return (
+      <div className={`${frame} w-[30px] aspect-[30/48] flex flex-col items-center justify-between py-1`}>
+        <div className="w-3/4 h-1 rounded-sm" style={{ backgroundColor: color }} />
+        <div className="w-full px-1 space-y-[3px]">
+          <div className="h-0.5 w-full rounded bg-slate-300" />
+          <div className="h-0.5 w-4/5 rounded bg-slate-200" />
+          <div className="h-0.5 w-full rounded bg-slate-300" />
+          <div className="border-t border-dashed border-slate-400 pt-[3px] h-0.5 w-3/4 rounded bg-slate-200" />
+        </div>
+        <div className="w-full px-1 flex justify-between text-[4px] font-black text-slate-700">
+          <span>TOTAL</span>
+          <span style={{ color }}>{sizeChip}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLabel) {
+    const isQr = tpl.docType === "qrcode";
+    const isPrice = tpl.docType === "pricetag";
+    return (
+      <div className={`${frame} w-[46px] aspect-[46/30] p-1 flex flex-col justify-between`}>
+        <div className="h-[3px] w-2/3 rounded-sm" style={{ backgroundColor: color }} />
+        {isQr ? (
+          <div
+            className="mx-auto size-4"
+            style={{
+              background:
+                "conic-gradient(#0f172a 25%, #fff 0 50%, #0f172a 0 75%, #fff 0)",
+              backgroundSize: "4px 4px",
+            }}
+          />
+        ) : isPrice ? (
+          <div className="flex items-center gap-1">
+            <span className="text-[8px] font-black leading-none" style={{ color }}>₹</span>
+            <span className="text-[7px] font-black text-slate-700 leading-none">99</span>
+            <span className="text-[5px] font-black text-white bg-red-500 rounded px-0.5 leading-tight">-20%</span>
+          </div>
+        ) : (
+          <div
+            className="mx-auto w-3/4 h-3"
+            style={{
+              background:
+                "repeating-linear-gradient(90deg,#0f172a 0 1.5px,transparent 1.5px 3px)",
+            }}
+          />
+        )}
+        <div className="h-0.5 w-full rounded bg-slate-300" />
+      </div>
+    );
+  }
+
+  // A4 / A5 invoice-like thumbnail
+  return (
+    <div className={`${frame} w-[38px] aspect-[38/50] p-1 flex flex-col justify-between`}>
+      <div className="space-y-[3px]">
+        <div className="flex justify-between">
+          <div className="h-1.5 w-4/5 rounded-sm" style={{ backgroundColor: color }} />
+          <div className="text-[4px] font-black text-slate-500">INVOICE</div>
+        </div>
+        <div className="h-0.5 w-3/4 rounded bg-slate-200" />
+        <div className="h-0.5 w-1/2 rounded bg-slate-200" />
+      </div>
+      <div className="space-y-[2px] flex-1 px-0.5 my-1">
+        <div className="h-1 w-full rounded-sm bg-slate-100 border border-slate-200" />
+        <div className="h-1 w-full rounded-sm bg-slate-100 border border-slate-200" />
+        <div className="h-1 w-full rounded-sm bg-slate-100 border border-slate-200" />
+        <div className="h-1 w-full rounded-sm bg-slate-100 border border-slate-200" />
+      </div>
+      <div className="flex items-end justify-between">
+        <div className="space-y-[2px]">
+          <div className="h-0.5 w-3 rounded bg-slate-200" />
+          <div className="h-0.5 w-2 rounded bg-slate-200" />
+        </div>
+        <div className="h-2 w-1/3 rounded-sm flex items-center justify-center" style={{ backgroundColor: color }}>
+          <span className="text-[4px] font-black text-white">₹</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PrintTemplates() {
   const { t } = useI18n();
+  const [printBankAccounts, setPrintBankAccounts] = useState<BankAccountRecord[]>([]);
+
+  useEffect(() => {
+    bankApi.listBankAccounts({ page: 1, page_size: 50 }).then((res) => {
+      if (res?.items) setPrintBankAccounts(res.items);
+    }).catch(() => {});
+  }, []);
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const tenantId = tenant?.id || "default";
@@ -1623,12 +1256,12 @@ export function PrintTemplates() {
             });
             const existingIds = new Set(normalizedSaved.map((t: any) => t.id));
             const missing = INITIAL_TEMPLATES.filter((t) => !existingIds.has(t.id));
-            return [...normalizedSaved, ...missing];
+            return pruneLegacyTemplates([...normalizedSaved, ...missing]);
           }
         } catch (e) {}
       }
     }
-    return INITIAL_TEMPLATES;
+    return pruneLegacyTemplates(INITIAL_TEMPLATES);
   });
 
   // User-Active Defaults Mapping
@@ -1782,7 +1415,7 @@ export function PrintTemplates() {
               });
             }
           });
-          return Array.from(map.values());
+          return pruneLegacyTemplates(Array.from(map.values()));
         });
       }
       if (res?.active_map) {
@@ -2012,10 +1645,7 @@ export function PrintTemplates() {
     persistTemplates(updatedTemplates);
   };
 
-  const [designSelectionMode, setDesignSelectionMode] = useState<"themes" | "custom">("themes");
   const [selectedThemeStoreId, setSelectedThemeStoreId] = useState<string | null>(activeTemplate.decorativeThemeId || null);
-  const themeStoreScrollRef = useRef<HTMLDivElement>(null);
-  const themesScrollRef = useRef<HTMLDivElement>(null);
 
   // Barcode In-Page Studio State & Handlers
   const [selectedBarcodeElementKey, setSelectedBarcodeElementKey] = useState<string>("el_product_name");
@@ -2305,22 +1935,6 @@ export function PrintTemplates() {
     });
     persistTemplates(updated);
     toast.success(`Applied "${item.name}" background & colors to all invoice themes!`);
-  };
-
-  // Scroll ThemeStore carousel
-  const handleScrollThemeStore = (direction: "left" | "right") => {
-    if (themeStoreScrollRef.current) {
-      const offset = direction === "left" ? -160 : 160;
-      themeStoreScrollRef.current.scrollBy({ left: offset, behavior: "smooth" });
-    }
-  };
-
-  // Scroll Themes preset carousel
-  const handleScrollThemes = (direction: "left" | "right") => {
-    if (themesScrollRef.current) {
-      const offset = direction === "left" ? -200 : 200;
-      themesScrollRef.current.scrollBy({ left: offset, behavior: "smooth" });
-    }
   };
 
   // Switch to specific template in active category
@@ -3084,9 +2698,9 @@ export function PrintTemplates() {
   const isThermalTemplate = selectedDocType === "thermal" || (selectedDocType !== "invoice" && selectedDocType !== "barcode" && selectedDocType !== "qrcode" && selectedDocType !== "pricetag" && selectedDocType !== "challan" && selectedDocType !== "custom" && (activeTemplate?.category === "thermal" || activeTemplate?.docType === "thermal"));
 
   return (
-    <div className="flex flex-col gap-6 min-h-[calc(100vh-130px)] pb-10 text-foreground">
+    <div className="flex flex-col gap-3.5 lg:h-[calc(100vh-130px)] lg:max-h-[calc(100vh-130px)] min-h-[580px] text-foreground lg:overflow-hidden pb-4 lg:pb-0">
       {/* ─── Standard Tab Header ─── */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 shrink-0">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Print & Document Templates", "Print & Document Templates")}</h2>
           <p className="text-sm text-muted-foreground">{t("Design, customize and live preview templates for Invoices, POS Receipts, Barcodes, QR Codes & Delivery Challans", "Design, customize and live preview templates for Invoices, POS Receipts, Barcodes, QR Codes & Delivery Challans")}</p>
@@ -3138,12 +2752,12 @@ export function PrintTemplates() {
         </div>
       </div>
 
-      {/* ─── 3-Column Main Workspace ─── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+      {/* ─── 3-Column Main Workspace (Separate Independent Scrolling) ─── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch flex-1 min-h-0 lg:overflow-hidden">
         
         {/* ── COLUMN 1: Template Type Sidebar (Collapsible & Compact) ── */}
         {isSidebarCollapsed ? (
-          <div className="lg:col-span-1 bg-card border border-border/80 rounded-2xl p-2 shadow-sm flex flex-col items-center gap-2">
+          <div className="lg:col-span-1 bg-card border border-border/80 rounded-2xl p-2 shadow-sm flex flex-col items-center gap-2 lg:h-full lg:overflow-y-auto custom-scrollbar">
             <button
               onClick={() => setIsSidebarCollapsed(false)}
               className="w-full flex flex-col items-center justify-center p-2 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 hover:scale-105 transition-all cursor-pointer shadow-xs"
@@ -3181,8 +2795,8 @@ export function PrintTemplates() {
             </div>
           </div>
         ) : (
-          <div className="lg:col-span-2 bg-card border border-border/80 rounded-2xl p-3 shadow-sm space-y-2.5">
-            <div className="flex items-center justify-between px-1 pb-1 border-b border-border/40">
+          <div className="lg:col-span-2 bg-card border border-border/80 rounded-2xl p-3 shadow-sm flex flex-col lg:h-full lg:overflow-hidden">
+            <div className="flex items-center justify-between px-1 pb-2 border-b border-border/40 shrink-0">
               <div className="min-w-0">
                 <h2 className="text-xs font-bold text-foreground">{t("Template Type", "Template Type")}</h2>
                 <p className="text-[9.5px] text-muted-foreground truncate">{t("Choose format", "Choose format")}</p>
@@ -3196,60 +2810,67 @@ export function PrintTemplates() {
               </button>
             </div>
 
-            <div className="space-y-1">
-              {DOCUMENT_TYPES_CONFIG.map((doc) => {
-                const IconComp = doc.icon;
-                const isActive = selectedDocType === doc.type;
-                const count = (templates || []).filter((t) => t.docType === doc.type || t.category === doc.category).length;
-                return (
-                  <button
-                    key={doc.type}
-                    onClick={() => setSelectedDocType(doc.type)}
-                    className={`w-full flex items-center justify-between p-2 rounded-xl border transition-all text-left cursor-pointer ${
-                      isActive
-                        ? "border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 shadow-sm"
-                        : "border-border/60 bg-card hover:bg-muted/40 hover:border-border text-foreground"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div
-                        className={`flex h-7 w-7 items-center justify-center rounded-lg shrink-0 transition-colors ${
+            <div className="space-y-3 flex-1 min-h-0 lg:overflow-y-auto custom-scrollbar pr-1 pt-2">
+              {([
+                { title: "Documents", types: ["invoice", "challan", "custom"] },
+                { title: "POS Receipts", types: ["thermal"] },
+                { title: "Labels & Tags", types: ["barcode", "qrcode", "pricetag"] },
+              ] as const).map((group) => (
+                <div key={group.title} className="space-y-1">
+                  <p className="px-1 pt-1 text-[8.5px] font-black uppercase tracking-wider text-muted-foreground/70">
+                    {group.title}
+                  </p>
+                  {group.types.map((docType) => {
+                    const doc = DOCUMENT_TYPES_CONFIG.find((d) => d.type === docType);
+                    if (!doc) return null;
+                    const IconComp = doc.icon;
+                    const isActive = selectedDocType === doc.type;
+                    const count = (templates || []).filter((t) => t.docType === doc.type || t.category === doc.category).length;
+                    return (
+                      <button
+                        key={doc.type}
+                        onClick={() => setSelectedDocType(doc.type)}
+                        className={`w-full flex items-center justify-between p-2 rounded-xl border transition-all text-left cursor-pointer ${
                           isActive
-                            ? "bg-indigo-600 text-white shadow-sm"
-                            : "bg-muted text-muted-foreground"
+                            ? "border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 shadow-sm"
+                            : "border-border/60 bg-card hover:bg-muted/40 hover:border-border text-foreground"
                         }`}
                       >
-                        <IconComp className="h-3.5 w-3.5" />
-                      </div>
-                      <div className="min-w-0 pr-0.5">
-                        <div className="text-[11px] font-bold truncate leading-snug flex items-center gap-1">
-                          {doc.label}
-                          <span className="text-[9px] font-normal px-1 py-0.2 rounded-full bg-muted text-muted-foreground">
-                            {count}
-                          </span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div
+                            className={`flex h-7 w-7 items-center justify-center rounded-lg shrink-0 transition-colors ${
+                              isActive ? "bg-indigo-600 text-white shadow-sm" : "bg-muted text-muted-foreground"
+                            }`}
+                          >
+                            <IconComp className="h-3.5 w-3.5" />
+                          </div>
+                          <div className="min-w-0 pr-0.5">
+                            <div className="text-[11px] font-bold truncate leading-snug flex items-center gap-1">
+                              {doc.label}
+                              <span className="text-[9px] font-normal px-1 py-0.2 rounded-full bg-muted text-muted-foreground">{count}</span>
+                            </div>
+                            <div className="text-[9px] text-muted-foreground truncate leading-tight mt-0.5">{doc.subtitle}</div>
+                          </div>
                         </div>
-                        <div className="text-[9px] text-muted-foreground truncate leading-tight mt-0.5">
-                          {doc.subtitle}
-                        </div>
-                      </div>
-                    </div>
-                    <ChevronRight
-                      className={`h-3.5 w-3.5 shrink-0 transition-transform ${
-                        isActive ? "text-indigo-600 dark:text-indigo-400 translate-x-0.5" : "text-muted-foreground/40"
-                      }`}
-                    />
-                  </button>
-                );
-              })}
+                        <ChevronRight
+                          className={`h-3.5 w-3.5 shrink-0 transition-transform ${
+                            isActive ? "text-indigo-600 dark:text-indigo-400 translate-x-0.5" : "text-muted-foreground/40"
+                          }`}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           </div>
         )}
 
         {/* ── COLUMN 2: Editor Customization Center Panel ── */}
-        <div className="lg:col-span-5 bg-card border border-border/80 rounded-2xl p-5 shadow-sm space-y-6">
+        <div className="lg:col-span-5 bg-card border border-border/80 rounded-2xl p-4 shadow-sm flex flex-col lg:h-full lg:overflow-hidden">
           
-          {/* Top Pill Navigation Tabs */}
-          <div className="flex items-center p-1 bg-muted/50 rounded-xl border border-border/50 gap-1">
+          {/* Top Pill Navigation Tabs - Fixed at top */}
+          <div className="flex items-center p-1 bg-muted/50 rounded-xl border border-border/50 gap-1 shrink-0 mb-3">
             <button
               onClick={() => setActiveEditorTab("design")}
               className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -3295,6 +2916,9 @@ export function PrintTemplates() {
               Settings
             </button>
           </div>
+
+          {/* Active Configuration Body - Independent Scroll Container */}
+          <div className="flex-1 min-h-0 lg:overflow-y-auto custom-scrollbar pr-2 space-y-5">
 
           {/* Active Template Banner / Status Actions Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3.5 bg-muted/30 border border-border/60 rounded-xl">
@@ -3534,430 +3158,207 @@ export function PrintTemplates() {
             </div>
           ) : activeEditorTab === "design" && (
             <div className="space-y-5">
-              
-              {/* Visual Word-Style Studio Banner for Invoices */}
-              {(selectedDocType === "invoice" || activeTemplate.category === "invoices" || activeTemplate.docType === "invoice") && (
-                <div className="p-4 bg-gradient-to-r from-blue-600/10 via-indigo-600/10 to-purple-600/10 border-2 border-indigo-500/30 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="size-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
-                        <Sparkles className="size-3.5" />
-                      </span>
-                      <h4 className="text-xs font-black text-foreground">
-                        Visual Word-Style Invoice Designer Studio
-                      </h4>
-                      <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-600 text-white tracking-wider">
-                        Full Customization
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground leading-snug">
-                      Click any field to edit directly, add unlimited custom fields (PO No, E-Way Bill, Vehicle No), reorder sections, customize columns, and upload stamps with Microsoft Word freedom.
-                    </p>
+
+              {/* ═══ SECTION 1: TEMPLATE LIBRARY (grouped, enterprise) ═══ */}
+              <div className="space-y-4 p-4 bg-card border border-border/70 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <LayoutGrid className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                    <h3 className="text-xs font-black tracking-tight text-foreground">Template Library</h3>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  <button
+                    onClick={() => setIsTemplateStoreModalOpen(true)}
+                    className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                  >
+                    Full gallery ({currentCategoryTemplates.length})
+                  </button>
+                </div>
+                <p className="text-[10.5px] text-muted-foreground -mt-1.5">
+                  Pick a starting layout — every field, column and element can still be fully customized in the tabs below.
+                </p>
+
+                {buildTemplateGroups(currentCategoryTemplates, selectedDocType).map((group) => (
+                  <div key={group.title} className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9.5px] font-black uppercase tracking-wider text-muted-foreground">{group.title}</span>
+                      <span className="text-[9px] font-bold text-indigo-500/80 bg-indigo-500/10 rounded-full px-1.5 py-0.1">{group.items.length}</span>
+                      <div className="h-px flex-1 bg-border/50" />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {group.items.map((tpl) => {
+                        const isSelected = activeTemplate.id === tpl.id;
+                        return (
+                          <button
+                            key={tpl.id}
+                            type="button"
+                            onClick={() => handleSelectTemplate(tpl)}
+                            className={`w-full text-left p-2.5 rounded-xl border transition-all cursor-pointer ${
+                              isSelected
+                                ? "border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 ring-1 ring-indigo-500/40"
+                                : "border-border/60 bg-background hover:border-indigo-300 hover:bg-muted/40"
+                            }`}
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <TemplateThumb tpl={tpl} selected={isSelected} />
+                              <div className="min-w-0 flex-1 pr-1">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className={`text-[11px] font-bold truncate ${isSelected ? "text-indigo-700 dark:text-indigo-300" : "text-foreground"}`}>
+                                    {tpl.name.replace(" Theme", "")}
+                                  </span>
+                                  {isSelected && <Check className="h-3 w-3 shrink-0 text-indigo-600 stroke-[3]" />}
+                                </div>
+                                <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                                  {tpl.isDefault && (
+                                    <span className="text-[7.5px] font-black px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400">ORG DEFAULT</span>
+                                  )}
+                                  {userActiveDefaults[selectedDocType] === tpl.id && (
+                                    <span className="text-[7.5px] font-black px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-600 dark:text-teal-400">ACTIVE FOR ME</span>
+                                  )}
+                                  {(tpl.docType === "thermal" || tpl.docType === "invoice" || tpl.docType === "challan") && (
+                                    <span className="text-[7.5px] font-bold text-muted-foreground/70 px-1.5 py-0.5 rounded bg-muted/70">
+                                      {tpl.paperSize}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[9px] text-muted-foreground leading-tight mt-1 line-clamp-2">{tpl.description}</p>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ═══ SECTION 2: CUSTOMIZATION STUDIO (Word / PDF / duplicate) ═══ */}
+              {(selectedDocType === "invoice" || activeTemplate.category === "invoices" || activeTemplate.docType === "invoice") && (
+                <div className="space-y-3 p-4 bg-card border border-border/70 rounded-2xl">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                    <h3 className="text-xs font-black tracking-tight text-foreground">Customization Studio</h3>
+                  </div>
+                  <p className="text-[10.5px] text-muted-foreground -mt-1.5">Blank Word canvas or full Word-Designer freedom — unlimited custom fields (PO, E-Way, Vehicle No), reorderable sections & columns.</p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <button
                       type="button"
-                      onClick={() => {
-                        setIsWordStudioBlank(true);
-                        setIsWordStudioOpen(true);
-                      }}
-                      className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5 transition-transform active:scale-95 cursor-pointer"
+                      onClick={() => { setIsWordStudioBlank(true); setIsWordStudioOpen(true); }}
+                      className="px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
                     >
-                      <PlusCircle className="size-3.5" />
-                      <span>+ Blank Canvas</span>
+                      <PlusCircle className="size-3.5" /> Blank Word Canvas
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        setIsWordStudioBlank(false);
-                        setIsWordStudioOpen(true);
-                      }}
-                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs shadow-md shadow-indigo-600/20 flex items-center justify-center gap-1.5 shrink-0 transition-transform active:scale-95 cursor-pointer"
+                      onClick={() => { setIsWordStudioBlank(false); setIsWordStudioOpen(true); }}
+                      className="px-3 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
                     >
-                      <PenTool className="size-3.5" />
-                      <span>Open Word Designer</span>
+                      <PenTool className="size-3.5" /> Open Word Designer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDuplicateTemplate(activeTemplate)}
+                      className="px-3 py-2.5 rounded-xl border border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-950/50 font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <Copy className="size-3.5" /> Duplicate & Edit
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* ── TOP SECTION: 🏪 ThemeStore (Backgrounds & Decorative Themes) ── */}
-              <div className="space-y-3 p-3.5 bg-gradient-to-r from-amber-500/5 via-orange-500/5 to-purple-500/5 border border-amber-500/20 rounded-2xl shadow-2xs">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-base">🏪</span>
-                    <h3 className="text-xs font-black tracking-tight text-foreground flex items-center gap-1">
-                      ThemeStore
-                      <span className="text-[10px] text-muted-foreground font-normal cursor-help" title="Cultural, Vedic, Regional & Luxury Decorative Background Themes">
-                        <HelpCircle className="h-3 w-3 inline text-muted-foreground/70" />
-                      </span>
-                    </h3>
-                  </div>
+              {/* ═══ SECTION 3: STYLE & ACCENTS (color, font, accent background) ═══ */}
+              <div className="space-y-3 p-4 bg-card border border-border/70 rounded-2xl">
+                <div className="flex items-center gap-1.5">
+                  <Palette className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                  <h3 className="text-xs font-black tracking-tight text-foreground">Style & Accents</h3>
+                </div>
 
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleScrollThemeStore("left")}
-                      className="p-1 rounded-full border border-border hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
-                      title="Scroll Left"
-                    >
-                      <ChevronLeft className="h-3 w-3" />
-                    </button>
-                    <button
-                      onClick={() => handleScrollThemeStore("right")}
-                      className="p-1 rounded-full border border-border hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
-                      title="Scroll Right"
-                    >
-                      <ChevronRight className="h-3 w-3" />
-                    </button>
+                <div className="space-y-1.5">
+                  <label className="text-[10.5px] font-bold text-foreground">Accent Color</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {COLOR_SWATCHES.map((c) => (
+                      <button
+                        key={c.value}
+                        type="button"
+                        onClick={() => updateTemplateProperty("primaryColor", c.value)}
+                        title={c.label}
+                        className={`h-7 w-7 rounded-lg border-2 transition-all cursor-pointer ${
+                          activeTemplate.primaryColor === c.value ? "ring-2 ring-offset-1 ring-indigo-500 scale-105" : "border-border/60 hover:scale-105"
+                        }`}
+                        style={{ backgroundColor: c.value }}
+                      />
+                    ))}
                   </div>
                 </div>
 
-                {/* Horizontal Scrollable Carousel of ThemeStore Backgrounds */}
-                <div
-                  ref={themeStoreScrollRef}
-                  className="flex items-center gap-2.5 overflow-x-auto pb-1 scrollbar-thin scroll-smooth"
-                >
-                  {THEME_STORE_BACKGROUNDS.map((item) => {
-                    const isSelected = activeTemplate.themeName === item.themeStyle || selectedThemeStoreId === item.id;
-                    return (
-                      <div
-                        key={item.id}
-                        onClick={() => handleSelectThemeStoreItem(item)}
-                        className="flex flex-col items-center gap-1.5 cursor-pointer group shrink-0 w-[92px]"
+                <div className="space-y-1.5">
+                  <label className="text-[10.5px] font-bold text-foreground">Font Family</label>
+                  <select
+                    value={activeTemplate.fontFamily}
+                    onChange={(e) => updateTemplateProperty("fontFamily", e.target.value)}
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs font-semibold text-foreground focus:border-indigo-500"
+                  >
+                    {FONT_FAMILIES.map((ff) => (
+                      <option key={ff.value} value={ff.value}>{ff.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10.5px] font-bold text-foreground">Decorative Accent (optional)</label>
+                    {selectedThemeStoreId && (
+                      <button
+                        onClick={() => handleSelectThemeStoreItem(THEME_STORE_BACKGROUNDS[0] as ThemeStoreItem)}
+                        className="text-[9.5px] font-bold text-muted-foreground hover:text-foreground cursor-pointer"
                       >
-                        <div
-                          className={`relative w-full aspect-[4/5] rounded-xl border p-1.5 flex flex-col justify-between transition-all overflow-hidden shadow-2xs ${
+                        Revert to clean
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    {THEME_STORE_BACKGROUNDS.map((item) => {
+                      const isSelected = selectedThemeStoreId === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => handleSelectThemeStoreItem(item)}
+                          title={item.description}
+                          className={`relative aspect-[4/5] rounded-lg border p-1 flex flex-col justify-between transition-all overflow-hidden cursor-pointer ${
                             isSelected
-                              ? "border-amber-600 bg-amber-50/80 dark:bg-amber-950/40 ring-2 ring-amber-500/40 shadow-sm scale-102"
-                              : "border-border/70 bg-card hover:border-amber-400 hover:bg-amber-50/30"
+                              ? "border-indigo-600 ring-1 ring-indigo-500/40 shadow-sm"
+                              : "border-border/60 hover:border-indigo-300"
                           }`}
                         >
-                          {/* Mini Cultural Decorative Artwork Preview Card */}
-                          <div className={`w-full h-full rounded-lg bg-gradient-to-br ${item.previewGradient} border border-amber-300/40 p-1 flex flex-col justify-between overflow-hidden relative`}>
-                            {/* Auspicious Ornamental Corner Motif */}
-                            <div className="flex justify-between items-center text-[7px] font-bold text-amber-800/80">
-                              <span>{item.iconType === "none" ? "CLEAN" : "॥ श्री ॥"}</span>
-                              {item.badge && (
-                                <span className="text-[6px] font-black px-1 py-0.2 rounded-full bg-amber-600 text-white leading-none">
-                                  {item.badge}
-                                </span>
-                              )}
+                          <div className={`w-full h-full rounded bg-gradient-to-br ${item.previewGradient} flex flex-col justify-between p-0.5`}>
+                            <div className="text-[6px] font-bold text-slate-700/70 flex justify-between">
+                              <span>{item.iconType === "none" ? "CLEAN" : item.iconType === "corporate" ? "CORP" : item.iconType === "shubh_labh" ? "VEDIC" : "GOLD"}</span>
+                              {item.badge && <span className="text-[5.5px] font-black px-1 rounded-full bg-indigo-600/80 text-white leading-tight">{item.badge}</span>}
                             </div>
-
-                            {/* Center Motif Artwork representation */}
-                            <div className="flex flex-col items-center justify-center my-auto text-center opacity-85">
-                              {item.iconType === "none" && <span className="text-sm leading-none">📄</span>}
-                              {item.iconType === "jain" && <span className="text-sm leading-none">🛕</span>}
-                              {item.iconType === "maharashtra" && <span className="text-sm leading-none">🚩</span>}
-                              {item.iconType === "ganesh" && <span className="text-sm leading-none">🕉️</span>}
-                              {item.iconType === "hindu_god" && <span className="text-sm leading-none">🪷</span>}
-                              {item.iconType === "shubh_labh" && <span className="text-sm leading-none">✨</span>}
-                              {item.iconType === "royal_gold" && <span className="text-sm leading-none">👑</span>}
-                              {item.iconType === "corporate" && <span className="text-sm leading-none">🏛️</span>}
+                            <div className="flex flex-col items-center opacity-80">
+                              {item.iconType === "none" && <span className="text-[11px] leading-none">📄</span>}
+                              {item.iconType === "shubh_labh" && <span className="text-[11px] leading-none">✨</span>}
+                              {item.iconType === "royal_gold" && <span className="text-[11px] leading-none">👑</span>}
+                              {item.iconType === "corporate" && <span className="text-[11px] leading-none">🏛️</span>}
                             </div>
-
-                            {/* Mini Table Lines */}
-                            <div className="space-y-0.5 w-full">
-                              <div className="w-full h-0.5 bg-amber-800/20 rounded-full" />
-                              <div className="w-3/4 h-0.5 bg-amber-800/20 rounded-full" />
+                            <div className="space-y-0.5">
+                              <div className="w-full h-0.5 bg-slate-700/20 rounded-full" />
+                              <div className="w-3/4 h-0.5 bg-slate-700/20 rounded-full" />
                             </div>
                           </div>
-
-                          {/* Selected Checkmark Badge */}
                           {isSelected && (
-                            <div className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-600 text-white shadow">
-                              <Check className="h-2.5 w-2.5 stroke-[3]" />
+                            <div className="absolute top-1 right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-indigo-600 text-white shadow">
+                              <Check className="h-2 w-2 stroke-[3]" />
                             </div>
                           )}
-                        </div>
-                        <span
-                          className={`text-[10px] font-bold text-center leading-tight truncate w-full ${
-                            isSelected ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground group-hover:text-foreground"
-                          }`}
-                          title={item.name}
-                        >
-                          {item.name}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* ── 2 OPTIONS SELECTOR (Option 1: Themes + Option 2: Custom Columns Table) ── */}
-              <div className="space-y-4">
-                
-                {/* ── OPTION 1: 🔘 Themes (Standard Structural Layout Presets) ── */}
-                <div className={`p-4 rounded-2xl border transition-all ${
-                  designSelectionMode === "themes"
-                    ? "border-indigo-600/40 bg-indigo-500/5 shadow-xs"
-                    : "border-border/60 bg-card hover:border-border"
-                }`}>
-                  <div className="flex items-center justify-between mb-3">
-                    <label 
-                      onClick={() => setDesignSelectionMode("themes")}
-                      className="flex items-center gap-2.5 cursor-pointer select-none"
-                    >
-                      <input
-                        type="radio"
-                        name="designModeSelection"
-                        checked={designSelectionMode === "themes"}
-                        onChange={() => setDesignSelectionMode("themes")}
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                      />
-                      <span className="text-xs font-black text-foreground tracking-tight">Themes</span>
-                    </label>
-
-                    {/* Left/Right Carousel Scroll Arrows */}
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleScrollThemes("left")}
-                        className="p-1 rounded-full border border-border hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
-                        title="Scroll Left"
-                      >
-                        <ChevronLeft className="h-3 w-3" />
-                      </button>
-                      <button
-                        onClick={() => handleScrollThemes("right")}
-                        className="p-1 rounded-full border border-border hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
-                        title="Scroll Right"
-                      >
-                        <ChevronRight className="h-3 w-3" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Horizontal Scrollable Carousel of Standard Structural Layout Cards */}
-                  <div
-                    ref={themesScrollRef}
-                    className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-thin scroll-smooth"
-                  >
-                    {currentCategoryTemplates.map((tpl) => {
-                      const isSelected = activeTemplate.id === tpl.id;
-                      const isLuxuryTheme = tpl.themeName === "luxury" || tpl.name.toLowerCase().includes("luxury");
-                      const isTallyTheme = tpl.themeName === "adv_tally" || tpl.name.toLowerCase().includes("tally");
-                      const themeColor = tpl.primaryColor || "#2563eb";
-
-                      return (
-                        <div
-                          key={tpl.id}
-                          onClick={() => {
-                            setDesignSelectionMode("themes");
-                            handleSelectTemplate(tpl);
-                          }}
-                          className="flex flex-col items-center gap-1.5 cursor-pointer group shrink-0 w-[114px]"
-                        >
-                          <div
-                            className={`relative w-full aspect-[4/5] rounded-xl border p-2 flex flex-col justify-between transition-all overflow-hidden ${
-                              isSelected
-                                ? "border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 ring-2 ring-indigo-500/40 shadow-sm scale-102"
-                                : "border-border/80 bg-background hover:border-indigo-400 hover:bg-muted/40 shadow-2xs"
-                            }`}
-                          >
-                            {/* NEW Ribbon Tag for Luxury theme */}
-                            {isLuxuryTheme && (
-                              <div className="absolute top-0 left-0 z-10">
-                                <span className="text-[6.5px] font-black uppercase px-1.5 py-0.5 rounded-br-md bg-red-600 text-white shadow-2xs tracking-wider">
-                                  NEW
-                                </span>
-                              </div>
-                            )}
-
-                            {/* Mini Realistic Wireframe Representation matching SS1 */}
-                            <div
-                              className={`w-full h-full flex flex-col justify-between p-1.5 rounded-lg border text-[5px] font-mono transition-all select-none ${
-                                isLuxuryTheme
-                                  ? "border-amber-200/90 text-amber-950/70"
-                                  : isTallyTheme
-                                  ? "border-slate-300 text-slate-700"
-                                  : "border-slate-200 text-slate-600"
-                              }`}
-                              style={{
-                                backgroundColor: isLuxuryTheme
-                                  ? "#fffdf5"
-                                  : tpl.paperBgColor || "#ffffff",
-                              }}
-                            >
-                              {/* 1. Header Section */}
-                              <div className="space-y-0.5">
-                                <div className="flex items-start justify-between gap-1">
-                                  {/* Left Logo + Company info lines */}
-                                  <div className="flex items-center gap-1 min-w-0">
-                                    <div
-                                      className="w-3 h-3 rounded-xs shrink-0 flex items-center justify-center text-[5px]"
-                                      style={{
-                                        backgroundColor: isLuxuryTheme
-                                          ? "#fef3c7"
-                                          : isTallyTheme
-                                          ? "#e2e8f0"
-                                          : `${themeColor}20`,
-                                        border: `0.5px solid ${isLuxuryTheme ? "#d97706" : themeColor}40`,
-                                      }}
-                                    >
-                                      <div
-                                        className="w-1.5 h-1.5 rounded-2xs"
-                                        style={{
-                                          backgroundColor: isLuxuryTheme ? "#d97706" : themeColor,
-                                        }}
-                                      />
-                                    </div>
-                                    <div className="space-y-0.5">
-                                      <div
-                                        className="h-1 w-6 rounded-2xs"
-                                        style={{
-                                          backgroundColor: isLuxuryTheme ? "#b45309" : isTallyTheme ? "#334155" : themeColor,
-                                          opacity: 0.85,
-                                        }}
-                                      />
-                                      <div className="h-0.5 w-8 bg-slate-200 rounded-2xs" />
-                                    </div>
-                                  </div>
-
-                                  {/* Right Invoice metadata lines */}
-                                  <div className="space-y-0.5 text-right shrink-0">
-                                    <div className="h-0.5 w-4 bg-slate-300 rounded-2xs ml-auto" />
-                                    <div className="h-0.5 w-5 bg-slate-200 rounded-2xs ml-auto" />
-                                  </div>
-                                </div>
-
-                                {/* 2. Bill To / Ship To Divider */}
-                                <div
-                                  className={`pt-0.5 border-t ${
-                                    isLuxuryTheme
-                                      ? "border-amber-200/80"
-                                      : isTallyTheme
-                                      ? "border-slate-300"
-                                      : "border-slate-100"
-                                  }`}
-                                >
-                                  <div className="flex justify-between items-center text-[3.8px] font-bold tracking-tight text-slate-400">
-                                    <span>BILL TO</span>
-                                    <span>SHIP TO</span>
-                                  </div>
-                                  <div className="flex justify-between items-center pt-0.2">
-                                    <div className="h-0.5 w-6 bg-slate-200 rounded-2xs" />
-                                    <div className="h-0.5 w-6 bg-slate-200 rounded-2xs" />
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* 3. Item Table Grid */}
-                              <div
-                                className={`border rounded-xs overflow-hidden my-0.5 ${
-                                  isLuxuryTheme
-                                    ? "border-amber-300/80 divide-y divide-amber-200"
-                                    : isTallyTheme
-                                    ? "border-slate-300 divide-y divide-slate-200"
-                                    : "border-slate-200 divide-y divide-slate-100"
-                                }`}
-                              >
-                                {/* Table Header Row with 4 columns */}
-                                <div
-                                  className="h-1.5 flex items-center divide-x px-0.5"
-                                  style={{
-                                    backgroundColor: isLuxuryTheme
-                                      ? "#fef3c7"
-                                      : isTallyTheme
-                                      ? "#f1f5f9"
-                                      : `${themeColor}18`,
-                                    borderBottom: `0.5px solid ${isLuxuryTheme ? "#d97706" : themeColor}40`,
-                                    borderColor: isLuxuryTheme ? "#fde68a" : isTallyTheme ? "#cbd5e1" : `${themeColor}30`,
-                                  }}
-                                >
-                                  <div className="w-1/2 h-0.5 bg-slate-400/70 rounded-2xs" />
-                                  <div className="w-1/6 h-0.5 bg-slate-300 rounded-2xs pl-0.5" />
-                                  <div className="w-1/6 h-0.5 bg-slate-300 rounded-2xs pl-0.5" />
-                                  <div className="w-1/6 h-0.5 bg-slate-300 rounded-2xs pl-0.5" />
-                                </div>
-
-                                {/* Table Row 1 */}
-                                <div
-                                  className={`h-1.5 flex items-center divide-x px-0.5 ${
-                                    isLuxuryTheme
-                                      ? "bg-amber-50/40 divide-amber-100"
-                                      : isTallyTheme
-                                      ? "bg-white divide-slate-200"
-                                      : "bg-slate-50/40 divide-slate-100"
-                                  }`}
-                                >
-                                  <div className="w-1/2 h-0.5 bg-slate-200 rounded-2xs" />
-                                  <div className="w-1/6 h-0.5 bg-slate-200 rounded-2xs pl-0.5" />
-                                  <div className="w-1/6 h-0.5 bg-slate-200 rounded-2xs pl-0.5" />
-                                  <div className="w-1/6 h-0.5 bg-slate-200 rounded-2xs pl-0.5" />
-                                </div>
-
-                                {/* Table Row 2 */}
-                                <div
-                                  className={`h-1.5 flex items-center divide-x px-0.5 ${
-                                    isLuxuryTheme
-                                      ? "bg-white divide-amber-100"
-                                      : isTallyTheme
-                                      ? "bg-slate-50/50 divide-slate-200"
-                                      : "bg-white divide-slate-100"
-                                  }`}
-                                >
-                                  <div className="w-1/2 h-0.5 bg-slate-200 rounded-2xs" />
-                                  <div className="w-1/6 h-0.5 bg-slate-200 rounded-2xs pl-0.5" />
-                                  <div className="w-1/6 h-0.5 bg-slate-200 rounded-2xs pl-0.5" />
-                                  <div className="w-1/6 h-0.5 bg-slate-200 rounded-2xs pl-0.5" />
-                                </div>
-                              </div>
-
-                              {/* 4. Footer & Total */}
-                              <div className="flex items-end justify-between pt-0.5">
-                                <div className="space-y-0.2">
-                                  <div className="h-0.5 w-5 bg-slate-200 rounded-2xs" />
-                                  <div className="h-0.5 w-3 bg-slate-200 rounded-2xs" />
-                                </div>
-                                <div className="text-right">
-                                  <div className="h-0.5 w-4 bg-slate-200 rounded-2xs ml-auto mb-0.5" />
-                                  <div
-                                    className="font-bold text-[5.2px] leading-none"
-                                    style={{
-                                      color: isLuxuryTheme ? "#b45309" : isTallyTheme ? "#0f172a" : themeColor || "#1e293b",
-                                    }}
-                                  >
-                                    ₹ 1000.00
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            {isSelected && (
-                              <div className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-white shadow">
-                                <Check className="h-2.5 w-2.5 stroke-[3]" />
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="text-center w-full">
-                            <span className={`text-[10px] font-bold block truncate ${
-                              isSelected ? "text-indigo-600 dark:text-indigo-400" : "text-foreground"
-                            }`}>
-                              {tpl.name.replace(" Theme", "").replace(" Replica", "")}
-                            </span>
-                          </div>
-                        </div>
+                        </button>
                       );
                     })}
-
-                    {/* See All Card */}
-                    <div
-                      onClick={() => setIsTemplateStoreModalOpen(true)}
-                      className="flex flex-col items-center gap-1.5 cursor-pointer group shrink-0 w-[114px]"
-                    >
-                      <div className="w-full aspect-[4/5] rounded-xl border border-dashed border-indigo-300 dark:border-indigo-800 bg-indigo-50/30 dark:bg-indigo-950/20 hover:bg-indigo-50/70 p-2 flex flex-col items-center justify-center text-center transition-all">
-                        <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 group-hover:underline">
-                          See All
-                        </span>
-                        <span className="text-[9px] text-muted-foreground mt-0.5">
-                          +{currentCategoryTemplates.length} Styles
-                        </span>
-                      </div>
-                      <span className="text-[10px] font-medium text-muted-foreground">More Styles</span>
-                    </div>
                   </div>
+                  <p className="text-[9px] text-muted-foreground">Applies an optional background accent & watermark to all invoice layouts.</p>
                 </div>
+              </div>
 
                 {/* Direct In-Page Word Document Barcode Studio */}
                 {(selectedDocType === "barcode" || activeTemplate?.category === "barcodes") && (
@@ -5246,40 +4647,6 @@ export function PrintTemplates() {
                   </div>
                 )}
 
-                {/* ── OPTION 2: ⚪ Create Custom Theme & Column Table Formatter ── */}
-                <div className={`p-4 rounded-2xl border transition-all ${
-                  designSelectionMode === "custom"
-                    ? "border-indigo-600/40 bg-indigo-500/5 shadow-xs"
-                    : "border-border/60 bg-card hover:border-border"
-                }`}>
-                  <label 
-                    onClick={() => setDesignSelectionMode("custom")}
-                    className="flex items-center gap-2.5 cursor-pointer select-none mb-3"
-                  >
-                    <input
-                      type="radio"
-                      name="designModeSelection"
-                      checked={designSelectionMode === "custom"}
-                      onChange={() => setDesignSelectionMode("custom")}
-                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                    />
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-black text-foreground tracking-tight">Create Custom Theme</span>
-                      <HelpCircle className="h-3 w-3 text-muted-foreground" />
-                    </div>
-                  </label>
-
-                  <button
-                    onClick={() => {
-                      setDesignSelectionMode("custom");
-                      handleDuplicateTemplate(activeTemplate);
-                    }}
-                    className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center justify-center gap-2 mb-4 active:scale-98"
-                  >
-                    <Sparkles className="h-3.5 w-3.5" />
-                    Create your own theme / Customize Columns
-                  </button>
-
                   {/* ── Detailed Table Columns & Format Controls ── */}
                   <div className="space-y-4 pt-2 border-t border-border/60">
                     
@@ -5446,9 +4813,7 @@ export function PrintTemplates() {
                     </div>
 
                   </div>
-                </div>
 
-              </div>
             </div>
           )}
 
@@ -6384,7 +5749,36 @@ export function PrintTemplates() {
                 </div>
 
                 {activeTemplate.fields.showPaymentDetails !== false && (
-                  <div className="space-y-1 pt-1">
+                  <div className="space-y-2 pt-1">
+                    {printBankAccounts.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <select
+                          onChange={(e) => {
+                            const b = printBankAccounts.find((x) => x.id === e.target.value);
+                            if (b) {
+                              const parts = [
+                                `Bank: ${b.bank_name || b.name}`,
+                                `A/C: ${b.account_number || ""}`,
+                                `IFSC: ${b.ifsc_code || ""}`,
+                              ];
+                              if (b.account_holder_name) parts.push(`Holder: ${b.account_holder_name}`);
+                              if (b.branch_name) parts.push(`Branch: ${b.branch_name}`);
+                              if (b.upi_id) parts.push(`UPI: ${b.upi_id}`);
+                              updateTemplateProperty("bankDetails", parts.join(" | "));
+                              toast.success(`Inserted bank details from "${b.name}"`);
+                            }
+                          }}
+                          className="w-full text-xs font-semibold bg-background border border-input rounded-xl px-2.5 py-1.5 text-foreground outline-none focus:border-indigo-500 cursor-pointer"
+                        >
+                          <option value="">-- Insert from Configured Bank Account --</option>
+                          {printBankAccounts.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.name} ({b.bank_name || "Bank"}) - ...{b.account_number?.slice(-4) || ""} {b.is_default ? "★ Default" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <textarea
                       rows={2}
                       value={activeTemplate.bankDetails || ""}
@@ -6392,6 +5786,9 @@ export function PrintTemplates() {
                       placeholder="Bank name, Account Number, IFSC code, Branch"
                       className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 font-mono"
                     />
+                    <p className="text-[10px] text-muted-foreground">
+                      This text prints in the Bank & UPI payment section of invoices when &quot;Bank Account Details Box&quot; is checked.
+                    </p>
                   </div>
                 )}
               </div>
@@ -7288,15 +6685,16 @@ export function PrintTemplates() {
               </div>
             </div>
           ) : null}
+          </div>
         </div>
 
         {/* ── COLUMN 3: Live Preview & Quick Switcher (Expanded) ── */}
-        <div className={`${isSidebarCollapsed ? "lg:col-span-6" : "lg:col-span-5"} flex flex-col gap-4`}>
+        <div className={`${isSidebarCollapsed ? "lg:col-span-6" : "lg:col-span-5"} flex flex-col lg:h-full lg:overflow-hidden`}>
           
           {/* Live Preview Card */}
-          <div className="bg-card border border-border/80 rounded-2xl p-4 shadow-sm space-y-4">
-            {/* Header */}
-            <div className="flex items-center justify-between pb-2 border-b border-border/60">
+          <div className="bg-card border border-border/80 rounded-2xl p-3.5 shadow-sm flex flex-col lg:h-full lg:overflow-hidden">
+            {/* Header - Fixed at top */}
+            <div className="flex items-center justify-between pb-2.5 border-b border-border/60 shrink-0">
               <div className="flex items-center gap-2">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
                   <FileText className="h-4 w-4" />
@@ -7395,7 +6793,7 @@ export function PrintTemplates() {
 
             {/* Barcode Quick Interactive Controls Header */}
             {isBarcodeTemplate && (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-blue-50/70 dark:bg-blue-950/30 rounded-xl border border-blue-200/80 dark:border-blue-800/60">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-blue-50/70 dark:bg-blue-950/30 rounded-xl border border-blue-200/80 dark:border-blue-800/60 shrink-0 my-2">
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-bold text-blue-950 dark:text-blue-200 shrink-0">Sample Product:</span>
                   <select
@@ -7506,8 +6904,8 @@ export function PrintTemplates() {
               </div>
             )}
 
-            {/* Document Canvas with scaling */}
-            <div className="relative w-full bg-slate-200/80 dark:bg-slate-900/80 rounded-xl p-3 sm:p-5 flex flex-col justify-start items-center overflow-x-auto overflow-y-auto min-h-[500px] border border-border/60 shadow-inner">
+            {/* Document Canvas with scaling - Independent Scroll Container */}
+            <div className="relative w-full flex-1 min-h-0 bg-slate-200/80 dark:bg-slate-900/80 rounded-xl p-3 sm:p-5 flex flex-col justify-start items-center overflow-x-auto overflow-y-auto border border-border/60 shadow-inner custom-scrollbar mt-2">
               {isBarcodeTemplate && !showPrintPreview && (
                 <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1 bg-white/60 dark:bg-slate-800/60 px-3 py-1 rounded-full border border-border/60">
                   <span>💡 <strong>Click</strong> any block to select & style, <strong>Double-click</strong> to edit text, or use left controls to add & reorder.</span>
@@ -9160,6 +8558,76 @@ function LiveDocumentPreview({
               sellerGstin={resolvedGstin}
               sellerStateCode="37"
               dynamicBank={template.bankDetails || "Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003"}
+              currency={currency}
+              f={f as any}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    // ── Check if GST Tally (myBillBook) Theme ──
+    if (theme === "gst_tally") {
+      const gstTallyMockInvoice: FullInvoiceData = {
+        id: "mock-gst-tally-01",
+        invoice_number: "B/26-27/004512",
+        invoice_date: "2026-07-10",
+        due_date: "2026-07-24",
+        created_at: "2026-07-10T10:00:00Z",
+        payment_method: "Cash",
+        place_of_supply: "37 - Andhra Pradesh",
+        po_number: "PO-2026-8812",
+        customerName: "ACME Enterprises Pvt Ltd",
+        customerCompany: "ACME Enterprises Pvt Ltd",
+        customerAddress: "45 Tech Boulevard, Sector 62, Noida, UP",
+        customerShippingAddress: "Plot 12, Industrial Area, Sector 63, Noida, UP",
+        customerPhone: "98765 43210",
+        customerGST: "09BBBBA9999C1Z2",
+        taxable_value: 43450,
+        cgst_amount: 3906,
+        sgst_amount: 3906,
+        tax_amount: 7812,
+        grand_total: 51262,
+        amount_received: 51262,
+        party_previous_balance: 4500,
+        items: [
+          { product_name: "Samsung Galaxy A30", description: "6.4\" display, 4GB RAM, Dual Camera, 4000mAh", quantity: 1, unit_price: 12000, mrp: 14000, hsn_code: "85171200", tax_rate: 18, subtotal: 14160, batch_no: "SA-4412", mfg_date: "01/2026", exp_date: "01/2027" },
+          { product_name: "Parle-G Biscuit 200g", description: "Crispy glucose biscuits", quantity: 24, unit_price: 40, mrp: 48, hsn_code: "19059090", tax_rate: 18, subtotal: 5632, batch_no: "PG-778", mfg_date: "05/2026", exp_date: "05/2028" },
+          { product_name: "Tata Salt 1kg", description: "Iodized table salt", quantity: 40, unit_price: 28, mrp: 32, hsn_code: "2915", tax_rate: 0, subtotal: 1120, batch_no: "TS-112", mfg_date: "03/2026", exp_date: "" },
+          { product_name: "Amul Ghee 500ml", description: "Pure cow ghee", quantity: 6, unit_price: 380, mrp: 420, hsn_code: "0405", tax_rate: 18, subtotal: 2721, batch_no: "AG-88", mfg_date: "06/2026", exp_date: "06/2027" },
+          { product_name: "Dettol Soap 100g", description: "Antiseptic body wash", quantity: 50, unit_price: 32, mrp: 38, hsn_code: "3401", tax_rate: 18, subtotal: 3768, batch_no: "DT-45", mfg_date: "04/2026", exp_date: "04/2029" },
+          { product_name: "Liril 1kg", description: "Fruit salt detergent", quantity: 30, unit_price: 45, mrp: 52, hsn_code: "3402", tax_rate: 18, subtotal: 4091, batch_no: "LR-90", mfg_date: "05/2026", exp_date: "05/2028" },
+          { product_name: "Coca Cola 750ml", description: "Carbonated beverage", quantity: 24, unit_price: 40, mrp: 45, hsn_code: "2202", tax_rate: 28, subtotal: 1288, batch_no: "CC-19", mfg_date: "06/2026", exp_date: "06/2027" },
+          { product_name: "MTR Sambar Powder 200g", description: "Instant sambar masala", quantity: 8, unit_price: 95, mrp: 110, hsn_code: "2103", tax_rate: 5, subtotal: 801, batch_no: "MT-77", mfg_date: "02/2026", exp_date: "02/2027" },
+          { product_name: "Haldiram Bhujia 200g", description: "Onion bhujia snack", quantity: 20, unit_price: 42, mrp: 48, hsn_code: "2005", tax_rate: 18, subtotal: 2482, batch_no: "HB-31", mfg_date: "05/2026", exp_date: "05/2028" },
+          { product_name: "Wai Wai Noodles 500g", description: "Instant wavy noodles", quantity: 18, unit_price: 80, mrp: 90, hsn_code: "1902", tax_rate: 5, subtotal: 1494, batch_no: "WW-64", mfg_date: "04/2026", exp_date: "04/2027" },
+          { product_name: "Red Label Tea 250g", description: "Premium CTC tea leaves", quantity: 10, unit_price: 120, mrp: 140, hsn_code: "0902", tax_rate: 5, subtotal: 1262, batch_no: "RT-08", mfg_date: "03/2026", exp_date: "03/2028" },
+          { product_name: "Surf Excel 1kg", description: "Auto-wash detergent", quantity: 14, unit_price: 78, mrp: 88, hsn_code: "3402", tax_rate: 18, subtotal: 2184, batch_no: "SE-52", mfg_date: "05/2026", exp_date: "05/2028" },
+          { product_name: "Vejantene Vajol 90ml", description: "Herbal cough syrup", quantity: 5, unit_price: 210, mrp: 240, hsn_code: "3003", tax_rate: 5, subtotal: 1107, batch_no: "VJ-17", mfg_date: "02/2026", exp_date: "02/2027" },
+          { product_name: "Dabur Red 200ml", description: "Hair oil with herbs", quantity: 7, unit_price: 160, mrp: 185, hsn_code: "3304", tax_rate: 18, subtotal: 1325, batch_no: "DB-83", mfg_date: "06/2026", exp_date: "06/2028" },
+          { product_name: "Complan 1L", description: "Nutritious malt drink", quantity: 4, unit_price: 340, mrp: 380, hsn_code: "2106", tax_rate: 5, subtotal: 1428, batch_no: "CP-29", mfg_date: "05/2026", exp_date: "05/2027" },
+        ],
+      };
+      return (
+        <div
+          className={`relative overflow-hidden ${containerWidthClass} shadow-xl`}
+          style={{
+            fontFamily: template.fontFamily,
+            backgroundColor: template.paperBgColor || "#ffffff",
+            borderTop: `5px solid ${template.primaryColor}`,
+          }}
+        >
+          <div className="relative z-10">
+            <GstTallyTemplate
+              invoice={gstTallyMockInvoice}
+              dynamicStoreName={resolvedStoreName}
+              dynamicLogoUrl={resolvedLogoUrl}
+              dynamicAddress={resolvedAddress}
+              dynamicPhone={resolvedPhone}
+              dynamicEmail={activeBillingGst?.email || ""}
+              sellerGstin={resolvedGstin}
+              sellerStateCode="37"
+              dynamicBank={template.bankDetails || "HDFC Bank | A/C 502000492811 | IFSC HDFC0000003"}
               currency={currency}
               f={f as any}
             />

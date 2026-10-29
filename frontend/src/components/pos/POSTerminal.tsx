@@ -1053,8 +1053,23 @@ function PosTerminalInner() {
     executeAction();
   };
 
+  // Strict Cart Product Comparison (No fallbacks):
+  // When scanning a barcode or when items have barcodes, match ONLY by exact barcode.
+  const isSameCartProduct = useCallback((item: any, targetProd: any, queryBarcode?: string) => {
+    const itBarcode = item?.barcode ? String(item.barcode).trim().toLowerCase() : "";
+    const prodBarcode = (targetProd?.barcode || queryBarcode)
+      ? String(targetProd?.barcode || queryBarcode).trim().toLowerCase()
+      : "";
+
+    if (queryBarcode || prodBarcode || itBarcode) {
+      return Boolean(prodBarcode && itBarcode && prodBarcode === itBarcode);
+    }
+
+    return Boolean(targetProd?.id && item?.id && String(targetProd.id).trim() === String(item.id).trim());
+  }, []);
+
   // Cart actions
-  const addToCart = (product: any, e?: React.MouseEvent) => {
+  const addToCart = (product: any, e?: React.MouseEvent, scannedCode?: string) => {
     if (e) e.stopPropagation();
 
     // Match active inventory batch via FEFO (First Expired First Out)
@@ -1072,11 +1087,11 @@ function PosTerminalInner() {
     const activeBatch = matchingBatches[0];
     const effectiveHsn =
       product.hsn_code ||
-      (product.category?.toLowerCase().includes("dairy")
+      (product.category?.toLowerCase?.()?.includes("dairy")
         ? "0405"
-        : product.category?.toLowerCase().includes("biscuit")
+        : product.category?.toLowerCase?.()?.includes("biscuit")
           ? "1905"
-          : product.category?.toLowerCase().includes("shampoo")
+          : product.category?.toLowerCase?.()?.includes("shampoo")
             ? "3305"
             : "1905");
     const effectiveTax = getEffectiveTaxRate(product);
@@ -1088,8 +1103,9 @@ function PosTerminalInner() {
     const conversionFactor = Math.max(1, Number(product.conversion_factor || specs.conversion_factor || 1));
     const salesMeasuringUnit = product.sales_measuring_unit || specs.sales_measuring_unit || "";
 
-    const rawBasePrice = Number(activeBatch?.selling_price) > 0 ? Number(activeBatch.selling_price) : (pricingMode === "B2B" && product.b2bPrice ? product.b2bPrice : pricingMode === "Wholesale" && product.wholesalePrice ? product.wholesalePrice : product.sellingPrice);
-    const rawBaseMrp = Number(activeBatch?.mrp) > 0 ? Number(activeBatch.mrp) : (product.mrp || rawBasePrice * 1.2);
+    const baseProdPrice = Number(product.sellingPrice ?? product.selling_price ?? product.price ?? product.mrp ?? 0);
+    const rawBasePrice = Number(activeBatch?.selling_price) > 0 ? Number(activeBatch.selling_price) : (pricingMode === "B2B" && product.b2bPrice ? product.b2bPrice : pricingMode === "Wholesale" && product.wholesalePrice ? product.wholesalePrice : baseProdPrice);
+    const rawBaseMrp = Number(activeBatch?.mrp) > 0 ? Number(activeBatch.mrp) : (Number(product.mrp) || rawBasePrice * 1.2);
 
     const priceIsPerSec = Boolean(
       secondaryUom &&
@@ -1113,8 +1129,15 @@ function PosTerminalInner() {
     const initialPrice = initialUom === secondaryUom ? secondarySellingPrice : primarySellingPrice;
     const initialMrp = initialUom === secondaryUom ? secondaryMrpVal : primaryMrpVal;
 
+    const resolvedBarcode = String(product.barcode || scannedCode || "").trim();
+    const resolvedBrand = product.brand?.name || product.brand_name || (typeof product.brand === "string" ? product.brand : "") || "";
+
     const enrichedProduct = {
       ...product,
+      id: product.id || (resolvedBarcode ? `scanned-${resolvedBarcode}` : Math.random().toString(36).substr(2, 9)),
+      barcode: resolvedBarcode,
+      sku: product.sku || "",
+      brand: resolvedBrand,
       uom: primaryUom,
       secondary_uom: secondaryUom,
       conversion_factor: conversionFactor,
@@ -1137,17 +1160,31 @@ function PosTerminalInner() {
       discount_type: discInfo.discount_type,
     };
 
-    const existing = cart.find((item) => item.id === product.id);
+    const existing = cart.find((item) => isSameCartProduct(item, enrichedProduct, scannedCode));
     const targetQty = (existing ? existing.qty : 0) + 1;
-    const itemId = String(product.id);
+    const itemId = String(existing?.id || enrichedProduct.id);
 
     const executeAdd = () => {
       setCart((prev) => {
-        const ex = prev.find((item) => item.id === product.id);
-        if (ex) {
-          return prev.map((item) =>
-            item.id === product.id ? { ...item, qty: item.qty + 1 } : item
-          );
+        const foundIdx = prev.findIndex((item) => isSameCartProduct(item, enrichedProduct, scannedCode));
+        if (foundIdx >= 0) {
+          const existingItem = prev[foundIdx];
+          const newQty = existingItem.qty + 1;
+          const next = [...prev];
+          next[foundIdx] = {
+            ...existingItem,
+            sku: existingItem.sku || enrichedProduct.sku || "",
+            barcode: existingItem.barcode || resolvedBarcode,
+            brand: existingItem.brand || resolvedBrand,
+            qty: newQty,
+          };
+          if (scannedCode) {
+            toast.success(`Scanned: ${enrichedProduct.name}${enrichedProduct.sku ? ` (${enrichedProduct.sku})` : ""} — Quantity incremented to ${newQty}`);
+          }
+          return next;
+        }
+        if (scannedCode) {
+          toast.success(`Scanned: Added ${enrichedProduct.name}${enrichedProduct.sku ? ` (${enrichedProduct.sku})` : ""} (Qty: 1)`);
         }
         return [...prev, { ...enrichedProduct, qty: 1 }];
       });
@@ -1160,13 +1197,13 @@ function PosTerminalInner() {
       executeAdd,
       () => {
         if (existing) {
-          removeItem(product.id);
+          removeItem(existing.id);
         }
       },
       (adjQty) => {
         setCart((prev) =>
           prev.map((item) =>
-            item.id === product.id ? { ...item, qty: adjQty } : item
+            isSameCartProduct(item, enrichedProduct, scannedCode) ? { ...item, qty: adjQty } : item
           )
         );
       }
@@ -1304,9 +1341,11 @@ function PosTerminalInner() {
     setEditMrp((item.mrp || 0) > 0 ? item.mrp.toString() : "");
     setEditTaxInclusive(item.is_tax_inclusive !== false);
 
-    // Fetch and pre-fill actual discount from cart item or master product database
+    // Fetch and pre-fill actual discount from cart item or master product database (strictly by ID or exact barcode, never shared SKU)
     const masterProduct = products.find(
-      (p) => p.id === item.id || (p.sku && p.sku === item.sku) || (p.barcode && p.barcode === item.barcode)
+      (p) =>
+        p.id === item.id ||
+        (p.barcode && item.barcode && String(p.barcode).trim().toLowerCase() === String(item.barcode).trim().toLowerCase())
     );
     const discInfo = (item.discount_value !== undefined && item.discount_value !== null && Number(item.discount_value) > 0)
       ? { discount_value: Number(item.discount_value), discount_type: (item.discount_type as "percent" | "amount") || "amount" }
@@ -1483,6 +1522,69 @@ function PosTerminalInner() {
     );
     toast.success(`Active Pricing Tier switched to ${mode} Tier`);
   };
+
+  const handleProcessBarcodeScan = useCallback(async (scannedCode: string) => {
+    const queryCode = (scannedCode || "").trim();
+    if (!queryCode) return;
+
+    const cleanQuery = queryCode.toLowerCase();
+
+    // 1. Exact barcode lookup in local tenant inventory product list (no SKU/ID fallback, no RAG search)
+    let product = products.find(
+      (p) => p.barcode && String(p.barcode).trim().toLowerCase() === cleanQuery
+    );
+
+    // 2. If not in memory yet, query strictly the tenant's Inventory DB (inventoryOnly=true, never RAG/Web/Master Catalog)
+    if (!product) {
+      try {
+        const res = await posApi.lookupBarcode(queryCode, true);
+        if (
+          res &&
+          res.success &&
+          res.product &&
+          res.product.name &&
+          (!res.product.source || res.product.source === "DATABASE") &&
+          String(res.product.barcode || "").trim().toLowerCase() === cleanQuery
+        ) {
+          const apiProd = res.product;
+          const localMatch = products.find(
+            (p) =>
+              apiProd.barcode &&
+              p.barcode &&
+              String(p.barcode).trim().toLowerCase() === String(apiProd.barcode).trim().toLowerCase()
+          );
+          product = localMatch || {
+            ...apiProd,
+            id: apiProd.id,
+            name: apiProd.name,
+            brand: apiProd.brand?.name || apiProd.brand_name || (typeof apiProd.brand === "string" ? apiProd.brand : "") || "",
+            sku: apiProd.sku || "",
+            barcode: apiProd.barcode || queryCode,
+            sellingPrice: Number(apiProd.selling_price ?? apiProd.sellingPrice ?? apiProd.price ?? apiProd.mrp ?? 0),
+            mrp: Number(apiProd.mrp ?? apiProd.selling_price ?? apiProd.sellingPrice ?? 0),
+            stock: Number(apiProd.on_hand_stock ?? apiProd.stock ?? apiProd.initial_stock ?? 0),
+            reorderLevel: Number(apiProd.reorder_level ?? 5),
+          };
+        }
+      } catch (err: any) {
+        console.warn("Inventory barcode search error in POS Terminal:", err);
+      }
+    }
+
+    if (!product) {
+      toast.error(`Barcode "${queryCode}" not found in inventory.`);
+      return;
+    }
+
+    addToCart(product, undefined, queryCode);
+    setSearchQuery("");
+  }, [products, cart, batches, pricingMode, acknowledgedStockMap, isZeroStockAuthorized]);
+
+  // Universal hardware barcode scanner gun listener for POS Terminal
+  useHardwareBarcodeScanner({
+    onScan: handleProcessBarcodeScan,
+    enabled: true,
+  });
 
   // Dynamic Cart Discount State
   const [discountMode, setDiscountMode] = useState<"before_tax" | "after_tax">("before_tax");
@@ -2395,22 +2497,39 @@ function PosTerminalInner() {
 
       {/* Terminal Header Nav */}
       <div className="flex-shrink-0 bg-white border-b border-slate-200/80 px-4 flex items-center overflow-x-auto gap-3 py-2.5 shadow-xs z-50">
-        {/* Brand Logo */}
-        <div
-          onClick={() => {
-            if (document.fullscreenElement) {
-              document.exitFullscreen().catch(() => { });
-            }
-            navigate({ to: "/pos", search: { tab: "dashboard" } });
-          }}
-          className="flex items-center gap-2 mr-3 cursor-pointer select-none group shrink-0"
-          title="Exit to POS Dashboard"
-        >
-          <img
-            src="/Logo.png"
-            alt="IoTRONCS"
-            className="h-7 w-auto object-contain group-hover:scale-105 transition-transform"
-          />
+        {/* Brand Logo & Back to Dashboard Indication Button */}
+        <div className="flex items-center gap-2.5 mr-2 shrink-0">
+          <div
+            onClick={() => {
+              if (document.fullscreenElement) {
+                document.exitFullscreen().catch(() => { });
+              }
+              navigate({ to: "/dashboard" });
+            }}
+            className="flex items-center gap-2 cursor-pointer select-none group shrink-0"
+            title="Exit to Dashboard"
+          >
+            <img
+              src="/Logo.png"
+              alt="IoTRONCS"
+              className="h-7 w-auto object-contain group-hover:scale-105 transition-transform"
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (document.fullscreenElement) {
+                document.exitFullscreen().catch(() => { });
+              }
+              navigate({ to: "/dashboard" });
+            }}
+            className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 whitespace-nowrap transition-all bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-[#5B4DF5] border border-slate-200/90 hover:border-[#5B4DF5]/40 shadow-2xs cursor-pointer"
+            title="Exit POS Terminal and return to Dashboard"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-[#5B4DF5]" />
+            <span>Back to Dashboard</span>
+          </button>
         </div>
 
         {/* Navigation Tabs */}
@@ -2660,6 +2779,12 @@ function PosTerminalInner() {
                     className="block w-full pl-11 pr-11 py-2.5 border border-slate-200/90 rounded-2xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#5B4DF5]/20 focus:border-[#5B4DF5] transition-all text-xs font-semibold shadow-2xs"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={async (e) => {
+                      if (e.key === "Enter" && searchQuery.trim() !== "") {
+                        e.preventDefault();
+                        await handleProcessBarcodeScan(searchQuery.trim());
+                      }
+                    }}
                   />
                   <div className="absolute inset-y-0 right-3 flex items-center">
                     <button className="p-1 text-slate-400 hover:text-[#5B4DF5] rounded-lg transition-colors cursor-pointer" title="Scan with camera">

@@ -1,4 +1,5 @@
 """Payment Vouchers & Expense Claims."""
+import logging
 import uuid
 from datetime import date, datetime
 from typing import Annotated
@@ -34,6 +35,8 @@ from src.schemas.erp_accounting import (
 )
 from src.utils.pagination import PaginatedResponse, paginate
 from src.utils.clock import clock
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/vouchers", tags=["Vouchers & Expenses"])
 
@@ -120,10 +123,9 @@ async def create_payment_voucher(
     db.add(voucher)
     await db.flush()
 
-    for idx, line_payload in enumerate(payload.lines):
+    for line_payload in payload.lines:
         line = PaymentVoucherLine(
             voucher_id=voucher.id,
-            line_number=idx + 1,
             **line_payload.model_dump(),
         )
         db.add(line)
@@ -172,10 +174,9 @@ async def update_payment_voucher(
     if payload.lines is not None:
         for old_line in list(voucher.lines):
             await db.delete(old_line)
-        for idx, line_payload in enumerate(payload.lines):
+        for line_payload in payload.lines:
             line = PaymentVoucherLine(
                 voucher_id=voucher.id,
-                line_number=idx + 1,
                 **line_payload.model_dump(),
             )
             db.add(line)
@@ -210,16 +211,28 @@ async def approve_payment_voucher(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     voucher = await db.scalar(
-        select(PaymentVoucher).where(
-            PaymentVoucher.id == voucher_id, PaymentVoucher.tenant_id == ctx.tenant_id
-        )
+        select(PaymentVoucher)
+        .options(selectinload(PaymentVoucher.lines))
+        .where(PaymentVoucher.id == voucher_id, PaymentVoucher.tenant_id == ctx.tenant_id)
     )
     if not voucher:
         raise HTTPException(status_code=404, detail="Payment voucher not found")
 
+    prior_status = str(getattr(voucher.status, "value", voucher.status) or "").lower()
+
     voucher.status = "approved"
     voucher.approved_by_user_id = ctx.user.id
     voucher.approved_at = clock.now()
+
+    # Post the voucher to the General Ledger (and book the bank movement) on
+    # approval. Best-effort — a GL posting failure must not block approval.
+    # post_payment_voucher flips status to "posted" on success.
+    if prior_status not in ("posted", "voided"):
+        try:
+            from src.services import gl_service
+            await gl_service.post_payment_voucher(db, voucher=voucher, created_by=ctx.user.id)
+        except Exception as gl_err:
+            logger.warning(f"GL posting for voucher {voucher.voucher_number} skipped: {gl_err}")
 
     await write_audit_log(
         db,

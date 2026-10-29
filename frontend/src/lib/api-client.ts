@@ -878,6 +878,44 @@ export function clearApiCache(prefix?: string) {
   }
 }
 
+export function getWorkspaceHeaders(
+  accessToken?: string | null,
+  extraHeaders?: Record<string, string>,
+): Record<string, string> {
+  const token = accessToken || getToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  try {
+    const activeCompanyId = localStorage.getItem("bos_active_company_id");
+    if (activeCompanyId) {
+      headers["X-Company-Id"] = activeCompanyId;
+      headers["X-Workspace-Id"] = activeCompanyId;
+    }
+    const storedTenant = localStorage.getItem("bos-tenant");
+    if (storedTenant) {
+      const parsed = JSON.parse(storedTenant);
+      const targetTenantId = parsed.raw?.tenant_id || parsed.tenant_id || parsed.id;
+      if (targetTenantId) {
+        headers["X-Impersonate-Tenant"] = targetTenantId;
+        headers["X-Tenant-Id"] = targetTenantId;
+      }
+      const companyId = parsed.id || parsed.company_id || parsed.raw?.id;
+      if (companyId && !headers["X-Company-Id"]) {
+        headers["X-Company-Id"] = companyId;
+        headers["X-Workspace-Id"] = companyId;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  if (extraHeaders) {
+    Object.assign(headers, extraHeaders);
+  }
+  return headers;
+}
+
 export async function request<T>(
   method: string,
   path: string,
@@ -4206,9 +4244,14 @@ export const posApi = {
   getDailySummary: (params?: { session_id?: string }) =>
     request<any>("GET", "/pos/transactions/reports/daily-summary", undefined, params as Record<string, string | number | boolean | null | undefined>),
   deleteTransaction: (id: string) => request<void>("DELETE", `/pos/transactions/${id}`),
-  // Products & Categories
-  lookupBarcode: (barcode: string) =>
-    request<{ success: boolean; message?: string; product?: any }>("GET", `/products/barcode/${barcode}`),
+  // Products & Categories (inventoryOnly=true ensures POS/Sales Invoice never triggers RAG/Web search)
+  lookupBarcode: (barcode: string, inventoryOnly: boolean = true) =>
+    request<{ success: boolean; message?: string; product?: any }>(
+      "GET",
+      `/products/barcode/${encodeURIComponent(barcode)}`,
+      undefined,
+      { inventory_only: inventoryOnly }
+    ),
   getCategories: () => request<POSCategory[]>("GET", "/pos/categories"),
   getProducts: (params?: { category_id?: string; search?: string; limit?: number }) =>
     request<POSProduct[]>("GET", "/pos/products", undefined, params as Record<string, string | number | boolean | null | undefined>),
@@ -5043,10 +5086,12 @@ export interface JournalEntryLine {
 export interface BankAccountRecord {
   id: string;
   name: string;
+  account_holder_name?: string | null;
   account_number: string | null;
   ifsc_code: string | null;
   bank_name: string | null;
   branch_name: string | null;
+  upi_id?: string | null;
   account_type: string;
   currency_code: string;
   opening_balance: number;
@@ -5194,6 +5239,7 @@ export const bankApi = {
   getBankAccount: (id: string) => request<BankAccountRecord>("GET", `/bank/accounts/${id}`),
   createBankAccount: (data: Partial<BankAccountRecord>) => request<BankAccountRecord>("POST", "/bank/accounts", data),
   updateBankAccount: (id: string, data: Partial<BankAccountRecord>) => request<BankAccountRecord>("PATCH", `/bank/accounts/${id}`, data),
+  setDefaultBankAccount: (id: string) => request<BankAccountRecord>("POST", `/bank/accounts/${id}/set-default`),
 
   // Transactions
   listTransactions: (bankAccountId: string, params?: { page?: number; page_size?: number }) =>

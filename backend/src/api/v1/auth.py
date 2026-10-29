@@ -412,10 +412,27 @@ async def login(payload: LoginRequest, request: Request, db: AsyncSession = Depe
             detail="Your workspace has been suspended or cancelled. Please contact the platform owner."
         )
 
-    # Check if user requires first-time verification
+    # Organization Admins and Platform Super Admins never require first-time OTP verification on login
+    if not user.is_verified and (user.is_tenant_owner or getattr(user, "is_platform_admin", False)):
+        user.is_verified = True
+        user.verification_code = None
+        user.verification_code_expires_at = None
+        await db.commit()
+
+    # Check if regular organization user requires first-time OTP verification based on org MFA policy
     if not user.is_verified:
-        # If verification code was provided directly in login request
-        if payload.verification_code:
+        from src.api.v1.erp.access_control import is_first_time_otp_enabled_for_user
+        user_role_ids = [ur.role_id for ur in (user.user_roles or []) if ur.role_id]
+        otp_policy_enabled, _ = await is_first_time_otp_enabled_for_user(
+            db, user.tenant_id, user_role_ids
+        )
+        if not otp_policy_enabled:
+            # First-Time Login OTP MFA policy is disabled for this organization/role; auto-verify user
+            user.is_verified = True
+            user.verification_code = None
+            user.verification_code_expires_at = None
+            await db.commit()
+        elif payload.verification_code:
             code_val = payload.verification_code.strip()
             if not user.verification_code or code_val != user.verification_code.strip():
                 raise HTTPException(status_code=400, detail="Invalid verification code.")

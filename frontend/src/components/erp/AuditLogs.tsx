@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Search, Filter, History, Download, ArrowRight, ChevronLeft, ChevronRight, Loader2, RefreshCw } from "lucide-react";
 import { auditLogsApi, type AuditLog } from "@/lib/api-client";
 import { useAuth } from "@/contexts/auth-context";
+import { useTenant } from "@/contexts/tenant-context";
 import { toast } from "sonner";
 import { cn, formatDisplayDate } from "@/lib/utils";
 import { useI18n } from "@/contexts/i18n-context";
@@ -34,6 +35,7 @@ export function AuditLogs() {
   const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const { user, accessToken } = useAuth();
+  const { tenant } = useTenant();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -46,52 +48,22 @@ export function AuditLogs() {
   const PAGE_SIZE = 25;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const isPlatformAdmin = user?.tenantSlug === "system" && user?.isTenantOwner;
-
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      if (isPlatformAdmin && accessToken) {
-        // Cross-tenant administrative log view for platform owner
-        const res = await fetch(`${API_BASE_URL}/system/audit-logs`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (!res.ok) throw new Error("Failed to load platform audit trail");
-        const data = await res.json();
-        
-        const mappedLogs = data.map((l: any) => ({
-          id: l.id,
-          tenant_id: "",
-          user_id: l.user_email || l.user_name || "System",
-          module: l.module,
-          action: l.action,
-          entity_type: `Tenant: ${l.tenant_name}`,
-          entity_id: null,
-          old_values: null,
-          new_values: null,
-          ip_address: l.ip_address,
-          user_agent: null,
-          status: "success",
-          created_at: l.created_at,
-        }));
-        
-        setLogs(mappedLogs);
-        setTotal(mappedLogs.length);
-      } else {
-        // Scoped tenant log view for standard buyers
-        const res = await auditLogsApi.list(page, PAGE_SIZE, {
-          module: moduleFilter || undefined,
-          action: actionFilter || undefined,
-        });
-        setLogs(res.items);
-        setTotal(res.total);
-      }
+      // Scoped organization/workspace log view for the active company/tenant
+      const res = await auditLogsApi.list(page, PAGE_SIZE, {
+        module: moduleFilter || undefined,
+        action: actionFilter || undefined,
+      });
+      setLogs(res.items);
+      setTotal(res.total);
     } catch (err) {
       console.error(err instanceof Error ? err.message : "Failed to load");
     } finally {
       setLoading(false);
     }
-  }, [page, moduleFilter, actionFilter, isPlatformAdmin, accessToken]);
+  }, [page, moduleFilter, actionFilter, accessToken, tenant?.id]);
 
   useEffect(() => { void load(); }, [load]);
 

@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { useI18n } from "@/contexts/i18n-context";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { getWorkspaceHeaders } from "@/lib/api-client";
 import { ModuleSelector } from "./ModuleSelector";
 import {
   getStoredUserModules,
@@ -144,6 +145,7 @@ function UserFormModal({
   companiesList = [],
   activeTenantId,
   tenantSlug,
+  firstTimeOtpPolicyEnabled = false,
   onClose,
   onSave,
 }: {
@@ -153,6 +155,7 @@ function UserFormModal({
   companiesList?: any[];
   activeTenantId?: string;
   tenantSlug?: string;
+  firstTimeOtpPolicyEnabled?: boolean;
   onClose: () => void;
   onSave: (payload: UserFormPayload) => Promise<void>;
 }) {
@@ -165,8 +168,10 @@ function UserFormModal({
   const [defaultRoleId, setDefaultRoleId] = useState<string>(user?.roles.find((role) => role.is_default)?.id ?? "");
   const [assignedCompanyId, setAssignedCompanyId] = useState<string>(user?.company_id || activeTenantId || "");
   
-  // Activation mode: 'direct' (instant login), 'otp' (validation OTP), 'invite' (SMTP/WhatsApp)
-  const [activationMode, setActivationMode] = useState<ActivationMode>("direct");
+  // Activation mode: defaults to Organization's MFA First-Time OTP policy ('otp' if enabled, 'direct' if disabled)
+  const [activationMode, setActivationMode] = useState<ActivationMode>(
+    firstTimeOtpPolicyEnabled ? "otp" : "direct"
+  );
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [mustChangePassword, setMustChangePassword] = useState(user?.must_change_password ?? false);
@@ -369,13 +374,12 @@ function UserFormModal({
                 <label className="text-xs text-muted-foreground mb-1 block">Assigned Workspace / Company</label>
                 <select
                   className="w-full h-10 rounded-lg border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-                  value={assignedCompanyId}
+                  value={assignedCompanyId || activeTenantId || ""}
                   onChange={(e) => setAssignedCompanyId(e.target.value)}
                 >
-                  <option value="">🏢 Organization-wide (All Workspaces)</option>
                   {companiesList.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name} ({c.industry || "Workspace"})
+                      🏢 {c.name} ({c.industry || "Workspace"})
                     </option>
                   ))}
                 </select>
@@ -409,11 +413,20 @@ function UserFormModal({
             {/* Activation / Onboarding Mode Selection (When Creating New User) */}
             {!isEdit && (
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold flex items-center gap-2">
                     <Zap className="size-4 text-amber-500" /> Account Activation & Verification Mode
                   </h3>
-                  <span className="text-[11px] text-muted-foreground">Select how this user will be onboarded</span>
+                  <span className={cn(
+                    "text-[10px] font-bold px-2.5 py-0.5 rounded-full",
+                    firstTimeOtpPolicyEnabled
+                      ? "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400"
+                      : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                  )}>
+                    {firstTimeOtpPolicyEnabled
+                      ? "Org MFA Policy: First-Time OTP Enabled"
+                      : "Org MFA Policy: Direct Login (No OTP Required)"}
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -863,7 +876,7 @@ function OtpDisplayModal({
     try {
       const res = await fetch(`${API_BASE_URL}/erp/users/${user.id}/generate-otp`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: getWorkspaceHeaders(accessToken),
       });
       if (!res.ok) throw new Error("Failed to generate OTP");
       const data = await res.json();
@@ -881,7 +894,7 @@ function OtpDisplayModal({
     try {
       const res = await fetch(`${API_BASE_URL}/erp/users/${user.id}/direct-activate`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: getWorkspaceHeaders(accessToken),
       });
       if (!res.ok) throw new Error("Failed to direct activate user");
       toast.success(`User "${user.full_name}" is now directly activated and verified!`);
@@ -1019,10 +1032,9 @@ function PasswordResetModal({
     try {
       const res = await fetch(`${API_BASE_URL}/erp/users/${user.id}/reset-password`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
+        headers: getWorkspaceHeaders(accessToken, {
           "Content-Type": "application/json",
-        },
+        }),
         body: JSON.stringify({ password }),
       });
 
@@ -1160,12 +1172,13 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
   const [resetUser, setResetUser] = useState<User | undefined>(undefined);
   const [otpModalUser, setOtpModalUser] = useState<User | undefined>(undefined);
   const [createdCredentials, setCreatedCredentials] = useState<CreatedUserResult | null>(null);
+  const [firstTimeOtpPolicyEnabled, setFirstTimeOtpPolicyEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const authHeaders = accessToken
-    ? { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }
+    ? getWorkspaceHeaders(accessToken, { "Content-Type": "application/json" })
     : undefined;
 
   const loadUsers = async () => {
@@ -1174,8 +1187,10 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
     setError(null);
 
     try {
-      const userRes = await fetch(`${API_BASE_URL}/erp/users?all_workspaces=true`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+      const activeCid = tenant?.id || localStorage.getItem("bos_active_company_id") || "";
+      const companyQuery = activeCid ? `?company_id=${encodeURIComponent(activeCid)}` : "";
+      const userRes = await fetch(`${API_BASE_URL}/erp/users${companyQuery}`, {
+        headers: getWorkspaceHeaders(accessToken),
       });
       if (!userRes.ok) {
         const body = await userRes.text();
@@ -1189,8 +1204,8 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
         }))
       );
 
-      const roleRes = await fetch(`${API_BASE_URL}/erp/roles`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+      const roleRes = await fetch(`${API_BASE_URL}/erp/roles${companyQuery}`, {
+        headers: getWorkspaceHeaders(accessToken),
       });
       if (!roleRes.ok) {
         const body = await roleRes.text();
@@ -1198,6 +1213,18 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
       }
       const roleData: PaginatedResponse<Role> = await roleRes.json();
       setRoles(roleData.items);
+
+      try {
+        const otpPolicyRes = await fetch(`${API_BASE_URL}/erp/mfa-policies/first-time-otp${companyQuery}`, {
+          headers: getWorkspaceHeaders(accessToken),
+        });
+        if (otpPolicyRes.ok) {
+          const otpPolicyData = await otpPolicyRes.json();
+          setFirstTimeOtpPolicyEnabled(Boolean(otpPolicyData.enabled));
+        }
+      } catch {
+        // Ignore non-fatal MFA policy lookup errors
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load user management data");
     } finally {
@@ -1206,6 +1233,7 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
   };
 
   useEffect(() => {
+    setFilterCompany("All");
     void loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, tenant?.id]);
@@ -1310,7 +1338,7 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
     try {
       const res = await fetch(`${API_BASE_URL}/erp/users/${user.id}/direct-activate`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: getWorkspaceHeaders(accessToken),
       });
       if (!res.ok) throw new Error("Failed to directly activate user");
       toast.success(`User "${user.full_name}" is now directly verified and active!`);
@@ -1327,13 +1355,9 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
         user.email.toLowerCase().includes(searchTerm.toLowerCase());
       const statusMatch = filterStatus === "All" || user.status === filterStatus;
       const roleMatch = filterRole === "All" || user.roles.some((role) => role.id === filterRole);
-      const companyMatch =
-        filterCompany === "All" ||
-        (filterCompany === "org" && !user.company_id) ||
-        user.company_id === filterCompany;
-      return searchMatch && statusMatch && roleMatch && companyMatch;
+      return searchMatch && statusMatch && roleMatch;
     });
-  }, [users, searchTerm, filterRole, filterStatus, filterCompany]);
+  }, [users, searchTerm, filterRole, filterStatus]);
 
   const pendingInvites = users.filter((user) => user.must_change_password || user.is_verified === false).length;
 
@@ -1391,20 +1415,10 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
           />
         </div>
 
-        {companiesList && companiesList.length > 0 && (
-          <select
-            value={filterCompany}
-            onChange={(e) => setFilterCompany(e.target.value)}
-            className="h-9 px-3 rounded-lg border bg-background text-xs outline-none focus:ring-2 focus:ring-primary/20"
-          >
-            <option value="All">All Workspaces</option>
-            <option value="org">🌐 Organization-wide</option>
-            {companiesList.map((c) => (
-              <option key={c.id} value={c.id}>
-                🏢 {c.name}
-              </option>
-            ))}
-          </select>
+        {tenant?.name && (
+          <div className="h-9 px-3 rounded-lg border bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 text-xs font-semibold flex items-center gap-1.5">
+            🏢 Workspace: {tenant.name}
+          </div>
         )}
 
         <select
@@ -1600,7 +1614,7 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
                             try {
                               const res = await fetch(`${API_BASE_URL}/erp/users/${user.id}`, {
                                 method: "DELETE",
-                                headers: { Authorization: `Bearer ${accessToken}` },
+                                headers: getWorkspaceHeaders(accessToken),
                               });
                               if (!res.ok) {
                                 const body = await res.text();
@@ -1652,6 +1666,7 @@ export function UserManagement({ tab = "users" }: { tab?: string }) {
             companiesList={companiesList}
             activeTenantId={tenant?.id}
             tenantSlug={tenant?.slug}
+            firstTimeOtpPolicyEnabled={firstTimeOtpPolicyEnabled}
             onClose={() => setShowModal(false)}
             onSave={saveUser}
           />

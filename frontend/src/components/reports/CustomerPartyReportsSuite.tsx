@@ -132,6 +132,7 @@ interface PartyRecord {
   overdue1_15?: number;
   overdue16_30?: number;
   overdue30Plus?: number;
+  hasAccumulatedInvoices?: boolean;
 }
 
 interface SearchablePartySelectProps {
@@ -349,18 +350,32 @@ export function CustomerPartyReportsSuite({
         // 0. Clean up any ghost OPN- invoices from localStorage caches
         syncLocalStorageCustomerInvoices();
 
-        // 1. Fetch live CRM customers, live products, POS and live SQL Invoices
-        const [crmRes, invRes, posRes, sqlInvoicesRes] = await Promise.allSettled([
-          crmCustomersApi.list(1, 200),
+        // 1. Fetch live CRM customers, suppliers, vendor bills, live products, POS and live SQL Invoices
+        const [crmRes, invRes, posRes, sqlInvoicesRes, suppliersRes, billsRes] = await Promise.allSettled([
+          crmCustomersApi.list(1, 500),
           inventoryApi.getProducts({ page_size: 500 }),
           posApi.getProducts({ limit: 500 }),
-          invoicesApi.listInvoices({ page_size: 500 }),
+          invoicesApi.listInvoices({ page_size: 1000 }),
+          inventoryApi.getSuppliers(),
+          inventoryApi.getVendorBills(),
         ]);
 
         let dbCustomers: any[] = [];
         if (crmRes.status === "fulfilled" && crmRes.value) {
           const val: any = crmRes.value;
           dbCustomers = Array.isArray(val) ? val : val.items || val.results || [];
+        }
+
+        let dbSuppliers: any[] = [];
+        if (suppliersRes.status === "fulfilled" && suppliersRes.value) {
+          const sVal: any = suppliersRes.value;
+          dbSuppliers = Array.isArray(sVal) ? sVal : sVal.items || sVal.data || [];
+        }
+
+        let dbBills: any[] = [];
+        if (billsRes.status === "fulfilled" && billsRes.value) {
+          const bVal: any = billsRes.value;
+          dbBills = Array.isArray(bVal) ? bVal : bVal.items || bVal.data || [];
         }
 
         // 2. Fetch live Products from database
@@ -429,8 +444,17 @@ export function CustomerPartyReportsSuite({
         const combinedInvoices = Array.from(allInvoicesMap.values());
         setRawInvoices(combinedInvoices);
 
-        // 4. Construct live real parties directory from CRM + Invoice database
+        // 4. Construct live real parties directory from CRM, Suppliers + Invoice database
         const partyMap = new Map<string, PartyRecord>();
+        const custIdToKey = new Map<string, string>();
+        const custPhoneToKey = new Map<string, string>();
+        const custCleanNameToKey = new Map<string, string>();
+
+        const _cleanPhone = (p: string) => {
+          const digits = (p || "").replace(/\D/g, "");
+          return digits.length >= 10 ? digits.slice(-10) : digits;
+        };
+        const _cleanName = (n: string) => (n || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
         // Populate from CRM Customers in DB
         dbCustomers.forEach((c: any) => {
@@ -438,15 +462,24 @@ export function CustomerPartyReportsSuite({
           if (name) {
             const key = name.toLowerCase();
             const opBal = Number(c.opening_balance || 0);
+            const outBal = Number(c.outstanding_balance || 0);
+            const initialBal = outBal > 0 ? outBal : opBal;
+
+            if (c.id) custIdToKey.set(String(c.id), key);
+            const phoneDigits = _cleanPhone(c.phone || c.mobile || "");
+            if (phoneDigits) custPhoneToKey.set(phoneDigits, key);
+            const cn = _cleanName(name);
+            if (cn) custCleanNameToKey.set(cn, key);
+
             partyMap.set(key, {
               id: c.id || `crm_${key}`,
               name: name,
-              category: c.customer_type || c.category || "Regular Customer",
+              category: c.customer_type || c.category || "Retail",
               phone: c.phone || c.mobile || "—",
               email: c.email || "",
               gstin: c.gstin || "",
               address: c.address || c.city || "",
-              closingBalance: opBal,
+              closingBalance: initialBal,
               openingBalance: opBal,
               type: "Customer",
               creditLimit: Number(c.credit_limit || 0),
@@ -462,56 +495,75 @@ export function CustomerPartyReportsSuite({
         });
 
         // Populate parties and calculate aggregations from all invoices
-        const now = new Date();
         combinedInvoices.forEach((inv: any) => {
           const rawStatus = String(inv.status || inv.payment_status || "").toLowerCase();
           if (rawStatus === "cancelled" || rawStatus === "voided") return;
 
-          const name = (inv.customer_name || inv.party_name || inv.customer?.name || inv.billing_to || "").trim();
-          if (name && name.toLowerCase() !== "cash" && name.toLowerCase() !== "cash customer") {
-            const key = name.toLowerCase();
-            const phone = inv.customer_phone || inv.party_phone || inv.customer?.phone || inv.phone || "";
-            const gstin = inv.customer_gstin || inv.gstin || inv.customer?.gstin || inv.party_gstin || "";
-            const total = Number(inv.grand_total || inv.total_amount || 0);
+          const rawName = (inv.customer_name || inv.party_name || inv.customer?.name || inv.billing_to || "").trim();
+          const rawPhone = (inv.customer_phone || inv.party_phone || inv.customer?.phone || inv.phone || "").trim();
+          const cleanPhone = _cleanPhone(rawPhone);
+          const cleanName = _cleanName(rawName);
 
-            // Check if opening pseudo-invoice
-            const isOpn = String(inv.invoice_number || "").toUpperCase().startsWith("OPN-") || inv.is_opening_balance || inv.invoice_type === "opening_balance";
-            if (isOpn) {
-              // Ignore opening ghost invoices completely
-              return;
+          const isWalkin = !rawName || rawName.toLowerCase() === "cash" || rawName.toLowerCase() === "cash customer" || cleanName === "walkin" || cleanName === "walkincustomer";
+          if (isWalkin) return;
+
+          let targetKey = "";
+          if (inv.customer_id && custIdToKey.has(String(inv.customer_id))) {
+            targetKey = custIdToKey.get(String(inv.customer_id))!;
+          } else if (rawName && partyMap.has(rawName.toLowerCase())) {
+            targetKey = rawName.toLowerCase();
+          } else if (cleanPhone && custPhoneToKey.has(cleanPhone)) {
+            targetKey = custPhoneToKey.get(cleanPhone)!;
+          } else if (cleanName && custCleanNameToKey.has(cleanName)) {
+            targetKey = custCleanNameToKey.get(cleanName)!;
+          } else if (rawName) {
+            targetKey = rawName.toLowerCase();
+          }
+
+          if (!targetKey) return;
+
+          const gstin = inv.customer_gstin || inv.gstin || inv.customer?.gstin || inv.party_gstin || "";
+          const total = Number(inv.grand_total || inv.total_amount || 0);
+
+          // Check if opening pseudo-invoice
+          const isOpn = String(inv.invoice_number || "").toUpperCase().startsWith("OPN-") || inv.is_opening_balance || inv.invoice_type === "opening_balance";
+          if (isOpn) return;
+
+          const isPaid = rawStatus === "paid" || (Number(inv.amount_received || inv.amount_paid || 0) >= total - 0.05 && total > 0);
+          const balance = isPaid ? 0 : Number(inv.balance ?? inv.balance_due ?? inv.pending_amount ?? (total - Number(inv.amount_received || inv.amount_paid || 0)));
+          const paid = isPaid ? total : Math.min(total, Number(inv.amount_received || inv.amount_paid || 0));
+
+          if (partyMap.has(targetKey)) {
+            const p = partyMap.get(targetKey)!;
+            if (!p.hasAccumulatedInvoices) {
+              p.closingBalance = p.openingBalance;
+              p.hasAccumulatedInvoices = true;
             }
-
-            const isPaid = rawStatus === "paid" || (Number(inv.amount_received || inv.amount_paid || 0) >= total - 0.05 && total > 0);
-            const balance = isPaid ? 0 : Number(inv.balance ?? inv.balance_due ?? inv.pending_amount ?? (total - Number(inv.amount_received || inv.amount_paid || 0)));
-            const paid = isPaid ? total : Math.min(total, Number(inv.amount_received || inv.amount_paid || 0));
-
-            if (partyMap.has(key)) {
-              const p = partyMap.get(key)!;
-              p.closingBalance += balance;
-              p.totalInvoiced = (p.totalInvoiced || 0) + total;
-              p.totalPaid = (p.totalPaid || 0) + paid;
-              p.overdue30Plus = (p.overdue30Plus || 0) + balance;
-              if (phone && (!p.phone || p.phone === "—")) p.phone = phone;
-              if (gstin && !p.gstin) p.gstin = gstin;
-            } else {
-              partyMap.set(key, {
-                id: `p_${key.replace(/[^a-z0-9]/g, "_")}`,
-                name: name,
-                category: inv.customer_type || "Client",
-                phone: phone || "—",
-                gstin: gstin || "URP",
-                closingBalance: balance,
-                openingBalance: 0,
-                type: "Customer",
-                totalInvoiced: total,
-                totalPaid: paid,
-                dueTomorrow: 0,
-                upcomingDue: 0,
-                overdue1_15: 0,
-                overdue16_30: 0,
-                overdue30Plus: balance,
-              });
-            }
+            p.closingBalance += balance;
+            p.totalInvoiced = (p.totalInvoiced || 0) + total;
+            p.totalPaid = (p.totalPaid || 0) + paid;
+            p.overdue30Plus = (p.overdue30Plus || 0) + balance;
+            if (rawPhone && (!p.phone || p.phone === "—")) p.phone = rawPhone;
+            if (gstin && !p.gstin) p.gstin = gstin;
+          } else {
+            partyMap.set(targetKey, {
+              id: `p_${targetKey.replace(/[^a-z0-9]/g, "_")}`,
+              name: rawName,
+              category: inv.customer_type || "Retail",
+              phone: rawPhone || "—",
+              gstin: gstin || "URP",
+              closingBalance: balance,
+              openingBalance: 0,
+              type: "Customer",
+              totalInvoiced: total,
+              totalPaid: paid,
+              dueTomorrow: 0,
+              upcomingDue: 0,
+              overdue1_15: 0,
+              overdue16_30: 0,
+              overdue30Plus: balance,
+              hasAccumulatedInvoices: true,
+            });
           }
         });
 
@@ -526,23 +578,83 @@ export function CustomerPartyReportsSuite({
           }
         });
 
-        // Authoritative reconciliation: If customer record in CRM has balance explicitly settled to 0
-        dbCustomers.forEach((c: any) => {
-          const name = (c.name || c.company_name || c.contact_name || "").trim().toLowerCase();
-          if (name && partyMap.has(name)) {
-            const p = partyMap.get(name)!;
-            if (c.outstanding_balance !== undefined && c.outstanding_balance !== null) {
-              const explicitBal = Number(c.outstanding_balance);
-              if (explicitBal <= 0.01) {
-                p.closingBalance = 0;
-                p.overdue30Plus = 0;
-                p.overdue1_15 = 0;
-                p.overdue16_30 = 0;
-                p.upcomingDue = 0;
-                p.dueTomorrow = 0;
+        // Populate Suppliers from Procurement DB (Vendors / Payables)
+        dbSuppliers.forEach((s: any) => {
+          const name = (s.name || s.company_name || s.contact_name || "").trim();
+          if (name) {
+            const key = name.toLowerCase();
+            const opBal = Number(s.opening_balance || s.outstanding_balance || 0);
+            if (!partyMap.has(key)) {
+              partyMap.set(key, {
+                id: s.id || `supp_${key}`,
+                name: name,
+                category: s.category || "Supplier / Vendor",
+                phone: s.phone || s.mobile || "—",
+                email: s.email || "",
+                gstin: s.gstin || "",
+                address: s.address || s.city || "",
+                closingBalance: -opBal, // Negative indicates To Pay / Payable
+                openingBalance: opBal,
+                type: "Supplier",
+                creditLimit: Number(s.credit_limit || 0),
+                totalInvoiced: 0,
+                totalPaid: 0,
+                dueTomorrow: 0,
+                upcomingDue: 0,
+                overdue1_15: 0,
+                overdue16_30: 0,
+                overdue30Plus: 0,
+              });
+            } else {
+              const p = partyMap.get(key)!;
+              p.type = "Both";
+              p.closingBalance -= opBal;
+            }
+          }
+        });
+
+        // Accumulate pending Vendor Bills into Supplier Balances
+        dbBills.forEach((b: any) => {
+          const rawStatus = String(b.status || b.payment_status || "").toLowerCase();
+          if (rawStatus === "cancelled" || rawStatus === "voided" || rawStatus === "paid") return;
+          const sName = (b.supplier_name || b.vendor_name || b.supplier?.name || "").trim();
+          if (sName) {
+            const key = sName.toLowerCase();
+            const total = Number(b.total_amount || b.amount || 0);
+            const paid = Number(b.amount_paid || b.paid_amount || 0);
+            const due = Number(b.balance_due ?? b.pending_amount ?? (total - paid));
+            if (due > 0.01) {
+              if (partyMap.has(key)) {
+                const p = partyMap.get(key)!;
+                p.closingBalance -= due;
+                if (p.type === "Customer") p.type = "Both";
+              } else {
+                partyMap.set(key, {
+                  id: `supp_${key}`,
+                  name: sName,
+                  category: "Supplier / Vendor",
+                  phone: b.supplier_phone || b.phone || "—",
+                  gstin: b.supplier_gstin || "—",
+                  closingBalance: -due,
+                  openingBalance: 0,
+                  type: "Supplier",
+                  totalInvoiced: 0,
+                  totalPaid: paid,
+                  dueTomorrow: 0,
+                  upcomingDue: 0,
+                  overdue1_15: 0,
+                  overdue16_30: 0,
+                  overdue30Plus: due,
+                });
               }
             }
           }
+        });
+
+        // Clean floating-point precision on all party balances
+        partyMap.forEach((p) => {
+          p.closingBalance = Math.round(p.closingBalance * 100) / 100;
+          if (Math.abs(p.closingBalance) < 0.01) p.closingBalance = 0;
         });
 
         const list = Array.from(partyMap.values());
@@ -626,12 +738,17 @@ export function CustomerPartyReportsSuite({
     let runningBalance = opBal;
 
     const pName = activeParty.name.toLowerCase();
+    const pCleanPhone = (activeParty.phone || "").replace(/\D/g, "");
     const matchedInvoices = rawInvoices
       .filter((inv: any) => {
         const isOpn = String(inv.invoice_number || "").toUpperCase().startsWith("OPN-") || inv.is_opening_balance || inv.invoice_type === "opening_balance";
         if (isOpn) return false;
-        const name = (inv.party_name || inv.customer_name || "").toLowerCase();
-        return name === pName && isDateInFilter(inv.created_at || inv.date);
+        const name = (inv.party_name || inv.customer_name || inv.customer?.name || "").toLowerCase();
+        const invPhone = (inv.customer_phone || inv.party_phone || inv.customer?.phone || inv.phone || "").replace(/\D/g, "");
+        const matchesName = name === pName;
+        const matchesId = inv.customer_id && String(inv.customer_id) === String(activeParty.id);
+        const matchesPhone = pCleanPhone && pCleanPhone.length >= 10 && invPhone && invPhone.endsWith(pCleanPhone.slice(-10));
+        return (matchesName || matchesId || matchesPhone) && isDateInFilter(inv.created_at || inv.date);
       })
       .sort((a: any, b: any) => {
         const ta = parseSafeDateTimestamp(a.created_at || a.date) || 0;
@@ -757,11 +874,27 @@ export function CustomerPartyReportsSuite({
       list = list.filter((p) => p.category.toLowerCase() === selectedCategory.toLowerCase());
     }
     if (outstandingTab === "to_collect") {
-      list = list.filter((p) => p.closingBalance > 0);
+      list = list.filter((p) => p.closingBalance > 0.01);
     } else if (outstandingTab === "to_pay") {
-      list = list.filter((p) => p.closingBalance < 0);
+      list = list.filter((p) => p.closingBalance < -0.01);
     }
-    return list;
+
+    // Sort: prioritize parties with active dues / balances at the top
+    return [...list].sort((a, b) => {
+      if (outstandingTab === "to_collect") {
+        return (b.closingBalance || 0) - (a.closingBalance || 0);
+      }
+      if (outstandingTab === "to_pay") {
+        return Math.abs(b.closingBalance || 0) - Math.abs(a.closingBalance || 0);
+      }
+      // "All" tab: parties with pending balances (highest absolute balance first), then 0-balance parties alphabetically
+      const absA = Math.abs(a.closingBalance || 0);
+      const absB = Math.abs(b.closingBalance || 0);
+      if (absA > 0.01 || absB > 0.01) {
+        return absB - absA;
+      }
+      return a.name.localeCompare(b.name);
+    });
   }, [parties, searchParty, selectedCategory, outstandingTab]);
 
   const outstandingTotals = useMemo(() => {
@@ -2050,12 +2183,12 @@ export function CustomerPartyReportsSuite({
                   </tr>
                 ) : (
                   outstandingList.map((p, idx) => {
-                    const isPositive = p.closingBalance > 0;
-                    const isNegative = p.closingBalance < 0;
-                    const catStr = p.category && p.category !== "Regular Customer" && p.category !== "Client" ? p.category : "-";
+                    const isPositive = p.closingBalance > 0.01;
+                    const isNegative = p.closingBalance < -0.01;
+                    const catStr = p.category && p.category !== "Regular Customer" && p.category !== "Client" ? p.category : "Retail";
                     const phoneStr = p.phone && p.phone !== "—" ? p.phone : "-";
 
-                    let balDisplay = "-";
+                    let balDisplay = "₹ 0.00";
                     if (isPositive) {
                       balDisplay = formatCurrency(p.closingBalance);
                     } else if (isNegative) {
@@ -2064,19 +2197,41 @@ export function CustomerPartyReportsSuite({
 
                     return (
                       <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3 px-5 font-bold text-slate-900">{p.name}</td>
+                        <td className="py-3 px-5 font-bold text-slate-900">
+                          <div className="flex items-center gap-2">
+                            <span>{p.name}</span>
+                            {p.type === "Supplier" && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                                Vendor
+                              </span>
+                            )}
+                            {p.type === "Both" && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300">
+                                Both
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="py-3 px-5 text-slate-500 font-mono text-xs">{catStr}</td>
                         <td className="py-3 px-5 text-slate-600 font-mono">{phoneStr}</td>
                         <td
                           className={`py-3 px-5 text-right font-mono font-bold ${
                             isPositive
-                              ? "text-slate-900"
+                              ? "text-emerald-700 dark:text-emerald-400"
                               : isNegative
-                              ? "text-rose-600"
+                              ? "text-rose-600 dark:text-rose-400"
                               : "text-slate-400"
                           }`}
                         >
-                          {balDisplay}
+                          <div className="flex flex-col items-end">
+                            <span>{balDisplay}</span>
+                            {isPositive && outstandingTab === "all" && (
+                              <span className="text-[9px] font-semibold text-emerald-600 uppercase">To Collect</span>
+                            )}
+                            {isNegative && outstandingTab === "all" && (
+                              <span className="text-[9px] font-semibold text-rose-600 uppercase">To Pay</span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );

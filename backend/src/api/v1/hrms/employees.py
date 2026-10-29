@@ -144,31 +144,57 @@ async def list_employees(
     page_size: int = Query(20, ge=1, le=1000),
     search: str | None = None,
 ):
-    target_company_id = company_id or ctx.active_company_id
-
-    # Auto-link any workspace User belonging to this tenant who doesn't have an Employee profile yet
-    try:
-        users_without_emp = await db.scalars(
-            select(User).where(
-                User.tenant_id == ctx.tenant_id,
-                ~User.id.in_(
-                    select(Employee.user_id).where(
-                        Employee.user_id.is_not(None),
-                        Employee.tenant_id == ctx.tenant_id
-                    )
+    from src.models import Tenant
+    raw_cid = company_id or ctx.active_company_id
+    effective_tenant_id = ctx.tenant_id
+    target_company_id = raw_cid
+    if raw_cid:
+        comp_obj = await db.get(Company, raw_cid)
+        if comp_obj:
+            target_company_id = comp_obj.id
+            if comp_obj.tenant_id:
+                effective_tenant_id = comp_obj.tenant_id
+        else:
+            t_obj = await db.get(Tenant, raw_cid)
+            if t_obj:
+                effective_tenant_id = t_obj.id
+                target_company_id = await db.scalar(
+                    select(Company.id)
+                    .where(Company.tenant_id == t_obj.id)
+                    .order_by(Company.created_at.asc())
+                    .limit(1)
                 )
-            )
+
+    tenant_obj = await db.get(Tenant, effective_tenant_id)
+    is_system_tenant = bool(tenant_obj and tenant_obj.slug == "system")
+
+    # Auto-link any workspace User belonging to this specific company/tenant who doesn't have an Employee profile yet
+    # (Never auto-create Employee profiles for Platform Super Admins or users from other companies)
+    try:
+        unlinked_stmt = select(User).where(
+            User.tenant_id == effective_tenant_id,
+            User.is_platform_admin == False,
+            ~User.id.in_(
+                select(Employee.user_id).where(
+                    Employee.user_id.is_not(None),
+                    Employee.tenant_id == effective_tenant_id,
+                )
+            ),
         )
+        if target_company_id:
+            role_comp_subq = select(UserRole.user_id).where(UserRole.company_id == target_company_id)
+            unlinked_stmt = unlinked_stmt.where(User.id.in_(role_comp_subq))
+
+        users_without_emp = await db.scalars(unlinked_stmt)
         unlinked_users = users_without_emp.all()
         if unlinked_users:
             emp_count = await db.scalar(
-                select(func.count()).select_from(Employee).where(Employee.tenant_id == ctx.tenant_id)
+                select(func.count()).select_from(Employee).where(Employee.tenant_id == effective_tenant_id)
             ) or 0
             for u in unlinked_users:
-                # Check if employee with this email already exists
                 existing_emp = await db.scalar(
                     select(Employee).where(
-                        Employee.tenant_id == ctx.tenant_id,
+                        Employee.tenant_id == effective_tenant_id,
                         func.lower(Employee.email) == func.lower(u.email)
                     )
                 )
@@ -176,53 +202,60 @@ async def list_employees(
                     if not existing_emp.user_id:
                         existing_emp.user_id = u.id
                 else:
-                    code_found = False
-                    while not code_found:
-                        emp_count += 1
-                        candidate_code = f"EMP-{str(emp_count).zfill(4)}"
-                        code_exists = await db.scalar(
-                            select(Employee.id).where(
-                                Employee.tenant_id == ctx.tenant_id,
-                                Employee.employee_code == candidate_code
-                            )
+                    user_role_cid = await db.scalar(
+                        select(UserRole.company_id).where(UserRole.user_id == u.id, UserRole.company_id.is_not(None))
+                    )
+                    target_comp = user_role_cid or target_company_id
+                    if not target_comp and not is_system_tenant:
+                        target_comp = await db.scalar(
+                            select(Company.id).where(Company.tenant_id == effective_tenant_id).order_by(Company.created_at.asc()).limit(1)
                         )
-                        if not code_exists:
-                            code_found = True
-                            target_comp = target_company_id
-                            if not target_comp:
-                                target_comp = await db.scalar(
-                                    select(UserRole.company_id).where(UserRole.user_id == u.id, UserRole.company_id.is_not(None))
+                    if target_comp:
+                        code_found = False
+                        while not code_found:
+                            emp_count += 1
+                            candidate_code = f"EMP-{str(emp_count).zfill(4)}"
+                            code_exists = await db.scalar(
+                                select(Employee.id).where(
+                                    Employee.tenant_id == effective_tenant_id,
+                                    Employee.employee_code == candidate_code
                                 )
-                            if not target_comp:
-                                target_comp = await db.scalar(
-                                    select(Company.id).where(Company.tenant_id == ctx.tenant_id).order_by(Company.created_at.asc()).limit(1)
-                                )
-                            db.add(Employee(
-                                tenant_id=ctx.tenant_id,
-                                company_id=target_comp,
-                                user_id=u.id,
-                                employee_code=candidate_code,
-                                full_name=u.full_name or u.email.split('@')[0].capitalize(),
-                                email=u.email,
-                                phone=u.phone,
-                                date_of_joining=clock.today(),
-                                employment_type="Full-Time",
-                                status="Active",
-                                sales_points=0.0,
-                            ))
+                            )
+                            if not code_exists:
+                                code_found = True
+                                db.add(Employee(
+                                    tenant_id=effective_tenant_id,
+                                    company_id=target_comp,
+                                    user_id=u.id,
+                                    employee_code=candidate_code,
+                                    full_name=u.full_name or u.email.split('@')[0].capitalize(),
+                                    email=u.email,
+                                    phone=u.phone,
+                                    date_of_joining=clock.today(),
+                                    employment_type="Full-Time",
+                                    status="Active",
+                                    sales_points=0.0,
+                                ))
             await db.commit()
     except Exception as sync_err:
         await db.rollback()
         import logging
         logging.getLogger("hrms.employees").warning(f"Auto-link user to employee skipped: {sync_err}")
 
-    query = select(Employee).where(Employee.tenant_id == ctx.tenant_id)
+    platform_admin_ids = select(User.id).where(User.is_platform_admin == True)
+    query = select(Employee).where(
+        Employee.tenant_id == effective_tenant_id,
+        (Employee.user_id.is_(None)) | (~Employee.user_id.in_(platform_admin_ids)),
+    )
     if target_company_id:
-        primary_comp = await db.scalar(
-            select(Company.id).where(Company.tenant_id == ctx.tenant_id).order_by(Company.created_at.asc()).limit(1)
-        )
-        if target_company_id == primary_comp:
-            query = query.where((Employee.company_id == target_company_id) | (Employee.company_id == None))
+        if not is_system_tenant:
+            primary_comp = await db.scalar(
+                select(Company.id).where(Company.tenant_id == effective_tenant_id).order_by(Company.created_at.asc()).limit(1)
+            )
+            if target_company_id == primary_comp:
+                query = query.where((Employee.company_id == target_company_id) | (Employee.company_id == None))
+            else:
+                query = query.where(Employee.company_id == target_company_id)
         else:
             query = query.where(Employee.company_id == target_company_id)
 
@@ -259,13 +292,20 @@ async def list_employees(
     
     # If role filter produced 0 results, fallback to returning active employees for this workspace
     if (total or 0) == 0 and role:
-        query = select(Employee).where(Employee.tenant_id == ctx.tenant_id, Employee.status.ilike("Active"))
+        query = select(Employee).where(
+            Employee.tenant_id == effective_tenant_id,
+            Employee.status.ilike("Active"),
+            (Employee.user_id.is_(None)) | (~Employee.user_id.in_(platform_admin_ids)),
+        )
         if target_company_id:
-            primary_comp = await db.scalar(
-                select(Company.id).where(Company.tenant_id == ctx.tenant_id).order_by(Company.created_at.asc()).limit(1)
-            )
-            if target_company_id == primary_comp:
-                query = query.where((Employee.company_id == target_company_id) | (Employee.company_id == None))
+            if not is_system_tenant:
+                primary_comp = await db.scalar(
+                    select(Company.id).where(Company.tenant_id == effective_tenant_id).order_by(Company.created_at.asc()).limit(1)
+                )
+                if target_company_id == primary_comp:
+                    query = query.where((Employee.company_id == target_company_id) | (Employee.company_id == None))
+                else:
+                    query = query.where(Employee.company_id == target_company_id)
             else:
                 query = query.where(Employee.company_id == target_company_id)
         total = await db.scalar(select(func.count()).select_from(query.subquery()))
@@ -274,7 +314,7 @@ async def list_employees(
         query.order_by(Employee.employee_code.asc()).offset((page - 1) * page_size).limit(page_size)
     )
     raw_employees = result.scalars().all()
-    items = await _enrich_employees_with_roles(db, raw_employees, ctx.tenant_id)
+    items = await _enrich_employees_with_roles(db, raw_employees, effective_tenant_id)
     return paginate(items, total or 0, page, page_size)
 
 
@@ -285,6 +325,9 @@ async def create_employee(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:hrms_employees"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    from src.api.v1.erp.organization import _resolve_company_id
+    resolved_company_id = await _resolve_company_id(db, ctx.tenant_id, payload.company_id or ctx.active_company_id)
+
     # 1. Normalize fields
     payload.email = payload.email.strip().lower()
     if payload.employee_code:
@@ -340,7 +383,19 @@ async def create_employee(
     new_user = None
     verification_code = None
     if not existing_user:
-        verification_code = f"{secrets.randbelow(900000) + 100000}"
+        from src.api.v1.erp.access_control import is_first_time_otp_enabled_for_user
+        otp_policy_enabled, otp_expiry_days = await is_first_time_otp_enabled_for_user(
+            db, ctx.tenant_id, [payload.role_id] if payload.role_id else None
+        )
+        if otp_policy_enabled:
+            verification_code = f"{secrets.randbelow(900000) + 100000}"
+            emp_is_verified = False
+            emp_code_expires = datetime.now(timezone.utc) + timedelta(days=otp_expiry_days)
+        else:
+            verification_code = None
+            emp_is_verified = True
+            emp_code_expires = None
+
         new_user = User(
             tenant_id=ctx.tenant_id,
             email=payload.email,
@@ -350,9 +405,9 @@ async def create_employee(
             avatar_initials="".join([n[0] for n in payload.full_name.split() if n][:2]).upper(),
             status=UserStatus.ACTIVE,
             must_change_password=True,
-            is_verified=False,
+            is_verified=emp_is_verified,
             verification_code=verification_code,
-            verification_code_expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+            verification_code_expires_at=emp_code_expires,
             employee_id=payload.employee_code,
         )
         db.add(new_user)
@@ -398,7 +453,7 @@ async def create_employee(
             user_id=new_user.id,
             role_id=selected_role.id,
             is_default=True,
-            company_id=payload.company_id,
+            company_id=resolved_company_id,
             branch_id=payload.branch_id
         ))
     else:
@@ -414,20 +469,19 @@ async def create_employee(
                 )
                 if user_role:
                     user_role.role_id = target_role.id
-                    user_role.company_id = payload.company_id or user_role.company_id
+                    user_role.company_id = resolved_company_id or user_role.company_id
                     user_role.branch_id = payload.branch_id or user_role.branch_id
                 else:
                     db.add(UserRole(
                         user_id=existing_user.id,
                         role_id=target_role.id,
                         is_default=True,
-                        company_id=payload.company_id,
+                        company_id=resolved_company_id,
                         branch_id=payload.branch_id
                     ))
 
-    from src.api.v1.erp.organization import _resolve_company_id
     emp_data = payload.model_dump(exclude={"user_id", "role_id", "role_name"})
-    emp_data["company_id"] = await _resolve_company_id(db, ctx.tenant_id, emp_data.get("company_id") or ctx.active_company_id)
+    emp_data["company_id"] = resolved_company_id
     emp = Employee(
         tenant_id=ctx.tenant_id,
         user_id=linked_user_id,
@@ -445,8 +499,8 @@ async def create_employee(
     )
     await db.commit()
     
-    # Dispatch credentials & first-time OTP simultaneously to Email + WhatsApp
-    if new_user and verification_code:
+    # Dispatch credentials (& first-time OTP if enabled by org MFA policy) simultaneously to Email + WhatsApp
+    if new_user:
         try:
             tenant_obj = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
             if tenant_obj:
@@ -456,7 +510,7 @@ async def create_employee(
                         user=new_user,
                         tenant=tenant_obj,
                         temp_password=temp_pass,
-                        verification_code=verification_code,
+                        verification_code=verification_code or "",
                         is_platform_level=False,
                     )
                 )

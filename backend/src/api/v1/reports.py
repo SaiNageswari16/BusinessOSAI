@@ -3466,76 +3466,285 @@ async def generate_custom_report(
                 {"header": "% of Revenue", "key": "pct"},
             ]
             
-            p_returns = sales_rev * 0.015
-            p_discounts = sales_rev * 0.02
-            net_turnover = max(0, sales_rev - p_returns - p_discounts)
-            
-            open_stock = stock_valuation * 1.15
-            purchases = net_turnover * 0.62
-            freight = net_turnover * 0.025
-            pur_returns = purchases * 0.02
-            cogs_val = max(0, (open_stock + purchases + freight) - pur_returns - stock_valuation)
-            gp = net_turnover - cogs_val
-            gp_margin = (gp / max(1, net_turnover)) * 100
-            
-            rent = net_turnover * 0.055
-            utils = net_turnover * 0.022
-            mktg = net_turnover * 0.038
-            logistics = net_turnover * 0.028
-            tech = net_turnover * 0.015
-            admin = net_turnover * 0.012
-            total_opex_val = rent + utils + mktg + logistics + tech + admin
-            
-            payroll_val = net_turnover * 0.083
-            ebitda_val = gp - total_opex_val - payroll_val
-            depreciation = net_turnover * 0.012
-            ebit_val = ebitda_val - depreciation
-            fin_costs = net_turnover * 0.010
-            pbt_val = ebit_val - fin_costs
-            tax_val = pbt_val * 0.25 if pbt_val > 0 else 0
-            pat_val = pbt_val - tax_val
-            pat_margin = (pat_val / max(1, net_turnover)) * 100
+            # ── ACTUALS-ONLY P&L ─────────────────────────────────────────────
+            # Every figure below comes from real recorded documents. Anything
+            # with no recorded data shows "— (not recorded)" — it is NEVER
+            # estimated as a percentage of revenue.
+            from src.models.erp import ExpenseClaim, ExpenseClaimLine, PaymentVoucher, FixedAssetDepreciation
+            from src.models.procurement import GoodsReceivedNote, GoodsReceivedNoteItem, PurchaseReturn, PurchaseReturnItem
+
+            period_start = start_dt.date() if start_dt else None
+            period_end = end_dt.date() if end_dt else None
+
+            # ── 1. Revenue: real taxable sales (excl. GST), actual CN/DN & discounts ──
+            tx_all = await _get_all_sales_invoices(
+                db, start_dt, end_dt, search, tenant_id=ctx.tenant_id, company_id=ctx.active_company_id, include_notes=True
+            )
+
+            def _tx_cancelled(t: Dict[str, Any]) -> bool:
+                return bool(
+                    t.get("is_cancelled")
+                    or str(t.get("status", "")).lower() in ("cancelled", "canceled", "voided")
+                )
+
+            active_tx = [tx for tx in tx_all if not _tx_cancelled(tx)]
+            gross_taxable = 0.0
+            total_discounts = 0.0
+            total_gst = 0.0
+            cn_returns = 0.0
+            dn_debits = 0.0
+            for tx in active_tx:
+                no = str(tx.get("invoice_no", "")).upper()
+                subtotal_v = float(tx.get("subtotal") or 0)
+                disc_v = float(tx.get("discount") or 0)
+                tax_v = max(0.0, float(tx.get("tax") or 0))
+                total_v = float(tx.get("total_amount") or 0)
+                taxable_v = subtotal_v if subtotal_v > 0 else max(0.0, total_v - tax_v + disc_v)
+                if no.startswith("CN"):
+                    cn_returns += taxable_v
+                elif no.startswith("DN"):
+                    dn_debits += taxable_v
+                else:
+                    gross_taxable += taxable_v
+                    total_discounts += disc_v
+                    total_gst += tax_v
+            # NOTE: discounts are already deducted inside subtotal (taxable base),
+            # so they are shown for information only, not subtracted again.
+            net_turnover = round(max(0.0, gross_taxable + dn_debits - cn_returns), 2)
+            rev_pct = lambda v: f"{((v / net_turnover) * 100):.1f}%" if net_turnover > 0 else "—"
+
+            # ── 2. COGS from recorded GRN cost, purchase returns, closing stock ──
+            prod_cost = {}
+            for p in prods_list:
+                c = float(getattr(p, "purchase_price", None) or 0)
+                prod_cost[p.id] = c
+                prod_cost[str(p.id)] = c
+
+            def _unit_cost(prod_id) -> float:
+                return prod_cost.get(prod_id, prod_cost.get(str(prod_id), 0.0))
+
+            grn_cond = [GoodsReceivedNoteItem.tenant_id == ctx.tenant_id]
+            if ctx.active_company_id:
+                grn_cond.append(or_(GoodsReceivedNote.company_id == ctx.active_company_id, GoodsReceivedNote.company_id == None))
+            if period_start:
+                grn_cond.append(func.date(GoodsReceivedNote.received_date) >= period_start)
+            if period_end:
+                grn_cond.append(func.date(GoodsReceivedNote.received_date) <= period_end)
+            grn_items = (await db.execute(
+                select(GoodsReceivedNoteItem).join(
+                    GoodsReceivedNote, GoodsReceivedNote.id == GoodsReceivedNoteItem.grn_id
+                ).where(*grn_cond)
+            )).scalars().all()
+            grn_cost = sum(
+                float(gi.quantity_accepted or gi.quantity_received or 0) * _unit_cost(gi.product_id)
+                for gi in grn_items
+            )
+
+            pur_ret_cond = [PurchaseReturnItem.tenant_id == ctx.tenant_id]
+            if period_start:
+                pur_ret_cond.append(func.date(PurchaseReturn.return_date) >= period_start)
+            if period_end:
+                pur_ret_cond.append(func.date(PurchaseReturn.return_date) <= period_end)
+            pur_ret_items = (await db.execute(
+                select(PurchaseReturnItem).join(
+                    PurchaseReturn, PurchaseReturn.id == PurchaseReturnItem.purchase_return_id
+                ).where(*pur_ret_cond)
+            )).scalars().all()
+            pur_return_cost = sum(
+                float(pri.quantity_returned or 0) * _unit_cost(pri.product_id) for pri in pur_ret_items
+            )
+
+            # Closing stock at recorded cost (point-in-time, for information)
+            closing_cost = sum(
+                float(getattr(p, "purchase_price", None) or 0) * int(p.on_hand_stock or p.initial_stock or 0)
+                for p in prods_list
+            )
+            opening_cost = 0.0  # never estimated
+            cogs_val = round(max(0.0, opening_cost + grn_cost - pur_return_cost - closing_cost), 2)
+            # COGS is only meaningful when purchases (GRN / purchase returns) exist;
+            # closing stock alone (no purchases) means we cannot compute cost of goods.
+            has_grn_data = grn_cost > 0.01 or pur_return_cost > 0.01
+            if not has_grn_data:
+                cogs_val = 0.0
+
+            # ── 3. Gross profit ──
+            gp = round(net_turnover - cogs_val, 2)
+            gp_margin = (gp / net_turnover * 100) if net_turnover > 0 else 0.0
+
+            # ── 4. Actual OPEX: expense claims (by category) + payment vouchers ──
+            claim_cond = [
+                ExpenseClaim.tenant_id == ctx.tenant_id,
+                ExpenseClaim.status.in_(["approved", "pending", "submitted", "paid"]),
+            ]
+            if ctx.active_company_id:
+                claim_cond.append(or_(ExpenseClaim.company_id == ctx.active_company_id, ExpenseClaim.company_id == None))
+            if period_start:
+                claim_cond.append(ExpenseClaim.claim_date >= period_start)
+            if period_end:
+                claim_cond.append(ExpenseClaim.claim_date <= period_end)
+            claims = (await db.execute(select(ExpenseClaim).where(*claim_cond))).scalars().all()
+            claim_ids = [c.id for c in claims]
+            expense_by_cat: dict = {}
+            if claim_ids:
+                el_rows = (await db.execute(
+                    select(ExpenseClaimLine).where(
+                        ExpenseClaimLine.tenant_id == ctx.tenant_id,
+                        ExpenseClaimLine.claim_id.in_(claim_ids),
+                    )
+                )).scalars().all()
+                for el in el_rows:
+                    cat = str(el.category or "General").strip().title()
+                    expense_by_cat[cat] = expense_by_cat.get(cat, 0.0) + float(el.amount or 0)
+            claims_total = sum(expense_by_cat.values())
+
+            v_cond = [
+                PaymentVoucher.tenant_id == ctx.tenant_id,
+                PaymentVoucher.voucher_type.in_(["payment", "contra", "journal"]),
+                PaymentVoucher.status.in_(["approved", "posted"]),
+            ]
+            if ctx.active_company_id:
+                v_cond.append(or_(PaymentVoucher.company_id == ctx.active_company_id, PaymentVoucher.company_id == None))
+            if period_start:
+                v_cond.append(PaymentVoucher.voucher_date >= period_start)
+            if period_end:
+                v_cond.append(PaymentVoucher.voucher_date <= period_end)
+            paid_vouchers = float((await db.execute(
+                select(func.coalesce(func.sum(PaymentVoucher.total_amount), 0)).where(*v_cond)
+            )).scalar() or 0.0)
+            # Vouchers that mirror expense claims would double-count — net them out.
+            voucher_opex = max(0.0, paid_vouchers - claims_total)
+            opex_total = round(claims_total + voucher_opex, 2)
+
+            # ── 5. Actual payroll: recorded payslips in the period ──
+            ps_cond = [Payslip.tenant_id == ctx.tenant_id]
+            if start_dt and end_dt:
+                pairs = []
+                y, m = start_dt.year, start_dt.month
+                while (y, m) <= (end_dt.year, end_dt.month):
+                    pairs.append((y, m))
+                    m += 1
+                    if m > 12:
+                        m, y = 1, y + 1
+                if pairs:
+                    ps_cond.append(or_(*[and_(Payslip.year == yy, Payslip.month == mm) for (yy, mm) in pairs]))
+            payslips = (await db.execute(select(Payslip).where(*ps_cond))).scalars().all()
+            payroll_gross = round(sum(float(p.gross_salary or 0) for p in payslips), 2)
+            payroll_tds = round(sum(float(p.tds_deduction or 0) for p in payslips), 2)
+            payroll_total = round(payroll_gross + payroll_tds, 2)
+
+            # ── 6. EBITDA / EBIT / PBT / PAT from actuals ──
+            ebitda_val = round(gp - opex_total - payroll_total, 2)
+
+            dep_cond = [FixedAssetDepreciation.tenant_id == ctx.tenant_id]
+            if period_start:
+                dep_cond.append(FixedAssetDepreciation.depreciation_date >= period_start)
+            if period_end:
+                dep_cond.append(FixedAssetDepreciation.depreciation_date <= period_end)
+            depreciation_val = float((await db.execute(
+                select(func.coalesce(func.sum(FixedAssetDepreciation.depreciation_amount), 0)).where(*dep_cond)
+            )).scalar() or 0.0)
+            ebit_val = round(ebitda_val - depreciation_val, 2)
+
+            fin_keywords = ("bank", "finance", "interest", "loan", "mdr", "charge")
+            fin_costs = round(sum(
+                v for k, v in expense_by_cat.items()
+                if any(kw in k.lower() for kw in fin_keywords)
+            ), 2)
+            tax_recorded = round(sum(
+                v for k, v in expense_by_cat.items() if "tax" in k.lower()
+            ), 2)
+            pbt_val = round(ebit_val - fin_costs, 2)
+            pat_val = round(pbt_val - tax_recorded, 2)
+            pat_margin = (pat_val / net_turnover * 100) if net_turnover > 0 else 0.0
+
+            caveats = []
+            if not has_grn_data:
+                caveats.append("COGS: no purchase receipts (GRN) or stock cost recorded — goods cost not yet reflected.")
+            if opex_total <= 0.01 and payroll_total <= 0.01:
+                caveats.append("OPEX & Payroll: no expense claims, vouchers or payslips recorded this period.")
+            if pbt_val > 0 and tax_recorded <= 0.01:
+                caveats.append("Tax: no tax expense recorded — bottom line shown before tax.")
+            notes_suffix = "  (preliminary — see data notes)" if caveats else ""
+
+            def _amt(v: float, neg: bool = False) -> str:
+                if abs(v) <= 0.01:
+                    return "— (not recorded)"
+                return f"{'-' if neg else ''}₹{abs(v):,.2f}"
 
             result["tableData"] = [
-                {"particulars": "1. Gross Billed Sales Turnover", "ledger": "Sales Revenue A/c", "debit": "—", "credit": f"₹{sales_rev:,.2f}", "amount": f"₹{sales_rev:,.2f}", "pct": f"{((sales_rev / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "  ↳ Less: Sales Returns & Credit Notes", "ledger": "Returns Outward", "debit": f"₹{p_returns:,.2f}", "credit": "—", "amount": f"-₹{p_returns:,.2f}", "pct": f"-{((p_returns / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "  ↳ Less: Discounts & Promotions", "ledger": "Discount Allowed", "debit": f"₹{p_discounts:,.2f}", "credit": "—", "amount": f"-₹{p_discounts:,.2f}", "pct": f"-{((p_discounts / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "  ★ NET OPERATING REVENUE", "ledger": "Trading Revenue", "debit": "—", "credit": f"₹{net_turnover:,.2f}", "amount": f"₹{net_turnover:,.2f}", "pct": "100.0%"},
+                {"particulars": "1. Gross Taxable Sales (excl. GST)", "ledger": "Invoices + POS (recorded)", "debit": "—", "credit": f"₹{gross_taxable:,.2f}", "amount": f"₹{gross_taxable:,.2f}", "pct": rev_pct(gross_taxable)},
+                {"particulars": "  ↳ Less: Sales Returns & Credit Notes (CN)", "ledger": "Credit Notes (recorded)", "debit": f"₹{cn_returns:,.2f}", "credit": "—", "amount": _amt(cn_returns, True), "pct": _amt(cn_returns, True)},
+                {"particulars": "  ↳ Memo: Discounts & Promotions Given (already deducted)", "ledger": "Invoice discounts", "debit": f"₹{total_discounts:,.2f}", "credit": "—", "amount": "memo only", "pct": rev_pct(total_discounts)},
+                {"particulars": "  ↳ Add: Debit Notes (Extra Billed to Customer)", "ledger": "Debit Notes (recorded)", "debit": "—", "credit": f"₹{dn_debits:,.2f}", "amount": f"₹{dn_debits:,.2f}", "pct": rev_pct(dn_debits)},
+                {"particulars": "  ★ NET OPERATING REVENUE", "ledger": "Computed from recorded sales", "debit": "—", "credit": f"₹{net_turnover:,.2f}", "amount": f"₹{net_turnover:,.2f}", "pct": "100.0%"},
+                {"particulars": "  (Memo) GST Collected on these sales — not revenue", "ledger": "Output GST Payable", "debit": "—", "credit": f"₹{total_gst:,.2f}", "amount": f"₹{total_gst:,.2f}", "pct": rev_pct(total_gst)},
                 
-                {"particulars": "2. Opening Inventory Stock Valuation", "ledger": "Inventory Balance", "debit": f"₹{open_stock:,.2f}", "credit": "—", "amount": f"₹{open_stock:,.2f}", "pct": f"{((open_stock / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "  ↳ Add: Inward Purchases & Procurement", "ledger": "Purchase A/c", "debit": f"₹{purchases:,.2f}", "credit": "—", "amount": f"₹{purchases:,.2f}", "pct": f"{((purchases / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "  ↳ Add: Direct Freight & Landed Duties", "ledger": "Freight Inward", "debit": f"₹{freight:,.2f}", "credit": "—", "amount": f"₹{freight:,.2f}", "pct": f"{((freight / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "  ↳ Less: Purchase Returns (Vendor Debit Notes)", "ledger": "Purchase Returns", "debit": "—", "credit": f"₹{pur_returns:,.2f}", "amount": f"-₹{pur_returns:,.2f}", "pct": f"-{((pur_returns / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "  ↳ Less: Closing Stock on Hand (Asset)", "ledger": "Stock Asset (FIFO)", "debit": "—", "credit": f"₹{stock_valuation:,.2f}", "amount": f"-₹{stock_valuation:,.2f}", "pct": f"-{((stock_valuation / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "  ★ TOTAL COST OF GOODS SOLD (COGS)", "ledger": "Landed COGS", "debit": f"₹{cogs_val:,.2f}", "credit": "—", "amount": f"-₹{cogs_val:,.2f}", "pct": f"-{((cogs_val / max(1, net_turnover))*100):.1f}%"},
-                
-                {"particulars": "3. GROSS OPERATING PROFIT", "ledger": "Gross Margin A/c", "debit": "—", "credit": f"₹{gp:,.2f}", "amount": f"₹{gp:,.2f}", "pct": f"{gp_margin:.1f}%"},
-                
-                {"particulars": "4. Store & Facility Rent", "ledger": "Rent Expense", "debit": f"₹{rent:,.2f}", "credit": "—", "amount": f"-₹{rent:,.2f}", "pct": f"-{((rent / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "  ↳ Electricity & Utilities", "ledger": "Utilities A/c", "debit": f"₹{utils:,.2f}", "credit": "—", "amount": f"-₹{utils:,.2f}", "pct": f"-{((utils / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "  ↳ Marketing & Advertising", "ledger": "Marketing A/c", "debit": f"₹{mktg:,.2f}", "credit": "—", "amount": f"-₹{mktg:,.2f}", "pct": f"-{((mktg / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "  ↳ Delivery & Packaging Logistics", "ledger": "Freight Outward", "debit": f"₹{logistics:,.2f}", "credit": "—", "amount": f"-₹{logistics:,.2f}", "pct": f"-{((logistics / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "  ↳ Tech, Software & Cloud ERP", "ledger": "IT Overhead", "debit": f"₹{tech:,.2f}", "credit": "—", "amount": f"-₹{tech:,.2f}", "pct": f"-{((tech / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "  ↳ Repairs, Maintenance & Office Supplies", "ledger": "General Admin", "debit": f"₹{admin:,.2f}", "credit": "—", "amount": f"-₹{admin:,.2f}", "pct": f"-{((admin / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "  ★ TOTAL OPERATING OVERHEADS (OPEX)", "ledger": "Total OPEX", "debit": f"₹{total_opex_val:,.2f}", "credit": "—", "amount": f"-₹{total_opex_val:,.2f}", "pct": f"-{((total_opex_val / max(1, net_turnover))*100):.1f}%"},
-                
-                {"particulars": "5. Personnel, Staff Salaries & Statutory PF/ESI", "ledger": "Payroll A/c", "debit": f"₹{payroll_val:,.2f}", "credit": "—", "amount": f"-₹{payroll_val:,.2f}", "pct": f"-{((payroll_val / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "6. OPERATING EBITDA", "ledger": "Operating Cash Flow", "debit": "—", "credit": f"₹{ebitda_val:,.2f}", "amount": f"₹{ebitda_val:,.2f}", "pct": f"{((ebitda_val / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "  ↳ Less: Depreciation on POS Hardware & Fixtures", "ledger": "Depreciation Reserve", "debit": f"₹{depreciation:,.2f}", "credit": "—", "amount": f"-₹{depreciation:,.2f}", "pct": f"-{((depreciation / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "7. OPERATING EBIT", "ledger": "Operating Profit", "debit": "—", "credit": f"₹{ebit_val:,.2f}", "amount": f"₹{ebit_val:,.2f}", "pct": f"{((ebit_val / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "  ↳ Less: Finance Charges, Bank MDR & Interest", "ledger": "Finance Charges", "debit": f"₹{fin_costs:,.2f}", "credit": "—", "amount": f"-₹{fin_costs:,.2f}", "pct": f"-{((fin_costs / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "8. PROFIT BEFORE TAX (PBT)", "ledger": "Earnings Before Tax", "debit": "—", "credit": f"₹{pbt_val:,.2f}", "amount": f"₹{pbt_val:,.2f}", "pct": f"{((pbt_val / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "  ↳ Less: Estimated Tax Provision (25%)", "ledger": "Tax Provision", "debit": f"₹{tax_val:,.2f}", "credit": "—", "amount": f"-₹{tax_val:,.2f}", "pct": f"-{((tax_val / max(1, net_turnover))*100):.1f}%"},
-                {"particulars": "9. NET PROFIT AFTER TAX (PAT) — BOTTOM LINE", "ledger": "Retained Earnings", "debit": "—", "credit": f"₹{pat_val:,.2f}", "amount": f"₹{pat_val:,.2f}", "pct": f"{pat_margin:.1f}%"},
+                {"particulars": "2. Goods Received Cost (GRN @ cost)" if has_grn_data else "2. COST OF GOODS — no GRN / stock cost recorded yet", "ledger": "Goods Received Notes" if has_grn_data else "Not recorded", "debit": f"₹{grn_cost:,.2f}" if grn_cost > 0.01 else "—", "credit": "—", "amount": _amt(grn_cost), "pct": _amt(grn_cost)},
             ]
+            if has_grn_data:
+                if pur_return_cost > 0.01:
+                    result["tableData"].append({"particulars": "  ↳ Less: Purchase Returns to Suppliers", "ledger": "Purchase Returns (recorded)", "debit": "—", "credit": f"₹{pur_return_cost:,.2f}", "amount": _amt(pur_return_cost, True), "pct": _amt(pur_return_cost, True)})
+                if closing_cost > 0.01:
+                    result["tableData"].append({"particulars": "  ↳ Less: Closing Stock on Hand (at cost, point-in-time)", "ledger": "Inventory", "debit": "—", "credit": f"₹{closing_cost:,.2f}", "amount": _amt(closing_cost, True), "pct": _amt(closing_cost, True)})
+            result["tableData"].append({
+                "particulars": "  ★ TOTAL COST OF GOODS SOLD" + ("" if has_grn_data else "  (not recorded yet)"),
+                "ledger": "Computed" if has_grn_data else "—",
+                "debit": f"₹{cogs_val:,.2f}" if has_grn_data else "—",
+                "credit": "—",
+                "amount": _amt(cogs_val) if has_grn_data else "— (not recorded)",
+                "pct": (_amt(cogs_val) if cogs_val > 0.01 else "—") if has_grn_data else "—",
+            })
+            result["tableData"].append({"particulars": "3. GROSS PROFIT" + notes_suffix, "ledger": "Revenue − COGS", "debit": "—", "credit": f"₹{gp:,.2f}", "amount": f"₹{gp:,.2f}", "pct": f"{gp_margin:.1f}%"})
+
+            # ── OPEX from recorded expense claims (by category) ──
+            if expense_by_cat:
+                for _cat, _amt_v in sorted(expense_by_cat.items(), key=lambda kv: -kv[1]):
+                    result["tableData"].append({"particulars": f"4. Operating Expense — {_cat}", "ledger": "Expense Claims (recorded)", "debit": f"₹{_amt_v:,.2f}", "credit": "—", "amount": _amt(_amt_v), "pct": _amt(_amt_v, True)})
+            if voucher_opex > 0.01:
+                result["tableData"].append({"particulars": "4. Other Expenses Paid via Vouchers", "ledger": "Payment Vouchers", "debit": f"₹{voucher_opex:,.2f}", "credit": "—", "amount": _amt(voucher_opex), "pct": _amt(voucher_opex, True)})
+            if not expense_by_cat and voucher_opex <= 0.01:
+                result["tableData"].append({"particulars": "4. OPERING EXPENSES", "ledger": "No expense claims / vouchers recorded this period", "debit": "—", "credit": "—", "amount": "— (not recorded)", "pct": "—"})
+            result["tableData"].append({"particulars": "  ★ TOTAL OPEX", "ledger": "Expense claims + vouchers", "debit": f"₹{opex_total:,.2f}" if opex_total > 0.01 else "—", "credit": "—", "amount": _amt(opex_total), "pct": _amt(opex_total, True) if opex_total > 0.01 else "—"})
+
+            # ── Payroll from recorded payslips ──
+            if payroll_total > 0.01:
+                result["tableData"].append({"particulars": "5. Salaries & Wages (Payslips in period)", "ledger": "HRMS Payroll (recorded)", "debit": f"₹{payroll_gross:,.2f}", "credit": "—", "amount": _amt(payroll_gross), "pct": _amt(payroll_gross, True)})
+                if payroll_tds > 0.01:
+                    result["tableData"].append({"particulars": "  ↳ Employer TDS / Statutory", "ledger": "HRMS Payroll", "debit": f"₹{payroll_tds:,.2f}", "credit": "—", "amount": _amt(payroll_tds), "pct": _amt(payroll_tds, True)})
+            else:
+                result["tableData"].append({"particulars": "5. PAYROLL", "ledger": "No payslips recorded this period", "debit": "—", "credit": "—", "amount": "— (not recorded)", "pct": "—"})
+            result["tableData"].append({"particulars": "  ★ TOTAL PAYROLL", "ledger": "Payslips", "debit": f"₹{payroll_total:,.2f}" if payroll_total > 0.01 else "—", "credit": "—", "amount": _amt(payroll_total), "pct": _amt(payroll_total, True) if payroll_total > 0.01 else "—"})
+
+            # ── Bottom line from actuals ──
+            _ebitda_pct = f"{((ebitda_val / net_turnover) * 100):.1f}%" if net_turnover > 0 else "—"
+            _ebit_pct = f"{((ebit_val / net_turnover) * 100):.1f}%" if net_turnover > 0 else "—"
+            _pbt_pct = f"{((pbt_val / net_turnover) * 100):.1f}%" if net_turnover > 0 else "—"
+            result["tableData"].append({"particulars": "6. OPERING EBITDA (Gross Profit − OPEX − Payroll)", "ledger": "Computed", "debit": "—", "credit": f"₹{ebitda_val:,.2f}", "amount": f"₹{ebitda_val:,.2f}", "pct": _ebitda_pct})
+            if depreciation_val > 0.01:
+                result["tableData"].append({"particulars": "  ↳ Less: Depreciation (Fixed Assets)", "ledger": "FA Depreciation Runs", "debit": f"₹{depreciation_val:,.2f}", "credit": "—", "amount": _amt(depreciation_val), "pct": _amt(depreciation_val, True)})
+            result["tableData"].append({"particulars": "7. OPERING EBIT", "ledger": "Computed", "debit": "—", "credit": f"₹{ebit_val:,.2f}", "amount": f"₹{ebit_val:,.2f}", "pct": _ebit_pct})
+            if fin_costs > 0.01:
+                result["tableData"].append({"particulars": "  ↳ Less: Finance / Interest / Bank Charges", "ledger": "Expense claims (finance category)", "debit": f"₹{fin_costs:,.2f}", "credit": "—", "amount": _amt(fin_costs), "pct": _amt(fin_costs, True)})
+            result["tableData"].append({"particulars": "8. PROFIT BEFORE TAX (PBT)", "ledger": "Computed", "debit": "—", "credit": f"₹{pbt_val:,.2f}", "amount": f"₹{pbt_val:,.2f}", "pct": _pbt_pct})
+            if tax_recorded > 0.01:
+                result["tableData"].append({"particulars": "  ↳ Less: Tax Recorded in Period", "ledger": "Expense claims (tax category)", "debit": f"₹{tax_recorded:,.2f}", "credit": "—", "amount": _amt(tax_recorded), "pct": _amt(tax_recorded, True)})
+            result["tableData"].append({
+                "particulars": "9. NET PROFIT (PAT)" + ("  (before tax)" if tax_recorded <= 0.01 else "") + " — BOTTOM LINE",
+                "ledger": "Computed" + (" — no tax expense recorded" if tax_recorded <= 0.01 else ""),
+                "debit": "—", "credit": f"₹{pat_val:,.2f}", "amount": f"₹{pat_val:,.2f}", "pct": f"{pat_margin:.1f}%",
+            })
+
             result["summaryTotals"] = {
                 "net_sales_turnover": f"₹{net_turnover:,.2f}",
+                "total_gst_collected": f"₹{total_gst:,.2f}",
                 "gross_profit": f"₹{gp:,.2f}",
                 "gross_margin_pct": f"{gp_margin:.1f}%",
                 "operating_ebitda": f"₹{ebitda_val:,.2f}",
-                "net_profit_pat": f"₹{pat_val:,.2f}",
+                "net_profit_pat": f"₹{pat_val:,.2f}" + (" (before tax)" if tax_recorded <= 0.01 else ""),
                 "net_profit_margin": f"{pat_margin:.1f}%",
             }
+            if caveats:
+                result["summaryTotals"]["data_notes"] = " • ".join(caveats)
 
         elif report_id == "trial_balance":
             result["title"] = "Trial Balance Report (Double-Entry Balanced Ledger)"

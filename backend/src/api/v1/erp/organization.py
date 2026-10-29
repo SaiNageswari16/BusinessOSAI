@@ -89,6 +89,12 @@ async def _resolve_company_id(db: AsyncSession, tenant_id: uuid.UUID, company_id
             valid_company = await db.scalar(select(Company.id).where(Company.id == cid, Company.tenant_id == tenant_id))
             if valid_company:
                 return valid_company
+            any_company = await db.scalar(select(Company.id).where(Company.id == cid))
+            if any_company:
+                return any_company
+            tenant_comp = await db.scalar(select(Company.id).where(Company.tenant_id == cid).order_by(Company.created_at.asc()).limit(1))
+            if tenant_comp:
+                return tenant_comp
         except Exception:
             pass
     # Fallback to the first company in the tenant
@@ -443,10 +449,11 @@ async def list_branches(
         elif ctx.allowed_company_ids:
             query = query.where(Branch.company_id.in_(ctx.allowed_company_ids))
 
-    if company_id:
-        company_exists = await db.scalar(select(Company.id).where(Company.id == company_id, Company.tenant_id == ctx.tenant_id))
+    target_cid = company_id or ctx.active_company_id
+    if target_cid:
+        company_exists = await db.scalar(select(Company.id).where(Company.id == target_cid, Company.tenant_id == ctx.tenant_id))
         if company_exists:
-            query = query.where(Branch.company_id == company_id)
+            query = query.where(Branch.company_id == target_cid)
 
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(
@@ -464,7 +471,7 @@ async def create_branch(
 ):
     from src.models import Branch, Company
 
-    comp_id = await _resolve_company_id(db, ctx.tenant_id, payload.company_id)
+    comp_id = await _resolve_company_id(db, ctx.tenant_id, payload.company_id or ctx.active_company_id)
 
     data = payload.model_dump(exclude={"status"})
     data["company_id"] = comp_id
@@ -533,10 +540,11 @@ async def list_departments(
     from src.models import Department, Company
 
     query = select(Department).where(Department.tenant_id == ctx.tenant_id)
-    if company_id:
-        company_exists = await db.scalar(select(Company.id).where(Company.id == company_id, Company.tenant_id == ctx.tenant_id))
+    target_cid = company_id or ctx.active_company_id
+    if target_cid:
+        company_exists = await db.scalar(select(Company.id).where(Company.id == target_cid, Company.tenant_id == ctx.tenant_id))
         if company_exists:
-            query = query.where(Department.company_id == company_id)
+            query = query.where(Department.company_id == target_cid)
 
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(
@@ -554,7 +562,7 @@ async def create_department(
     from src.models import Department
 
     data = payload.model_dump(exclude={"status"})
-    data["company_id"] = await _resolve_company_id(db, ctx.tenant_id, data.get("company_id"))
+    data["company_id"] = await _resolve_company_id(db, ctx.tenant_id, data.get("company_id") or ctx.active_company_id)
     if "head_user_id" in data:
         data["head_user_id"] = await _resolve_user_id(db, data.get("head_user_id"))
 
@@ -636,10 +644,11 @@ async def list_designations(
     from src.models import Designation, Company
 
     query = select(Designation).where(Designation.tenant_id == ctx.tenant_id)
-    if company_id:
-        company_exists = await db.scalar(select(Company.id).where(Company.id == company_id, Company.tenant_id == ctx.tenant_id))
+    target_cid = company_id or ctx.active_company_id
+    if target_cid:
+        company_exists = await db.scalar(select(Company.id).where(Company.id == target_cid, Company.tenant_id == ctx.tenant_id))
         if company_exists:
-            query = query.where(Designation.company_id == company_id)
+            query = query.where(Designation.company_id == target_cid)
 
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     result = await db.execute(query.order_by(Designation.name).offset((page - 1) * page_size).limit(page_size))
@@ -655,7 +664,7 @@ async def create_designation(
     from src.models import Designation
 
     data = payload.model_dump(exclude={"status"})
-    data["company_id"] = await _resolve_company_id(db, ctx.tenant_id, data.get("company_id"))
+    data["company_id"] = await _resolve_company_id(db, ctx.tenant_id, data.get("company_id") or ctx.active_company_id)
     designation = Designation(tenant_id=ctx.tenant_id, status=_parse_status(payload.status), **data)
     db.add(designation)
     await db.commit()
@@ -733,10 +742,11 @@ async def list_regions(
     from src.models import Region, Company
 
     query = select(Region).where(Region.tenant_id == ctx.tenant_id)
-    if company_id:
-        company_exists = await db.scalar(select(Company.id).where(Company.id == company_id, Company.tenant_id == ctx.tenant_id))
+    target_cid = company_id or ctx.active_company_id
+    if target_cid:
+        company_exists = await db.scalar(select(Company.id).where(Company.id == target_cid, Company.tenant_id == ctx.tenant_id))
         if company_exists:
-            query = query.where(Region.company_id == company_id)
+            query = query.where(Region.company_id == target_cid)
     if search:
         query = query.where(Region.name.ilike(f"%{search}%"))
 
@@ -754,7 +764,7 @@ async def create_region(
 ):
     from src.models import Company, Region
 
-    comp_id = await _resolve_company_id(db, ctx.tenant_id, payload.company_id)
+    comp_id = await _resolve_company_id(db, ctx.tenant_id, payload.company_id or ctx.active_company_id)
     manager_user_id = await _resolve_user_id(db, payload.manager_user_id)
     region = Region(
         tenant_id=ctx.tenant_id,
@@ -1045,10 +1055,11 @@ async def list_teams(
     query = select(Team).where(Team.tenant_id == ctx.tenant_id)
     if department_id:
         query = query.where(Team.department_id == department_id)
-    if company_id:
-        company_exists = await db.scalar(select(Company.id).where(Company.id == company_id, Company.tenant_id == ctx.tenant_id))
+    target_cid = company_id or ctx.active_company_id
+    if target_cid:
+        company_exists = await db.scalar(select(Company.id).where(Company.id == target_cid, Company.tenant_id == ctx.tenant_id))
         if company_exists:
-            query = query.where(Team.company_id == company_id)
+            query = query.where(Team.company_id == target_cid)
     if search:
         query = query.where(Team.name.ilike(f"%{search}%"))
 
@@ -1269,10 +1280,11 @@ async def list_business_units(
     from src.models import BusinessUnit, Company
 
     query = select(BusinessUnit).where(BusinessUnit.tenant_id == ctx.tenant_id)
-    if company_id:
-        company_exists = await db.scalar(select(Company.id).where(Company.id == company_id, Company.tenant_id == ctx.tenant_id))
+    target_cid = company_id or ctx.active_company_id
+    if target_cid:
+        company_exists = await db.scalar(select(Company.id).where(Company.id == target_cid, Company.tenant_id == ctx.tenant_id))
         if company_exists:
-            query = query.where(BusinessUnit.company_id == company_id)
+            query = query.where(BusinessUnit.company_id == target_cid)
     if search:
         query = query.where(BusinessUnit.name.ilike(f"%{search}%"))
 
@@ -1290,7 +1302,7 @@ async def create_business_unit(
 ):
     from src.models import BusinessUnit, Company
 
-    comp_id = await _resolve_company_id(db, ctx.tenant_id, payload.company_id)
+    comp_id = await _resolve_company_id(db, ctx.tenant_id, payload.company_id or ctx.active_company_id)
     head_user_id = await _resolve_user_id(db, payload.head_user_id)
     business_unit = BusinessUnit(
         tenant_id=ctx.tenant_id,

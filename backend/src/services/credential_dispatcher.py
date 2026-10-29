@@ -187,9 +187,13 @@ async def dispatch_user_onboarding_credentials(
 
     # 1. ─── Prepare Content & Generate PDF Document ───
     tier_title = "Platform Administrator" if is_platform_level else f"{tenant_name} Team"
-    
-    email_subject = f"Welcome to {tenant_name} — {'Subscription Agreement & ' if invoice_details else ''}First-Time Login & Verification Code"
-    
+    has_otp = bool(verification_code and str(verification_code).strip())
+
+    if has_otp:
+        email_subject = f"Welcome to {tenant_name} — {'Subscription Agreement & ' if invoice_details else ''}First-Time Login & Verification Code"
+    else:
+        email_subject = f"Welcome to {tenant_name} — {'Subscription Agreement & ' if invoice_details else ''}Workspace Login Credentials"
+
     invoice_email_section = ""
     invoice_wa_section = ""
     pdf_bytes = None
@@ -250,6 +254,22 @@ async def dispatch_user_onboarding_credentials(
         </div>
         """
 
+    otp_html_section = ""
+    if has_otp:
+        otp_html_section = f"""
+                <div style="background-color: #ecfdf5; border: 2px dashed #10b981; border-radius: 12px; padding: 20px; text-align: center; margin: 20px 0;">
+                    <p style="margin: 0 0 6px; font-size: 12px; font-weight: bold; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">First-Time Verification Code</p>
+                    <div style="font-size: 32px; font-weight: 900; letter-spacing: 6px; color: #047857; font-family: monospace;">{verification_code}</div>
+                    <p style="margin: 6px 0 0; font-size: 12px; color: #047857;">Enter this 6-digit code on the login portal to verify your account.</p>
+                </div>
+        """
+
+    intro_html_text = (
+        "Your workspace account has been provisioned. Please use the credentials and first-time verification code below to activate your account."
+        if has_otp
+        else "Your workspace account has been provisioned and is ready for immediate access. Please use your login credentials below to sign in to your workspace."
+    )
+
     email_html = f"""
     <!DOCTYPE html>
     <html>
@@ -262,7 +282,7 @@ async def dispatch_user_onboarding_credentials(
             </div>
             <div style="padding: 28px 24px; color: #334155;">
                 <p style="font-size: 15px; margin-top: 0;">Hello <strong>{user_full_name}</strong>,</p>
-                <p style="font-size: 14px; color: #475569;">Your workspace account has been provisioned. Please use the credentials and first-time verification code below to activate your account.</p>
+                <p style="font-size: 14px; color: #475569;">{intro_html_text}</p>
                 
                 <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin: 20px 0;">
                     <h3 style="color: #0f172a; margin-top: 0; font-size: 16px;">🔐 Login Credentials</h3>
@@ -271,11 +291,7 @@ async def dispatch_user_onboarding_credentials(
                     <p style="margin: 6px 0; font-size: 14px;"><strong>Temporary Password:</strong> <code style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px;">{temp_password}</code></p>
                 </div>
 
-                <div style="background-color: #ecfdf5; border: 2px dashed #10b981; border-radius: 12px; padding: 20px; text-align: center; margin: 20px 0;">
-                    <p style="margin: 0 0 6px; font-size: 12px; font-weight: bold; color: #065f46; text-transform: uppercase; letter-spacing: 1px;">First-Time Verification Code</p>
-                    <div style="font-size: 32px; font-weight: 900; letter-spacing: 6px; color: #047857; font-family: monospace;">{verification_code}</div>
-                    <p style="margin: 6px 0 0; font-size: 12px; color: #047857;">Enter this 6-digit code on the login portal to verify your account.</p>
-                </div>
+                {otp_html_section}
 
                 {invoice_html_section}
 
@@ -294,6 +310,23 @@ async def dispatch_user_onboarding_credentials(
     </html>
     """
 
+    otp_text_block = (
+        f"🛡️ FIRST-TIME VERIFICATION CODE:\n"
+        f"👉  {verification_code}  👈\n"
+        if has_otp
+        else ""
+    )
+    otp_instructions_text = (
+        f"1. Enter your Email and Temporary Password on the login screen.\n"
+        f"2. When prompted, enter your 6-digit Verification Code: {verification_code}\n"
+        f"3. Set your new permanent password to secure your account.\n\n"
+        if has_otp
+        else (
+            f"1. Enter your Email and Temporary Password on the login screen to access your workspace directly.\n"
+            f"2. You can configure Organization MFA & First-Time OTP policies anytime under Settings → MFA Policies.\n\n"
+        )
+    )
+
     email_text = (
         f"Hello {user_full_name},\n\n"
         f"Your workspace account has been provisioned on {cfg.app_name} for '{tenant_name}'.\n\n"
@@ -302,33 +335,41 @@ async def dispatch_user_onboarding_credentials(
         f"• Workspace: {tenant_name} ({tenant_slug})\n"
         f"• Username / Email: {user_email}\n"
         f"• Temporary Password: {temp_password}\n\n"
-        f"🛡️ FIRST-TIME VERIFICATION CODE:\n"
-        f"👉  {verification_code}  👈\n"
+        f"{otp_text_block}"
         f"════════════════════════════════════════════════\n\n"
         f"{invoice_email_section}"
-        f"Please visit the login portal to activate your account:\n"
+        f"Please visit the login portal to access your account:\n"
         f"🔗 Login URL: {portal_login_link}\n\n"
         f"Instructions:\n"
-        f"1. Enter your Email and Temporary Password on the login screen.\n"
-        f"2. When prompted, enter your 6-digit Verification Code: {verification_code}\n"
-        f"3. Set your new permanent password to secure your account.\n\n"
+        f"{otp_instructions_text}"
         f"Best regards,\n"
         f"{tier_title}\n"
         f"{cfg.app_name} Security System"
     )
 
+    otp_wa_block = (
+        f"🛡️ *First-Time Activation Code:*\n"
+        f"👉 *{verification_code}*\n\n"
+        if has_otp
+        else ""
+    )
+    otp_wa_footer = (
+        "_Please enter this 6-digit code on your first login to verify and set your new password._"
+        if has_otp
+        else "_You can log in directly using your email and password above._"
+    )
+
     whatsapp_message = (
         f"👋 *Welcome to {tenant_name}!* ({cfg.app_name})\n\n"
-        f"Your workspace user account and subscription are ready for activation.\n\n"
+        f"Your workspace user account and subscription are ready.\n\n"
         f"🔐 *Login Credentials:*\n"
         f"• *Workspace:* {tenant_name}\n"
         f"• *Username / Email:* `{user_email}`\n"
         f"• *Temporary Password:* `{temp_password}`\n\n"
-        f"🛡️ *First-Time Activation Code:*\n"
-        f"👉 *{verification_code}*\n\n"
+        f"{otp_wa_block}"
         f"{invoice_wa_section}"
         f"🌐 *Login Portal:* {portal_login_link}\n\n"
-        f"_Please enter this 6-digit code on your first login to verify and set your new password._"
+        f"{otp_wa_footer}"
     )
 
     # 2. ─── Email Dispatch (SMTP) ───
