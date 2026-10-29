@@ -1936,11 +1936,60 @@ async def create_purchase_return(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    # 1. Resolve purchase_order_id if not directly supplied
+    resolved_po_id = payload.purchase_order_id
+    resolved_supp_id = payload.supplier_id
+    resolved_supp_name = payload.supplier_name
+
+    if not resolved_po_id and payload.vendor_bill_id:
+        bill = await db.get(VendorBill, payload.vendor_bill_id)
+        if bill:
+            resolved_po_id = bill.purchase_order_id
+            if bill.purchase_order_id:
+                po_obj = await db.get(PurchaseOrder, bill.purchase_order_id)
+                if po_obj and po_obj.supplier_id:
+                    resolved_supp_id = po_obj.supplier_id
+
+    if not resolved_po_id and resolved_supp_id:
+        po_match = await db.scalar(
+            select(PurchaseOrder).where(
+                PurchaseOrder.tenant_id == ctx.tenant_id,
+                PurchaseOrder.supplier_id == resolved_supp_id
+            ).order_by(PurchaseOrder.created_at.desc())
+        )
+        if po_match:
+            resolved_po_id = po_match.id
+
+    if not resolved_po_id:
+        # Fallback to any existing purchase order in tenant
+        any_po = await db.scalar(
+            select(PurchaseOrder).where(PurchaseOrder.tenant_id == ctx.tenant_id).order_by(PurchaseOrder.created_at.desc())
+        )
+        if any_po:
+            resolved_po_id = any_po.id
+        else:
+            # Create a placeholder PO to satisfy DB foreign key constraint
+            if not resolved_supp_id:
+                any_supp = await db.scalar(select(Supplier).where(Supplier.tenant_id == ctx.tenant_id))
+                if any_supp:
+                    resolved_supp_id = any_supp.id
+            placeholder_po = PurchaseOrder(
+                tenant_id=ctx.tenant_id,
+                company_id=ctx.active_company_id,
+                po_number=f"PO-RET-{payload.return_number}",
+                supplier_id=resolved_supp_id,
+                status="Completed",
+                total_amount=0.0
+            )
+            db.add(placeholder_po)
+            await db.flush()
+            resolved_po_id = placeholder_po.id
+
     ret = PurchaseReturn(
         tenant_id=ctx.tenant_id,
         company_id=ctx.active_company_id,
         return_number=payload.return_number,
-        purchase_order_id=payload.purchase_order_id,
+        purchase_order_id=resolved_po_id,
         reason=payload.reason,
         status="Sent"
     )
@@ -1948,6 +1997,7 @@ async def create_purchase_return(
     await db.flush()
     
     created_items = []
+    total_debit_calc = 0.0
     for it in payload.items:
         item = PurchaseReturnItem(
             purchase_return_id=ret.id,
@@ -1962,6 +2012,8 @@ async def create_purchase_return(
             ret_qty = float(it.quantity_returned or 0)
             curr_stock = prod.initial_stock if prod.initial_stock is not None else 0
             prod.initial_stock = int(curr_stock - ret_qty)
+            u_cost = float(getattr(prod, "purchase_price", 0) or getattr(prod, "cost_price", 0) or 0)
+            total_debit_calc += (u_cost * ret_qty)
 
         from src.schemas.procurement import PurchaseReturnItemResponse
         created_items.append(
@@ -1972,17 +2024,60 @@ async def create_purchase_return(
                 quantity_returned=float(item.quantity_returned)
             )
         )
+
+    # 2. Automated Debit Note & Supplier Ledger Outstanding Reduction
+    final_amount = float(payload.total_amount or total_debit_calc)
+    dn_number = payload.debit_note_number or f"DN-{payload.return_number.replace('PRN-', '')}"
+    
+    if resolved_supp_id and final_amount > 0:
+        existing_dn = await db.scalar(
+            select(VendorDebitNote).where(
+                VendorDebitNote.tenant_id == ctx.tenant_id,
+                VendorDebitNote.note_number == dn_number
+            )
+        )
+        if not existing_dn:
+            dn = VendorDebitNote(
+                tenant_id=ctx.tenant_id,
+                company_id=ctx.active_company_id,
+                note_number=dn_number,
+                supplier_id=resolved_supp_id,
+                amount=final_amount,
+                status="Issued"
+            )
+            db.add(dn)
+
+        # If returning against a specific Vendor Bill, update its paid_amount & status
+        if payload.vendor_bill_id:
+            bill = await db.get(VendorBill, payload.vendor_bill_id)
+            if bill:
+                cur_paid = float(bill.paid_amount or 0.0)
+                tot_amt = float(bill.total_amount or 0.0)
+                new_paid = min(tot_amt, cur_paid + final_amount)
+                bill.paid_amount = new_paid
+                if new_paid >= tot_amt - 0.05:
+                    bill.status = "Paid"
+                else:
+                    bill.status = "Partially Paid"
         
     await db.commit()
     await db.refresh(ret)
     
     po = await db.get(PurchaseOrder, ret.purchase_order_id)
+    if not resolved_supp_name and po and po.supplier_id:
+        supp_obj = await db.get(Supplier, po.supplier_id)
+        if supp_obj:
+            resolved_supp_name = supp_obj.name
     
     return PurchaseReturnResponse(
         id=ret.id,
         return_number=ret.return_number,
         purchase_order_id=ret.purchase_order_id,
         po_number=po.po_number if po else None,
+        supplier_id=resolved_supp_id,
+        supplier_name=resolved_supp_name,
+        debit_note_number=dn_number if final_amount > 0 else None,
+        total_amount=final_amount,
         return_date=ret.return_date,
         reason=ret.reason,
         status=ret.status,

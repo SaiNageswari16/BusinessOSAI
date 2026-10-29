@@ -520,8 +520,13 @@ export function PosPaymentIn() {
             return String(a.id || "").localeCompare(String(b.id || ""), undefined, { numeric: true });
           });
 
-        // Only add an opening balance row if party has an explicit legacy opening balance
-        const explicitOpening = Number(party.opening_balance || 0);
+        // Only add an opening balance row if party has an explicit legacy opening balance or outstanding dues
+        const explicitOpening = Math.max(
+          Number(party.outstanding_balance ?? 0),
+          Number(party.opening_balance ?? 0),
+          Number(party.balance ?? 0),
+          Number(data?.total_pending_due ?? 0)
+        );
         const realSum = realInvoices.reduce((sum, inv) => sum + Number(inv.pending || 0), 0);
         const unrepresentedDue = Math.max(0, explicitOpening - realSum);
         if (unrepresentedDue > 0.05 && !finalPendingInvoices.some((inv: any) => String(inv.id).startsWith("OPN-") || inv.isOpeningBalance)) {

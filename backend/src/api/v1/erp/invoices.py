@@ -2038,22 +2038,38 @@ async def create_payment_settlement(
                                 or_(Invoice.invoice_type == "opening_balance", Invoice.invoice_number.startswith("OPN-"))
                             )
                         )
-                        if op_inv:
-                            payment = InvoicePayment(
+                        if not op_inv:
+                            op_inv = Invoice(
                                 tenant_id=ctx.tenant_id,
-                                invoice_id=op_inv.id,
-                                payment_date=pay_date,
-                                payment_method=pay_method.lower(),
-                                amount=apply_amt,
-                                reference_number=voucher_num,
-                                notes=payload.notes or f"Voucher #{voucher_num} settlement on Opening Balance",
+                                customer_id=cust.id,
+                                customer_name=cust.name,
+                                customer_phone=cust.phone,
+                                invoice_number=f"OPN-{str(cust.id)[:6].upper()}",
+                                invoice_type="opening_balance",
+                                total_amount=curr_bal,
+                                amount_paid=0.0,
+                                balance_due=curr_bal,
+                                status="unpaid",
+                                invoice_date=clock.today(),
                             )
-                            db.add(payment)
-                            op_new_paid = round(float(op_inv.amount_paid or 0) + apply_amt, 2)
-                            op_new_due = round(max(0.0, float(op_inv.total_amount or 0) - op_new_paid), 2)
-                            op_inv.amount_paid = op_new_paid
-                            op_inv.balance_due = op_new_due
-                            op_inv.status = "paid" if op_new_due <= 0.05 else "partially_paid"
+                            db.add(op_inv)
+                            await db.flush()
+
+                        payment = InvoicePayment(
+                            tenant_id=ctx.tenant_id,
+                            invoice_id=op_inv.id,
+                            payment_date=pay_date,
+                            payment_method=pay_method.lower(),
+                            amount=apply_amt,
+                            reference_number=voucher_num,
+                            notes=payload.notes or f"Voucher #{voucher_num} settlement on Opening Balance",
+                        )
+                        db.add(payment)
+                        op_new_paid = round(float(op_inv.amount_paid or 0) + apply_amt, 2)
+                        op_new_due = round(max(0.0, float(op_inv.total_amount or 0) - op_new_paid), 2)
+                        op_inv.amount_paid = op_new_paid
+                        op_inv.balance_due = op_new_due
+                        op_inv.status = "paid" if op_new_due <= 0.05 else "partially_paid"
                         
                         total_allocated += apply_amt
                         covered.append({

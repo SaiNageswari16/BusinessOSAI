@@ -418,7 +418,14 @@ class PurchaseReturnItemResponse(PurchaseReturnItemBase):
 
 class PurchaseReturnBase(BaseModel):
     return_number: str = Field(..., max_length=100)
-    purchase_order_id: uuid.UUID
+    purchase_order_id: Optional[uuid.UUID] = None
+    supplier_id: Optional[uuid.UUID] = None
+    supplier_name: Optional[str] = None
+    vendor_bill_id: Optional[uuid.UUID] = None
+    vendor_bill_number: Optional[str] = None
+    debit_note_number: Optional[str] = None
+    settlement_method: Optional[str] = "debit_note"
+    total_amount: Optional[float] = 0.0
     return_date: Optional[datetime] = None
     reason: Optional[str] = None
     status: Optional[str] = "Pending"
@@ -426,7 +433,13 @@ class PurchaseReturnBase(BaseModel):
 
 class PurchaseReturnCreate(BaseModel):
     return_number: str
-    purchase_order_id: uuid.UUID
+    purchase_order_id: Optional[uuid.UUID] = None
+    supplier_id: Optional[uuid.UUID] = None
+    supplier_name: Optional[str] = None
+    vendor_bill_id: Optional[uuid.UUID] = None
+    debit_note_number: Optional[str] = None
+    settlement_method: Optional[str] = "debit_note"
+    total_amount: Optional[float] = 0.0
     reason: Optional[str] = None
     items: List[PurchaseReturnItemCreate]
 

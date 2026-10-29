@@ -85,6 +85,9 @@ export interface InvoiceSettings {
   b2bPrefix?: string;
   b2bSequenceNumber?: number;
   b2bPadding?: number;
+  wholesalePrefix?: string;
+  wholesaleSequenceNumber?: number;
+  wholesalePadding?: number;
   b2cPrefix?: string;
   b2cSequenceNumber?: number;
   b2cPadding?: number;
@@ -145,6 +148,9 @@ export const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
   b2bPrefix: "B2B-",
   b2bSequenceNumber: 1,
   b2bPadding: 4,
+  wholesalePrefix: "WS-",
+  wholesaleSequenceNumber: 1,
+  wholesalePadding: 4,
   b2cPrefix: "INV-",
   b2cSequenceNumber: 1,
   b2cPadding: 4,
@@ -1435,6 +1441,53 @@ export function InvoiceQuickSettingsModal({
                               value={draftSettings.b2bPadding ?? 4}
                               onChange={(e) => setDraftSettings(prev => ({ ...prev, b2bPadding: parseInt(e.target.value, 10) || 4 }))}
                               className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2 text-xs font-bold text-slate-800 outline-none focus:border-purple-500"
+                            >
+                              <option value={4}>4 Digits (e.g. 0001)</option>
+                              <option value={5}>5 Digits (e.g. 00001)</option>
+                              <option value={6}>6 Digits (e.g. 000001)</option>
+                              <option value={3}>3 Digits (e.g. 001)</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Wholesale Invoice Series */}
+                      <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                            <span>📦 Wholesale Invoice Series</span>
+                          </span>
+                          <span className="font-mono text-xs font-bold text-blue-700 bg-white px-2 py-0.5 rounded border border-blue-200">
+                            {(draftSettings.wholesalePrefix || "WS-")}{String(draftSettings.wholesaleSequenceNumber || 1).padStart(draftSettings.wholesalePadding ?? 4, "0")}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 block mb-1">Wholesale Prefix</label>
+                            <input
+                              type="text"
+                              value={draftSettings.wholesalePrefix !== undefined ? draftSettings.wholesalePrefix : "WS-"}
+                              onChange={(e) => setDraftSettings(prev => ({ ...prev, wholesalePrefix: e.target.value.toUpperCase() }))}
+                              placeholder="WS-"
+                              className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 block mb-1">Next Wholesale Number</label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={draftSettings.wholesaleSequenceNumber ?? 1}
+                              onChange={(e) => setDraftSettings(prev => ({ ...prev, wholesaleSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) }))}
+                              className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 block mb-1">Digits Padding</label>
+                            <select
+                              value={draftSettings.wholesalePadding ?? 4}
+                              onChange={(e) => setDraftSettings(prev => ({ ...prev, wholesalePadding: parseInt(e.target.value, 10) || 4 }))}
+                              className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
                             >
                               <option value={4}>4 Digits (e.g. 0001)</option>
                               <option value={5}>5 Digits (e.g. 00001)</option>
