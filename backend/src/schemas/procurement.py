@@ -564,6 +564,9 @@ class VendorCreditNoteBase(BaseModel):
     supplier_id: uuid.UUID
     amount: float
     status: Optional[str] = "Unapplied"
+    reference_number: Optional[str] = None
+    vendor_bill_id: Optional[uuid.UUID] = None
+    notes: Optional[str] = None
 
 
 class VendorCreditNoteCreate(VendorCreditNoteBase):
@@ -573,6 +576,7 @@ class VendorCreditNoteCreate(VendorCreditNoteBase):
 class VendorCreditNoteResponse(VendorCreditNoteBase):
     id: uuid.UUID
     supplier_name: Optional[str] = None
+    bill_number: Optional[str] = None
     created_at: Optional[datetime] = None
 
     class Config:
@@ -584,6 +588,9 @@ class VendorDebitNoteBase(BaseModel):
     supplier_id: uuid.UUID
     amount: float
     status: Optional[str] = "Draft"
+    reference_number: Optional[str] = None
+    vendor_bill_id: Optional[uuid.UUID] = None
+    notes: Optional[str] = None
 
 
 class VendorDebitNoteCreate(VendorDebitNoteBase):
@@ -593,6 +600,7 @@ class VendorDebitNoteCreate(VendorDebitNoteBase):
 class VendorDebitNoteResponse(VendorDebitNoteBase):
     id: uuid.UUID
     supplier_name: Optional[str] = None
+    bill_number: Optional[str] = None
     created_at: Optional[datetime] = None
 
     class Config:

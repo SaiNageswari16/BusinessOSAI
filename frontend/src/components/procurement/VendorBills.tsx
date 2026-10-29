@@ -44,6 +44,8 @@ export function VendorBills() {
   const { currency, formatCurrency } = useCurrency();
   const { tenant } = useTenant();
   const [bills, setBills] = useState<any[]>([]);
+  const [debitNotes, setDebitNotes] = useState<any[]>([]);
+  const [creditNotes, setCreditNotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateMode, setIsCreateMode] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
@@ -118,8 +120,14 @@ export function VendorBills() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await inventoryApi.getVendorBills();
+      const [res, dnRes, cnRes] = await Promise.all([
+        inventoryApi.getVendorBills().catch(() => []),
+        inventoryApi.getVendorDebitNotes().catch(() => []),
+        inventoryApi.getVendorCreditNotes().catch(() => []),
+      ]);
       setBills(res || []);
+      setDebitNotes(dnRes || []);
+      setCreditNotes(cnRes || []);
     } catch (err: any) {
       toast.error(err.message || "Failed to load vendor bills");
     } finally {
@@ -233,7 +241,12 @@ export function VendorBills() {
 
       // 2. Status Filter
       if (statusFilter !== "all") {
-        if ((b.status || "Unpaid").toLowerCase() !== statusFilter.toLowerCase()) {
+        if (statusFilter === "has_notes") {
+          const k1 = (b.bill_number || "").toLowerCase().trim();
+          const k2 = (b.id || "").toLowerCase().trim();
+          const ni = notesMap.get(k1) || notesMap.get(k2);
+          if (!ni || (ni.totalDebit === 0 && ni.totalCredit === 0)) return false;
+        } else if ((b.status || "Unpaid").toLowerCase() !== statusFilter.toLowerCase()) {
           return false;
         }
       }
@@ -292,6 +305,41 @@ export function VendorBills() {
       return 0;
     });
   }, [bills, searchQuery, statusFilter, matchFilter, minAmount, maxAmount, startDate, endDate, sortBy]);
+
+  // Map linked debit and credit notes by bill number & bill id
+  const notesMap = useMemo(() => {
+    const map = new Map<string, { debitNotes: any[]; creditNotes: any[]; totalDebit: number; totalCredit: number }>();
+    
+    (debitNotes || []).forEach((dn: any) => {
+      const keys = [
+        (dn.bill_number || "").toLowerCase().trim(),
+        (dn.reference_number || "").toLowerCase().trim(),
+        (dn.vendor_bill_id || "").toLowerCase().trim(),
+      ].filter(Boolean);
+      keys.forEach((k) => {
+        const item = map.get(k) || { debitNotes: [], creditNotes: [], totalDebit: 0, totalCredit: 0 };
+        item.debitNotes.push(dn);
+        item.totalDebit += Number(dn.amount || 0);
+        map.set(k, item);
+      });
+    });
+
+    (creditNotes || []).forEach((cn: any) => {
+      const keys = [
+        (cn.bill_number || "").toLowerCase().trim(),
+        (cn.reference_number || "").toLowerCase().trim(),
+        (cn.vendor_bill_id || "").toLowerCase().trim(),
+      ].filter(Boolean);
+      keys.forEach((k) => {
+        const item = map.get(k) || { debitNotes: [], creditNotes: [], totalDebit: 0, totalCredit: 0 };
+        item.creditNotes.push(cn);
+        item.totalCredit += Number(cn.amount || 0);
+        map.set(k, item);
+      });
+    });
+
+    return map;
+  }, [debitNotes, creditNotes]);
 
   const paginatedBills = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -678,7 +726,35 @@ export function VendorBills() {
                 paginatedBills.map((b: any) => (
                   <tr key={b.id} className="hover:bg-muted/30 transition-colors">
                     <td className="py-4 px-6 font-mono font-bold text-primary">
-                      {b.bill_number || b.id.slice(0, 8)}
+                      <div className="flex flex-col gap-1 items-start">
+                        <span>{b.bill_number || b.id.slice(0, 8)}</span>
+                        {(() => {
+                          const k1 = (b.bill_number || "").toLowerCase().trim();
+                          const k2 = (b.id || "").toLowerCase().trim();
+                          const ni = notesMap.get(k1) || notesMap.get(k2);
+                          if (!ni || (ni.totalDebit === 0 && ni.totalCredit === 0)) return null;
+                          return (
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {ni.totalDebit > 0 && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200"
+                                  title={`Linked Debit Notes: -${currency.symbol}${ni.totalDebit}`}
+                                >
+                                  <RotateCcw className="size-2.5" /> DN: -{currency.symbol}{ni.totalDebit.toLocaleString("en-IN")}
+                                </span>
+                              )}
+                              {ni.totalCredit > 0 && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  title={`Linked Credit Notes: +${currency.symbol}${ni.totalCredit}`}
+                                >
+                                  <FileCheck className="size-2.5" /> CN: +{currency.symbol}{ni.totalCredit.toLocaleString("en-IN")}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </td>
                     <td className="py-4 px-6">
                       <div className="flex flex-col gap-0.5">
@@ -738,6 +814,24 @@ export function VendorBills() {
                     </td>
                     <td className="py-4 px-6 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.location.href = `/procurement?tab=debit_notes&bill_id=${b.id}`}
+                          className="h-8 px-2 gap-1 font-bold rounded-lg border-rose-200 text-rose-700 bg-rose-50/50 hover:bg-rose-100 shadow-2xs"
+                          title="Issue Debit Note against this Purchase Invoice"
+                        >
+                          <RotateCcw className="size-3 text-rose-600" /> DN
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.location.href = `/procurement?tab=credit_notes&bill_id=${b.id}`}
+                          className="h-8 px-2 gap-1 font-bold rounded-lg border-emerald-200 text-emerald-700 bg-emerald-50/50 hover:bg-emerald-100 shadow-2xs"
+                          title="Record Vendor Credit Note against this Purchase Invoice"
+                        >
+                          <FileCheck className="size-3 text-emerald-600" /> CN
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"

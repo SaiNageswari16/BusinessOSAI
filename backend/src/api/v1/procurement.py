@@ -3097,23 +3097,35 @@ async def list_credit_notes(
                 )
             )
         else:
-            query = select(VendorCreditNote).where(VendorCreditNote.company_id == ctx.active_company_id)
+            query = select(VendorCreditNote).where(
+                or_(
+                    VendorCreditNote.company_id == ctx.active_company_id,
+                    and_(VendorCreditNote.tenant_id == ctx.tenant_id, VendorCreditNote.company_id == None)
+                )
+            )
     else:
         query = select(VendorCreditNote).where(VendorCreditNote.tenant_id == ctx.tenant_id)
+    query = query.order_by(VendorCreditNote.created_at.desc())
     res = await db.execute(query)
     notes = res.scalars().all()
     
     responses = []
     for cn in notes:
-        supp = await db.get(Supplier, cn.supplier_id)
+        supp = await db.get(Supplier, cn.supplier_id) if cn.supplier_id else None
+        bill = await db.get(VendorBill, cn.vendor_bill_id) if cn.vendor_bill_id else None
+        resolved_bill_no = bill.bill_number if bill else cn.reference_number
         responses.append(
             VendorCreditNoteResponse(
                 id=cn.id,
                 note_number=cn.note_number,
-                supplier_id=cn.supplier_id,
-                supplier_name=supp.name if supp else "Unknown",
+                supplier_id=cn.supplier_id or uuid.UUID(int=0),
+                supplier_name=supp.name if supp else (bill.supplier_name if bill and hasattr(bill, "supplier_name") else "Vendor / Supplier"),
                 amount=float(cn.amount),
-                status=cn.status,
+                status=cn.status or "Unapplied",
+                reference_number=cn.reference_number or resolved_bill_no,
+                vendor_bill_id=cn.vendor_bill_id,
+                bill_number=resolved_bill_no,
+                notes=cn.notes,
                 created_at=cn.created_at
             )
         )
@@ -3126,26 +3138,45 @@ async def create_credit_note(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    # If bill ID provided, verify and resolve supplier if missing
+    resolved_supp_id = payload.supplier_id
+    resolved_bill_no = payload.reference_number
+    if payload.vendor_bill_id:
+        bill = await db.get(VendorBill, payload.vendor_bill_id)
+        if bill:
+            resolved_bill_no = bill.bill_number
+            if not resolved_supp_id and bill.purchase_order_id:
+                po = await db.get(PurchaseOrder, bill.purchase_order_id)
+                if po and po.supplier_id:
+                    resolved_supp_id = po.supplier_id
+
     cn = VendorCreditNote(
         tenant_id=ctx.tenant_id,
         company_id=ctx.active_company_id,
         note_number=payload.note_number,
-        supplier_id=payload.supplier_id,
+        supplier_id=resolved_supp_id,
         amount=payload.amount,
-        status="Unapplied"
+        status=payload.status or "Unapplied",
+        reference_number=resolved_bill_no,
+        vendor_bill_id=payload.vendor_bill_id,
+        notes=payload.notes
     )
     db.add(cn)
     await db.commit()
     await db.refresh(cn)
     
-    supp = await db.get(Supplier, cn.supplier_id)
+    supp = await db.get(Supplier, cn.supplier_id) if cn.supplier_id else None
     return VendorCreditNoteResponse(
         id=cn.id,
         note_number=cn.note_number,
-        supplier_id=cn.supplier_id,
-        supplier_name=supp.name if supp else "Unknown",
+        supplier_id=cn.supplier_id or uuid.UUID(int=0),
+        supplier_name=supp.name if supp else "Vendor / Supplier",
         amount=float(cn.amount),
         status=cn.status,
+        reference_number=cn.reference_number,
+        vendor_bill_id=cn.vendor_bill_id,
+        bill_number=resolved_bill_no,
+        notes=cn.notes,
         created_at=cn.created_at
     )
 
@@ -3164,26 +3195,86 @@ async def list_debit_notes(
                 )
             )
         else:
-            query = select(VendorDebitNote).where(VendorDebitNote.company_id == ctx.active_company_id)
+            query = select(VendorDebitNote).where(
+                or_(
+                    VendorDebitNote.company_id == ctx.active_company_id,
+                    and_(VendorDebitNote.tenant_id == ctx.tenant_id, VendorDebitNote.company_id == None)
+                )
+            )
     else:
         query = select(VendorDebitNote).where(VendorDebitNote.tenant_id == ctx.tenant_id)
+    query = query.order_by(VendorDebitNote.created_at.desc())
     res = await db.execute(query)
     notes = res.scalars().all()
     
     responses = []
+    seen_dn_numbers = set()
     for dn in notes:
-        supp = await db.get(Supplier, dn.supplier_id)
+        seen_dn_numbers.add(dn.note_number)
+        supp = await db.get(Supplier, dn.supplier_id) if dn.supplier_id else None
+        bill = await db.get(VendorBill, dn.vendor_bill_id) if dn.vendor_bill_id else None
+        resolved_bill_no = bill.bill_number if bill else dn.reference_number
         responses.append(
             VendorDebitNoteResponse(
                 id=dn.id,
                 note_number=dn.note_number,
-                supplier_id=dn.supplier_id,
-                supplier_name=supp.name if supp else "Unknown",
+                supplier_id=dn.supplier_id or uuid.UUID(int=0),
+                supplier_name=supp.name if supp else (bill.supplier_name if bill and hasattr(bill, "supplier_name") else "Vendor / Supplier"),
                 amount=float(dn.amount),
-                status=dn.status,
+                status=dn.status or "Issued",
+                reference_number=dn.reference_number or resolved_bill_no,
+                vendor_bill_id=dn.vendor_bill_id,
+                bill_number=resolved_bill_no,
+                notes=dn.notes,
                 created_at=dn.created_at
             )
         )
+
+    # Automatically aggregate Debit Notes from Purchase Returns so returns are NEVER lost
+    try:
+        ret_query = select(PurchaseReturn).where(PurchaseReturn.tenant_id == ctx.tenant_id)
+        if ctx.active_company_id and not ctx.is_primary_company:
+            ret_query = ret_query.where(
+                or_(PurchaseReturn.company_id == ctx.active_company_id, PurchaseReturn.company_id == None)
+            )
+        ret_res = await db.execute(ret_query)
+        purchase_returns = ret_res.scalars().all()
+        for pret in purchase_returns:
+            synth_dn_no = f"DN-{pret.return_number.replace('PRN-', '')}"
+            if synth_dn_no not in seen_dn_numbers:
+                seen_dn_numbers.add(synth_dn_no)
+                po = await db.get(PurchaseOrder, pret.purchase_order_id) if pret.purchase_order_id else None
+                supp = await db.get(Supplier, po.supplier_id) if (po and po.supplier_id) else None
+                
+                # Fetch items to compute return amount
+                items_res = await db.execute(
+                    select(PurchaseReturnItem).where(PurchaseReturnItem.purchase_return_id == pret.id)
+                )
+                items_list = items_res.scalars().all()
+                calc_val = 0.0
+                for pit in items_list:
+                    prod = await db.get(Product, pit.product_id)
+                    pcost = float(getattr(prod, "purchase_price", 0) or getattr(prod, "cost_price", 0) or 0)
+                    calc_val += pcost * float(pit.quantity_returned or 0)
+
+                responses.append(
+                    VendorDebitNoteResponse(
+                        id=pret.id,
+                        note_number=synth_dn_no,
+                        supplier_id=supp.id if supp else uuid.UUID(int=0),
+                        supplier_name=supp.name if supp else "Vendor / Supplier",
+                        amount=float(calc_val or 0.0),
+                        status="Issued",
+                        reference_number=f"Return #{pret.return_number}",
+                        vendor_bill_id=None,
+                        bill_number=po.po_number if po else f"Return #{pret.return_number}",
+                        notes=pret.reason or f"Automated Debit Note for Purchase Return #{pret.return_number}",
+                        created_at=pret.created_at
+                    )
+                )
+    except Exception as e:
+        logger.warning(f"Failed to aggregate debit notes from returns: {e}")
+
     return responses
 
 
@@ -3193,26 +3284,44 @@ async def create_debit_note(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    resolved_supp_id = payload.supplier_id
+    resolved_bill_no = payload.reference_number
+    if payload.vendor_bill_id:
+        bill = await db.get(VendorBill, payload.vendor_bill_id)
+        if bill:
+            resolved_bill_no = bill.bill_number
+            if not resolved_supp_id and bill.purchase_order_id:
+                po = await db.get(PurchaseOrder, bill.purchase_order_id)
+                if po and po.supplier_id:
+                    resolved_supp_id = po.supplier_id
+
     dn = VendorDebitNote(
         tenant_id=ctx.tenant_id,
         company_id=ctx.active_company_id,
         note_number=payload.note_number,
-        supplier_id=payload.supplier_id,
+        supplier_id=resolved_supp_id,
         amount=payload.amount,
-        status="Draft"
+        status=payload.status or "Draft",
+        reference_number=resolved_bill_no,
+        vendor_bill_id=payload.vendor_bill_id,
+        notes=payload.notes
     )
     db.add(dn)
     await db.commit()
     await db.refresh(dn)
     
-    supp = await db.get(Supplier, dn.supplier_id)
+    supp = await db.get(Supplier, dn.supplier_id) if dn.supplier_id else None
     return VendorDebitNoteResponse(
         id=dn.id,
         note_number=dn.note_number,
-        supplier_id=dn.supplier_id,
-        supplier_name=supp.name if supp else "Unknown",
+        supplier_id=dn.supplier_id or uuid.UUID(int=0),
+        supplier_name=supp.name if supp else "Vendor / Supplier",
         amount=float(dn.amount),
         status=dn.status,
+        reference_number=dn.reference_number,
+        vendor_bill_id=dn.vendor_bill_id,
+        bill_number=resolved_bill_no,
+        notes=dn.notes,
         created_at=dn.created_at
     )
 
