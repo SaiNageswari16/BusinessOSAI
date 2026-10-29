@@ -1716,9 +1716,56 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           </div>
         </div>
 
-        {/* Top Header Mode Tabs for PINV */}
-        {docType === "PINV" && (
-          <div className="flex items-center gap-2.5 shrink-0">
+        {/* Right side controls: Upload OCR button + Mode Tabs */}
+        <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+          {/* Sleek Professional OCR Document Upload Option in Header */}
+          <div className="relative">
+            <input
+              type="file"
+              id="header-ocr-upload-input"
+              className="hidden"
+              accept=".pdf,.jpg,.jpeg,.png"
+              onChange={handleOcrUpload}
+              disabled={isExtracting}
+            />
+
+            {isExtracting ? (
+              <div className="h-9 px-3.5 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center gap-2 shadow-2xs">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600 shrink-0" />
+                <span className="text-xs font-bold text-indigo-700">AI Extracting...</span>
+              </div>
+            ) : ocrResult && ocrResult.extracted ? (
+              <div className="h-9 px-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center gap-2 shadow-2xs">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="text-xs font-bold text-emerald-800 max-w-[130px] truncate" title={ocrFile?.name || "Extracted"}>
+                  {ocrFile?.name || "OCR Extracted"}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleClearOcr}
+                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                  title="Clear uploaded document"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <label
+                htmlFor="header-ocr-upload-input"
+                className="group inline-flex items-center gap-2 h-9 px-3.5 bg-white hover:bg-indigo-50/70 border border-indigo-200/90 hover:border-indigo-400 rounded-xl shadow-2xs text-xs font-bold text-indigo-700 hover:text-indigo-900 transition-all cursor-pointer active:scale-95"
+                title="Upload PDF or image to auto-extract line items, supplier, tax, and totals"
+              >
+                <Upload className="w-3.5 h-3.5 text-indigo-600 group-hover:-translate-y-0.5 transition-transform" />
+                <span>Upload Bill (OCR)</span>
+                <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md hidden sm:inline">
+                  Auto-Fill
+                </span>
+              </label>
+            )}
+          </div>
+
+          {/* Top Header Mode Tabs for PINV */}
+          {docType === "PINV" && (
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/90 shadow-2xs">
               <button
                 type="button"
@@ -1745,8 +1792,8 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                 <span>🔗 Link PO & GRN (3-Way)</span>
               </button>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Linked Sourcing Sync Card for PO */}
@@ -1870,83 +1917,9 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         </div>
       )}
 
-      {/* OCR Upload Section */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-3.5 sm:p-4">
-        <div className="flex items-center gap-2 mb-2.5">
-          <div className="p-1.5 bg-indigo-100 rounded-lg">
-            <ScanLine className="w-4 h-4 text-indigo-600" />
-          </div>
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-            Upload Document for {docType === "PO" ? "Purchase Order (PO)" : docType === "PINV" ? "Purchase Invoice (Tax Invoice / Bill)" : "Goods Received Note (GRN)"}
-          </h2>
-          <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-            OCR Auto-Extract
-          </span>
-        </div>
-
-        <div className="flex items-start gap-3">
-          {/* Upload area */}
-          <div className="flex-1">
-            <label className="flex flex-col items-center justify-center w-full h-20 sm:h-22 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/50 transition-all bg-slate-50/50">
-              <div className="flex flex-col items-center justify-center pt-2 pb-2">
-                <Upload className="w-5 h-5 text-slate-400 mb-0.5" />
-                <p className="text-xs font-medium text-slate-500">
-                  {ocrFile ? ocrFile.name : "Drop a PO/GRN document here or click to browse"}
-                </p>
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  Supports PDF, JPG, PNG (Max 10MB)
-                </p>
-              </div>
-              <input
-                type="file"
-                className="hidden"
-                accept=".pdf,.jpg,.jpeg,.png"
-                onChange={handleOcrUpload}
-                disabled={isExtracting}
-              />
-            </label>
-          </div>
-
-          {/* OCR Status / Actions */}
-          <div className="flex flex-col gap-2 min-w-[160px]">
-            {isExtracting && (
-              <div className="flex items-center gap-2.5 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 shadow-sm">
-                <Loader2 className="w-4 h-4 animate-spin text-indigo-600 flex-shrink-0" />
-                <div className="flex flex-col">
-                  <span className="text-xs font-semibold text-indigo-700">Extracting All Bill Details...</span>
-                  <span className="text-[10px] text-indigo-500">Running in background. You can continue working.</span>
-                </div>
-              </div>
-            )}
-            {ocrResult && !isExtracting && (
-              <div className="flex flex-col gap-1">
-                <div className={`flex items-center gap-2 rounded-lg px-3 py-2 ${ocrResult.extracted ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}>
-                  {ocrResult.extracted ? (
-                    <><CheckCircle className="w-4 h-4 text-green-600" />
-                      <span className="text-[11px] font-bold text-green-700">Extracted</span></>
-                  ) : (
-                    <><AlertCircle className="w-4 h-4 text-amber-600" />
-                      <span className="text-[11px] font-bold text-amber-700">Partial</span></>
-                  )}
-                </div>
-                {ocrResult.confidence && (
-                  <span className="text-[10px] text-slate-500 pl-1">
-                    Confidence: {Math.round(ocrResult.confidence * 100)}%
-                  </span>
-                )}
-                <button
-                  onClick={handleClearOcr}
-                  className="text-[10px] font-bold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-2 py-1 transition-all"
-                >
-                  Clear OCR
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* OCR Result Preview & Multi-Invoice Picker */}
-        {ocrResult && ocrResult.extracted && (
+      {/* OCR Result Preview & Multi-Invoice Picker (shown when document is extracted) */}
+      {ocrResult && ocrResult.extracted && (
+        <div className="bg-white rounded-2xl border border-indigo-200/90 shadow-2xs p-3.5 sm:p-4 space-y-3 animate-in fade-in">
           <div className="mt-4 space-y-3">
             {/* Multi-Invoice Selector if document has multiple invoices / pages */}
             {ocrResult.invoices && ocrResult.invoices.length > 1 && (
@@ -2043,8 +2016,8 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* PO Status Update (Editing Existing PO) */}
       {docType === "PO" && initialData?.id && (
