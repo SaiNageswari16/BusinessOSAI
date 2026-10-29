@@ -2828,7 +2828,15 @@ async def list_all_payments(
     customer_id: str | None = None,
 ):
     query = (
-        select(InvoicePayment, Invoice.customer_name, Invoice.customer_id, Invoice.invoice_number)
+        select(
+            InvoicePayment,
+            Invoice.customer_name,
+            Invoice.customer_id,
+            Invoice.invoice_number,
+            Invoice.total_amount,
+            Invoice.amount_paid,
+            Invoice.balance_due,
+        )
         .join(Invoice, InvoicePayment.invoice_id == Invoice.id)
         .where(InvoicePayment.tenant_id == ctx.tenant_id)
         .order_by(InvoicePayment.created_at.desc())
@@ -2846,8 +2854,13 @@ async def list_all_payments(
     result = await db.execute(query.offset((page - 1) * page_size).limit(page_size))
     items = []
     seen_invoice_ids = set()
-    for payment, c_name, c_id, inv_num in result.all():
+    for payment, c_name, c_id, inv_num, inv_total, inv_paid, inv_bal_due in result.all():
+
         seen_invoice_ids.add(str(payment.invoice_id))
+        inv_tot = float(inv_total or 0.0)
+        inv_p = float(inv_paid or 0.0)
+        calculated_due = float(inv_bal_due) if inv_bal_due is not None else max(0.0, inv_tot - inv_p)
+
         items.append({
             "id": str(payment.id),
             "invoice_id": str(payment.invoice_id),
@@ -2857,6 +2870,10 @@ async def list_all_payments(
             "party_name": c_name or "Unknown Party",
             "party_id": str(c_id) if c_id else "CUST-000",
             "invoice_number": inv_num,
+            "total_amount": inv_tot,
+            "amount_paid": inv_p,
+            "balance_due": calculated_due,
+            "due_amount": calculated_due,
             "payment_number": payment.reference_number or f"PAY-{str(payment.id)[:6].upper()}",
             "reference_number": payment.reference_number,
             "notes": payment.notes or f"Payment for invoice {inv_num}",
@@ -2883,6 +2900,9 @@ async def list_all_payments(
     )
     for inv in inv_res.all():
         if str(inv.id) not in seen_invoice_ids:
+            inv_tot = float(inv.total_amount or 0.0)
+            inv_p = float(inv.amount_paid or 0.0)
+            calculated_due = float(inv.balance_due) if inv.balance_due is not None else max(0.0, inv_tot - inv_p)
             items.append({
                 "id": f"inv_init_{inv.id}",
                 "invoice_id": str(inv.id),
@@ -2892,6 +2912,10 @@ async def list_all_payments(
                 "party_name": inv.customer_name or "Customer",
                 "party_id": str(inv.customer_id) if inv.customer_id else "CUST-000",
                 "invoice_number": inv.invoice_number,
+                "total_amount": inv_tot,
+                "amount_paid": inv_p,
+                "balance_due": calculated_due,
+                "due_amount": calculated_due,
                 "payment_number": f"REC-{inv.invoice_number}",
                 "reference_number": inv.invoice_number,
                 "notes": f"Payment on Invoice #{inv.invoice_number}",
