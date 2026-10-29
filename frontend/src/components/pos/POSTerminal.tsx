@@ -2542,7 +2542,6 @@ function PosTerminalInner() {
             className="h-7 w-auto object-contain group-hover:scale-105 transition-transform"
           />
         </div>
-        </div>
 
         {/* Navigation Tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">

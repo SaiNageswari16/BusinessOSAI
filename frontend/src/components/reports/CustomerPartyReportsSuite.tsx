@@ -359,7 +359,6 @@ export function CustomerPartyReportsSuite({
           inventoryApi.getSuppliers(),
           inventoryApi.getVendorBills(),
         ]);
-        ]);
 
         let dbCustomers: any[] = [];
         if (crmRes.status === "fulfilled" && crmRes.value) {
@@ -661,9 +660,6 @@ export function CustomerPartyReportsSuite({
                   overdue30Plus: due,
                 });
               }
-            }
-          }
-        });
             }
           }
         });
