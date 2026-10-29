@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Search, RefreshCw, Loader2, AlertCircle, Building2, CreditCard, ArrowUpRight, ArrowDownLeft, CheckCircle, Clock, ChevronRight, X, Save, Pencil } from "lucide-react";
+import { Plus, Search, RefreshCw, Loader2, AlertCircle, Building2, CreditCard, ArrowUpRight, ArrowDownLeft, CheckCircle, Clock, ChevronRight, X, Save, Pencil, Trash2 } from "lucide-react";
 import { bankApi, BankAccountRecord, BankTransaction, accountingApi, ChartOfAccount } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
+import { useTenant } from "@/contexts/tenant-context";
 import { formatCurrency } from "@/lib/utils";
 
 import { getActiveCurrency } from "@/lib/utils";
@@ -33,6 +34,7 @@ function BankAccountFormModal({
   onClose: () => void;
   onSaved: (savedAccount?: BankAccountRecord) => void;
 }) {
+  const { tenant } = useTenant();
   const isEditing = Boolean(account);
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
@@ -93,8 +95,10 @@ function BankAccountFormModal({
         toast.success("Bank Account updated successfully!");
         onSaved(updated);
       } else {
+        const activeCompanyId = tenant?.id || (typeof window !== "undefined" ? localStorage.getItem("bos_active_company_id") : null) || undefined;
         const created = await bankApi.createBankAccount({
           ...form,
+          company_id: activeCompanyId,
           name: form.name.trim(),
           account_holder_name: form.account_holder_name.trim() || undefined,
           bank_name: form.bank_name.trim(),
@@ -240,8 +244,12 @@ function BankAccountFormModal({
 // ─── Bank Accounts List ─────────────────────────────────────────────────────
 function BankAccountsTab() {
   const { t } = useI18n();
+  const { tenant } = useTenant();
   const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [accountToDelete, setAccountToDelete] = useState<BankAccountRecord | null>(null);
   const [, setCurrencyTick] = useState(0);
+
   useEffect(() => {
     const cb = () => setCurrencyTick(t => t + 1);
     window.addEventListener("bos-currency-changed", cb);
@@ -271,7 +279,8 @@ function BankAccountsTab() {
   const loadAccounts = useCallback(async (keepSelectedId?: string) => {
     setLoading(true);
     try {
-      const res = await bankApi.listBankAccounts({ page: 1, page_size: 50 });
+      const activeCid = tenant?.id || (typeof window !== "undefined" ? localStorage.getItem("bos_active_company_id") : null) || undefined;
+      const res = await bankApi.listBankAccounts({ page: 1, page_size: 50, company_id: activeCid });
       const items = res.items || [];
       setAccounts(items);
 
@@ -289,11 +298,37 @@ function BankAccountsTab() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tenant?.id]);
 
   useEffect(() => {
     loadAccounts();
+    const handleOrgChange = () => {
+      loadAccounts();
+    };
+    window.addEventListener("bos-company-changed", handleOrgChange);
+    window.addEventListener("bos-tenant-changed", handleOrgChange);
+    window.addEventListener("storage", handleOrgChange);
+    return () => {
+      window.removeEventListener("bos-company-changed", handleOrgChange);
+      window.removeEventListener("bos-tenant-changed", handleOrgChange);
+      window.removeEventListener("storage", handleOrgChange);
+    };
   }, [loadAccounts]);
+
+  const handleDeleteAccount = async (acc: BankAccountRecord) => {
+    setDeletingId(acc.id);
+    try {
+      await bankApi.deleteBankAccount(acc.id);
+      toast.success(`Bank account "${acc.name}" deleted successfully!`);
+      setAccountToDelete(null);
+      await loadAccounts();
+    } catch (err) {
+      console.error("Failed to delete bank account:", err);
+      toast.error("Failed to delete bank account");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   useEffect(() => {
     if (selected?.id) {
@@ -370,6 +405,17 @@ function BankAccountsTab() {
                       title="Edit Account Details"
                     >
                       <Pencil className="size-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAccountToDelete(acc);
+                      }}
+                      className="p-1 rounded-md hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors cursor-pointer"
+                      title="Delete Bank Account"
+                    >
+                      <Trash2 className="size-3.5" />
                     </button>
                   </div>
                 </div>
@@ -453,6 +499,15 @@ function BankAccountsTab() {
                     </button>
                     <button
                       type="button"
+                      onClick={() => setAccountToDelete(selected)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600 transition-colors cursor-pointer"
+                      title="Delete this Bank Account"
+                    >
+                      <Trash2 className="size-3.5 text-red-600" />
+                      <span>Delete</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => handleSelectAccount(selected)}
                       className="p-2 hover:bg-muted/50 rounded-lg transition-colors cursor-pointer"
                       title="Refresh Transactions"
@@ -529,6 +584,43 @@ function BankAccountsTab() {
               }
             }}
           />
+        )}
+        {accountToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-card border rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-red-100 dark:bg-red-950/50 rounded-xl text-red-600">
+                  <Trash2 className="size-6" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-foreground">Delete Bank Account</h3>
+                  <p className="text-xs text-muted-foreground">This action cannot be undone</p>
+                </div>
+              </div>
+              <p className="text-sm text-foreground/80 leading-relaxed">
+                Are you sure you want to delete bank account <span className="font-bold text-foreground">"{accountToDelete.name}"</span> ({accountToDelete.bank_name || "Bank"} - {accountToDelete.account_number || "No A/C"})?
+              </p>
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/50">
+                <button
+                  type="button"
+                  onClick={() => setAccountToDelete(null)}
+                  className="px-4 py-2 border rounded-lg text-xs font-bold hover:bg-muted cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(deletingId)}
+                  onClick={() => handleDeleteAccount(accountToDelete)}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {deletingId ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+                  <span>{deletingId ? "Deleting..." : "Yes, Delete Account"}</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

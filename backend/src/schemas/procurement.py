@@ -1,5 +1,5 @@
 import uuid
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -584,3 +584,37 @@ class VendorDebitNoteResponse(VendorDebitNoteBase):
 
     class Config:
         from_attributes = True
+
+
+class PurchaseInvoiceSettingsPayload(BaseModel):
+    customSequenceEnabled: Optional[bool] = True
+    prefix: Optional[str] = "BILL-"
+    sequenceNumber: Optional[int] = 1
+    suffix: Optional[str] = ""
+    padding: Optional[int] = 4
+    poPrefix: Optional[str] = "PO-"
+    grnPrefix: Optional[str] = "GRN-"
+
+    showPoNumber: Optional[bool] = True
+    showGrnReference: Optional[bool] = True
+    showEwayBill: Optional[bool] = True
+    showVehicleNumber: Optional[bool] = True
+    showChallanNumber: Optional[bool] = True
+    showPaymentTerms: Optional[bool] = True
+    invoiceCustomFields: Optional[List[Dict[str, Any]]] = []
+
+    showHsn: Optional[bool] = True
+    showUom: Optional[bool] = True
+    showBatchNo: Optional[bool] = True
+    showExpDate: Optional[bool] = True
+    showMfgDate: Optional[bool] = False
+    showMrp: Optional[bool] = False
+    showSellPrice: Optional[bool] = False
+    showRate: Optional[bool] = True
+    showDiscount: Optional[bool] = True
+    showGstTax: Optional[bool] = True
+    showFreeQty: Optional[bool] = False
+    itemCustomColumns: Optional[List[Dict[str, Any]]] = []
+
+    defaultTerms: Optional[str] = None
+    defaultPaymentTerms: Optional[str] = None

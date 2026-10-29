@@ -4,7 +4,7 @@ from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, or_, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -44,8 +44,17 @@ async def list_bank_accounts(
     page_size: int = Query(20, ge=1, le=100),
     status_filter: str | None = Query(default=None, alias="status"),
     search: str | None = None,
+    company_id: uuid.UUID | None = Query(default=None),
 ):
     query = select(BankAccount).where(BankAccount.tenant_id == ctx.tenant_id)
+    target_cid = company_id or ctx.active_company_id
+    if target_cid:
+        query = query.where(
+            or_(
+                BankAccount.company_id == target_cid,
+                BankAccount.company_id.is_(None)
+            )
+        )
     if status_filter:
         query = query.where(BankAccount.status == status_filter)
     if search:
@@ -137,23 +146,32 @@ async def create_bank_account(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     from sqlalchemy import update
+    target_cid = payload.company_id or ctx.active_company_id
     existing_count = await db.scalar(
         select(func.count()).select_from(
-            select(BankAccount.id).where(BankAccount.tenant_id == ctx.tenant_id).subquery()
+            select(BankAccount.id).where(
+                BankAccount.tenant_id == ctx.tenant_id,
+                or_(BankAccount.company_id == target_cid, BankAccount.company_id.is_(None)) if target_cid else True
+            ).subquery()
         )
     )
     should_be_default = payload.is_default or (existing_count == 0)
 
     account_data = payload.model_dump()
+    if target_cid and not account_data.get("company_id"):
+        account_data["company_id"] = target_cid
     account_data["is_default"] = should_be_default
     account = BankAccount(tenant_id=ctx.tenant_id, **account_data)
     db.add(account)
     await db.flush()
 
     if should_be_default:
+        cond = [BankAccount.tenant_id == ctx.tenant_id, BankAccount.id != account.id]
+        if target_cid:
+            cond.append(or_(BankAccount.company_id == target_cid, BankAccount.company_id.is_(None)))
         await db.execute(
             update(BankAccount)
-            .where(BankAccount.tenant_id == ctx.tenant_id, BankAccount.id != account.id)
+            .where(*cond)
             .values(is_default=False)
         )
         await _sync_bank_to_settings(db, ctx.tenant_id, account)
@@ -173,6 +191,89 @@ async def create_bank_account(
     await db.commit()
     await db.refresh(account)
     return account
+
+
+@router.delete("/accounts/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_bank_account(
+    account_id: uuid.UUID,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:bank_accounts"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    account = await db.scalar(
+        select(BankAccount).where(
+            BankAccount.id == account_id, BankAccount.tenant_id == ctx.tenant_id
+        )
+    )
+    if not account:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+
+    from src.models import BankTransaction, Tenant, Company
+    from sqlalchemy.orm.attributes import flag_modified
+
+    # Delete any associated transactions
+    await db.execute(
+        delete(BankTransaction).where(BankTransaction.bank_account_id == account_id)
+    )
+
+    was_default = account.is_default
+    target_cid = account.company_id
+    await db.delete(account)
+    await db.flush()
+
+    if was_default:
+        next_account = await db.scalar(
+            select(BankAccount).where(
+                BankAccount.tenant_id == ctx.tenant_id,
+                or_(BankAccount.company_id == target_cid, BankAccount.company_id.is_(None)) if target_cid else True
+            ).order_by(BankAccount.created_at.desc())
+        )
+        if next_account:
+            next_account.is_default = True
+            await _sync_bank_to_settings(db, ctx.tenant_id, next_account)
+        else:
+            tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+            if tenant and tenant.settings:
+                t_settings = dict(tenant.settings)
+                inv_settings = dict(t_settings.get("invoice_settings") or {})
+                if inv_settings.get("default_bank_account_id") == str(account_id):
+                    inv_settings["default_bank_account_id"] = None
+                    inv_settings["bank_details"] = ""
+                    inv_settings["bank_name"] = ""
+                    inv_settings["bank_account"] = ""
+                    inv_settings["bank_ifsc"] = ""
+                    inv_settings["account_holder_name"] = ""
+                    inv_settings["upi_id"] = ""
+                    t_settings["invoice_settings"] = inv_settings
+                    tenant.settings = t_settings
+                    flag_modified(tenant, "settings")
+
+            if target_cid:
+                comp = await db.scalar(select(Company).where(Company.id == target_cid, Company.tenant_id == ctx.tenant_id))
+                if comp and comp.settings:
+                    c_settings = dict(comp.settings)
+                    c_settings["bank_details"] = ""
+                    c_settings["bank_name"] = ""
+                    c_settings["bank_account_number"] = ""
+                    c_settings["bank_ifsc"] = ""
+                    c_settings["account_holder_name"] = ""
+                    c_settings["upi_vpa"] = ""
+                    comp.settings = c_settings
+                    flag_modified(comp, "settings")
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="bank",
+        action="bank_account_deleted",
+        entity_type="bank_account",
+        entity_id=account_id,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+    return None
 
 
 @router.patch("/accounts/{account_id}", response_model=BankAccountResponse)

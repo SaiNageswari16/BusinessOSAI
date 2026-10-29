@@ -102,6 +102,18 @@ async def post_journal(
     if not lines:
         return None
 
+    # source_id is a UUID column — document references ("INV-39149", "SR-001")
+    # must never be passed raw, or the flush aborts the whole request.
+    sid: Optional[uuid.UUID] = None
+    if source_id is not None:
+        if isinstance(source_id, uuid.UUID):
+            sid = source_id
+        else:
+            try:
+                sid = uuid.UUID(str(source_id))
+            except (ValueError, AttributeError):
+                sid = None
+
     total_debit = round(sum(float(l.get("debit", 0)) for l in lines), 2)
     total_credit = round(sum(float(l.get("credit", 0)) for l in lines), 2)
 
@@ -124,46 +136,54 @@ async def post_journal(
         entry_number = f"JE-{count + 1:06d}"
 
     now = datetime.now()
-    entry = JournalEntry(
-        tenant_id=tenant_id,
-        company_id=company_id,
-        entry_number=entry_number,
-        entry_type=entry_type,
-        status=status,
-        entry_date=entry_date,
-        reference=reference,
-        description=description,
-        total_debit=total_debit,
-        total_credit=total_credit,
-        currency_code="INR",
-        exchange_rate=1,
-        source_module=source_module,
-        source_id=source_id,
-        created_by_user_id=created_by,
-        posted_at=now if status == "posted" else None,
-        posted_by_user_id=created_by if status == "posted" else None,
-    )
-    db.add(entry)
-    await db.flush()
+    # Contain the GL write in a SAVEPOINT so any GL-side failure (bad account id,
+    # constraint, etc.) rolls back only the journal — never the caller's business
+    # transaction (invoice, POS sale, voucher). This is what makes the posting
+    # genuinely best-effort even when it happens inside the same session.
+    try:
+        async with db.begin_nested():
+            entry = JournalEntry(
+                tenant_id=tenant_id,
+                company_id=company_id,
+                entry_number=entry_number,
+                entry_type=entry_type,
+                status=status,
+                entry_date=entry_date,
+                reference=reference,
+                description=description,
+                total_debit=total_debit,
+                total_credit=total_credit,
+                currency_code="INR",
+                exchange_rate=1,
+                source_module=source_module,
+                source_id=sid,
+                created_by_user_id=created_by,
+                posted_at=now if status == "posted" else None,
+                posted_by_user_id=created_by if status == "posted" else None,
+            )
+            db.add(entry)
+            await db.flush()
 
-    for idx, line in enumerate(lines):
-        jl = JournalEntryLine(
-            entry_id=entry.id,
-            account_id=line["account_id"],
-            cost_center_id=line.get("cost_center_id"),
-            description=line.get("description"),
-            debit=float(line.get("debit", 0)),
-            credit=float(line.get("credit", 0)),
-            currency_code="INR",
-            exchange_rate=1,
-            base_currency_debit=float(line.get("debit", 0)),
-            base_currency_credit=float(line.get("credit", 0)),
-            line_number=idx + 1,
-            sort_order=idx,
-        )
-        db.add(jl)
-
-    return entry
+            for idx, line in enumerate(lines):
+                jl = JournalEntryLine(
+                    entry_id=entry.id,
+                    account_id=line["account_id"],
+                    cost_center_id=line.get("cost_center_id"),
+                    description=line.get("description"),
+                    debit=float(line.get("debit", 0)),
+                    credit=float(line.get("credit", 0)),
+                    currency_code="INR",
+                    exchange_rate=1,
+                    base_currency_debit=float(line.get("debit", 0)),
+                    base_currency_credit=float(line.get("credit", 0)),
+                    line_number=idx + 1,
+                    sort_order=idx,
+                )
+                db.add(jl)
+        return entry
+    except Exception as sp_err:
+        logger.warning("GL post failed inside savepoint %s %s: %s", source_module, reference, sp_err)
+        return None
 
 
 # ─── Bank transaction recording ──────────────────────────────────────
@@ -237,24 +257,29 @@ async def record_bank_transaction(
 
     is_in = direction == "in"
     txn_type = "credit" if is_in else "debit"
-    txn = BankTransaction(
-        tenant_id=tenant_id,
-        bank_account_id=account.id,
-        transaction_date=transaction_date,
-        description=description,
-        reference_number=reference_number,
-        counterparty=counterparty,
-        transaction_type=txn_type,
-        amount=amount,
-        journal_entry_id=journal_entry_id,
-        is_manual=False,
-    )
-    db.add(txn)
-    current = float(account.current_balance or 0)
-    account.current_balance = round(current + (amount if is_in else -amount), 2)
-    await db.flush()
-    txn.running_balance = account.current_balance
-    return txn
+    try:
+        async with db.begin_nested():
+            txn = BankTransaction(
+                tenant_id=tenant_id,
+                bank_account_id=account.id,
+                transaction_date=transaction_date,
+                description=description,
+                reference_number=reference_number,
+                counterparty=counterparty,
+                transaction_type=txn_type,
+                amount=amount,
+                journal_entry_id=journal_entry_id,
+                is_manual=False,
+            )
+            db.add(txn)
+            current = float(account.current_balance or 0)
+            account.current_balance = round(current + (amount if is_in else -amount), 2)
+            await db.flush()
+            txn.running_balance = account.current_balance
+        return txn
+    except Exception as sp_err:
+        logger.warning("GL bank transaction failed inside savepoint (%s %s): %s", account.name, description[:60], sp_err)
+        return None
 
 
 # ─── Document-level postings ─────────────────────────────────────────

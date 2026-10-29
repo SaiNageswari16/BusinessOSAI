@@ -100,6 +100,12 @@ import { PdfStationeryOverlayTemplate } from "@/components/pos/invoice-templates
 import { WordInvoiceDocument } from "@/components/pos/invoice-templates/WordInvoiceDocument";
 import { PdfTemplateOverlayModal } from "@/components/pos/PdfTemplateOverlayModal";
 import { WordInvoiceStudioModal, DEFAULT_WORD_COLUMNS } from "@/components/pos/WordInvoiceStudioModal";
+import {
+  InvoiceQuickSettingsModal,
+  loadStoredInvoiceSettings,
+  saveStoredInvoiceSettings,
+  type InvoiceSettings,
+} from "@/components/pos/InvoiceQuickSettingsModal";
 import { BarcodeTemplateCustomizerModal } from "./BarcodeTemplateCustomizerModal";
 import {
   RealBarcodeSvg,
@@ -1200,6 +1206,25 @@ export function PrintTemplates() {
   const [isWordStudioBlank, setIsWordStudioBlank] = useState(false);
   const [showPrintPreview, setShowPrintPreview] = useState<boolean>(false);
   const [isThermalFullViewOpen, setIsThermalFullViewOpen] = useState<boolean>(false);
+  const [isInvoiceSettingsModalOpen, setIsInvoiceSettingsModalOpen] = useState(false);
+  const [liveInvoiceSettings, setLiveInvoiceSettings] = useState<InvoiceSettings>(() => loadStoredInvoiceSettings(tenant?.id));
+  const [settingsActiveSubTab, setSettingsActiveSubTab] = useState<"numbering" | "columns" | "bank_qr" | "tax_terms" | "barcode">("numbering");
+
+  useEffect(() => {
+    setLiveInvoiceSettings(loadStoredInvoiceSettings(tenant?.id));
+  }, [tenant?.id]);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setLiveInvoiceSettings(loadStoredInvoiceSettings(tenant?.id));
+    };
+    window.addEventListener("bos-invoice-settings-changed", handleUpdate);
+    window.addEventListener("storage", handleUpdate);
+    return () => {
+      window.removeEventListener("bos-invoice-settings-changed", handleUpdate);
+      window.removeEventListener("storage", handleUpdate);
+    };
+  }, [tenant?.id]);
 
   // Template Storage with automatic migration & normalization
   const [templates, setTemplates] = useState<PrintTemplate[]>(() => {
@@ -6577,112 +6602,492 @@ export function PrintTemplates() {
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-xs font-bold text-foreground">Organization Master Default</div>
-                    <div className="text-[11px] text-muted-foreground">Use this template as default for all users</div>
+                    <div className="text-[11px] text-muted-foreground">Use this template as default for all users in active workspace</div>
                   </div>
                   <input
                     type="checkbox"
                     checked={!!activeTemplate.isDefault}
                     onChange={(e) => updateTemplateProperty("isDefault", e.target.checked)}
-                    className="h-4 w-4 rounded border-input text-indigo-600 focus:ring-indigo-500"
+                    className="h-4 w-4 rounded border-input text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                   />
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-foreground">Symbology Standard</label>
-                    <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
-                      100% Laser Scannable
-                    </span>
+              {/* Master Settings Studio Launcher */}
+              <div className="p-3.5 rounded-xl bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 dark:from-indigo-950/40 dark:via-purple-950/40 dark:to-pink-950/40 border border-indigo-200 dark:border-indigo-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
+                    <Sparkles className="size-3.5 text-indigo-600 shrink-0" />
+                    <span>Sales Invoice & ERP Settings Studio</span>
                   </div>
-                  <select
-                    value={activeTemplate.barcodeSymbology || "Auto"}
-                    onChange={(e) => updateTemplateProperty("barcodeSymbology", e.target.value as any)}
-                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 font-medium"
-                  >
-                    <option value="Auto">Auto (Smart Detect numeric vs alphanumeric)</option>
-                    <option value="Code-128">Code 128 (Universal High-Density Standard)</option>
-                    <option value="EAN-13">GS1 EAN-13 (13-digit Retail Standard)</option>
-                    <option value="EAN-8">GS1 EAN-8 (8-digit Compact Retail Standard)</option>
-                    <option value="UPC-A">UPC-A (12-digit North America Standard)</option>
-                    <option value="UPC-E">UPC-E (6-digit Compact Standard)</option>
-                    <option value="Code-39">Code 39 (Alphanumeric Standard)</option>
-                    <option value="Code-93">Code 93 (High-Density Alphanumeric)</option>
-                    <option value="ITF-14">ITF-14 (14-digit Shipping Carton Standard)</option>
-                    <option value="MSI">MSI Plessey (Warehouse & Inventory)</option>
-                    <option value="Codabar">Codabar (Logistics & Library Standard)</option>
-                    <option value="Pharmacode">Pharmacode (Pharmaceutical Packaging)</option>
-                    <option value="QR">QR Code (2D Data Matrix / Instant UPI)</option>
-                  </select>
+                  <p className="text-[10.5px] text-muted-foreground truncate mt-0.5">
+                    Configure B2B/B2C prefixes, IMEI serials, item table columns, bank details, and QR codes.
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setIsInvoiceSettingsModalOpen(true)}
+                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shrink-0 shadow-sm flex items-center gap-1.5 cursor-pointer transition-all"
+                >
+                  <Sliders className="size-3.5" />
+                  <span>Open Full Settings Studio</span>
+                </button>
+              </div>
 
-                {/* Barcode Height Slider & Placement */}
-                <div className="grid grid-cols-2 gap-3 p-3 bg-muted/20 rounded-xl border border-border/50">
+              {isBarcodeTemplate ? (
+                /* Barcode-specific settings */
+                <div className="space-y-3">
                   <div className="space-y-1">
-                    <div className="flex justify-between text-[11px] font-semibold text-foreground">
-                      <span>Barcode Height:</span>
-                      <span className="font-mono text-indigo-600 dark:text-indigo-400">{activeTemplate.barcodeHeight || 44}px</span>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-foreground">Symbology Standard</label>
+                      <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                        100% Laser Scannable
+                      </span>
                     </div>
-                    <input
-                      type="range"
-                      min="20"
-                      max="90"
-                      value={activeTemplate.barcodeHeight || 44}
-                      onChange={(e) => updateTemplateProperty("barcodeHeight", Number(e.target.value))}
-                      className="w-full cursor-pointer accent-indigo-600"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-foreground block">Placement Slot</label>
                     <select
-                      value={(activeTemplate as any).barcodePlacement || "bottom"}
-                      onChange={(e) => updateTemplateProperty("barcodePlacement" as any, e.target.value)}
-                      className="w-full rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground focus:border-indigo-500"
+                      value={activeTemplate.barcodeSymbology || "Auto"}
+                      onChange={(e) => updateTemplateProperty("barcodeSymbology", e.target.value as any)}
+                      className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 font-medium"
                     >
-                      <option value="bottom">Bottom of Label (Standard)</option>
-                      <option value="top">Top of Label</option>
-                      <option value="middle">Middle of Label</option>
+                      <option value="Auto">Auto (Smart Detect numeric vs alphanumeric)</option>
+                      <option value="Code-128">Code 128 (Universal High-Density Standard)</option>
+                      <option value="EAN-13">GS1 EAN-13 (13-digit Retail Standard)</option>
+                      <option value="EAN-8">GS1 EAN-8 (8-digit Compact Retail Standard)</option>
+                      <option value="UPC-A">UPC-A (12-digit North America Standard)</option>
+                      <option value="UPC-E">UPC-E (6-digit Compact Standard)</option>
+                      <option value="Code-39">Code 39 (Alphanumeric Standard)</option>
+                      <option value="Code-93">Code 93 (High-Density Alphanumeric)</option>
+                      <option value="ITF-14">ITF-14 (14-digit Shipping Carton Standard)</option>
+                      <option value="MSI">MSI Plessey (Warehouse & Inventory)</option>
+                      <option value="Codabar">Codabar (Logistics & Library Standard)</option>
+                      <option value="Pharmacode">Pharmacode (Pharmaceutical Packaging)</option>
+                      <option value="QR">QR Code (2D Data Matrix / Instant UPI)</option>
                     </select>
                   </div>
-                </div>
 
-                <div className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
-                  <input
-                    type="checkbox"
-                    id="show-barcode-text-toggle"
-                    checked={activeTemplate.showBarcodeText !== false}
-                    onChange={(e) => updateTemplateProperty("showBarcodeText", e.target.checked)}
-                    className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <label htmlFor="show-barcode-text-toggle" className="text-xs font-semibold text-foreground cursor-pointer">
-                    Show Digits / Text below Barcode
-                  </label>
-                </div>
+                  <div className="grid grid-cols-2 gap-3 p-3 bg-muted/20 rounded-xl border border-border/50">
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[11px] font-semibold text-foreground">
+                        <span>Barcode Height:</span>
+                        <span className="font-mono text-indigo-600 dark:text-indigo-400">{activeTemplate.barcodeHeight || 44}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="20"
+                        max="90"
+                        value={activeTemplate.barcodeHeight || 44}
+                        onChange={(e) => updateTemplateProperty("barcodeHeight", Number(e.target.value))}
+                        className="w-full cursor-pointer accent-indigo-600"
+                      />
+                    </div>
 
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <label className="flex items-center gap-2 p-3 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-foreground block">Placement Slot</label>
+                      <select
+                        value={(activeTemplate as any).barcodePlacement || "bottom"}
+                        onChange={(e) => updateTemplateProperty("barcodePlacement" as any, e.target.value)}
+                        className="w-full rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground focus:border-indigo-500"
+                      >
+                        <option value="bottom">Bottom of Label (Standard)</option>
+                        <option value="top">Top of Label</option>
+                        <option value="middle">Middle of Label</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
                     <input
                       type="checkbox"
-                      checked={!!activeTemplate.fields.showHSN}
-                      onChange={() => toggleElementField("showHSN")}
+                      id="show-barcode-text-toggle"
+                      checked={activeTemplate.showBarcodeText !== false}
+                      onChange={(e) => updateTemplateProperty("showBarcodeText", e.target.checked)}
                       className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
                     />
-                    <span className="text-xs font-medium text-foreground">Show HSN / SAC Codes</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 p-3 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
-                    <input
-                      type="checkbox"
-                      checked={!!activeTemplate.fields.showPartyBalance}
-                      onChange={() => toggleElementField("showPartyBalance")}
-                      className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <span className="text-xs font-medium text-foreground">Show Party Outstanding</span>
-                  </label>
+                    <label htmlFor="show-barcode-text-toggle" className="text-xs font-semibold text-foreground cursor-pointer">
+                      Show Digits / Text below Barcode
+                    </label>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* Invoice, Delivery Challan & Document Settings Suite */
+                <div className="space-y-3">
+                  {/* Settings Sub-Tab Navigation */}
+                  <div className="flex items-center gap-1 p-1 bg-muted/50 rounded-xl border border-border/60 overflow-x-auto">
+                    {[
+                      { id: "numbering", label: "🔢 Numbering & B2B/B2C" },
+                      { id: "columns", label: "📱 Columns & IMEI" },
+                      { id: "bank_qr", label: "🏦 Bank & UPI QR" },
+                      { id: "tax_terms", label: "📜 Terms & Legal" },
+                      { id: "barcode", label: "🏷️ Barcode" },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setSettingsActiveSubTab(tab.id as any)}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                          settingsActiveSubTab === tab.id
+                            ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Sub-Tab 1: Numbering & B2B/B2C Switch */}
+                  {settingsActiveSubTab === "numbering" && (
+                    <div className="space-y-3 animate-in fade-in">
+                      {/* B2B vs B2C Separate Series Switch */}
+                      <div className="p-3.5 bg-white dark:bg-slate-800/80 rounded-xl border border-purple-200 dark:border-purple-900/50 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-700">🏢 B2B / 🛒 B2C Switch</span>
+                              <h4 className="text-xs font-bold text-foreground">Separate B2B & B2C Invoice Series</h4>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                              Assign separate prefixes for GST registered corporate customers vs retail walk-ins.
+                            </p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(liveInvoiceSettings.separateB2BSequenceEnabled)}
+                            onChange={(e) => {
+                              const updated = { ...liveInvoiceSettings, separateB2BSequenceEnabled: e.target.checked };
+                              setLiveInvoiceSettings(updated);
+                              saveStoredInvoiceSettings(updated, tenant?.id);
+                            }}
+                            className="size-4 rounded text-purple-600 focus:ring-purple-500 cursor-pointer"
+                          />
+                        </div>
+
+                        {liveInvoiceSettings.separateB2BSequenceEnabled && (
+                          <div className="pt-2 border-t border-purple-100 dark:border-purple-900/30 space-y-3">
+                            <div className="p-2.5 bg-purple-50/60 dark:bg-purple-950/20 rounded-lg space-y-2">
+                              <span className="text-[11px] font-bold text-purple-800 dark:text-purple-300 block">🏢 B2B Tax Invoice Prefix</span>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
+                                  <input
+                                    type="text"
+                                    value={liveInvoiceSettings.b2bPrefix || "B2B-"}
+                                    onChange={(e) => {
+                                      const updated = { ...liveInvoiceSettings, b2bPrefix: e.target.value.toUpperCase() };
+                                      setLiveInvoiceSettings(updated);
+                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                    }}
+                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-mono font-bold"
+                                    placeholder="B2B-"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Next Number</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={liveInvoiceSettings.b2bSequenceNumber || 1}
+                                    onChange={(e) => {
+                                      const updated = { ...liveInvoiceSettings, b2bSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) };
+                                      setLiveInvoiceSettings(updated);
+                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                    }}
+                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-bold"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="p-2.5 bg-emerald-50/60 dark:bg-emerald-950/20 rounded-lg space-y-2">
+                              <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 block">🛒 B2C Consumer Retail Prefix</span>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
+                                  <input
+                                    type="text"
+                                    value={liveInvoiceSettings.b2cPrefix || "RET-"}
+                                    onChange={(e) => {
+                                      const updated = { ...liveInvoiceSettings, b2cPrefix: e.target.value.toUpperCase() };
+                                      setLiveInvoiceSettings(updated);
+                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                    }}
+                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-mono font-bold"
+                                    placeholder="RET-"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Next Number</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={liveInvoiceSettings.b2cSequenceNumber || 1}
+                                    onChange={(e) => {
+                                      const updated = { ...liveInvoiceSettings, b2cSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) };
+                                      setLiveInvoiceSettings(updated);
+                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                    }}
+                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-bold"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Standard Invoice Numbering Series */}
+                      <div className="p-3.5 bg-white dark:bg-slate-800/80 rounded-xl border border-border/70 space-y-2.5">
+                        <h4 className="text-xs font-bold text-foreground">Standard Sales Invoice Prefix & Sequence</h4>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
+                            <input
+                              type="text"
+                              value={liveInvoiceSettings.prefix !== undefined ? liveInvoiceSettings.prefix : "INV-"}
+                              onChange={(e) => {
+                                const updated = { ...liveInvoiceSettings, prefix: e.target.value.toUpperCase() };
+                                setLiveInvoiceSettings(updated);
+                                saveStoredInvoiceSettings(updated, tenant?.id);
+                              }}
+                              className="w-full h-8 px-2 bg-background border rounded-lg text-xs font-mono font-bold"
+                              placeholder="INV-"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-muted-foreground block mb-0.5">Next Sequence</label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={liveInvoiceSettings.sequenceNumber ?? 1}
+                              onChange={(e) => {
+                                const updated = { ...liveInvoiceSettings, sequenceNumber: Math.max(1, parseInt(e.target.value) || 1) };
+                                setLiveInvoiceSettings(updated);
+                                saveStoredInvoiceSettings(updated, tenant?.id);
+                              }}
+                              className="w-full h-8 px-2 bg-background border rounded-lg text-xs font-bold"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-muted-foreground block mb-0.5">Padding</label>
+                            <select
+                              value={liveInvoiceSettings.padding ?? 4}
+                              onChange={(e) => {
+                                const updated = { ...liveInvoiceSettings, padding: parseInt(e.target.value, 10) || 4 };
+                                setLiveInvoiceSettings(updated);
+                                saveStoredInvoiceSettings(updated, tenant?.id);
+                              }}
+                              className="w-full h-8 px-2 bg-background border rounded-lg text-xs font-semibold"
+                            >
+                              <option value={4}>4 Digits (0001)</option>
+                              <option value={5}>5 Digits (00001)</option>
+                              <option value={6}>6 Digits (000001)</option>
+                              <option value={3}>3 Digits (001)</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="p-2 bg-indigo-50/50 dark:bg-indigo-950/30 rounded-lg border border-indigo-100 dark:border-indigo-900/50 text-[11px] flex items-center justify-between">
+                          <span className="text-muted-foreground">Next Generated:</span>
+                          <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                            {liveInvoiceSettings.prefix || "INV-"}{String(liveInvoiceSettings.sequenceNumber || 1).padStart(liveInvoiceSettings.padding ?? 4, "0")}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sub-Tab 2: Columns & IMEI */}
+                  {settingsActiveSubTab === "columns" && (
+                    <div className="space-y-2.5 animate-in fade-in">
+                      {/* IMEI / Serial No Highlighted Toggle */}
+                      <label className="flex items-center justify-between p-3 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/30 cursor-pointer hover:bg-indigo-50 transition-colors">
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-lg">📱</span>
+                          <div>
+                            <span className="text-xs font-bold text-foreground block">Serial / IMEI No. Column</span>
+                            <span className="text-[10px] text-muted-foreground">Print device serial, IMEI & MAC address rows</span>
+                          </div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(liveInvoiceSettings.showSerialNo)}
+                          onChange={(e) => {
+                            const updated = { ...liveInvoiceSettings, showSerialNo: e.target.checked };
+                            setLiveInvoiceSettings(updated);
+                            saveStoredInvoiceSettings(updated, tenant?.id);
+                            toggleElementField("showSerialNo" as any);
+                          }}
+                          className="size-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      </label>
+
+                      {/* Standard Column Toggles */}
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        {[
+                          { key: "showHSN", label: "Show HSN / SAC Codes", active: activeTemplate.fields.showHSN },
+                          { key: "showUOM", label: "Show UOM (Units)", active: (activeTemplate.fields as any).showUOM },
+                          { key: "showBatchNo", label: "Show Batch / Lot No.", active: (activeTemplate.fields as any).showBatchNo },
+                          { key: "showExpDate", label: "Show Expiry Date", active: (activeTemplate.fields as any).showExpDate },
+                          { key: "showMfgDate", label: "Show Mfg Date", active: (activeTemplate.fields as any).showMfgDate },
+                          { key: "showMRP", label: "Show MRP (₹)", active: (activeTemplate.fields as any).showMRP },
+                          { key: "showRate", label: "Show Unit Price / Rate", active: (activeTemplate.fields as any).showRate },
+                          { key: "showDiscount", label: "Show Discount", active: (activeTemplate.fields as any).showDiscount },
+                          { key: "showTax", label: "Show GST Tax %", active: (activeTemplate.fields as any).showTax },
+                          { key: "showPartyBalance", label: "Show Party Outstanding", active: activeTemplate.fields.showPartyBalance },
+                        ].map((col) => (
+                          <label
+                            key={col.key}
+                            className="flex items-center justify-between p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40 transition-colors"
+                          >
+                            <span className="text-[11px] font-medium text-foreground">{col.label}</span>
+                            <input
+                              type="checkbox"
+                              checked={!!col.active}
+                              onChange={() => toggleElementField(col.key as any)}
+                              className="size-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sub-Tab 3: Bank & UPI QR */}
+                  {settingsActiveSubTab === "bank_qr" && (
+                    <div className="space-y-2.5 animate-in fade-in">
+                      <label className="flex items-center justify-between p-3 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
+                        <div>
+                          <span className="text-xs font-bold text-foreground block">Bank Account Details Box</span>
+                          <span className="text-[10px] text-muted-foreground">Print primary operating bank account info for direct NEFT/RTGS payments</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={!!activeTemplate.fields.showBankDetails}
+                          onChange={() => toggleElementField("showBankDetails")}
+                          className="size-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      </label>
+
+                      <label className="flex items-center justify-between p-3 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
+                        <div>
+                          <span className="text-xs font-bold text-foreground block">Dynamic UPI Payment QR Code</span>
+                          <span className="text-[10px] text-muted-foreground">Generate live UPI scan-and-pay QR code for exact invoice total</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={!!activeTemplate.fields.showUPIQR}
+                          onChange={() => toggleElementField("showUPIQR")}
+                          className="size-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      </label>
+
+                      <label className="flex items-center justify-between p-3 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
+                        <div>
+                          <span className="text-xs font-bold text-foreground block">Google Review 5-Star QR Code</span>
+                          <span className="text-[10px] text-muted-foreground">Print customer feedback QR code to boost Google Business ratings</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={!!activeTemplate.fields.showGoogleReviewQR}
+                          onChange={() => toggleElementField("showGoogleReviewQR")}
+                          className="size-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      </label>
+                    </div>
+                  )}
+
+                  {/* Sub-Tab 4: Terms & Legal */}
+                  {settingsActiveSubTab === "tax_terms" && (
+                    <div className="space-y-2.5 animate-in fade-in">
+                      <label className="flex items-center justify-between p-3 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
+                        <div>
+                          <span className="text-xs font-bold text-foreground block">Print Terms & Conditions / Return Policy</span>
+                          <span className="text-[10px] text-muted-foreground">Display store returns, warranty, and interest policies</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={!!activeTemplate.fields.showTerms}
+                          onChange={() => toggleElementField("showTerms")}
+                          className="size-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      </label>
+
+                      <label className="flex items-center justify-between p-3 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
+                        <div>
+                          <span className="text-xs font-bold text-foreground block">Statutory GST Declaration Note</span>
+                          <span className="text-[10px] text-muted-foreground">Print certified declaration under GST Act</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={!!activeTemplate.fields.showDeclaration}
+                          onChange={() => toggleElementField("showDeclaration")}
+                          className="size-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      </label>
+
+                      <label className="flex items-center justify-between p-3 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
+                        <div>
+                          <span className="text-xs font-bold text-foreground block">Digital Signature & Company Stamp</span>
+                          <span className="text-[10px] text-muted-foreground">Show authorized signatory seal in invoice footer</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={!!activeTemplate.fields.showSignature}
+                          onChange={() => toggleElementField("showSignature")}
+                          className="size-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      </label>
+                    </div>
+                  )}
+
+                  {/* Sub-Tab 5: Barcode & Symbology */}
+                  {settingsActiveSubTab === "barcode" && (
+                    <div className="space-y-3 animate-in fade-in">
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-foreground">Symbology Standard</label>
+                        <select
+                          value={activeTemplate.barcodeSymbology || "Auto"}
+                          onChange={(e) => updateTemplateProperty("barcodeSymbology", e.target.value as any)}
+                          className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 font-medium"
+                        >
+                          <option value="Auto">Auto (Smart Detect numeric vs alphanumeric)</option>
+                          <option value="Code-128">Code 128 (Universal High-Density Standard)</option>
+                          <option value="EAN-13">GS1 EAN-13 (13-digit Retail Standard)</option>
+                          <option value="Code-39">Code 39 (Alphanumeric Standard)</option>
+                          <option value="QR">QR Code (2D Data Matrix / Instant UPI)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1 p-3 bg-muted/20 rounded-xl border border-border/50">
+                        <div className="flex justify-between text-[11px] font-semibold text-foreground">
+                          <span>Barcode Height:</span>
+                          <span className="font-mono text-indigo-600 dark:text-indigo-400">{activeTemplate.barcodeHeight || 44}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="20"
+                          max="90"
+                          value={activeTemplate.barcodeHeight || 44}
+                          onChange={(e) => updateTemplateProperty("barcodeHeight", Number(e.target.value))}
+                          className="w-full cursor-pointer accent-indigo-600"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
+                        <input
+                          type="checkbox"
+                          id="show-barcode-text-toggle-2"
+                          checked={activeTemplate.showBarcodeText !== false}
+                          onChange={(e) => updateTemplateProperty("showBarcodeText", e.target.checked)}
+                          className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <label htmlFor="show-barcode-text-toggle-2" className="text-xs font-semibold text-foreground cursor-pointer">
+                          Show Digits / Text below Barcode
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : null}
           </div>
@@ -7172,6 +7577,17 @@ export function PrintTemplates() {
             setSelectedTemplateId(targetId);
             setIsWordStudioBlank(false);
             toast.success(`Word-style invoice template "${savedConfig.name || "Custom Word Canvas"}" saved & set active!`);
+          }}
+        />
+      )}
+
+      {/* Sales Invoice & ERP Full Settings Studio Modal */}
+      {isInvoiceSettingsModalOpen && (
+        <InvoiceQuickSettingsModal
+          isOpen={isInvoiceSettingsModalOpen}
+          onClose={() => setIsInvoiceSettingsModalOpen(false)}
+          onSaved={(newSet) => {
+            setLiveInvoiceSettings(newSet);
           }}
         />
       )}

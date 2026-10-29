@@ -508,11 +508,20 @@ export function FullInvoicePrinter({
             }
           }
           if (res?.active_map?.invoices && !invoiceSpecificTplId && !isThermalReceiptId(res.active_map.invoices)) {
-            setSelectedTemplateId((prev) => (!prev || isThermalReceiptId(prev) ? res.active_map.invoices : prev));
+            // The ACTIVATED template must win over the built-in default so the
+            // same template shows up everywhere; only a deliberate non-default
+            // user pick keeps the override.
+            setSelectedTemplateId((prev) =>
+              !prev || isThermalReceiptId(prev) || prev === 'tpl-word-default' ? res.active_map.invoices : prev
+            );
           }
         }).catch(() => {});
 
-        if (invoiceSpecificTplId) {
+        // Only a non-default stamped template overrides the activated one. The
+        // built-in default (tpl-word-default) means "no explicit choice", so the
+        // user's activated template from Print & Document Templates still wins —
+        // this is what stopped sales invoices silently reverting to the default.
+        if (invoiceSpecificTplId && invoiceSpecificTplId !== 'tpl-word-default') {
           setSelectedTemplateId(invoiceSpecificTplId);
           return;
         }
@@ -652,9 +661,14 @@ export function FullInvoicePrinter({
     (invoice as any)?.custom_fields?.template_id;
   const invoiceSpecificTplId = isThermalReceiptId(rawInvoiceSpecificTplId) ? undefined : rawInvoiceSpecificTplId;
 
-  const targetTplId = (selectedTemplateId && !isThermalReceiptId(selectedTemplateId))
-    ? selectedTemplateId
-    : (invoiceSpecificTplId || activeMasterTemplate?.id || 'tpl-word-default');
+  // Honor the ACTIVATED template from Print & Document Templates so the same
+  // template is used everywhere — only a real user pick (or an invoice-stamped
+  // template) overrides it; the silent built-in default no longer wins.
+  const activatedId = activeMasterTemplate?.id && activeMasterTemplate.id !== 'tpl-word-default' ? activeMasterTemplate.id : activeMasterTemplate?.id;
+  const targetTplId =
+    (selectedTemplateId && selectedTemplateId !== 'tpl-word-default' && !isThermalReceiptId(selectedTemplateId))
+      ? selectedTemplateId
+      : (invoiceSpecificTplId || activatedId || 'tpl-word-default');
 
   // 1. Direct match by ID in availableTemplates
   let resolvedTpl = availableTemplates.find((t) => t.id === targetTplId || t.themeName === targetTplId);
@@ -1368,6 +1382,8 @@ export function FullInvoicePrinter({
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
               }
+              /* Kill template min-heights so content flows instead of forcing a 2nd page */
+              #a4-invoice-printable-area [class*="min-h-"] { min-height: 0 !important; }
               .print\\:hidden, .no-print {
                 display: none !important;
                 visibility: hidden !important;
@@ -1383,7 +1399,24 @@ export function FullInvoicePrinter({
               .border-l { border-left-width: 1px !important; }
             </style>
           </head>
-          <body><div id="a4-invoice-portal">${invoiceHtml}</div></body>
+          <body><div id="a4-invoice-portal">${invoiceHtml}</div>
+            <script>
+              // Fit-to-page: if content is taller than the printable area, zoom
+              // the invoice down so it prints on a single page.
+              window.addEventListener('load', function () {
+                try {
+                  var area = document.getElementById('a4-invoice-printable-area');
+                  if (!area) return;
+                  var printableH = ${selectedPaperSize === 'A5' ? 760 : 1080}; // A4/A5 printable height @96dpi minus margins
+                  var contentH = area.scrollHeight;
+                  if (contentH > printableH + 8) {
+                    var scale = Math.max(0.55, printableH / contentH);
+                    area.style.zoom = String(scale);
+                  }
+                } catch (e) {}
+              });
+            </script>
+          </body>
         </html>
       `);
       doc.close();
@@ -1429,6 +1462,7 @@ export function FullInvoicePrinter({
           #a4-invoice-printable-area > *:last-child { margin-bottom: 0 !important; padding-bottom: 0 !important; }
           #a4-invoice-printable-area * { visibility: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+          #a4-invoice-printable-area [class*="min-h-"] { min-height: 0 !important; }
           .grid { display: grid !important; }
           .grid-cols-2 { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
           .grid-cols-3 { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }

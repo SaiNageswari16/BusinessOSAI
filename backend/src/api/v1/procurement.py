@@ -33,7 +33,8 @@ from src.models import (
     PurchaseReturn, PurchaseReturnItem,
     VendorBill, VendorPayment,
     VendorCreditNote, VendorDebitNote,
-    Product, ProcurementAISuggestion
+    Product, ProcurementAISuggestion,
+    Tenant, Company, NumberSeries
 )
 from src.utils.clock import clock
 from src.schemas.procurement import (
@@ -51,10 +52,182 @@ from src.schemas.procurement import (
     VendorBillCreate, CancelVendorBillPayload, VendorBillResponse,
     VendorPaymentCreate, VendorPaymentResponse,
     VendorCreditNoteCreate, VendorCreditNoteResponse,
-    VendorDebitNoteCreate, VendorDebitNoteResponse
+    VendorDebitNoteCreate, VendorDebitNoteResponse,
+    PurchaseInvoiceSettingsPayload
 )
 
 router = APIRouter(prefix="/procurement", tags=["Procurement & Supplier Management"])
+
+DEFAULT_PURCHASE_INVOICE_SETTINGS = {
+    "customSequenceEnabled": True,
+    "prefix": "BILL-",
+    "sequenceNumber": 1,
+    "suffix": "",
+    "padding": 4,
+    "poPrefix": "PO-",
+    "grnPrefix": "GRN-",
+    "showPoNumber": True,
+    "showGrnReference": True,
+    "showEwayBill": True,
+    "showVehicleNumber": True,
+    "showChallanNumber": True,
+    "showPaymentTerms": True,
+    "invoiceCustomFields": [],
+    "showHsn": True,
+    "showUom": True,
+    "showBatchNo": True,
+    "showExpDate": True,
+    "showMfgDate": False,
+    "showMrp": False,
+    "showSellPrice": False,
+    "showRate": True,
+    "showDiscount": True,
+    "showGstTax": True,
+    "showFreeQty": False,
+    "itemCustomColumns": [],
+    "defaultTerms": "1. All goods received are subject to physical verification & quality inspection.\n2. Invoice payments will be released as per agreed vendor credit terms.\n3. Discrepancies or damaged goods must be notified within 48 hours.",
+    "defaultPaymentTerms": "Net 30 Days",
+}
+
+
+@router.get("/settings/purchase-invoice")
+async def get_purchase_invoice_settings(
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: str | None = Query(None),
+):
+    """Retrieve organization & company-scoped purchase invoice / bill settings."""
+    import copy
+
+    if not ctx.tenant_id:
+        return copy.deepcopy(DEFAULT_PURCHASE_INVOICE_SETTINGS)
+
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+    if not tenant:
+        return copy.deepcopy(DEFAULT_PURCHASE_INVOICE_SETTINGS)
+
+    t_settings = copy.deepcopy(tenant.settings or {})
+    p_settings = copy.deepcopy(t_settings.get("purchase_invoice_settings") or {})
+
+    # Check for company-level overrides
+    target_cid = str(company_id or ctx.active_company_id or "").strip()
+    if target_cid:
+        comp_map = p_settings.get("companies")
+        if isinstance(comp_map, dict) and target_cid in comp_map and isinstance(comp_map[target_cid], dict):
+            p_settings.update(comp_map[target_cid])
+        else:
+            try:
+                cid_uuid = uuid.UUID(target_cid)
+                comp = await db.scalar(select(Company).where(Company.id == cid_uuid, Company.tenant_id == ctx.tenant_id))
+                if comp and comp.settings and isinstance(comp.settings.get("purchase_invoice_settings"), dict):
+                    p_settings.update(comp.settings["purchase_invoice_settings"])
+            except Exception:
+                pass
+
+        try:
+            cid_uuid = uuid.UUID(target_cid)
+            ns = await db.scalar(
+                select(NumberSeries).where(
+                    NumberSeries.company_id == cid_uuid,
+                    NumberSeries.module_name.in_(["purchase_invoices", "purchase_invoice", "bills", "bill"])
+                )
+            )
+            if ns:
+                if ns.prefix:
+                    p_settings["prefix"] = ns.prefix
+                if ns.next_number is not None:
+                    p_settings["sequenceNumber"] = ns.next_number
+                if ns.padding is not None:
+                    p_settings["padding"] = ns.padding
+        except Exception:
+            pass
+
+    merged = {**DEFAULT_PURCHASE_INVOICE_SETTINGS, **p_settings}
+    return merged
+
+
+@router.put("/settings/purchase-invoice")
+async def update_purchase_invoice_settings(
+    payload: PurchaseInvoiceSettingsPayload,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    company_id: str | None = Query(None),
+):
+    """Save purchase invoice settings strictly scoped per organization and company."""
+    import copy
+    from sqlalchemy.orm.attributes import flag_modified
+
+    if not ctx.tenant_id:
+        raise HTTPException(status_code=400, detail="Active tenant required")
+
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == ctx.tenant_id))
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    t_settings = copy.deepcopy(tenant.settings or {})
+    p_settings = copy.deepcopy(t_settings.get("purchase_invoice_settings") or {})
+
+    updates = payload.model_dump(exclude_unset=True)
+    p_settings.update(updates)
+
+    target_cid = str(company_id or ctx.active_company_id or "").strip()
+    if target_cid:
+        if "companies" not in p_settings or not isinstance(p_settings["companies"], dict):
+            p_settings["companies"] = {}
+        existing_comp_cfg = p_settings["companies"].get(target_cid, {})
+        if not isinstance(existing_comp_cfg, dict):
+            existing_comp_cfg = {}
+        p_settings["companies"][target_cid] = {**existing_comp_cfg, **updates}
+
+        try:
+            cid_uuid = uuid.UUID(target_cid)
+            comp = await db.scalar(select(Company).where(Company.id == cid_uuid, Company.tenant_id == ctx.tenant_id))
+            if comp:
+                c_settings = copy.deepcopy(comp.settings or {})
+                c_settings["purchase_invoice_settings"] = {
+                    **c_settings.get("purchase_invoice_settings", {}),
+                    **updates,
+                }
+                comp.settings = c_settings
+                flag_modified(comp, "settings")
+
+                if payload.prefix or payload.sequenceNumber is not None:
+                    ns_stmt = select(NumberSeries).where(
+                        NumberSeries.company_id == comp.id,
+                        NumberSeries.module_name.in_(["purchase_invoices", "purchase_invoice", "bills", "bill"])
+                    )
+                    ns_list = (await db.execute(ns_stmt)).scalars().all()
+                    if ns_list:
+                        for ns in ns_list:
+                            if payload.prefix:
+                                ns.prefix = payload.prefix
+                            if payload.sequenceNumber is not None:
+                                ns.next_number = payload.sequenceNumber
+                            if payload.padding is not None:
+                                ns.padding = payload.padding
+                    else:
+                        new_ns = NumberSeries(
+                            tenant_id=ctx.tenant_id,
+                            company_id=comp.id,
+                            module_name="purchase_invoices",
+                            prefix=payload.prefix or "BILL-",
+                            next_number=payload.sequenceNumber or 1,
+                            padding=payload.padding or 4,
+                            reset_frequency="never"
+                        )
+                        db.add(new_ns)
+        except Exception as ex:
+            logger.warning(f"Error syncing purchase invoice settings to company {target_cid}: {ex}")
+
+    t_settings["purchase_invoice_settings"] = p_settings
+    tenant.settings = t_settings
+    flag_modified(tenant, "settings")
+
+    await db.commit()
+    await db.refresh(tenant)
+
+    merged = {**DEFAULT_PURCHASE_INVOICE_SETTINGS, **p_settings}
+    return merged
 
 # ─── Supplier Categories CRUD ─────────────────────────────────────
 
