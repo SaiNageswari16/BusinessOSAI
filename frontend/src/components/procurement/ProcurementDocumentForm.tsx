@@ -3055,181 +3055,213 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             </div>
 
             {docType === "PINV" && (
-              <div className="pt-3 border-t border-slate-200 space-y-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1.5">Payment Settlement Status</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCurrentPoStatus("Paid");
-                        setAmountPaid(roundedTotal);
-                      }}
-                      className={cn(
-                        "py-2 px-2.5 rounded-xl font-bold text-xs border transition-all flex items-center justify-center gap-1.5 cursor-pointer",
-                        currentPoStatus === "Paid"
-                          ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-                          : "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
-                      )}
-                    >
-                      <Check className="size-3.5" />
-                      <span>Paid in Full</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCurrentPoStatus("Unpaid");
-                        setAmountPaid(0);
-                      }}
-                      className={cn(
-                        "py-2 px-2.5 rounded-xl font-bold text-xs border transition-all flex items-center justify-center gap-1.5 cursor-pointer",
-                        currentPoStatus === "Unpaid" || currentPoStatus === "Pending Payment"
-                          ? "bg-rose-600 text-white border-rose-600 shadow-sm"
-                          : "bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100"
-                      )}
-                    >
-                      <Clock className="size-3.5" />
-                      <span>Unpaid / Due</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCurrentPoStatus("Partial");
-                        if (!amountPaid) setAmountPaid(Math.round(roundedTotal / 2));
-                      }}
-                      className={cn(
-                        "py-2 px-2.5 rounded-xl font-bold text-xs border transition-all flex items-center justify-center gap-1.5 cursor-pointer",
-                        currentPoStatus === "Partial" || currentPoStatus === "Partially Received"
-                          ? "bg-amber-600 text-white border-amber-600 shadow-sm"
-                          : "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
-                      )}
-                    >
-                      <Receipt className="size-3.5" />
-                      <span>Partial Paid</span>
-                    </button>
-                  </div>
+              <div className="pt-3 border-t border-slate-200/90 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <CreditCard className="size-3.5 text-indigo-600" />
+                    Payment Settlement & Status
+                  </span>
+                  <span className={cn(
+                    "text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border shadow-2xs",
+                    currentPoStatus === "Paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                    currentPoStatus === "Partial" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                    currentPoStatus === "Draft" ? "bg-slate-100 text-slate-600 border-slate-200" :
+                    "bg-rose-50 text-rose-700 border-rose-200"
+                  )}>
+                    {currentPoStatus === "Paid" ? "Fully Settled" :
+                     currentPoStatus === "Partial" ? "Partially Settled" :
+                     currentPoStatus === "Draft" ? "Draft Review" :
+                     "Payment Pending"}
+                  </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-500 block mb-1">Payment Method</label>
-                    <select
-                      value={paymentMode}
-                      onChange={(e) => setPaymentMode(e.target.value)}
-                      className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2 text-xs font-bold text-slate-800 outline-none cursor-pointer"
-                    >
-                      <option value="Cash">Cash</option>
-                      <option value="UPI">UPI / QR</option>
-                      <option value="Bank Transfer">Bank Transfer / NEFT</option>
-                      <option value="Cheque">Cheque</option>
-                      <option value="Credit Card">Credit Card</option>
-                      <option value="Credit">Credit / Net 30</option>
-                    </select>
-                  </div>
+                {/* Professional Segmented Status Tabs */}
+                <div className="grid grid-cols-4 gap-1.5 bg-slate-100/90 p-1 rounded-xl border border-slate-200/80 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrentPoStatus("Paid");
+                      setAmountPaid(roundedTotal);
+                    }}
+                    className={cn(
+                      "py-2 px-1.5 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                      currentPoStatus === "Paid"
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                    )}
+                  >
+                    <Check className="size-3.5 shrink-0" />
+                    <span className="truncate">Paid in Full</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrentPoStatus("Partial");
+                      if (!amountPaid || amountPaid === 0) setAmountPaid(Math.round(roundedTotal / 2));
+                    }}
+                    className={cn(
+                      "py-2 px-1.5 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                      currentPoStatus === "Partial" || currentPoStatus === "Partially Received"
+                        ? "bg-amber-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                    )}
+                  >
+                    <Receipt className="size-3.5 shrink-0" />
+                    <span className="truncate">Partial Paid</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrentPoStatus("Unpaid");
+                      setAmountPaid(0);
+                    }}
+                    className={cn(
+                      "py-2 px-1.5 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                      currentPoStatus === "Unpaid" || currentPoStatus === "Pending Payment"
+                        ? "bg-rose-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                    )}
+                  >
+                    <Clock className="size-3.5 shrink-0" />
+                    <span className="truncate">Unpaid / Due</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrentPoStatus("Draft");
+                    }}
+                    className={cn(
+                      "py-2 px-1.5 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                      currentPoStatus === "Draft"
+                        ? "bg-slate-700 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                    )}
+                  >
+                    <FileText className="size-3.5 shrink-0" />
+                    <span className="truncate">Draft</span>
+                  </button>
+                </div>
 
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-500 block mb-1">Amount Paid ({currency.symbol})</label>
-                    <input
-                      type="number"
-                      placeholder="0.00"
-                      value={currentPoStatus === "Paid" ? (roundedTotal || "") : (amountPaid || "")}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => {
-                        const val = e.target.value ? Number(e.target.value) : "";
-                        setAmountPaid(val);
-                        if (typeof val === "number" && val >= roundedTotal && roundedTotal > 0) {
-                          setCurrentPoStatus("Paid");
-                        } else if (typeof val === "number" && val > 0) {
-                          setCurrentPoStatus("Partial");
-                        } else {
-                          setCurrentPoStatus("Unpaid");
-                        }
-                      }}
-                      className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none"
-                    />
-                  </div>
+                {/* Settlement Inputs Container */}
+                <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3 space-y-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-500 block mb-1">Payment Method</label>
+                      <select
+                        value={paymentMode}
+                        onChange={(e) => setPaymentMode(e.target.value)}
+                        className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-2xs cursor-pointer"
+                      >
+                        <option value="Cash">Cash</option>
+                        <option value="UPI">UPI / QR</option>
+                        <option value="Bank Transfer">Bank Transfer / NEFT</option>
+                        <option value="Cheque">Cheque</option>
+                        <option value="Credit Card">Credit Card</option>
+                        <option value="Credit">Credit / Net 30</option>
+                      </select>
+                    </div>
 
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-500 block mb-1">Balance Due ({currency.symbol})</label>
-                    <div className={cn(
-                      "h-9 border rounded-xl px-2.5 flex items-center font-black text-xs",
-                      balanceDue <= 0 ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-rose-50 border-rose-200 text-rose-700"
-                    )}>
-                      {currency.symbol}{balanceDue.toFixed(2)}
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-500 block mb-1">Amount Paid ({currency.symbol})</label>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                          {currency.symbol}
+                        </span>
+                        <input
+                          type="number"
+                          placeholder="0.00"
+                          value={currentPoStatus === "Paid" ? (roundedTotal || "") : (amountPaid === 0 ? "0" : (amountPaid || ""))}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const val = e.target.value === "" ? "" : Number(e.target.value);
+                            setAmountPaid(val);
+                            if (typeof val === "number" && val >= roundedTotal && roundedTotal > 0) {
+                              setCurrentPoStatus("Paid");
+                            } else if (typeof val === "number" && val > 0) {
+                              setCurrentPoStatus("Partial");
+                            } else if (val === 0 || val === "") {
+                              setCurrentPoStatus("Unpaid");
+                            }
+                          }}
+                          className="w-full h-9 bg-white border border-slate-300 rounded-lg pl-6 pr-2.5 text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-500 block mb-1">Balance Due ({currency.symbol})</label>
+                      <div className={cn(
+                        "h-9 border rounded-lg px-2.5 flex items-center justify-between font-extrabold text-xs shadow-2xs",
+                        balanceDue <= 0 ? "bg-emerald-50 border-emerald-300 text-emerald-700" : "bg-rose-50 border-rose-300 text-rose-700"
+                      )}>
+                        <span>{currency.symbol}{balanceDue.toFixed(2)}</span>
+                        <span className="text-[10px] font-semibold opacity-75">
+                          {balanceDue <= 0 ? "Cleared" : "Pending"}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             )}
-          </div>
-        </div>
-      </div>
 
-      {/* Bottom Submission Action Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-3 sm:p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <button
-            type="button"
-            disabled={isSaving}
-            onClick={onClose}
-            className="group inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-slate-600 hover:text-rose-600 bg-white hover:bg-rose-50/70 border border-slate-200/90 hover:border-rose-200 rounded-xl transition-all shadow-2xs active:scale-95 cursor-pointer disabled:opacity-50"
-          >
-            <X className="w-3.5 h-3.5 text-slate-400 group-hover:text-rose-500 transition-colors" />
-            <span>Cancel</span>
-          </button>
+            {docType === "PO" && (
+              <div className="pt-3 border-t border-slate-200/90 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <Layers className="size-3.5 text-blue-600" />
+                    Purchase Order Status
+                  </span>
+                  <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    {currentPoStatus || "Draft"}
+                  </span>
+                </div>
+                <select
+                  value={currentPoStatus}
+                  onChange={(e) => setCurrentPoStatus(e.target.value)}
+                  className="w-full h-9 bg-white border border-slate-300 rounded-lg px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 cursor-pointer shadow-2xs"
+                >
+                  <option value="Draft">Draft PO (Internal Review)</option>
+                  <option value="Sent">Sent / Issued to Supplier</option>
+                  <option value="Partially Received">Partially Received</option>
+                  <option value="Fully Received">Fully Received</option>
+                  <option value="Billed">Billed / Closed</option>
+                  <option value="Cancelled">Cancelled</option>
+                </select>
+              </div>
+            )}
 
-          {(docType === "PO" || docType === "PINV") && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-500">Status:</span>
-              <select
-                value={currentPoStatus}
-                onChange={(e) => {
-                  const s = e.target.value;
-                  setCurrentPoStatus(s);
-                  if (s === "Paid") setAmountPaid(roundedTotal);
-                  else if (s === "Unpaid") setAmountPaid(0);
-                }}
-                className="h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+            {/* Document Action Buttons inside Financial Summary */}
+            <div className="pt-3 border-t border-slate-200/90 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={onClose}
+                className="group w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 hover:text-rose-600 bg-white hover:bg-rose-50/70 border border-slate-200/90 hover:border-rose-200 rounded-xl transition-all shadow-2xs active:scale-95 cursor-pointer disabled:opacity-50"
               >
-                {docType === "PINV" ? (
-                  <>
-                    <option value="Paid">Paid / Settled (Direct Bill)</option>
-                    <option value="Received">Received / Full Delivery</option>
-                    <option value="Partial">Partially Paid</option>
-                    <option value="Unpaid">Unpaid / Due</option>
-                    <option value="Draft">Draft Invoice</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="Draft">Draft PO</option>
-                    <option value="Sent">Sent / Issued</option>
-                    <option value="Partially Received">Partially Received</option>
-                    <option value="Fully Received">Fully Received</option>
-                    <option value="Billed">Billed / Closed</option>
-                    <option value="Cancelled">Cancelled</option>
-                  </>
-                )}
-              </select>
-            </div>
-          )}
-        </div>
+                <X className="w-3.5 h-3.5 text-slate-400 group-hover:text-rose-500 transition-colors" />
+                <span>Cancel</span>
+              </button>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <button
-            type="button"
-            onClick={() => setShareModalDoc(getCurrentDocumentData())}
-            className="w-full sm:w-auto px-5 py-3 text-sm font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 rounded-xl border border-teal-200 flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
-          >
-            <FileText className="size-4 text-teal-600" /> Preview PDF & Share
-          </button>
-          <button
-            disabled={isSaving}
-            onClick={handleSaveDocument}
-            className="w-full sm:w-auto px-8 py-3 text-sm font-black text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 uppercase tracking-wider disabled:opacity-50 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
-          >
-            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {isSaving ? "Saving..." : (docType === "PINV" ? (currentPoStatus === "Paid" ? "Save Paid Invoice" : "Save Purchase Invoice") : "Save Document")}
-          </button>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setShareModalDoc(getCurrentDocumentData())}
+                  className="w-full sm:w-auto px-4 py-2.5 text-xs font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 rounded-xl border border-teal-200/90 flex items-center justify-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
+                >
+                  <FileText className="size-3.5 text-teal-600" /> Preview PDF & Share
+                </button>
+                <button
+                  disabled={isSaving}
+                  onClick={handleSaveDocument}
+                  className="w-full sm:w-auto px-6 py-2.5 text-xs font-black text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-md shadow-blue-600/20 flex items-center justify-center gap-2 uppercase tracking-wider disabled:opacity-50 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+                >
+                  {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  {isSaving ? "Saving..." : (docType === "PINV" ? (currentPoStatus === "Paid" ? "Save Paid Invoice" : "Save Purchase Invoice") : "Save Document")}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
