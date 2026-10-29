@@ -1780,39 +1780,41 @@ export function PosPaymentIn() {
               className="w-full border border-slate-300 rounded-xl p-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 min-h-[70px]"
             />
           </div>
-          
-        </div>
 
-        {/* Drawer Footer */}
-        <div className="p-4 border-t border-slate-200 flex gap-3 bg-white">
-          <button 
-            onClick={() => setIsRecordingPayment(false)}
-            disabled={isProcessing}
-            className="flex-1 py-3 border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 text-sm disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button 
-            onClick={handleProcessPayment}
-            disabled={isProcessing || (paymentPurpose === 'wallet_debit' && Number(paymentAmount) > walletBalance)}
-            className={`flex-1 py-3 font-bold rounded-xl text-sm shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 transition-all ${
-              paymentPurpose === 'wallet_debit'
-                ? "bg-rose-600 hover:bg-rose-700 text-white"
-                : paymentPurpose === 'wallet_topup'
-                ? "bg-purple-600 hover:bg-purple-700 text-white"
-                : "bg-indigo-600 hover:bg-indigo-700 text-white"
-            }`}
-          >
-            {isProcessing ? (
-              <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> Processing...</>
-            ) : paymentPurpose === 'wallet_debit' ? (
-              `💸 Debit Wallet (${formatCurrency(Number(paymentAmount) || 0)})`
-            ) : paymentPurpose === 'wallet_topup' ? (
-              `💰 Add Funds (+${formatCurrency(Number(paymentAmount) || 0)})`
-            ) : (
-              `Save & Settle (${formatCurrency(Number(paymentAmount) || 0)})`
-            )}
-          </button>
+          {/* Action Buttons directly below Notes */}
+          <div className="pt-2 flex gap-3">
+            <button 
+              type="button"
+              onClick={() => setIsRecordingPayment(false)}
+              disabled={isProcessing}
+              className="flex-1 py-3 border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 text-sm disabled:opacity-50 transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button 
+              type="button"
+              onClick={handleProcessPayment}
+              disabled={isProcessing || (paymentPurpose === 'wallet_debit' && Number(paymentAmount) > walletBalance)}
+              className={`flex-1 py-3 font-bold rounded-xl text-sm shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                paymentPurpose === 'wallet_debit'
+                  ? "bg-rose-600 hover:bg-rose-700 text-white"
+                  : paymentPurpose === 'wallet_topup'
+                  ? "bg-purple-600 hover:bg-purple-700 text-white"
+                  : "bg-indigo-600 hover:bg-indigo-700 text-white"
+              }`}
+            >
+              {isProcessing ? (
+                <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> Processing...</>
+              ) : paymentPurpose === 'wallet_debit' ? (
+                `💸 Debit Wallet (${formatCurrency(Number(paymentAmount) || 0)})`
+              ) : paymentPurpose === 'wallet_topup' ? (
+                `💰 Add Funds (+${formatCurrency(Number(paymentAmount) || 0)})`
+              ) : (
+                `Save & Settle (${formatCurrency(Number(paymentAmount) || 0)})`
+              )}
+            </button>
+          </div>
+          
         </div>
       </div>
 
