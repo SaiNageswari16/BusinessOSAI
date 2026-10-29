@@ -227,6 +227,7 @@ export const nav: NavGroup[] = [
         permission: "view:procurement",
         subItems: [
           { to: "/procurement?tab=vendor_bills", label: "Purchase Invoices & Bills", icon: Receipt, permission: "view:procurement" },
+          { to: "/procurement?tab=purchase_returns", label: "Purchase Returns", icon: ArrowRightLeft, permission: "view:procurement" },
           { to: "/procurement?tab=pending_payments", label: "Pending Payments", icon: Timer, permission: "view:procurement" },
           { to: "/procurement?tab=payment_history", label: "Payments Out", icon: History, permission: "view:procurement" },
           { to: "/procurement?tab=debit_notes", label: "Debit Notes", icon: FileCheck, permission: "view:procurement" },
@@ -260,7 +261,6 @@ export const nav: NavGroup[] = [
           { to: "/procurement?tab=purchase_quotations", label: "Proforma / Quotations (RFQ)", icon: Network, permission: "view:rfq" },
           { to: "/procurement?tab=purchase_orders", label: "Purchase Orders (PO)", icon: Truck, permission: "view:purchase_orders" },
           { to: "/procurement?tab=goods_received_notes", label: "Goods Received Notes (GRN)", icon: Boxes, permission: "view:grn" },
-          { to: "/procurement?tab=purchase_returns", label: "Purchase Returns", icon: ArrowRightLeft, permission: "view:procurement" },
         ]
       }
     ]
