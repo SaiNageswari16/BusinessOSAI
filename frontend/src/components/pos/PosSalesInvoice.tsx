@@ -3073,62 +3073,41 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const queryCode = (scannedCode || "").trim();
     if (!queryCode) return;
 
-    // 1. Exact barcode lookup in local product list
+    // 1. Exact barcode lookup in local tenant inventory product list (no SKU/ID fallback, no RAG search)
     const cleanQuery = queryCode.toLowerCase();
     let product = products.find(
       (p) => p.barcode && String(p.barcode).trim().toLowerCase() === cleanQuery
     );
 
-    // 2. If not found locally, look up via backend barcode endpoint
+    // 2. If not in memory yet, query strictly the tenant's Inventory DB (inventoryOnly=true, never RAG/Web/Master Catalog)
     if (!product) {
-      toast.info(`Looking up barcode ${queryCode}...`);
       try {
-        const res = await posApi.lookupBarcode(queryCode);
-        if (res && res.success && res.product && res.product.name) {
+        const res = await posApi.lookupBarcode(queryCode, true);
+        if (
+          res &&
+          res.success &&
+          res.product &&
+          res.product.name &&
+          (!res.product.source || res.product.source === "DATABASE") &&
+          String(res.product.barcode || "").trim().toLowerCase() === cleanQuery
+        ) {
           product = res.product;
         }
       } catch (err: any) {
-        console.warn("Barcode search error:", err);
-      }
-    }
-
-    // 3. Fallback only if manual unique SKU/ID entry
-    if (!product) {
-      product = products.find(
-        (p) => p.id && String(p.id).trim().toLowerCase() === cleanQuery
-      );
-    }
-    if (!product) {
-      const matchingBySku = products.filter(
-        (p) => p.sku && String(p.sku).trim().toLowerCase() === cleanQuery
-      );
-      if (matchingBySku.length === 1) {
-        product = matchingBySku[0];
+        console.warn("Inventory barcode search error:", err);
       }
     }
 
     if (!product) {
-      toast.error(`Barcode "${queryCode}" not found in catalog.`);
+      toast.error(`Barcode "${queryCode}" not found in inventory.`);
       return;
     }
 
-    // 3. Strict Barcode Matching: Exact same barcode -> increment! Different barcode -> new line item!
+    // 3. Strict Barcode Matching: Exact same barcode -> increment! Different barcode -> new line item! No fallbacks!
     const isSameScannedProduct = (it: InvoiceItem) => {
       const itBarcode = it.barcode ? String(it.barcode).trim().toLowerCase() : "";
       const scannedBarcode = (product.barcode || queryCode) ? String(product.barcode || queryCode).trim().toLowerCase() : "";
-
-      // Strict match: If both have barcodes, increment ONLY if exact same barcode!
-      if (scannedBarcode && itBarcode) {
-        return scannedBarcode === itBarcode;
-      }
-
-      // If an existing line item has no barcode, match ONLY if exact product_id matches
-      if (product.id && it.product_id) {
-        return String(product.id).trim() === String(it.product_id).trim();
-      }
-
-      // No fallbacks! Different barcode = different item!
-      return false;
+      return Boolean(scannedBarcode && itBarcode && scannedBarcode === itBarcode);
     };
 
     const existingIndex = items.findIndex(isSameScannedProduct);
@@ -4183,7 +4162,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     if (!selectedBankAccountId) return "";
     const b = bankAccounts.find((x) => x.id === selectedBankAccountId);
     if (!b) return "";
-    return `Bank: ${b.bank_name || b.name} | A/C: ${b.account_number} | IFSC: ${b.ifsc_code}${b.branch_name ? ` | Branch: ${b.branch_name}` : ""}`;
+    const parts = [`Bank: ${b.bank_name || b.name}`, `A/C: ${b.account_number || ""}`, `IFSC: ${b.ifsc_code || ""}`];
+    if (b.account_holder_name) parts.push(`Holder: ${b.account_holder_name}`);
+    if (b.branch_name) parts.push(`Branch: ${b.branch_name}`);
+    if (b.upi_id) parts.push(`UPI: ${b.upi_id}`);
+    return parts.join(" | ");
   };
 
   const constructFullInvoicePayload = (): FullInvoiceData => {

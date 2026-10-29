@@ -42,6 +42,8 @@ function BankAccountFormModal({
     account_number: account?.account_number || "",
     ifsc_code: account?.ifsc_code || "",
     branch_name: account?.branch_name || "",
+    account_holder_name: account?.account_holder_name || "",
+    upi_id: account?.upi_id || "",
     account_type: account?.account_type || "checking",
     currency_code: account?.currency_code || "INR",
     opening_balance: account?.opening_balance ?? 0,
@@ -76,10 +78,12 @@ function BankAccountFormModal({
       if (isEditing && account) {
         const updated = await bankApi.updateBankAccount(account.id, {
           name: form.name.trim(),
+          account_holder_name: form.account_holder_name.trim() || undefined,
           bank_name: form.bank_name.trim(),
           account_number: form.account_number.trim(),
           ifsc_code: form.ifsc_code.trim().toUpperCase(),
           branch_name: form.branch_name.trim() || undefined,
+          upi_id: form.upi_id.trim() || undefined,
           account_type: form.account_type,
           currency_code: form.currency_code,
           status: form.status,
@@ -92,10 +96,12 @@ function BankAccountFormModal({
         const created = await bankApi.createBankAccount({
           ...form,
           name: form.name.trim(),
+          account_holder_name: form.account_holder_name.trim() || undefined,
           bank_name: form.bank_name.trim(),
           account_number: form.account_number.trim(),
           ifsc_code: form.ifsc_code.trim().toUpperCase(),
           branch_name: form.branch_name.trim() || undefined,
+          upi_id: form.upi_id.trim() || undefined,
           chart_of_account_id: form.chart_of_account_id || undefined,
         });
         toast.success("Bank Account created successfully!");
@@ -125,7 +131,12 @@ function BankAccountFormModal({
             <div>
               <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Account Nickname *</label>
               <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} required
-                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20" placeholder="Primary Operating" />
+                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 font-semibold" placeholder="Primary Operating" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Account Holder / Beneficiary Name</label>
+              <input value={form.account_holder_name} onChange={e => setForm(p => ({ ...p, account_holder_name: e.target.value }))}
+                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 font-semibold" placeholder="e.g. Test Company / Kanithi Venkata Phani Kumar" />
             </div>
             <div>
               <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Bank Name *</label>
@@ -135,17 +146,22 @@ function BankAccountFormModal({
             <div>
               <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Account Number *</label>
               <input value={form.account_number} onChange={e => setForm(p => ({ ...p, account_number: e.target.value }))} required
-                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 font-mono" placeholder="501002040" />
+                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 font-mono font-bold" placeholder="501002040" />
             </div>
             <div>
               <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">IFSC Code *</label>
               <input value={form.ifsc_code} onChange={e => setForm(p => ({ ...p, ifsc_code: e.target.value.toUpperCase() }))} required
-                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 font-mono uppercase" placeholder="HDFC0000104" />
+                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 font-mono uppercase font-bold" placeholder="HDFC0000104" />
             </div>
             <div>
               <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Branch Name</label>
               <input value={form.branch_name} onChange={e => setForm(p => ({ ...p, branch_name: e.target.value }))}
                 className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20" placeholder="Bandra BKC" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">UPI ID / VPA (For Invoices & QR)</label>
+              <input value={form.upi_id} onChange={e => setForm(p => ({ ...p, upi_id: e.target.value.trim().toLowerCase() }))}
+                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 font-mono text-emerald-600 dark:text-emerald-400 font-semibold" placeholder="business@okhdfcbank" />
             </div>
             <div>
               <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Account Type *</label>
@@ -179,13 +195,15 @@ function BankAccountFormModal({
               </select>
             </div>
             <div className="col-span-2">
-              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Linked Ledger (GL) Account *</label>
-              <select value={form.chart_of_account_id} onChange={e => setForm(p => ({ ...p, chart_of_account_id: e.target.value }))} required
+              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Linked Ledger (GL) Account (Optional)</label>
+              <select value={form.chart_of_account_id} onChange={e => setForm(p => ({ ...p, chart_of_account_id: e.target.value }))}
                 className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20">
+                <option value="">(Auto-manage Ledger / None)</option>
                 {accounts.map(acc => (
                   <option key={acc.id} value={acc.id}>[{acc.code}] {acc.name}</option>
                 ))}
               </select>
+              <p className="text-[11px] text-muted-foreground mt-1">If no ledger is linked, the system handles cash/bank flows automatically.</p>
             </div>
             {!isEditing && (
               <div>
@@ -194,10 +212,17 @@ function BankAccountFormModal({
                   className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 font-semibold" />
               </div>
             )}
-            <div className="flex items-center gap-2 pt-5">
-              <input type="checkbox" id="is_default" checked={form.is_default} onChange={e => setForm(p => ({ ...p, is_default: e.target.checked }))}
-                className="size-4 text-primary focus:ring-primary rounded border-border" />
-              <label htmlFor="is_default" className="text-xs font-semibold text-muted-foreground cursor-pointer select-none">Set as default account</label>
+            <div className="col-span-2 p-3 bg-primary/5 border border-primary/20 rounded-xl space-y-1">
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="is_default" checked={form.is_default} onChange={e => setForm(p => ({ ...p, is_default: e.target.checked }))}
+                  className="size-4 text-primary focus:ring-primary rounded border-border cursor-pointer" />
+                <label htmlFor="is_default" className="text-xs font-bold text-foreground cursor-pointer select-none">
+                  Set as primary bank account for Sales Invoices & POS
+                </label>
+              </div>
+              <p className="text-[11px] text-muted-foreground pl-6">
+                When checked, these bank details & UPI ID are automatically selected and printed in the payment box of all invoices and receipts.
+              </p>
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-3 border-t border-border/50">
@@ -215,6 +240,7 @@ function BankAccountFormModal({
 // ─── Bank Accounts List ─────────────────────────────────────────────────────
 function BankAccountsTab() {
   const { t } = useI18n();
+  const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
   const [, setCurrencyTick] = useState(0);
   useEffect(() => {
     const cb = () => setCurrencyTick(t => t + 1);
@@ -281,6 +307,19 @@ function BankAccountsTab() {
     setSelected(acc);
   };
 
+  const handleSetDefault = async (acc: BankAccountRecord) => {
+    setSettingDefaultId(acc.id);
+    try {
+      await bankApi.setDefaultBankAccount(acc.id);
+      toast.success(`"${acc.name}" set as default bank account for invoices!`);
+      await loadAccounts(acc.id);
+    } catch (err) {
+      toast.error("Failed to set default bank account");
+    } finally {
+      setSettingDefaultId(null);
+    }
+  };
+
   const totalBalance = accounts.reduce((sum, a) => sum + a.current_balance, 0);
 
   return (
@@ -334,21 +373,49 @@ function BankAccountsTab() {
                     </button>
                   </div>
                 </div>
-                <div className="flex items-end justify-between">
+                <div className="space-y-1 mb-2.5 text-xs text-muted-foreground">
+                  {acc.account_holder_name && (
+                    <p className="truncate text-foreground font-medium">Holder: {acc.account_holder_name}</p>
+                  )}
+                  {acc.ifsc_code && (
+                    <p className="font-mono text-[11px]">IFSC: <span className="font-bold text-foreground">{acc.ifsc_code}</span> {acc.branch_name ? `• ${acc.branch_name}` : ""}</p>
+                  )}
+                  {acc.upi_id && (
+                    <p className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">UPI: {acc.upi_id}</p>
+                  )}
+                </div>
+
+                <div className="flex items-end justify-between pt-2 border-t border-border/40">
                   <div>
-                    <p className="text-xs text-muted-foreground">{t("Account No.", "Account No.")}</p>
-                    <p className="font-mono text-sm text-foreground">{acc.account_number || "N/A"}</p>
+                    <p className="text-[11px] text-muted-foreground">{t("Account No.", "Account No.")}</p>
+                    <p className="font-mono text-xs font-bold text-foreground">{acc.account_number || "N/A"}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-muted-foreground">{t("Balance", "Balance")}</p>
-                    <p className={`font-bold text-base ${acc.current_balance >= 0 ? "text-emerald-500" : "text-red-400"}`}>{fmt(acc.current_balance)}</p>
+                    <p className="text-[11px] text-muted-foreground">{t("Balance", "Balance")}</p>
+                    <p className={`font-bold text-sm ${acc.current_balance >= 0 ? "text-emerald-500" : "text-red-400"}`}>{fmt(acc.current_balance)}</p>
                   </div>
                 </div>
-                {acc.is_default && (
-                  <div className="mt-2 pt-2 border-t border-border/50">
-                    <span className="text-xs text-primary font-medium">★ Default Account</span>
-                  </div>
-                )}
+
+                <div className="mt-2.5 pt-2 border-t border-border/40 flex items-center justify-between">
+                  {acc.is_default ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold px-2 py-0.5 rounded-full">
+                      ★ Default Invoice Account
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={settingDefaultId === acc.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSetDefault(acc);
+                      }}
+                      className="text-[11px] font-semibold text-primary hover:text-primary/80 hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    >
+                      {settingDefaultId === acc.id ? <Loader2 className="size-3 animate-spin" /> : <span>★</span>}
+                      Set as Primary for Invoices
+                    </button>
+                  )}
+                </div>
               </motion.div>
             ))}
           </div>
@@ -363,6 +430,18 @@ function BankAccountsTab() {
                     <p className="text-xs text-muted-foreground">{selected.bank_name} · {selected.account_number}</p>
                   </div>
                   <div className="flex items-center gap-2">
+                    {!selected.is_default && (
+                      <button
+                        type="button"
+                        disabled={settingDefaultId === selected.id}
+                        onClick={() => handleSetDefault(selected)}
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer disabled:opacity-50"
+                        title="Set as Default for Sales Invoices and Receipts"
+                      >
+                        {settingDefaultId === selected.id ? <Loader2 className="size-3.5 animate-spin" /> : <span>★</span>}
+                        <span>Set Default for Invoices</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setEditingAccount(selected)}

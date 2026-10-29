@@ -380,6 +380,7 @@ async def create_sales_return(
 
     # Calculate totals
     total_return_amount = 0.0
+    total_return_tax = 0.0
     restocked_count = 0
 
     # Create the InvoiceReturn record with company_id for workspace isolation
@@ -409,6 +410,7 @@ async def create_sales_return(
         line_total = float(item.line_total or (item.quantity * item.unit_price - item.discount_amount))
         tax_amount = float(item.tax_amount or (line_total * item.tax_rate / 100.0 if item.tax_rate else 0))
         total_return_amount += line_total
+        total_return_tax += tax_amount
 
         product_id_val = None
         if item.product_id:
@@ -522,6 +524,46 @@ async def create_sales_return(
                 line_total=round(line_total, 2),
             )
             db.add(cn_line)
+
+    # 7. GL: reverse the original sale (revenue + GST) and book any cash/UPI refund paid out.
+    #    Best-effort — a GL posting failure must never break the sales-return flow.
+    if total_return_amount > 0:
+        try:
+            from src.services import gl_service
+            await gl_service.post_sale_refund(
+                db,
+                tenant_id=ctx.tenant_id,
+                company_id=return_company_id,
+                reference=f"SR-{return_number}",
+                total=total_return_amount,
+                tax=total_return_tax,
+                entry_date=return_date_val,
+                created_by=ctx.user.id if getattr(ctx, "user", None) else None,
+            )
+            settle_method = (payload.settlement_method or "cash").lower()
+            cash_settle = settle_method in ("cash", "upi", "bank", "bank_transfer", "card", "credit_card", "online")
+            if cash_settle and original_invoice:
+                # When the original sale was NOT paid, the return simply settles the
+                # receivable — no cash physically moves, so no refund-out entry is booked.
+                orig_paid = float(original_invoice.amount_paid or 0)
+                orig_total = float(original_invoice.total_amount or 0)
+                if orig_total > 0 and orig_paid < orig_total - 0.01:
+                    cash_settle = False
+            if cash_settle:
+                await gl_service.post_refund_out(
+                    db,
+                    tenant_id=ctx.tenant_id,
+                    company_id=return_company_id,
+                    amount=total_return_amount,
+                    payment_date=return_date_val,
+                    reference=f"SR-{return_number}",
+                    description=f"Cash/UPI refund for Sales Return SR-{return_number} (Invoice {inv_number or 'N/A'})",
+                    payment_method=settle_method,
+                    counterparty=customer_name or "Walk-in Customer",
+                    created_by=ctx.user.id if getattr(ctx, "user", None) else None,
+                )
+        except Exception as gl_err:
+            logger.warning(f"GL posting for sales return SR-{return_number} skipped: {gl_err}")
 
     await write_audit_log(
         db,
@@ -954,6 +996,7 @@ async def process_exchange(
         return_number = f"SR-{count + 1:05d}"
 
     return_total = 0.0
+    return_tax = 0.0
     restocked_count = 0
 
     return_company_id = active_cid or (original_invoice.company_id if original_invoice else None)
@@ -979,6 +1022,7 @@ async def process_exchange(
         line_total = float(item.line_total or (item.quantity * item.unit_price - item.discount_amount))
         tax_amount = float(item.tax_amount or 0)
         return_total += line_total
+        return_tax += tax_amount
 
         product_id_val = None
         if item.product_id:
@@ -1019,10 +1063,12 @@ async def process_exchange(
     invoice_return.total_amount = round(return_total, 2)
 
     exchange_total = 0.0
+    exchange_tax = 0.0
     for item in payload.exchange_items:
         gross = item.quantity * item.unit_price - item.discount_amount
         tax = gross * (item.tax_rate / 100.0) if item.tax_rate else 0
         exchange_total += gross + tax
+        exchange_tax += tax
 
     difference = round(exchange_total - return_total, 2)
 
@@ -1189,6 +1235,79 @@ async def process_exchange(
 
     linked_cn = None
     linked_dn = None
+
+    # GL: keep revenue/AR/GST consistent across the exchange (best-effort — must never
+    # break the exchange flow).
+    #   1. Returned items reverse the original sale:  Dr Sales + GST / Cr AR
+    #   2. Exchange items are new revenue:            Dr AR / Cr Sales + GST
+    #   3. Difference settlement moves cash in/out as needed:
+    #        difference > 0  → customer pays extra (post_payment_in)
+    #        difference < 0  → customer receives change (post_refund_out, only when
+    #                          the original sale was cash-paid; otherwise the extra
+    #                          return value simply offsets the receivable)
+    if return_total > 0 or exchange_total > 0:
+        try:
+            from src.services import gl_service
+            ex_creator = ctx.user.id if getattr(ctx, "user", None) else None
+            if return_total > 0 and original_invoice:
+                await gl_service.post_sale_adjustment(
+                    db,
+                    tenant_id=ctx.tenant_id,
+                    company_id=active_cid,
+                    reference=f"EX-{return_number}",
+                    amount=return_total,
+                    tax=return_tax,
+                    entry_date=clock.today(),
+                    is_reversal=True,
+                    description=f"Exchange return of items (SR-{return_number}) against Invoice {inv_number}",
+                    created_by=ex_creator,
+                )
+            if exchange_total > 0:
+                await gl_service.post_sale_adjustment(
+                    db,
+                    tenant_id=ctx.tenant_id,
+                    company_id=active_cid,
+                    reference=f"EX-{return_number}",
+                    amount=exchange_total,
+                    tax=exchange_tax,
+                    entry_date=clock.today(),
+                    is_reversal=False,
+                    description=f"Exchange items issued (SR-{return_number}) on Invoice {exchange_inv_number}",
+                    created_by=ex_creator,
+                )
+            settle_method = (payload.settlement_method or "cash").lower()
+            if difference > 0:
+                await gl_service.post_payment_in(
+                    db,
+                    tenant_id=ctx.tenant_id,
+                    company_id=active_cid,
+                    payment_amount=difference,
+                    payment_date=clock.today(),
+                    reference=f"EX-{return_number}",
+                    description=f"Exchange differential received (SR-{return_number})",
+                    payment_method=settle_method,
+                    counterparty=customer_name or "Walk-in Customer",
+                    created_by=ex_creator,
+                )
+            elif difference < 0 and original_invoice:
+                orig_paid = float(original_invoice.amount_paid or 0)
+                orig_total_amt = float(original_invoice.total_amount or 0)
+                cash_paid_original = orig_total_amt > 0 and orig_paid >= orig_total_amt - 0.01
+                if cash_paid_original:
+                    await gl_service.post_refund_out(
+                        db,
+                        tenant_id=ctx.tenant_id,
+                        company_id=active_cid,
+                        amount=abs(difference),
+                        payment_date=clock.today(),
+                        reference=f"EX-{return_number}",
+                        description=f"Exchange change/refund paid to customer (SR-{return_number})",
+                        payment_method=settle_method,
+                        counterparty=customer_name or "Walk-in Customer",
+                        created_by=ex_creator,
+                    )
+        except Exception as gl_err:
+            logger.warning(f"GL posting for exchange SR-{return_number} skipped: {gl_err}")
 
     await write_audit_log(
         db,

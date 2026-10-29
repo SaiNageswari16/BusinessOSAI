@@ -366,11 +366,10 @@ async def list_customers(
             if c.opening_balance != 0:
                 c.opening_balance = 0.0
                 await db.flush()
-        # Authoritative customer outstanding balance: live invoice dues + opening balance
-        total_live_due = round(invoice_due + opening_due, 2)
+        # Authoritative customer outstanding balance (live invoice dues + opening dues)
+        live_calculated_due = round(invoice_due + opening_due, 2)
         stored_due = float(raw_stored_due) if raw_stored_due is not None else 0.0
-        effective_due = max(total_live_due, stored_due) if stored_due > 0 else total_live_due
-        c_dict["outstanding_balance"] = round(effective_due, 2)
+        c_dict["outstanding_balance"] = round(max(live_calculated_due, stored_due), 2)
         c_dict["opening_balance"] = opening_due
         resp_items.append(CustomerResponse(**c_dict))
 

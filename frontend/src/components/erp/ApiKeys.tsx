@@ -3,6 +3,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Search, Network, Plus, Copy, RefreshCw, X, Save, Loader2, AlertCircle, Trash2 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
+import { useTenant } from "@/contexts/tenant-context";
+import { getWorkspaceHeaders } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn, formatDisplayDate } from "@/lib/utils";
 import { useI18n } from "@/contexts/i18n-context";
@@ -40,10 +42,9 @@ function ApiKeyModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
     try {
       const res = await fetch(`${API_BASE_URL}/erp/api-keys`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
+        headers: getWorkspaceHeaders(accessToken, {
           "Content-Type": "application/json",
-        },
+        }),
         body: JSON.stringify(form),
       });
       if (!res.ok) throw new Error("Failed to generate API Key");
@@ -111,6 +112,7 @@ export function ApiKeys() {
   const { t } = useI18n();
     const { currency, formatCurrency } = useCurrency();
   const { accessToken } = useAuth();
+  const { tenant } = useTenant();
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -123,7 +125,7 @@ export function ApiKeys() {
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/erp/api-keys`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: getWorkspaceHeaders(accessToken),
       });
       if (!res.ok) throw new Error("Failed to load API keys");
       const data = await res.json();
@@ -133,7 +135,7 @@ export function ApiKeys() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, tenant?.id]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -143,7 +145,7 @@ export function ApiKeys() {
     try {
       const res = await fetch(`${API_BASE_URL}/erp/api-keys/${deleteKey.id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: getWorkspaceHeaders(accessToken),
       });
       if (!res.ok) throw new Error("Failed to delete key");
       toast.success("API key deleted");

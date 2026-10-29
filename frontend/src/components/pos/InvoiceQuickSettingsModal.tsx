@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
+import { bankApi, BankAccountRecord } from "@/lib/api-client";
 import {
   getActiveBillingGst,
   setActiveBillingGst,
@@ -242,6 +243,14 @@ export function InvoiceQuickSettingsModal({
   const [companies, setCompanies] = useState<Company[]>([]);
   const [activeCompany, setActiveCompany] = useState<Company | null>(null);
   const [activeBillingGst, setActiveBillingGstLocal] = useState<ActiveGstDetails | null>(null);
+  const [registeredBankAccounts, setRegisteredBankAccounts] = useState<BankAccountRecord[]>([]);
+
+  useEffect(() => {
+    bankApi.listBankAccounts({ page: 1, page_size: 50 }).then((res) => {
+      if (res?.items) setRegisteredBankAccounts(res.items);
+    }).catch(() => {});
+  }, []);
+
   const [gstForm, setGstForm] = useState({
     trade_name: "",
     legal_name: "",
@@ -256,6 +265,7 @@ export function InvoiceQuickSettingsModal({
     is_composition: false,
     lut_number: "",
     lut_expiry: "",
+    account_holder_name: "",
     bank_name: "",
     bank_account: "",
     bank_ifsc: "",
@@ -2302,13 +2312,47 @@ export function InvoiceQuickSettingsModal({
 
                 {/* 2. Bank & UPI Payment Accounts for Invoices */}
                 <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs space-y-3">
-                  <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Landmark className="size-4 text-emerald-600" />
-                    <span>Bank & UPI Details (Printed on Invoices)</span>
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    These banking details are displayed in the footer of full tax invoices for direct NEFT/RTGS/UPI customer payments.
-                  </p>
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Landmark className="size-4 text-emerald-600" />
+                        <span>Bank & UPI Details (Printed on Invoices)</span>
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        These banking details are displayed in the footer of full tax invoices for direct NEFT/RTGS/UPI customer payments.
+                      </p>
+                    </div>
+                    {registeredBankAccounts.length > 0 && (
+                      <select
+                        onChange={(e) => {
+                          const acc = registeredBankAccounts.find((b) => b.id === e.target.value);
+                          if (acc) {
+                            setGstForm((prev) => ({
+                              ...prev,
+                              bank_name: acc.bank_name || acc.name,
+                              bank_account: acc.account_number || "",
+                              bank_ifsc: acc.ifsc_code || "",
+                              bank_branch: acc.branch_name || prev.bank_branch,
+                              account_holder_name: acc.account_holder_name || prev.account_holder_name,
+                              upi_id: acc.upi_id || prev.upi_id,
+                            }));
+                            if (acc.upi_id) {
+                              setPaymentQrForm((prev) => ({ ...prev, upi_vpa: acc.upi_id || prev.upi_vpa }));
+                            }
+                            toast.success(`Loaded details from "${acc.name}"`);
+                          }
+                        }}
+                        className="h-8 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-2.5 text-xs font-bold outline-none cursor-pointer hover:bg-emerald-100/70"
+                      >
+                        <option value="">-- Choose Registered Bank --</option>
+                        {registeredBankAccounts.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name} ({b.bank_name || "Bank"}) - ...{b.account_number?.slice(-4) || ""} {b.is_default ? "★ Default" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
@@ -2320,6 +2364,19 @@ export function InvoiceQuickSettingsModal({
                         value={gstForm.bank_name}
                         onChange={(e) => setGstForm((prev) => ({ ...prev, bank_name: e.target.value }))}
                         placeholder="e.g. HDFC Bank / State Bank of India"
+                        className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-indigo-500 focus:bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                        Account Holder / Beneficiary Name
+                      </label>
+                      <input
+                        type="text"
+                        value={gstForm.account_holder_name}
+                        onChange={(e) => setGstForm((prev) => ({ ...prev, account_holder_name: e.target.value }))}
+                        placeholder="e.g. Test Company / Kanithi Venkata Phani Kumar"
                         className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-indigo-500 focus:bg-white"
                       />
                     </div>
@@ -2350,9 +2407,9 @@ export function InvoiceQuickSettingsModal({
                       />
                     </div>
 
-                    <div>
+                    <div className="md:col-span-2">
                       <label className="text-[10px] font-bold text-slate-600 block mb-1">
-                        UPI ID / VPA
+                        UPI ID / VPA (Printed with QR)
                       </label>
                       <input
                         type="text"
@@ -2363,7 +2420,7 @@ export function InvoiceQuickSettingsModal({
                           setPaymentQrForm((prev) => ({ ...prev, upi_vpa: val }));
                         }}
                         placeholder="e.g. business@okhdfcbank"
-                        className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-bold text-emerald-700 outline-none focus:border-indigo-500 focus:bg-white"
+                        className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-bold text-emerald-700 outline-none focus:border-indigo-500 focus:bg-white font-mono"
                       />
                     </div>
                   </div>

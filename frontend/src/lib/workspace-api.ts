@@ -32,11 +32,21 @@ async function fetchWithAuth(url: string, options: RequestInit = {}) {
     headers.set("Authorization", `Bearer ${token}`);
   }
   try {
+    const activeCompanyId = localStorage.getItem("bos_active_company_id");
+    if (activeCompanyId) {
+      headers.set("X-Company-Id", activeCompanyId);
+      headers.set("X-Workspace-Id", activeCompanyId);
+    }
     const storedTenant = localStorage.getItem("bos-tenant");
     if (storedTenant) {
       const parsed = JSON.parse(storedTenant);
+      const targetTenantId = parsed.raw?.tenant_id || parsed.tenant_id || parsed.id;
+      if (targetTenantId) {
+        headers.set("X-Impersonate-Tenant", targetTenantId);
+        headers.set("X-Tenant-Id", targetTenantId);
+      }
       const companyId = parsed.id || parsed.company_id || parsed.raw?.id;
-      if (companyId) {
+      if (companyId && !headers.has("X-Company-Id")) {
         headers.set("X-Company-Id", companyId);
         headers.set("X-Workspace-Id", companyId);
       }

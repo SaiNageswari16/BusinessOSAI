@@ -2786,8 +2786,12 @@ export function CompanyManagement() {
           }
         }
         if (activeTab === "Overview" && token) {
-          const userRes = await fetch(`${API_BASE_URL}/erp/users`, {
-            headers: { Authorization: `Bearer ${token}` },
+          const userRes = await fetch(`${API_BASE_URL}/erp/users?company_id=${encodeURIComponent(activeCompany.id)}`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "X-Company-Id": activeCompany.id,
+              "X-Workspace-Id": activeCompany.id,
+            },
           });
           if (userRes.ok) {
             const data = await userRes.json();

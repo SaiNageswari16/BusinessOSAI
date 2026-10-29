@@ -43,31 +43,72 @@ const PlaceholderView = ({ title, icon: Icon, description }: any) => (
   </div>
 );
 
-export const BarcodeScannerView = ({ addToCart, products = posProducts }: { addToCart?: (p: any) => void, products?: any[] }) => {
+export const BarcodeScannerView = ({ addToCart, products = [] }: { addToCart?: (p: any, e?: React.MouseEvent, scannedCode?: string) => void, products?: any[] }) => {
   const { t } = useI18n();
   const [manualBarcode, setManualBarcode] = React.useState("");
   const [recentScans, setRecentScans] = React.useState<any[]>([]);
   const [scannerActive, setScannerActive] = React.useState(true);
 
   const simulateScan = () => {
-    const list = products.length > 0 ? products : posProducts;
-    const randomProduct = list[Math.floor(Math.random() * list.length)];
+    if (!products || products.length === 0) return;
+    const randomProduct = products[Math.floor(Math.random() * products.length)];
     const newScan = {
       ...randomProduct,
       scanTime: new Date().toLocaleTimeString(),
       id: Math.random().toString(36).substr(2, 9)
     };
     setRecentScans(prev => [newScan, ...prev].slice(0, 10)); // Keep last 10
-    if (addToCart) addToCart(randomProduct);
+    if (addToCart) addToCart(randomProduct, undefined, randomProduct?.barcode);
   };
 
-  const handleManualEntry = (e: React.FormEvent) => {
+  const handleManualEntry = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualBarcode) return;
+    const queryCode = (manualBarcode || "").trim();
+    if (!queryCode) return;
 
-    const list = products.length > 0 ? products : posProducts;
-    // Find product or pick random if not found for demo purposes
-    const product = list.find(p => p.barcode === manualBarcode) || list[0];
+    const cleanQuery = queryCode.toLowerCase();
+
+    // 1. Exact barcode match in local list (no SKU/ID/mock fallback)
+    let product = products.find(p => p.barcode && String(p.barcode).trim().toLowerCase() === cleanQuery);
+
+    // 2. Backend lookup strictly in tenant Inventory by exact barcode (inventoryOnly=true, no RAG search)
+    if (!product) {
+      try {
+        const res = await posApi.lookupBarcode(queryCode, true);
+        if (
+          res &&
+          res.success &&
+          res.product &&
+          res.product.name &&
+          (!res.product.source || res.product.source === "DATABASE") &&
+          String(res.product.barcode || "").trim().toLowerCase() === cleanQuery
+        ) {
+          const apiProd = res.product;
+          product = products.find(
+            (p) =>
+              apiProd.barcode &&
+              p.barcode &&
+              String(p.barcode).trim().toLowerCase() === String(apiProd.barcode).trim().toLowerCase()
+          ) || {
+            ...apiProd,
+            id: apiProd.id,
+            name: apiProd.name,
+            brand: apiProd.brand?.name || apiProd.brand_name || (typeof apiProd.brand === "string" ? apiProd.brand : "") || "",
+            sku: apiProd.sku || "",
+            barcode: apiProd.barcode || queryCode,
+            sellingPrice: Number(apiProd.selling_price ?? apiProd.sellingPrice ?? apiProd.price ?? apiProd.mrp ?? 0),
+            mrp: Number(apiProd.mrp ?? apiProd.selling_price ?? apiProd.sellingPrice ?? 0),
+          };
+        }
+      } catch (err) {
+        console.warn("BarcodeScannerView lookup error:", err);
+      }
+    }
+
+    if (!product) {
+      toast.error(`Barcode "${queryCode}" not found in inventory.`);
+      return;
+    }
 
     const newScan = {
       ...product,
@@ -75,7 +116,7 @@ export const BarcodeScannerView = ({ addToCart, products = posProducts }: { addT
       id: Math.random().toString(36).substr(2, 9)
     };
     setRecentScans(prev => [newScan, ...prev].slice(0, 10));
-    if (addToCart) addToCart(product);
+    if (addToCart) addToCart(product, undefined, queryCode);
     setManualBarcode("");
   };
 

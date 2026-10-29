@@ -475,6 +475,23 @@ async def checkout(
     msg_body = f"Receipt {transaction.receipt_number} processed. Cashier: {ctx.user.full_name} | Total: ${transaction.total_amount:,.2f}"
     await add_system_notification(db, ctx.tenant_id, msg_title, msg_body, "pos", company_id=ctx.active_company_id)
 
+    # 4b. GL: reverse revenue for a refund/return so P&L and AR stay consistent.
+    if transaction.status == "refunded":
+        try:
+            from src.services import gl_service
+            await gl_service.post_sale_refund(
+                db,
+                tenant_id=ctx.tenant_id,
+                company_id=ctx.active_company_id,
+                reference=transaction.receipt_number,
+                total=abs(float(payload.total_amount or 0)),
+                tax=0,  # POS refunds carry no tax split on the payload
+                entry_date=clock.today(),
+                created_by=ctx.user.id if getattr(ctx, "user", None) else None,
+            )
+        except Exception as gl_err:
+            logger.warning("POS refund GL posting failed (non-fatal): %s", gl_err)
+
     await db.commit()
 
     # Check and trigger real-time low-stock push & WhatsApp alerts if item breached reorder threshold
@@ -587,8 +604,8 @@ async def _create_invoice_from_pos_transaction(
             customer_email=cust_email,
             customer_gstin=cust_gstin,
             billing_address=cust_address,
-            invoice_date=__import__("datetime").clock.today(),
-            due_date=__import__("datetime").clock.today(),
+            invoice_date=clock.today(),
+            due_date=clock.today(),
             currency_code="INR",
             subtotal=payload.subtotal,
             discount_amount=payload.discount_amount,
@@ -613,7 +630,7 @@ async def _create_invoice_from_pos_transaction(
                     inv_pay = InvoicePayment(
                         tenant_id=ctx.tenant_id,
                         invoice_id=invoice.id,
-                        payment_date=__import__("datetime").clock.today(),
+                        payment_date=clock.today(),
                         amount=float(p.amount),
                         payment_method=p.payment_method.lower(),
                         reference_number=p.reference_number or f"PAY-{inv_number}",
@@ -663,6 +680,38 @@ async def _create_invoice_from_pos_transaction(
                 expiry_date=getattr(item, "expiry_date", None),
             )
             db.add(il)
+
+        # 7. Post to the General Ledger so POS revenue flows into P&L/AR and bank.
+        #    Best-effort — a GL posting failure must never break the POS checkout.
+        try:
+            from src.services import gl_service
+            await gl_service.post_invoice_sale(
+                db,
+                tenant_id=ctx.tenant_id,
+                company_id=ctx.active_company_id,
+                invoice=invoice,
+                created_by=ctx.user.id if getattr(ctx, "user", None) else None,
+            )
+            if actual_paid > 0.001:
+                for p in payload.payments:
+                    pm = (p.payment_method or "").lower()
+                    if pm in ("credit", "pay later", "pay_later") or float(p.amount) <= 0:
+                        continue
+                    if pm in ("cash", "card", "credit_card", "online", "upi", "bank"):
+                        await gl_service.post_payment_in(
+                            db,
+                            tenant_id=ctx.tenant_id,
+                            company_id=ctx.active_company_id,
+                            payment_amount=float(p.amount),
+                            payment_date=clock.today(),
+                            reference=f"POS-{transaction.receipt_number}",
+                            description=f"POS receipt {transaction.receipt_number} ({pm})",
+                            payment_method=pm,
+                            counterparty=cust_name,
+                            created_by=ctx.user.id if getattr(ctx, "user", None) else None,
+                        )
+        except Exception as gl_err:
+            logger.warning("POS GL posting failed (non-fatal): %s", gl_err)
 
         await db.commit()
 

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, Laptop, Globe, Clock, Users, Palette, MoreHorizontal, X, Save, Loader2, AlertCircle, Trash2, RefreshCw, Search } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
-import { companiesApi, branchesApi, type Company, type Branch } from "@/lib/api-client";
+import { companiesApi, branchesApi, getWorkspaceHeaders, type Company, type Branch } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/contexts/i18n-context";
@@ -68,10 +68,9 @@ function WorkspaceModal({
         : `${API_BASE_URL}/erp/workspaces`;
       const res = await fetch(url, {
         method: isEdit ? "PATCH" : "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
+        headers: getWorkspaceHeaders(accessToken, {
           "Content-Type": "application/json",
-        },
+        }),
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error("Failed to save workspace");
@@ -187,10 +186,12 @@ export function WorkspaceManagement() {
     if (!accessToken) return;
     setLoading(true);
     try {
+      const activeCid = activeTenant?.id || localStorage.getItem("bos_active_company_id") || "";
+      const cidQuery = activeCid ? `?company_id=${encodeURIComponent(activeCid)}` : "";
       const [wRes, cRes, bRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/erp/workspaces`, { headers: { Authorization: `Bearer ${accessToken}` } }),
+        fetch(`${API_BASE_URL}/erp/workspaces${cidQuery}`, { headers: getWorkspaceHeaders(accessToken) }),
         companiesApi.list(1, 100),
-        branchesApi.list(1, 100),
+        branchesApi.list(1, 100, undefined, activeCid || undefined),
       ]);
       if (!wRes.ok) throw new Error("Failed to load workspaces");
       const wData = await wRes.json();
@@ -202,7 +203,7 @@ export function WorkspaceManagement() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, activeTenant?.id]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -212,7 +213,7 @@ export function WorkspaceManagement() {
     try {
       const res = await fetch(`${API_BASE_URL}/erp/workspaces/${deleteWorkspace.id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: getWorkspaceHeaders(accessToken),
       });
       if (!res.ok) throw new Error("Failed to delete workspace");
       toast.success("Workspace deleted");

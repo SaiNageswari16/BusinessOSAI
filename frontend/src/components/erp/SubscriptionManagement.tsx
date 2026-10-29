@@ -8,6 +8,8 @@ import {
   X, Check, ShieldCheck, Building2, Calendar, CreditCard, ChevronRight
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
+import { useTenant } from "@/contexts/tenant-context";
+import { getWorkspaceHeaders } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/contexts/i18n-context";
@@ -67,6 +69,7 @@ export function SubscriptionManagement() {
   const { t } = useI18n();
   const { currency, formatCurrency } = useCurrency();
   const { user, accessToken } = useAuth();
+  const { tenant: activeTenant } = useTenant();
   const [tenants, setTenants] = useState<PlatformTenant[]>([]);
   const [loading, setLoading] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -113,21 +116,48 @@ export function SubscriptionManagement() {
         throw new Error("Failed to load platform tenants list");
       }
       const data = await res.json();
-      setTenants(Array.isArray(data) ? data : []);
+      const allList: PlatformTenant[] = Array.isArray(data) ? data : [];
+      if (activeTenant?.id) {
+        const matched = allList.filter(
+          (item) =>
+            item.id === activeTenant.id ||
+            item.id === activeTenant.raw?.tenant_id ||
+            item.name.toLowerCase() === activeTenant.name.toLowerCase()
+        );
+        if (matched.length > 0 && matched.some((m) => m.name.toLowerCase() === activeTenant.name.toLowerCase())) {
+          setTenants(matched.filter((m) => m.name.toLowerCase() === activeTenant.name.toLowerCase()));
+        } else {
+          setTenants([
+            {
+              id: activeTenant.id,
+              slug: activeTenant.slug || activeTenant.name.toLowerCase().replace(/[^a-z0-9]/g, ""),
+              name: activeTenant.name,
+              plan: "ENTERPRISE",
+              status: "active",
+              created_at: activeTenant.raw?.created_at || new Date().toISOString(),
+              owner_name: activeTenant.raw?.email || activeTenant.name,
+              owner_email: activeTenant.raw?.email || "",
+              user_count: 1,
+            },
+          ]);
+        }
+      } else {
+        setTenants(allList);
+      }
     } catch (error: any) {
       console.error(error.message || "Could not fetch platform data");
       // Resilient fallback with current tenant context
-      if (user) {
+      if (activeTenant || user) {
         setTenants([
           {
-            id: user.tenantId || "current",
-            slug: user.tenantSlug || "workspace",
-            name: user.tenantName || "My Organization",
+            id: activeTenant?.id || user?.tenantId || "current",
+            slug: activeTenant?.slug || user?.tenantSlug || "workspace",
+            name: activeTenant?.name || user?.tenantName || "My Organization",
             plan: "STARTER",
             status: "active",
             created_at: new Date().toISOString(),
-            owner_name: user.name || "Organization Owner",
-            owner_email: user.email || "",
+            owner_name: activeTenant?.name || user?.name || "Organization Owner",
+            owner_email: activeTenant?.raw?.email || user?.email || "",
             user_count: 1,
           },
         ]);
@@ -140,7 +170,7 @@ export function SubscriptionManagement() {
   useEffect(() => {
     void loadTenants();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken]);
+  }, [accessToken, activeTenant?.id]);
 
   const toggleTenantStatus = async (tenantId: string, currentStatus: string) => {
     if (!accessToken || !isPlatformAdmin) return;

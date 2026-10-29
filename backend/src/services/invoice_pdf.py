@@ -518,6 +518,57 @@ async def get_active_invoice_template(
         )
         if resolved_upi:
             tpl["upiId"] = resolved_upi
+
+        # Bank Details Resolution
+        existing_bank = (tpl.get("bankDetails") or "").strip()
+        is_dummy_bank = not existing_bank or any(d in existing_bank for d in ["502000492811", "334455667788", "000405102030", "TEST", "dummy", "HDFC0000003"])
+        resolved_bank = ""
+
+        if not is_dummy_bank and len(existing_bank) > 5:
+            resolved_bank = existing_bank
+        else:
+            from src.models.erp import BankAccount
+            default_acc = await db.scalar(
+                select(BankAccount).where(
+                    BankAccount.tenant_id == tenant_id,
+                    BankAccount.is_default == True,
+                ).limit(1)
+            )
+            if not default_acc:
+                default_acc = await db.scalar(
+                    select(BankAccount).where(
+                        BankAccount.tenant_id == tenant_id
+                    ).order_by(BankAccount.created_at.asc()).limit(1)
+                )
+
+            if default_acc:
+                b_parts = [f"Bank: {default_acc.bank_name or default_acc.name}"]
+                if default_acc.account_number:
+                    b_parts.append(f"A/C: {default_acc.account_number}")
+                if default_acc.ifsc_code:
+                    b_parts.append(f"IFSC: {default_acc.ifsc_code}")
+                if getattr(default_acc, "account_holder_name", None):
+                    b_parts.append(f"Holder: {default_acc.account_holder_name}")
+                if default_acc.branch_name:
+                    b_parts.append(f"Branch: {default_acc.branch_name}")
+                if getattr(default_acc, "upi_id", None):
+                    b_parts.append(f"UPI: {default_acc.upi_id}")
+                resolved_bank = " | ".join(b_parts)
+            elif active_gst_reg.get("bank_name") and (active_gst_reg.get("bank_account_number") or active_gst_reg.get("bank_ifsc")):
+                resolved_bank = f"Bank: {active_gst_reg['bank_name']} | A/C: {active_gst_reg.get('bank_account_number', '')} | IFSC: {active_gst_reg.get('bank_ifsc', '')}"
+            elif getattr(company, "bank_name", None) and (getattr(company, "bank_account_number", None) or getattr(company, "account_number", None)):
+                resolved_bank = f"Bank: {company.bank_name} | A/C: {company.bank_account_number or company.account_number} | IFSC: {company.bank_ifsc or company.ifsc_code or ''}"
+            else:
+                inv_s = tenant_settings.get("invoice_settings") or {}
+                resolved_bank = inv_s.get("bank_details") or tenant_settings.get("bank_details") or ""
+
+        if resolved_bank:
+            tpl["bankDetails"] = resolved_bank
+            flds = tpl.setdefault("fields", {})
+            if flds.get("showBankDetails") is None:
+                flds["showBankDetails"] = True
+            if flds.get("showPaymentDetails") is None:
+                flds["showPaymentDetails"] = True
     else:
         tpl["storeName"] = tenant_name
         tpl["legalName"] = tenant_name
@@ -904,6 +955,15 @@ def _render_fmcg_pdf(invoice: Any, template: dict) -> bytes:
     pdf.set_font("Helvetica", "", 6)
     pdf.multi_cell(110, 2.8, "Statutory Declaration under FSS Act 2006:\nI/We hereby certify that food/foods mentioned in this invoice is/are warranted to be of the nature and quality which it/these purports to be.")
 
+    # Bank Details Box
+    fmcg_fields = template.get("fields") or {}
+    fmcg_bank = _safe_text(template.get("bankDetails") or getattr(invoice, "bank_details", "") or "", 250)
+    if (fmcg_fields.get("showBankDetails") is not False) and bool(fmcg_bank):
+        pdf.set_xy(12, pdf.get_y() + 1.2)
+        pdf.set_font("Helvetica", "B", 6)
+        pdf.set_text_color(30, 41, 59)
+        pdf.cell(110, 2.8, f"BANK DETAILS: {fmcg_bank}", ln=1)
+
     pdf.set_xy(145, pdf.get_y() + 4)
     pdf.set_font("Helvetica", "B", 7)
     pdf.cell(50, 4, "Authorized Signatory", align="C")
@@ -1266,6 +1326,16 @@ def _render_parle_pdf(invoice: Any, template: dict) -> bytes:
     pdf.set_draw_color(0, 0, 0)
     pdf.set_line_width(0.3)
     y_terms = pdf.get_y() + 4
+
+    parle_fields = template.get("fields") or {}
+    parle_bank = _safe_text(template.get("bankDetails") or getattr(invoice, "bank_details", "") or "", 250)
+    if (parle_fields.get("showBankDetails") is not False) and bool(parle_bank):
+        pdf.set_xy(12, y_terms)
+        pdf.set_font("Helvetica", "B", 6)
+        pdf.set_text_color(30, 41, 59)
+        pdf.cell(110, 2.8, f"BANK: {parle_bank}", ln=1)
+        y_terms += 3.5
+
     pdf.set_xy(12, y_terms)
     pdf.set_font("Helvetica", "B", 6)
     pdf.set_text_color(0, 0, 0)
@@ -2384,6 +2454,23 @@ def _render_stylish_pdf(invoice: Any, template: dict) -> bytes:
         pdf.cell(60, 5, f" - Payment received via {payment_method}", ln=1)
 
     y_terms = y_bot + (9.5 if is_paid else 0)
+
+    # Bank & Payment Settlement Details Box
+    bank_info = _safe_text(template.get("bankDetails") or getattr(invoice, "bank_details", "") or "", 250)
+    show_bank = (fields.get("showBankDetails") is not False) and (fields.get("showPaymentDetails") is not False) and bool(bank_info)
+    if show_bank:
+        pdf.set_fill_color(248, 250, 252)
+        pdf.set_draw_color(203, 213, 225)
+        pdf.rect(10, y_terms, 105, 12, style="FD", round_corners=True, corner_radius=1.5)
+        pdf.set_xy(13, y_terms + 1.2)
+        pdf.set_font("Helvetica", "B", 6.5)
+        pdf.set_text_color(30, 41, 59)
+        pdf.cell(100, 3, "BANK & PAYMENT SETTLEMENT DETAILS", ln=1)
+        pdf.set_xy(13, y_terms + 4.5)
+        pdf.set_font("Helvetica", "", 6)
+        pdf.set_text_color(71, 85, 105)
+        pdf.multi_cell(99, 2.7, bank_info)
+        y_terms += 14.0
 
     # Terms & Conditions
     pdf.set_xy(10, y_terms)

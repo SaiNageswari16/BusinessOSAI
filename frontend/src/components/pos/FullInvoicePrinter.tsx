@@ -13,6 +13,7 @@ import { MargPharmaTemplate } from './invoice-templates/MargPharmaTemplate';
 import { FmcgDistributorTemplate } from './invoice-templates/FmcgDistributorTemplate';
 import { ParleDistributorTemplate } from './invoice-templates/ParleDistributorTemplate';
 import { AgriSeedsTemplate } from './invoice-templates/AgriSeedsTemplate';
+import { GstTallyTemplate } from './invoice-templates/GstTallyTemplate';
 import { PdfStationeryOverlayTemplate } from './invoice-templates/PdfStationeryOverlayTemplate';
 import { WordInvoiceDocument } from './invoice-templates/WordInvoiceDocument';
 import { PdfTemplateOverlayModal } from './PdfTemplateOverlayModal';
@@ -29,22 +30,12 @@ export const isThermalReceiptId = (id: string | null | undefined): boolean => {
 };
 
 const BUILTIN_INVOICE_OPTIONS = [
+  { id: 'tpl-inv-gst-tally', name: 'GST Tally (myBillBook Style) (A4)', themeName: 'gst_tally', isDefault: false, primaryColor: '#0f172a' },
   { id: 'tpl-word-default', name: 'Custom Word-Designed Invoice', themeName: 'word_studio', isWordTemplate: true, isDefault: true },
-  { id: 'tpl-inv-global-stripe', name: 'Stripe Silicon Valley Minimal (Global)', themeName: 'global_stripe', isWordTemplate: true, primaryColor: '#0f172a' },
-  { id: 'tpl-inv-global-zurich', name: 'Zurich Swiss International (Global)', themeName: 'global_zurich', isWordTemplate: true, primaryColor: '#dc2626' },
-  { id: 'tpl-inv-global-nordic', name: 'Nordic Minimalist Slate (Global)', themeName: 'global_nordic', isWordTemplate: true, primaryColor: '#334155' },
-  { id: 'tpl-inv-global-tokyo', name: 'Tokyo Executive Precision (Global)', themeName: 'global_tokyo', isWordTemplate: true, primaryColor: '#1e1b4b' },
-  { id: 'tpl-inv-global-singapore', name: 'Singapore Global Trade & Commerce (Global)', themeName: 'global_singapore', isWordTemplate: true, primaryColor: '#0284c7' },
   { id: 'tpl-inv-marg-pharma', name: 'MARG Pharma & Wholesale GST (A4)', themeName: 'marg_pharma' },
   { id: 'tpl-inv-fmcg-distributor', name: 'FMCG / Food Multi-Column GST (A4)', themeName: 'fmcg_distributor' },
   { id: 'tpl-inv-parle-teal', name: 'Parle Brand Teal-Header GST (A4)', themeName: 'parle_teal' },
   { id: 'tpl-inv-agri-seeds', name: 'Agri Seeds, Fertilizer & Pesticides GST (A4)', themeName: 'agri_seeds' },
-  { id: 'tpl-inv-stylish', name: 'Stylish Theme (A4)', themeName: 'stylish' },
-  { id: 'tpl-inv-luxury', name: 'Luxury Theme (A4)', themeName: 'luxury' },
-  { id: 'tpl-inv-tally', name: 'Advanced GST (Tally) Theme (A4)', themeName: 'tally' },
-  { id: 'tpl-inv-adv-gst', name: 'Advanced GST Theme (A4)', themeName: 'adv_gst' },
-  { id: 'tpl-inv-billbook', name: 'BillBook Theme (A4)', themeName: 'billbook' },
-  { id: 'tpl-inv-modern', name: 'Modern Theme (A4)', themeName: 'modern' },
 ];
 
 export interface FullInvoiceData {
@@ -713,7 +704,8 @@ export function FullInvoicePrinter({
     const norm = targetTplId.toLowerCase();
     let themeName = (activeMasterTemplate?.themeName || 'word_studio');
     let name = (activeMasterTemplate?.name || 'Custom Word-Designed Invoice');
-    if (norm.includes('marg')) { themeName = 'marg_pharma'; name = 'Marg Pharma & Wholesale GST'; }
+    if (norm.includes('gst-tally') || norm.includes('gst_tally')) { themeName = 'gst_tally'; name = 'GST Tally (myBillBook Style)'; }
+    else if (norm.includes('marg')) { themeName = 'marg_pharma'; name = 'Marg Pharma & Wholesale GST'; }
     else if (norm.includes('fmcg')) { themeName = 'fmcg_distributor'; name = 'FMCG / Food Multi-Column GST'; }
     else if (norm.includes('parle')) { themeName = 'parle_teal'; name = 'Parle Brand Teal-Header GST'; }
     else if (norm.includes('agri') || norm.includes('seed')) { themeName = 'agri_seeds'; name = 'Agri Seeds, Fertilizer & Pesticides GST'; }
@@ -781,6 +773,7 @@ export function FullInvoicePrinter({
     (template.name?.toLowerCase().includes('marg') || template.id?.includes('marg') ? 'marg_pharma' :
      template.name?.toLowerCase().includes('fmcg') || template.id?.includes('fmcg') ? 'fmcg_distributor' :
      template.name?.toLowerCase().includes('parle') || template.id?.includes('parle') ? 'parle_teal' :
+     (template.name?.toLowerCase().includes('gst tally') || template.name?.toLowerCase().includes('gst-tally') || template.id?.includes('gst-tally')) ? 'gst_tally' :
      template.name?.toLowerCase().includes('agri') || template.id?.includes('agri') || template.name?.toLowerCase().includes('seed') || template.id?.includes('seed') ? 'agri_seeds' :
      template.name?.toLowerCase().includes('luxury') || template.id?.includes('luxury') ? 'luxury' :
      template.name?.toLowerCase().includes('tally') || template.id?.includes('tally') ? 'tally' :
@@ -794,6 +787,7 @@ export function FullInvoicePrinter({
   const isFmcg = theme === 'fmcg_distributor';
   const isParle = theme === 'parle_teal';
   const isAgriSeeds = theme === 'agri_seeds';
+  const isGstTally = theme === 'gst_tally';
   const isPdfOverlay = Boolean(
     theme === 'pdf_stationery_overlay' ||
     template?.themeName === 'pdf_stationery_overlay' ||
@@ -812,7 +806,7 @@ export function FullInvoicePrinter({
     template?.themeName?.startsWith('global_') ||
     (template as any)?.isWordTemplate
   );
-  const isCustomReplica = isWordTemplate || isMargPharma || isFmcg || isParle || isAgriSeeds || isPdfOverlay;
+  const isCustomReplica = isWordTemplate || isMargPharma || isFmcg || isParle || isAgriSeeds || isGstTally || isPdfOverlay;
 
 
   const isLuxury = theme === 'luxury';
@@ -1077,7 +1071,11 @@ export function FullInvoicePrinter({
     if (invoice?.bank_details && String(invoice.bank_details).trim().length > 3) return invoice.bank_details;
     if (invoice?.bank_account) {
       const b = invoice.bank_account;
-      return `Bank: ${b.bank_name || b.name} | A/C: ${b.account_number} | IFSC: ${b.ifsc_code}${b.branch_name ? ` | Branch: ${b.branch_name}` : ""}`;
+      const parts = [`Bank: ${b.bank_name || b.name}`, `A/C: ${b.account_number || ""}`, `IFSC: ${b.ifsc_code || ""}`];
+      if (b.account_holder_name) parts.push(`Holder: ${b.account_holder_name}`);
+      if (b.branch_name) parts.push(`Branch: ${b.branch_name}`);
+      if (b.upi_id) parts.push(`UPI: ${b.upi_id}`);
+      return parts.join(" | ");
     }
     if (liveCompanyData?.bank_details && String(liveCompanyData.bank_details).trim().length > 3) return liveCompanyData.bank_details;
     if (liveCompanyData?.bank_name && (liveCompanyData?.bank_account_number || liveCompanyData?.account_number)) {
@@ -1846,6 +1844,22 @@ export function FullInvoicePrinter({
                 />
               ) : isAgriSeeds ? (
                 <AgriSeedsTemplate
+                  invoice={{ ...invoice, copy_type: invoiceCopyType }}
+                  dynamicStoreName={dynamicStoreName}
+                  dynamicLogoUrl={dynamicLogoUrl}
+                  dynamicAddress={dynamicAddress}
+                  dynamicPhone={dynamicPhone}
+                  dynamicEmail={dynamicEmail}
+                  sellerGstin={sellerGstin}
+                  sellerStateCode={sellerStateCode}
+                  dynamicBank={dynamicBank}
+                  currency={currency}
+                  f={f}
+                  paperSize={selectedPaperSize}
+                  orientation={selectedOrientation}
+                />
+              ) : isGstTally ? (
+                <GstTallyTemplate
                   invoice={{ ...invoice, copy_type: invoiceCopyType }}
                   dynamicStoreName={dynamicStoreName}
                   dynamicLogoUrl={dynamicLogoUrl}

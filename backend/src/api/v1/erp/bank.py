@@ -80,6 +80,51 @@ async def get_bank_account(
     return account
 
 
+
+async def _sync_bank_to_settings(db: AsyncSession, tenant_id: uuid.UUID, account: BankAccount) -> None:
+    """Sync default bank account details into Tenant.settings and Company.settings for invoice print engines."""
+    from src.models import Tenant, Company
+    parts = [f"Bank: {account.bank_name or account.name}"]
+    if account.account_number:
+        parts.append(f"A/C: {account.account_number}")
+    if account.ifsc_code:
+        parts.append(f"IFSC: {account.ifsc_code}")
+    if account.account_holder_name:
+        parts.append(f"Holder: {account.account_holder_name}")
+    if account.branch_name:
+        parts.append(f"Branch: {account.branch_name}")
+    if account.upi_id:
+        parts.append(f"UPI: {account.upi_id}")
+    bank_str = " | ".join(parts)
+
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == tenant_id))
+    if tenant:
+        t_settings = dict(tenant.settings or {})
+        inv_settings = dict(t_settings.get("invoice_settings") or {})
+        inv_settings["bank_details"] = bank_str
+        inv_settings["bank_name"] = account.bank_name or account.name
+        inv_settings["bank_account"] = account.account_number or ""
+        inv_settings["bank_ifsc"] = account.ifsc_code or ""
+        inv_settings["account_holder_name"] = account.account_holder_name or ""
+        inv_settings["upi_id"] = account.upi_id or ""
+        inv_settings["default_bank_account_id"] = str(account.id)
+        t_settings["invoice_settings"] = inv_settings
+        t_settings["bank_details"] = bank_str
+        tenant.settings = t_settings
+
+    if account.company_id:
+        company = await db.scalar(select(Company).where(Company.id == account.company_id, Company.tenant_id == tenant_id))
+        if company:
+            c_settings = dict(company.settings or {})
+            c_settings["bank_details"] = bank_str
+            c_settings["bank_name"] = account.bank_name or account.name
+            c_settings["bank_account_number"] = account.account_number or ""
+            c_settings["bank_ifsc"] = account.ifsc_code or ""
+            c_settings["account_holder_name"] = account.account_holder_name or ""
+            c_settings["upi_vpa"] = account.upi_id or ""
+            company.settings = c_settings
+
+
 @router.post(
     "/accounts",
     response_model=BankAccountResponse,
@@ -91,9 +136,28 @@ async def create_bank_account(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:bank_accounts"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    account = BankAccount(tenant_id=ctx.tenant_id, **payload.model_dump())
+    from sqlalchemy import update
+    existing_count = await db.scalar(
+        select(func.count()).select_from(
+            select(BankAccount.id).where(BankAccount.tenant_id == ctx.tenant_id).subquery()
+        )
+    )
+    should_be_default = payload.is_default or (existing_count == 0)
+
+    account_data = payload.model_dump()
+    account_data["is_default"] = should_be_default
+    account = BankAccount(tenant_id=ctx.tenant_id, **account_data)
     db.add(account)
     await db.flush()
+
+    if should_be_default:
+        await db.execute(
+            update(BankAccount)
+            .where(BankAccount.tenant_id == ctx.tenant_id, BankAccount.id != account.id)
+            .values(is_default=False)
+        )
+        await _sync_bank_to_settings(db, ctx.tenant_id, account)
+
     await write_audit_log(
         db,
         tenant_id=ctx.tenant_id,
@@ -119,6 +183,7 @@ async def update_bank_account(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:bank_accounts"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    from sqlalchemy import update
     account = await db.scalar(
         select(BankAccount).where(
             BankAccount.id == account_id, BankAccount.tenant_id == ctx.tenant_id
@@ -132,6 +197,14 @@ async def update_bank_account(
     for key, value in updates.items():
         setattr(account, key, value)
 
+    if account.is_default:
+        await db.execute(
+            update(BankAccount)
+            .where(BankAccount.tenant_id == ctx.tenant_id, BankAccount.id != account.id)
+            .values(is_default=False)
+        )
+        await _sync_bank_to_settings(db, ctx.tenant_id, account)
+
     await write_audit_log(
         db,
         tenant_id=ctx.tenant_id,
@@ -142,6 +215,47 @@ async def update_bank_account(
         entity_id=account.id,
         old_values=old_values,
         new_values=updates,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+    await db.refresh(account)
+    return account
+
+
+@router.post("/accounts/{account_id}/set-default", response_model=BankAccountResponse)
+async def set_default_bank_account(
+    account_id: uuid.UUID,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:bank_accounts"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from sqlalchemy import update
+    account = await db.scalar(
+        select(BankAccount).where(
+            BankAccount.id == account_id, BankAccount.tenant_id == ctx.tenant_id
+        )
+    )
+    if not account:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+
+    await db.execute(
+        update(BankAccount)
+        .where(BankAccount.tenant_id == ctx.tenant_id)
+        .values(is_default=False)
+    )
+    account.is_default = True
+    await _sync_bank_to_settings(db, ctx.tenant_id, account)
+
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="bank",
+        action="bank_account_set_default",
+        entity_type="bank_account",
+        entity_id=account.id,
+        new_values={"is_default": True},
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )

@@ -188,22 +188,12 @@ async def create_product(
     sku = (data.get("sku") or "").strip()
     name = (data.get("name") or "").strip()
 
-    # Search for existing product by barcode or by sku within active workspace
+    # Search for existing product strictly by barcode within active workspace (no SKU fallback)
     existing_prod = None
     if barcode:
         stmt = select(Product).where(
             Product.tenant_id == ctx.tenant_id,
             Product.barcode == barcode
-        )
-        if ctx.active_company_id:
-            stmt = stmt.where(Product.company_id == ctx.active_company_id)
-        res = await db.execute(stmt)
-        existing_prod = res.scalars().first()
-
-    if not existing_prod and sku:
-        stmt = select(Product).where(
-            Product.tenant_id == ctx.tenant_id,
-            Product.sku == sku
         )
         if ctx.active_company_id:
             stmt = stmt.where(Product.company_id == ctx.active_company_id)
