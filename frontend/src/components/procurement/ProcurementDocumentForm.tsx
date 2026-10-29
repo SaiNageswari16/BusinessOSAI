@@ -1766,9 +1766,56 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           </div>
         </div>
 
-        {/* Top Header Mode Tabs for PINV */}
-        {docType === "PINV" && (
-          <div className="flex items-center gap-2.5 shrink-0">
+        {/* Right side controls: Upload OCR button + Mode Tabs */}
+        <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+          {/* Sleek Professional OCR Document Upload Option in Header */}
+          <div className="relative">
+            <input
+              type="file"
+              id="header-ocr-upload-input"
+              className="hidden"
+              accept=".pdf,.jpg,.jpeg,.png"
+              onChange={handleOcrUpload}
+              disabled={isExtracting}
+            />
+
+            {isExtracting ? (
+              <div className="h-9 px-3.5 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center gap-2 shadow-2xs">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600 shrink-0" />
+                <span className="text-xs font-bold text-indigo-700">AI Extracting...</span>
+              </div>
+            ) : ocrResult && ocrResult.extracted ? (
+              <div className="h-9 px-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center gap-2 shadow-2xs">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="text-xs font-bold text-emerald-800 max-w-[130px] truncate" title={ocrFile?.name || "Extracted"}>
+                  {ocrFile?.name || "OCR Extracted"}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleClearOcr}
+                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                  title="Clear uploaded document"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <label
+                htmlFor="header-ocr-upload-input"
+                className="group inline-flex items-center gap-2 h-9 px-3.5 bg-white hover:bg-indigo-50/70 border border-indigo-200/90 hover:border-indigo-400 rounded-xl shadow-2xs text-xs font-bold text-indigo-700 hover:text-indigo-900 transition-all cursor-pointer active:scale-95"
+                title="Upload PDF or image to auto-extract line items, supplier, tax, and totals"
+              >
+                <Upload className="w-3.5 h-3.5 text-indigo-600 group-hover:-translate-y-0.5 transition-transform" />
+                <span>Upload Bill (OCR)</span>
+                <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md hidden sm:inline">
+                  Auto-Fill
+                </span>
+              </label>
+            )}
+          </div>
+
+          {/* Top Header Mode Tabs for PINV */}
+          {docType === "PINV" && (
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/90 shadow-2xs">
               <button
                 type="button"
@@ -1795,8 +1842,8 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                 <span>🔗 Link PO & GRN (3-Way)</span>
               </button>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Linked Sourcing Sync Card for PO */}
@@ -1920,83 +1967,9 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         </div>
       )}
 
-      {/* OCR Upload Section */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-3.5 sm:p-4">
-        <div className="flex items-center gap-2 mb-2.5">
-          <div className="p-1.5 bg-indigo-100 rounded-lg">
-            <ScanLine className="w-4 h-4 text-indigo-600" />
-          </div>
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-            Upload Document for {docType === "PO" ? "Purchase Order (PO)" : docType === "PINV" ? "Purchase Invoice (Tax Invoice / Bill)" : "Goods Received Note (GRN)"}
-          </h2>
-          <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-            OCR Auto-Extract
-          </span>
-        </div>
-
-        <div className="flex items-start gap-3">
-          {/* Upload area */}
-          <div className="flex-1">
-            <label className="flex flex-col items-center justify-center w-full h-20 sm:h-22 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/50 transition-all bg-slate-50/50">
-              <div className="flex flex-col items-center justify-center pt-2 pb-2">
-                <Upload className="w-5 h-5 text-slate-400 mb-0.5" />
-                <p className="text-xs font-medium text-slate-500">
-                  {ocrFile ? ocrFile.name : "Drop a PO/GRN document here or click to browse"}
-                </p>
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  Supports PDF, JPG, PNG (Max 10MB)
-                </p>
-              </div>
-              <input
-                type="file"
-                className="hidden"
-                accept=".pdf,.jpg,.jpeg,.png"
-                onChange={handleOcrUpload}
-                disabled={isExtracting}
-              />
-            </label>
-          </div>
-
-          {/* OCR Status / Actions */}
-          <div className="flex flex-col gap-2 min-w-[160px]">
-            {isExtracting && (
-              <div className="flex items-center gap-2.5 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 shadow-sm">
-                <Loader2 className="w-4 h-4 animate-spin text-indigo-600 flex-shrink-0" />
-                <div className="flex flex-col">
-                  <span className="text-xs font-semibold text-indigo-700">Extracting All Bill Details...</span>
-                  <span className="text-[10px] text-indigo-500">Running in background. You can continue working.</span>
-                </div>
-              </div>
-            )}
-            {ocrResult && !isExtracting && (
-              <div className="flex flex-col gap-1">
-                <div className={`flex items-center gap-2 rounded-lg px-3 py-2 ${ocrResult.extracted ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}>
-                  {ocrResult.extracted ? (
-                    <><CheckCircle className="w-4 h-4 text-green-600" />
-                      <span className="text-[11px] font-bold text-green-700">Extracted</span></>
-                  ) : (
-                    <><AlertCircle className="w-4 h-4 text-amber-600" />
-                      <span className="text-[11px] font-bold text-amber-700">Partial</span></>
-                  )}
-                </div>
-                {ocrResult.confidence && (
-                  <span className="text-[10px] text-slate-500 pl-1">
-                    Confidence: {Math.round(ocrResult.confidence * 100)}%
-                  </span>
-                )}
-                <button
-                  onClick={handleClearOcr}
-                  className="text-[10px] font-bold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-2 py-1 transition-all"
-                >
-                  Clear OCR
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* OCR Result Preview & Multi-Invoice Picker */}
-        {ocrResult && ocrResult.extracted && (
+      {/* OCR Result Preview & Multi-Invoice Picker (shown when document is extracted) */}
+      {ocrResult && ocrResult.extracted && (
+        <div className="bg-white rounded-2xl border border-indigo-200/90 shadow-2xs p-3.5 sm:p-4 space-y-3 animate-in fade-in">
           <div className="mt-4 space-y-3">
             {/* Multi-Invoice Selector if document has multiple invoices / pages */}
             {ocrResult.invoices && ocrResult.invoices.length > 1 && (
@@ -2093,8 +2066,8 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* PO Status Update (Editing Existing PO) */}
       {docType === "PO" && initialData?.id && (
@@ -2140,10 +2113,10 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         </div>
       )}
 
-      {/* Top 2-Column Section: Bill From / Vendor Party + Document Metadata */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        {/* Bill From / Vendor Party Card (2 Cols on lg) */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 space-y-3">
+      {/* Top 2-Column Section: Bill From / Vendor Party + Document Metadata (50/50 Balanced Layout) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {/* Bill From / Vendor Party Card (50% on lg) */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 space-y-3">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
               <Building className="w-4 h-4 text-blue-600" />
@@ -2153,21 +2126,21 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             <button
               type="button"
               onClick={() => setIsAddVendorOpen(true)}
-              className="text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1 rounded-xl transition-all flex items-center gap-1"
+              className="text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" /> Add New Vendor
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-3">
             <div>
               <label className="text-[11px] font-semibold text-slate-500 block mb-1">
-                Select Vendor / Supplier
+                Select Vendor / Supplier <span className="text-rose-500 font-bold">*</span>
               </label>
               <select
                 value={selectedSupplierId}
                 onChange={(e) => setSelectedSupplierId(e.target.value)}
-                className="w-full h-10 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
               >
                 <option value="">-- Select Vendor / Supplier Party --</option>
                 {suppliers.map((s) => (
@@ -2180,8 +2153,12 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
 
             {selectedSupplier ? (
               <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100 space-y-1 text-xs">
-                <div className="font-extrabold text-slate-900">{selectedSupplier.name}</div>
-                <div className="text-slate-600 text-[11px]">Phone: {selectedSupplier.phone || "N/A"}</div>
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-slate-900">{selectedSupplier.name}</span>
+                  {selectedSupplier.phone && (
+                    <span className="text-slate-600 text-[11px]">Phone: {selectedSupplier.phone}</span>
+                  )}
+                </div>
                 {selectedSupplier.tax_number && (
                   <div className="font-mono text-blue-700 font-bold text-[11px]">
                     GSTIN: {selectedSupplier.tax_number}
@@ -2192,18 +2169,34 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
                 )}
               </div>
             ) : (
-              <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-xs text-slate-400 flex items-center justify-center italic">
+              <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-xs text-slate-400 flex items-center justify-center italic">
                 Select an existing vendor or click "+ Add New Vendor"
               </div>
             )}
           </div>
         </div>
 
-        {/* Document Metadata Card (1 Col on lg) */}
+        {/* Document Metadata Card (50% on lg) */}
         <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 space-y-3">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 flex items-center gap-2">
-            <FileText className="w-4 h-4 text-emerald-600" /> Document Metadata
-          </h2>
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-emerald-600" /> Document Metadata
+            </h2>
+
+            {!showDueDate ? (
+              <button
+                type="button"
+                onClick={() => setShowDueDate(true)}
+                className="text-xs font-bold text-sky-600 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 border border-sky-200 px-3 py-1 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Due Date
+              </button>
+            ) : (
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-emerald-600" /> Due Date Active
+              </span>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -2229,50 +2222,45 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             </div>
           </div>
 
-          <div>
-            <label className="text-[11px] font-semibold text-slate-500 block mb-1 flex items-center gap-1">
-              <MapPin className="size-3 text-indigo-600" /> {docType === "PR" ? "Target Delivery Store / Depot" : docType === "PO" ? "Receiving Store / Branch / Godown" : "Inward Store / Branch"}
-            </label>
-            <select
-              value={selectedLocation || selectedStore}
-              onChange={(e) => {
-                setSelectedLocation(e.target.value);
-                setSelectedStore(e.target.value);
-              }}
-              className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              {stores.map((s) => (
-                <option key={s.id} value={s.name}>
-                  {s.displayName}
-                </option>
-              ))}
-            </select>
+          {/* Inward Store / Branch and Original Vendor Bill / Ref No divided in half */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className={cn(docType !== "PINV" && "sm:col-span-2")}>
+              <label className="text-[11px] font-semibold text-slate-500 block mb-1 flex items-center gap-1">
+                <MapPin className="size-3 text-indigo-600" /> {docType === "PR" ? "Target Delivery Store / Depot" : docType === "PO" ? "Receiving Store / Branch / Godown" : "Inward Store / Branch"}
+              </label>
+              <select
+                value={selectedLocation || selectedStore}
+                onChange={(e) => {
+                  setSelectedLocation(e.target.value);
+                  setSelectedStore(e.target.value);
+                }}
+                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {stores.map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {s.displayName}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {docType === "PINV" && (
+              <div>
+                <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+                  Original Vendor Bill / Ref No
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. VEND-9821"
+                  value={originalRefNo}
+                  onChange={(e) => setOriginalRefNo(e.target.value)}
+                  className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs outline-none"
+                />
+              </div>
+            )}
           </div>
 
-          {docType === "PINV" && (
-            <div>
-              <label className="text-[11px] font-semibold text-slate-500 block mb-1">
-                Original Vendor Bill / Ref No
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. VEND-9821"
-                value={originalRefNo}
-                onChange={(e) => setOriginalRefNo(e.target.value)}
-                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs outline-none"
-              />
-            </div>
-          )}
-
-          {!showDueDate ? (
-            <button
-              type="button"
-              onClick={() => setShowDueDate(true)}
-              className="w-full py-2 px-3 border-2 border-dashed border-sky-400/90 hover:border-sky-500 bg-sky-50/20 hover:bg-sky-50/60 text-sky-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-            >
-              <Plus className="size-3.5" /> Add Due Date
-            </button>
-          ) : (
+          {showDueDate && (
             <div className="space-y-1.5 p-2 bg-slate-50/80 rounded-xl border border-slate-200/90 animate-in fade-in duration-150">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
@@ -3098,181 +3086,213 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             </div>
 
             {docType === "PINV" && (
-              <div className="pt-3 border-t border-slate-200 space-y-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1.5">Payment Settlement Status</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCurrentPoStatus("Paid");
-                        setAmountPaid(roundedTotal);
-                      }}
-                      className={cn(
-                        "py-2 px-2.5 rounded-xl font-bold text-xs border transition-all flex items-center justify-center gap-1.5 cursor-pointer",
-                        currentPoStatus === "Paid"
-                          ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-                          : "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
-                      )}
-                    >
-                      <Check className="size-3.5" />
-                      <span>Paid in Full</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCurrentPoStatus("Unpaid");
-                        setAmountPaid(0);
-                      }}
-                      className={cn(
-                        "py-2 px-2.5 rounded-xl font-bold text-xs border transition-all flex items-center justify-center gap-1.5 cursor-pointer",
-                        currentPoStatus === "Unpaid" || currentPoStatus === "Pending Payment"
-                          ? "bg-rose-600 text-white border-rose-600 shadow-sm"
-                          : "bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100"
-                      )}
-                    >
-                      <Clock className="size-3.5" />
-                      <span>Unpaid / Due</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCurrentPoStatus("Partial");
-                        if (!amountPaid) setAmountPaid(Math.round(roundedTotal / 2));
-                      }}
-                      className={cn(
-                        "py-2 px-2.5 rounded-xl font-bold text-xs border transition-all flex items-center justify-center gap-1.5 cursor-pointer",
-                        currentPoStatus === "Partial" || currentPoStatus === "Partially Received"
-                          ? "bg-amber-600 text-white border-amber-600 shadow-sm"
-                          : "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
-                      )}
-                    >
-                      <Receipt className="size-3.5" />
-                      <span>Partial Paid</span>
-                    </button>
-                  </div>
+              <div className="pt-3 border-t border-slate-200/90 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <CreditCard className="size-3.5 text-indigo-600" />
+                    Payment Settlement & Status
+                  </span>
+                  <span className={cn(
+                    "text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border shadow-2xs",
+                    currentPoStatus === "Paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                    currentPoStatus === "Partial" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                    currentPoStatus === "Draft" ? "bg-slate-100 text-slate-600 border-slate-200" :
+                    "bg-rose-50 text-rose-700 border-rose-200"
+                  )}>
+                    {currentPoStatus === "Paid" ? "Fully Settled" :
+                     currentPoStatus === "Partial" ? "Partially Settled" :
+                     currentPoStatus === "Draft" ? "Draft Review" :
+                     "Payment Pending"}
+                  </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-500 block mb-1">Payment Method</label>
-                    <select
-                      value={paymentMode}
-                      onChange={(e) => setPaymentMode(e.target.value)}
-                      className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2 text-xs font-bold text-slate-800 outline-none cursor-pointer"
-                    >
-                      <option value="Cash">Cash</option>
-                      <option value="UPI">UPI / QR</option>
-                      <option value="Bank Transfer">Bank Transfer / NEFT</option>
-                      <option value="Cheque">Cheque</option>
-                      <option value="Credit Card">Credit Card</option>
-                      <option value="Credit">Credit / Net 30</option>
-                    </select>
-                  </div>
+                {/* Professional Segmented Status Tabs */}
+                <div className="grid grid-cols-4 gap-1.5 bg-slate-100/90 p-1 rounded-xl border border-slate-200/80 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrentPoStatus("Paid");
+                      setAmountPaid(roundedTotal);
+                    }}
+                    className={cn(
+                      "py-2 px-1.5 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                      currentPoStatus === "Paid"
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                    )}
+                  >
+                    <Check className="size-3.5 shrink-0" />
+                    <span className="truncate">Paid in Full</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrentPoStatus("Partial");
+                      if (!amountPaid || amountPaid === 0) setAmountPaid(Math.round(roundedTotal / 2));
+                    }}
+                    className={cn(
+                      "py-2 px-1.5 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                      currentPoStatus === "Partial" || currentPoStatus === "Partially Received"
+                        ? "bg-amber-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                    )}
+                  >
+                    <Receipt className="size-3.5 shrink-0" />
+                    <span className="truncate">Partial Paid</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrentPoStatus("Unpaid");
+                      setAmountPaid(0);
+                    }}
+                    className={cn(
+                      "py-2 px-1.5 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                      currentPoStatus === "Unpaid" || currentPoStatus === "Pending Payment"
+                        ? "bg-rose-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                    )}
+                  >
+                    <Clock className="size-3.5 shrink-0" />
+                    <span className="truncate">Unpaid / Due</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrentPoStatus("Draft");
+                    }}
+                    className={cn(
+                      "py-2 px-1.5 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                      currentPoStatus === "Draft"
+                        ? "bg-slate-700 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                    )}
+                  >
+                    <FileText className="size-3.5 shrink-0" />
+                    <span className="truncate">Draft</span>
+                  </button>
+                </div>
 
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-500 block mb-1">Amount Paid ({currency.symbol})</label>
-                    <input
-                      type="number"
-                      placeholder="0.00"
-                      value={currentPoStatus === "Paid" ? (roundedTotal || "") : (amountPaid || "")}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => {
-                        const val = e.target.value ? Number(e.target.value) : "";
-                        setAmountPaid(val);
-                        if (typeof val === "number" && val >= roundedTotal && roundedTotal > 0) {
-                          setCurrentPoStatus("Paid");
-                        } else if (typeof val === "number" && val > 0) {
-                          setCurrentPoStatus("Partial");
-                        } else {
-                          setCurrentPoStatus("Unpaid");
-                        }
-                      }}
-                      className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none"
-                    />
-                  </div>
+                {/* Settlement Inputs Container */}
+                <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3 space-y-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-500 block mb-1">Payment Method</label>
+                      <select
+                        value={paymentMode}
+                        onChange={(e) => setPaymentMode(e.target.value)}
+                        className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-2xs cursor-pointer"
+                      >
+                        <option value="Cash">Cash</option>
+                        <option value="UPI">UPI / QR</option>
+                        <option value="Bank Transfer">Bank Transfer / NEFT</option>
+                        <option value="Cheque">Cheque</option>
+                        <option value="Credit Card">Credit Card</option>
+                        <option value="Credit">Credit / Net 30</option>
+                      </select>
+                    </div>
 
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-500 block mb-1">Balance Due ({currency.symbol})</label>
-                    <div className={cn(
-                      "h-9 border rounded-xl px-2.5 flex items-center font-black text-xs",
-                      balanceDue <= 0 ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-rose-50 border-rose-200 text-rose-700"
-                    )}>
-                      {currency.symbol}{balanceDue.toFixed(2)}
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-500 block mb-1">Amount Paid ({currency.symbol})</label>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                          {currency.symbol}
+                        </span>
+                        <input
+                          type="number"
+                          placeholder="0.00"
+                          value={currentPoStatus === "Paid" ? (roundedTotal || "") : (amountPaid === 0 ? "0" : (amountPaid || ""))}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const val = e.target.value === "" ? "" : Number(e.target.value);
+                            setAmountPaid(val);
+                            if (typeof val === "number" && val >= roundedTotal && roundedTotal > 0) {
+                              setCurrentPoStatus("Paid");
+                            } else if (typeof val === "number" && val > 0) {
+                              setCurrentPoStatus("Partial");
+                            } else if (val === 0 || val === "") {
+                              setCurrentPoStatus("Unpaid");
+                            }
+                          }}
+                          className="w-full h-9 bg-white border border-slate-300 rounded-lg pl-6 pr-2.5 text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-500 block mb-1">Balance Due ({currency.symbol})</label>
+                      <div className={cn(
+                        "h-9 border rounded-lg px-2.5 flex items-center justify-between font-extrabold text-xs shadow-2xs",
+                        balanceDue <= 0 ? "bg-emerald-50 border-emerald-300 text-emerald-700" : "bg-rose-50 border-rose-300 text-rose-700"
+                      )}>
+                        <span>{currency.symbol}{balanceDue.toFixed(2)}</span>
+                        <span className="text-[10px] font-semibold opacity-75">
+                          {balanceDue <= 0 ? "Cleared" : "Pending"}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             )}
-          </div>
-        </div>
-      </div>
 
-      {/* Bottom Submission Action Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-3 sm:p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <button
-            type="button"
-            disabled={isSaving}
-            onClick={onClose}
-            className="group inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-slate-600 hover:text-rose-600 bg-white hover:bg-rose-50/70 border border-slate-200/90 hover:border-rose-200 rounded-xl transition-all shadow-2xs active:scale-95 cursor-pointer disabled:opacity-50"
-          >
-            <X className="w-3.5 h-3.5 text-slate-400 group-hover:text-rose-500 transition-colors" />
-            <span>Cancel</span>
-          </button>
+            {docType === "PO" && (
+              <div className="pt-3 border-t border-slate-200/90 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <Layers className="size-3.5 text-blue-600" />
+                    Purchase Order Status
+                  </span>
+                  <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    {currentPoStatus || "Draft"}
+                  </span>
+                </div>
+                <select
+                  value={currentPoStatus}
+                  onChange={(e) => setCurrentPoStatus(e.target.value)}
+                  className="w-full h-9 bg-white border border-slate-300 rounded-lg px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 cursor-pointer shadow-2xs"
+                >
+                  <option value="Draft">Draft PO (Internal Review)</option>
+                  <option value="Sent">Sent / Issued to Supplier</option>
+                  <option value="Partially Received">Partially Received</option>
+                  <option value="Fully Received">Fully Received</option>
+                  <option value="Billed">Billed / Closed</option>
+                  <option value="Cancelled">Cancelled</option>
+                </select>
+              </div>
+            )}
 
-          {(docType === "PO" || docType === "PINV") && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-500">Status:</span>
-              <select
-                value={currentPoStatus}
-                onChange={(e) => {
-                  const s = e.target.value;
-                  setCurrentPoStatus(s);
-                  if (s === "Paid") setAmountPaid(roundedTotal);
-                  else if (s === "Unpaid") setAmountPaid(0);
-                }}
-                className="h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+            {/* Document Action Buttons inside Financial Summary */}
+            <div className="pt-3 border-t border-slate-200/90 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={onClose}
+                className="group w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 hover:text-rose-600 bg-white hover:bg-rose-50/70 border border-slate-200/90 hover:border-rose-200 rounded-xl transition-all shadow-2xs active:scale-95 cursor-pointer disabled:opacity-50"
               >
-                {docType === "PINV" ? (
-                  <>
-                    <option value="Paid">Paid / Settled (Direct Bill)</option>
-                    <option value="Received">Received / Full Delivery</option>
-                    <option value="Partial">Partially Paid</option>
-                    <option value="Unpaid">Unpaid / Due</option>
-                    <option value="Draft">Draft Invoice</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="Draft">Draft PO</option>
-                    <option value="Sent">Sent / Issued</option>
-                    <option value="Partially Received">Partially Received</option>
-                    <option value="Fully Received">Fully Received</option>
-                    <option value="Billed">Billed / Closed</option>
-                    <option value="Cancelled">Cancelled</option>
-                  </>
-                )}
-              </select>
-            </div>
-          )}
-        </div>
+                <X className="w-3.5 h-3.5 text-slate-400 group-hover:text-rose-500 transition-colors" />
+                <span>Cancel</span>
+              </button>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <button
-            type="button"
-            onClick={() => setShareModalDoc(getCurrentDocumentData())}
-            className="w-full sm:w-auto px-5 py-3 text-sm font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 rounded-xl border border-teal-200 flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
-          >
-            <FileText className="size-4 text-teal-600" /> Preview PDF & Share
-          </button>
-          <button
-            disabled={isSaving}
-            onClick={handleSaveDocument}
-            className="w-full sm:w-auto px-8 py-3 text-sm font-black text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 uppercase tracking-wider disabled:opacity-50 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
-          >
-            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {isSaving ? "Saving..." : (docType === "PINV" ? (currentPoStatus === "Paid" ? "Save Paid Invoice" : "Save Purchase Invoice") : "Save Document")}
-          </button>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setShareModalDoc(getCurrentDocumentData())}
+                  className="w-full sm:w-auto px-4 py-2.5 text-xs font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 rounded-xl border border-teal-200/90 flex items-center justify-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
+                >
+                  <FileText className="size-3.5 text-teal-600" /> Preview PDF & Share
+                </button>
+                <button
+                  disabled={isSaving}
+                  onClick={handleSaveDocument}
+                  className="w-full sm:w-auto px-6 py-2.5 text-xs font-black text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-md shadow-blue-600/20 flex items-center justify-center gap-2 uppercase tracking-wider disabled:opacity-50 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+                >
+                  {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  {isSaving ? "Saving..." : (docType === "PINV" ? (currentPoStatus === "Paid" ? "Save Paid Invoice" : "Save Purchase Invoice") : "Save Document")}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

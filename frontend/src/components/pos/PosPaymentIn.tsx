@@ -155,27 +155,33 @@ export function PosPaymentIn() {
       ]);
       
       // 1. Invoice Settlements (Credits / Inflows)
-      const invPayments = (invoicesRes?.items || []).map((p: any) => ({
-        id: p.id,
-        voucher_number: p.payment_number || (p.reference_number ? `REC-${p.reference_number}` : `REC-${String(p.id).slice(0, 6).toUpperCase()}`),
-        reference_text: p.invoice_number ? `Invoice #${p.invoice_number}` : (p.reference_number || "Invoice Settlement"),
-        invoice_id: p.invoice_id,
-        invoice_number: p.invoice_number,
-        party_name: p.party_name || p.customer_name || "Customer",
-        party_type: 'Customer',
-        party_id: p.party_id || p.customer_id,
-        entry_type: 'credit',
-        credit_amount: Number(p.amount) || 0,
-        debit_amount: 0,
-        amount: Number(p.amount) || 0,
-        running_balance: null,
-        payment_date: p.payment_date || p.created_at || new Date().toISOString(),
-        payment_method: p.payment_method || "Cash",
-        badge: "Invoice Settlement",
-        badge_variant: "emerald",
-        notes: p.notes || "Invoice Bill Payment",
-        created_at: p.created_at || p.payment_date || new Date().toISOString()
-      }));
+      const invPayments = (invoicesRes?.items || []).map((p: any) => {
+        const invTotal = Number(p.total_amount || 0);
+        const invPaid = Number(p.amount_paid || p.amount || 0);
+        const calculatedDue = p.balance_due != null ? Number(p.balance_due) : (p.due_amount != null ? Number(p.due_amount) : Math.max(0, invTotal - invPaid));
+        return {
+          id: p.id,
+          voucher_number: p.payment_number || (p.reference_number ? `REC-${p.reference_number}` : `REC-${String(p.id).slice(0, 6).toUpperCase()}`),
+          reference_text: p.invoice_number ? `Invoice #${p.invoice_number}` : (p.reference_number || "Invoice Settlement"),
+          invoice_id: p.invoice_id,
+          invoice_number: p.invoice_number,
+          party_name: p.party_name || p.customer_name || "Customer",
+          party_type: 'Customer',
+          party_id: p.party_id || p.customer_id,
+          entry_type: 'credit',
+          credit_amount: Number(p.amount) || 0,
+          debit_amount: 0,
+          amount: Number(p.amount) || 0,
+          due_amount: calculatedDue,
+          running_balance: null,
+          payment_date: p.payment_date || p.created_at || new Date().toISOString(),
+          payment_method: p.payment_method || "Cash",
+          badge: "Invoice Settlement",
+          badge_variant: "emerald",
+          notes: p.notes || "Invoice Bill Payment",
+          created_at: p.created_at || p.payment_date || new Date().toISOString()
+        };
+      });
 
       // Also incorporate local counter invoices if amount_received > 0 and not yet in invPayments
       try {
@@ -184,6 +190,8 @@ export function PosPaymentIn() {
           const localInvs = JSON.parse(stored);
           localInvs.forEach((linv: any) => {
             const amtRec = Number(linv.amount_received || 0);
+            const lTot = Number(linv.total_amount || linv.grand_total || amtRec);
+            const lDue = linv.balance_due != null ? Number(linv.balance_due) : Math.max(0, lTot - amtRec);
             if (amtRec > 0.05 && !invPayments.some((ip: any) => ip.invoice_number === linv.invoice_number)) {
               invPayments.push({
                 id: `local_${linv.id || linv.invoice_number}`,
@@ -198,6 +206,7 @@ export function PosPaymentIn() {
                 credit_amount: amtRec,
                 debit_amount: 0,
                 amount: amtRec,
+                due_amount: lDue,
                 running_balance: null,
                 payment_date: linv.invoice_date || linv.created_at || new Date().toISOString(),
                 payment_method: linv.payment_mode || "Cash",
@@ -226,6 +235,7 @@ export function PosPaymentIn() {
           credit_amount: isCredit ? amountNum : 0,
           debit_amount: isCredit ? 0 : amountNum,
           amount: amountNum,
+          due_amount: 0,
           running_balance: w.balance_after != null ? Number(w.balance_after) : null,
           payment_date: w.created_at,
           payment_method: isCredit 
@@ -243,6 +253,9 @@ export function PosPaymentIn() {
       const venPayments = (vendorPaymentsRes || []).map((p: any) => {
         const bill = (vendorBillsRes || []).find((b: any) => b.id === p.vendor_bill_id);
         const amt = Number(p.amount_paid) || 0;
+        const bTot = bill ? Number(bill.total_amount || 0) : amt;
+        const bPaid = bill ? Number(bill.amount_paid || amt) : amt;
+        const bDue = Math.max(0, bTot - bPaid);
         return {
           id: p.id,
           voucher_number: p.reference_number || `PAY-${String(p.id).slice(0, 6).toUpperCase()}`,
@@ -254,6 +267,7 @@ export function PosPaymentIn() {
           credit_amount: 0,
           debit_amount: amt,
           amount: amt,
+          due_amount: bDue,
           running_balance: null,
           payment_date: p.payment_date || new Date().toISOString(),
           payment_method: p.payment_method || "Bank Transfer",
@@ -281,6 +295,7 @@ export function PosPaymentIn() {
           credit_amount: 0,
           debit_amount: amt,
           amount: amt,
+          due_amount: 0,
           running_balance: null,
           payment_date: cn.invoice_date || cn.created_at || new Date().toISOString(),
           payment_method: cn.payment_method || "Credit Note",
@@ -308,6 +323,7 @@ export function PosPaymentIn() {
           credit_amount: amt,
           debit_amount: 0,
           amount: amt,
+          due_amount: 0,
           running_balance: null,
           payment_date: dn.invoice_date || dn.created_at || new Date().toISOString(),
           payment_method: dn.payment_method || "Debit Note",
@@ -336,6 +352,7 @@ export function PosPaymentIn() {
           credit_amount: isRefund ? 0 : absTotal,
           debit_amount: isRefund ? absTotal : 0,
           amount: absTotal,
+          due_amount: isRefund ? 0 : (p.balance_due != null ? Number(p.balance_due) : 0),
           running_balance: null,
           payment_date: p.created_at || new Date().toISOString(),
           payment_method: p.payments?.[0]?.payment_method || "Cash",
@@ -363,6 +380,7 @@ export function PosPaymentIn() {
           credit_amount: 0,
           debit_amount: bal,
           amount: bal,
+          due_amount: bal,
           running_balance: null,
           payment_date: c.created_at || new Date().toISOString(),
           payment_method: "Opening Balance",
@@ -381,11 +399,25 @@ export function PosPaymentIn() {
         ...debitNoteEntries,
         ...posCounterEntries,
         ...openingDues
-      ].sort((a, b) => 
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ];
+
+      // Calculate running balance chronologically (oldest to newest)
+      const sortedChronological = [...combined].sort((a, b) => 
+        new Date(a.payment_date || a.created_at).getTime() - new Date(b.payment_date || b.created_at).getTime()
       );
-      
-      setPastPayments(combined);
+
+      let cumulative = 0;
+      sortedChronological.forEach((tx: any) => {
+        cumulative = cumulative + (tx.credit_amount || 0) - (tx.debit_amount || 0);
+        tx.running_balance = cumulative;
+      });
+
+      // Display descending (newest first)
+      const finalSorted = [...sortedChronological].sort((a, b) => 
+        new Date(b.payment_date || b.created_at).getTime() - new Date(a.payment_date || a.created_at).getTime()
+      );
+
+      setPastPayments(finalSorted);
       
       let totCredits = 0;
       let totDebits = 0;
@@ -1255,12 +1287,13 @@ export function PosPaymentIn() {
             <div className="overflow-x-auto flex-1">
               <table className="w-full text-left border-collapse text-sm">
                 <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
-              <tr>
-                <th className="py-3.5 px-4">Date & Time</th>
+                  <tr>
+                    <th className="py-3.5 px-4">Date & Time</th>
                     <th className="py-3.5 px-4">Voucher / Ref #</th>
                     <th className="py-3.5 px-4">Party & Account</th>
                     <th className="py-3.5 px-4 text-right text-emerald-700">Credit (+) In</th>
                     <th className="py-3.5 px-4 text-right text-rose-700">Debit (-) Out</th>
+                    <th className="py-3.5 px-4 text-right text-amber-700">Due Amount</th>
                     <th className="py-3.5 px-4 text-right text-indigo-900">Running Balance</th>
                     <th className="py-3.5 px-4 text-center">Tender / Mode</th>
                     <th className="py-3.5 px-4 text-right">Receipt</th>
@@ -1269,7 +1302,7 @@ export function PosPaymentIn() {
                 <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
                   {filteredPayments.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="text-center py-12 text-slate-400 text-sm">
+                      <td colSpan={9} className="text-center py-12 text-slate-400 text-sm">
                         No ledger transactions found for the selected filter.
                       </td>
                     </tr>
@@ -1333,9 +1366,26 @@ export function PosPaymentIn() {
                           )}
                         </td>
                         <td className="py-3.5 px-4 text-right font-black">
+                          {p.due_amount != null && p.due_amount > 0.009 ? (
+                            <span className="inline-flex items-center gap-1 text-rose-700 bg-rose-50 border border-rose-200/80 px-2.5 py-0.5 rounded-md font-mono text-xs font-bold shadow-2xs">
+                              {formatCurrency(p.due_amount)}
+                            </span>
+                          ) : p.due_amount === 0 ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 rounded-md font-mono text-xs font-bold shadow-2xs">
+                              ₹0.00 <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-600">(Cleared)</span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-black">
                           {p.running_balance != null ? (
-                            <span className="text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md font-mono text-xs">
-                              {formatCurrency(p.running_balance)}
+                            <span className={`px-2.5 py-0.5 rounded-md font-mono text-xs font-bold shadow-2xs ${
+                              p.running_balance >= 0 
+                                ? "text-emerald-800 bg-emerald-50/80 border border-emerald-200" 
+                                : "text-rose-800 bg-rose-50/80 border border-rose-200"
+                            }`}>
+                              {p.running_balance >= 0 ? "+" : ""}{formatCurrency(p.running_balance)}
                             </span>
                           ) : (
                             <span className="text-slate-300">—</span>
@@ -1785,39 +1835,41 @@ export function PosPaymentIn() {
               className="w-full border border-slate-300 rounded-xl p-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 min-h-[70px]"
             />
           </div>
-          
-        </div>
 
-        {/* Drawer Footer */}
-        <div className="p-4 border-t border-slate-200 flex gap-3 bg-white">
-          <button 
-            onClick={() => setIsRecordingPayment(false)}
-            disabled={isProcessing}
-            className="flex-1 py-3 border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 text-sm disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button 
-            onClick={handleProcessPayment}
-            disabled={isProcessing || (paymentPurpose === 'wallet_debit' && Number(paymentAmount) > walletBalance)}
-            className={`flex-1 py-3 font-bold rounded-xl text-sm shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 transition-all ${
-              paymentPurpose === 'wallet_debit'
-                ? "bg-rose-600 hover:bg-rose-700 text-white"
-                : paymentPurpose === 'wallet_topup'
-                ? "bg-purple-600 hover:bg-purple-700 text-white"
-                : "bg-indigo-600 hover:bg-indigo-700 text-white"
-            }`}
-          >
-            {isProcessing ? (
-              <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> Processing...</>
-            ) : paymentPurpose === 'wallet_debit' ? (
-              `💸 Debit Wallet (${formatCurrency(Number(paymentAmount) || 0)})`
-            ) : paymentPurpose === 'wallet_topup' ? (
-              `💰 Add Funds (+${formatCurrency(Number(paymentAmount) || 0)})`
-            ) : (
-              `Save & Settle (${formatCurrency(Number(paymentAmount) || 0)})`
-            )}
-          </button>
+          {/* Action Buttons directly below Notes */}
+          <div className="pt-2 flex gap-3">
+            <button 
+              type="button"
+              onClick={() => setIsRecordingPayment(false)}
+              disabled={isProcessing}
+              className="flex-1 py-3 border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 text-sm disabled:opacity-50 transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button 
+              type="button"
+              onClick={handleProcessPayment}
+              disabled={isProcessing || (paymentPurpose === 'wallet_debit' && Number(paymentAmount) > walletBalance)}
+              className={`flex-1 py-3 font-bold rounded-xl text-sm shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                paymentPurpose === 'wallet_debit'
+                  ? "bg-rose-600 hover:bg-rose-700 text-white"
+                  : paymentPurpose === 'wallet_topup'
+                  ? "bg-purple-600 hover:bg-purple-700 text-white"
+                  : "bg-indigo-600 hover:bg-indigo-700 text-white"
+              }`}
+            >
+              {isProcessing ? (
+                <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> Processing...</>
+              ) : paymentPurpose === 'wallet_debit' ? (
+                `💸 Debit Wallet (${formatCurrency(Number(paymentAmount) || 0)})`
+              ) : paymentPurpose === 'wallet_topup' ? (
+                `💰 Add Funds (+${formatCurrency(Number(paymentAmount) || 0)})`
+              ) : (
+                `Save & Settle (${formatCurrency(Number(paymentAmount) || 0)})`
+              )}
+            </button>
+          </div>
+          
         </div>
       </div>
 
