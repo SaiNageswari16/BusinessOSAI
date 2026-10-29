@@ -224,6 +224,41 @@ export function VendorBills() {
     sortBy !== "date_desc"
   );
 
+  // Map linked debit and credit notes by bill number & bill id
+  const notesMap = useMemo(() => {
+    const map = new Map<string, { debitNotes: any[]; creditNotes: any[]; totalDebit: number; totalCredit: number }>();
+    
+    (debitNotes || []).forEach((dn: any) => {
+      const keys = [
+        (dn.bill_number || "").toLowerCase().trim(),
+        (dn.reference_number || "").toLowerCase().trim(),
+        (dn.vendor_bill_id || "").toLowerCase().trim(),
+      ].filter(Boolean);
+      keys.forEach((k) => {
+        const item = map.get(k) || { debitNotes: [], creditNotes: [], totalDebit: 0, totalCredit: 0 };
+        item.debitNotes.push(dn);
+        item.totalDebit += Number(dn.amount || 0);
+        map.set(k, item);
+      });
+    });
+
+    (creditNotes || []).forEach((cn: any) => {
+      const keys = [
+        (cn.bill_number || "").toLowerCase().trim(),
+        (cn.reference_number || "").toLowerCase().trim(),
+        (cn.vendor_bill_id || "").toLowerCase().trim(),
+      ].filter(Boolean);
+      keys.forEach((k) => {
+        const item = map.get(k) || { debitNotes: [], creditNotes: [], totalDebit: 0, totalCredit: 0 };
+        item.creditNotes.push(cn);
+        item.totalCredit += Number(cn.amount || 0);
+        map.set(k, item);
+      });
+    });
+
+    return map;
+  }, [debitNotes, creditNotes]);
+
   // ── Filtered & Sorted Bills Calculation ─────────────────────────────────────
   const filteredBills = useMemo(() => {
     return bills.filter((b: any) => {
@@ -304,42 +339,7 @@ export function VendorBills() {
       }
       return 0;
     });
-  }, [bills, searchQuery, statusFilter, matchFilter, minAmount, maxAmount, startDate, endDate, sortBy]);
-
-  // Map linked debit and credit notes by bill number & bill id
-  const notesMap = useMemo(() => {
-    const map = new Map<string, { debitNotes: any[]; creditNotes: any[]; totalDebit: number; totalCredit: number }>();
-    
-    (debitNotes || []).forEach((dn: any) => {
-      const keys = [
-        (dn.bill_number || "").toLowerCase().trim(),
-        (dn.reference_number || "").toLowerCase().trim(),
-        (dn.vendor_bill_id || "").toLowerCase().trim(),
-      ].filter(Boolean);
-      keys.forEach((k) => {
-        const item = map.get(k) || { debitNotes: [], creditNotes: [], totalDebit: 0, totalCredit: 0 };
-        item.debitNotes.push(dn);
-        item.totalDebit += Number(dn.amount || 0);
-        map.set(k, item);
-      });
-    });
-
-    (creditNotes || []).forEach((cn: any) => {
-      const keys = [
-        (cn.bill_number || "").toLowerCase().trim(),
-        (cn.reference_number || "").toLowerCase().trim(),
-        (cn.vendor_bill_id || "").toLowerCase().trim(),
-      ].filter(Boolean);
-      keys.forEach((k) => {
-        const item = map.get(k) || { debitNotes: [], creditNotes: [], totalDebit: 0, totalCredit: 0 };
-        item.creditNotes.push(cn);
-        item.totalCredit += Number(cn.amount || 0);
-        map.set(k, item);
-      });
-    });
-
-    return map;
-  }, [debitNotes, creditNotes]);
+  }, [bills, notesMap, searchQuery, statusFilter, matchFilter, minAmount, maxAmount, startDate, endDate, sortBy]);
 
   const paginatedBills = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
