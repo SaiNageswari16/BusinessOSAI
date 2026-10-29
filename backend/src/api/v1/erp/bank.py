@@ -119,19 +119,23 @@ async def _sync_bank_to_settings(db: AsyncSession, tenant_id: uuid.UUID, account
         inv_settings["default_bank_account_id"] = str(account.id)
         t_settings["invoice_settings"] = inv_settings
         t_settings["bank_details"] = bank_str
-        tenant.settings = t_settings
 
-    if account.company_id:
-        company = await db.scalar(select(Company).where(Company.id == account.company_id, Company.tenant_id == tenant_id))
-        if company:
-            c_settings = dict(company.settings or {})
-            c_settings["bank_details"] = bank_str
-            c_settings["bank_name"] = account.bank_name or account.name
-            c_settings["bank_account_number"] = account.account_number or ""
-            c_settings["bank_ifsc"] = account.ifsc_code or ""
-            c_settings["account_holder_name"] = account.account_holder_name or ""
-            c_settings["upi_vpa"] = account.upi_id or ""
-            company.settings = c_settings
+        if account.company_id:
+            cid_str = str(account.company_id)
+            comp_map = dict(t_settings.get("companies") or {})
+            c_cfg = dict(comp_map.get(cid_str) or {})
+            c_cfg["bank_details"] = bank_str
+            c_cfg["bank_name"] = account.bank_name or account.name
+            c_cfg["bank_account_number"] = account.account_number or ""
+            c_cfg["bank_ifsc"] = account.ifsc_code or ""
+            c_cfg["account_holder_name"] = account.account_holder_name or ""
+            c_cfg["upi_vpa"] = account.upi_id or ""
+            c_cfg["default_bank_account_id"] = str(account.id)
+            comp_map[cid_str] = c_cfg
+            t_settings["companies"] = comp_map
+
+        tenant.settings = t_settings
+        flag_modified(tenant, "settings")
 
 
 @router.post(
@@ -245,21 +249,25 @@ async def delete_bank_account(
                     inv_settings["account_holder_name"] = ""
                     inv_settings["upi_id"] = ""
                     t_settings["invoice_settings"] = inv_settings
-                    tenant.settings = t_settings
-                    flag_modified(tenant, "settings")
 
-            if target_cid:
-                comp = await db.scalar(select(Company).where(Company.id == target_cid, Company.tenant_id == ctx.tenant_id))
-                if comp and comp.settings:
-                    c_settings = dict(comp.settings)
-                    c_settings["bank_details"] = ""
-                    c_settings["bank_name"] = ""
-                    c_settings["bank_account_number"] = ""
-                    c_settings["bank_ifsc"] = ""
-                    c_settings["account_holder_name"] = ""
-                    c_settings["upi_vpa"] = ""
-                    comp.settings = c_settings
-                    flag_modified(comp, "settings")
+                if target_cid:
+                    cid_str = str(target_cid)
+                    comp_map = dict(t_settings.get("companies") or {})
+                    if cid_str in comp_map:
+                        c_cfg = dict(comp_map[cid_str])
+                        if c_cfg.get("default_bank_account_id") == str(account_id) or not c_cfg.get("default_bank_account_id"):
+                            c_cfg["bank_details"] = ""
+                            c_cfg["bank_name"] = ""
+                            c_cfg["bank_account_number"] = ""
+                            c_cfg["bank_ifsc"] = ""
+                            c_cfg["account_holder_name"] = ""
+                            c_cfg["upi_vpa"] = ""
+                            c_cfg["default_bank_account_id"] = None
+                            comp_map[cid_str] = c_cfg
+                            t_settings["companies"] = comp_map
+
+                tenant.settings = t_settings
+                flag_modified(tenant, "settings")
 
     await write_audit_log(
         db,

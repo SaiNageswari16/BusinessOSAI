@@ -115,14 +115,6 @@ async def get_purchase_invoice_settings(
         comp_map = p_settings.get("companies")
         if isinstance(comp_map, dict) and target_cid in comp_map and isinstance(comp_map[target_cid], dict):
             p_settings.update(comp_map[target_cid])
-        else:
-            try:
-                cid_uuid = uuid.UUID(target_cid)
-                comp = await db.scalar(select(Company).where(Company.id == cid_uuid, Company.tenant_id == ctx.tenant_id))
-                if comp and comp.settings and isinstance(comp.settings.get("purchase_invoice_settings"), dict):
-                    p_settings.update(comp.settings["purchase_invoice_settings"])
-            except Exception:
-                pass
 
         try:
             cid_uuid = uuid.UUID(target_cid)
@@ -183,14 +175,6 @@ async def update_purchase_invoice_settings(
             cid_uuid = uuid.UUID(target_cid)
             comp = await db.scalar(select(Company).where(Company.id == cid_uuid, Company.tenant_id == ctx.tenant_id))
             if comp:
-                c_settings = copy.deepcopy(comp.settings or {})
-                c_settings["purchase_invoice_settings"] = {
-                    **c_settings.get("purchase_invoice_settings", {}),
-                    **updates,
-                }
-                comp.settings = c_settings
-                flag_modified(comp, "settings")
-
                 if payload.prefix or payload.sequenceNumber is not None:
                     ns_stmt = select(NumberSeries).where(
                         NumberSeries.company_id == comp.id,
