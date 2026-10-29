@@ -14,6 +14,7 @@ import {
   Calendar,
   ArrowUpDown,
   RotateCcw,
+  FileCheck,
   Filter,
   Wallet,
   AlertCircle,
