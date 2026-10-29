@@ -176,7 +176,7 @@ export const findMatchingInventoryProduct = (
 };
 
 export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData }: ProcurementDocumentFormProps) {
-    const { currency, formatCurrency } = useCurrency();
+  const { currency, formatCurrency } = useCurrency();
   // Master data
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -653,7 +653,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         );
       }
       // Auto-find matching Verified GRN for this PO
-      const matchingGrn = grns.find((g) => g.purchase_order_id === poId && g.status === "Verified") 
+      const matchingGrn = grns.find((g) => g.purchase_order_id === poId && g.status === "Verified")
         || grns.find((g) => g.purchase_order_id === poId);
       if (matchingGrn) {
         setLinkedGrnId(matchingGrn.id);
@@ -1056,7 +1056,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const autoRoundAmount = Number((Math.round(rawTotal) - rawTotal).toFixed(2));
   const roundOffAmount = autoRoundOff ? autoRoundAmount : Number(manualRoundOff || 0);
   const roundedTotal = autoRoundOff ? Math.round(rawTotal) : Number((rawTotal + Number(manualRoundOff || 0)).toFixed(2));
-  
+
   // Auto-sync amountPaid if status is Paid
   const paidVal = currentPoStatus === "Paid" ? roundedTotal : (typeof amountPaid === "number" ? amountPaid : 0);
   const balanceDue = Math.max(0, roundedTotal - paidVal);
@@ -1114,46 +1114,46 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
     };
   };
 
-// Safe ISO and Date normalizers to prevent "Invalid time value" crashes on varied OCR date formats (DD-MM-YYYY vs YYYY-MM-DD)
-const safeToIsoString = (val?: string): string | undefined => {
-  if (!val || typeof val !== "string") return undefined;
-  const trimmed = val.trim();
-  if (!trimmed) return undefined;
-  const parts = trimmed.split(/[-/.]/);
-  if (parts.length === 3) {
-    if (parts[2].length === 4 && parts[0].length <= 2) {
-      const d = new Date(`${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}T00:00:00.000Z`);
-      if (!isNaN(d.getTime())) return d.toISOString();
-    } else if (parts[0].length === 4) {
-      const d = new Date(`${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}T00:00:00.000Z`);
-      if (!isNaN(d.getTime())) return d.toISOString();
+  // Safe ISO and Date normalizers to prevent "Invalid time value" crashes on varied OCR date formats (DD-MM-YYYY vs YYYY-MM-DD)
+  const safeToIsoString = (val?: string): string | undefined => {
+    if (!val || typeof val !== "string") return undefined;
+    const trimmed = val.trim();
+    if (!trimmed) return undefined;
+    const parts = trimmed.split(/[-/.]/);
+    if (parts.length === 3) {
+      if (parts[2].length === 4 && parts[0].length <= 2) {
+        const d = new Date(`${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}T00:00:00.000Z`);
+        if (!isNaN(d.getTime())) return d.toISOString();
+      } else if (parts[0].length === 4) {
+        const d = new Date(`${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}T00:00:00.000Z`);
+        if (!isNaN(d.getTime())) return d.toISOString();
+      }
     }
-  }
-  const parsed = new Date(trimmed);
-  if (!isNaN(parsed.getTime())) return parsed.toISOString();
-  return undefined;
-};
+    const parsed = new Date(trimmed);
+    if (!isNaN(parsed.getTime())) return parsed.toISOString();
+    return undefined;
+  };
 
-const normalizeDateToYyyyMmDd = (val?: string): string => {
-  if (!val || typeof val !== "string") return new Date().toISOString().slice(0, 10);
-  const trimmed = val.trim();
-  if (!trimmed) return new Date().toISOString().slice(0, 10);
-  const parts = trimmed.split(/[-/.]/);
-  if (parts.length === 3) {
-    if (parts[2].length === 4 && parts[0].length <= 2) {
-      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+  const normalizeDateToYyyyMmDd = (val?: string): string => {
+    if (!val || typeof val !== "string") return new Date().toISOString().slice(0, 10);
+    const trimmed = val.trim();
+    if (!trimmed) return new Date().toISOString().slice(0, 10);
+    const parts = trimmed.split(/[-/.]/);
+    if (parts.length === 3) {
+      if (parts[2].length === 4 && parts[0].length <= 2) {
+        return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      }
+      if (parts[0].length === 4) {
+        return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+      }
+      if (parts[2].length === 2 && parts[0].length <= 2) {
+        return `20${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      }
     }
-    if (parts[0].length === 4) {
-      return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
-    }
-    if (parts[2].length === 2 && parts[0].length <= 2) {
-      return `20${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-    }
-  }
-  const parsed = new Date(trimmed);
-  if (!isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
-  return new Date().toISOString().slice(0, 10);
-};
+    const parsed = new Date(trimmed);
+    if (!isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+    return new Date().toISOString().slice(0, 10);
+  };
 
   // Submit Handler
   const handleSaveDocument = async () => {
@@ -1228,7 +1228,7 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
                 try {
                   await inventoryApi.updateProduct(existingProd.id, { hsn_code: it.hsn_code });
                   existingProd.hsn_code = it.hsn_code;
-                } catch {}
+                } catch { }
               }
             } else {
               // Create actual product on the fly with extracted details (no fallback to products[0].id)
@@ -1666,73 +1666,87 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
     }
   };
 
-
-
   return (
-    <div className="bg-slate-50/50 min-h-screen p-4 md:p-6 text-slate-800 space-y-6 max-w-[1600px] mx-auto pb-24">
-      {/* Top Header / Bar */}
-      <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+    <div className="w-full text-slate-800 space-y-3 pb-8">
+      {/* Top Header / Bar - Open Header style matching Invoices History */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3.5 md:gap-4">
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all font-bold text-xs flex items-center gap-1"
+            className="group inline-flex items-center gap-2 h-10 px-4 text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200/90 hover:border-slate-300 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer shrink-0"
           >
-            <ArrowLeft className="w-4 h-4" /> Back to List
+            <ArrowLeft className="w-4 h-4 text-slate-500 group-hover:text-slate-900 group-hover:-translate-x-0.5 transition-transform duration-150" />
+            <span>Back to List</span>
           </button>
 
+          <div className="h-8 w-px bg-slate-200 hidden sm:block shrink-0" />
+
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
+                {docType === "PR"
+                  ? "Create Purchase Requisition"
+                  : docType === "PO"
+                    ? "Create Purchase Order (PO)"
+                    : "Create Purchase Invoice"}
+              </h1>
               <span
-                className={`px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${
-                  docType === "PR"
-                    ? "bg-purple-100 text-purple-800 border border-purple-200"
-                    : docType === "PO"
+                className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${docType === "PR"
+                  ? "bg-purple-100 text-purple-800 border border-purple-200"
+                  : docType === "PO"
                     ? "bg-blue-100 text-blue-800 border border-blue-200"
                     : "bg-emerald-100 text-emerald-800 border border-emerald-200"
-                }`}
+                  }`}
               >
                 {docType === "PR"
                   ? "Purchase Requisition"
                   : docType === "PO"
-                  ? "Purchase Order (PO)"
-                  : "Purchase Invoice / Bill"}
+                    ? "Purchase Order (PO)"
+                    : "Purchase Invoice / Bill"}
               </span>
-              <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">
-                {docType === "PR"
-                  ? "Create Purchase Requisition"
-                  : docType === "PO"
-                  ? "Create Purchase Order (PO)"
-                  : "Create Purchase Invoice"}
-              </h1>
             </div>
-            <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1">
-              <Info className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+            <p className="text-sm text-slate-500 font-normal mt-1">
               {docType === "PR"
                 ? "Internal departmental stock request. Unit prices are optional estimates until RFQ vendor quotes are awarded."
                 : docType === "PO"
-                ? "Official binding purchase contract sent to supplier with agreed unit prices and terms."
-                : "Record vendor purchase invoices, tax credits, and accounts payable."}
+                  ? "Official binding purchase contract sent to supplier with agreed unit prices and terms."
+                  : "Record vendor purchase invoices, tax credits, and accounts payable."}
             </p>
           </div>
         </div>
 
-        {/* Top Header Action Buttons */}
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShareModalDoc(getCurrentDocumentData())}
-            className="px-4 py-2 text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-xl border border-teal-200 flex items-center gap-1.5 shadow-2xs cursor-pointer"
-          >
-            <FileText className="size-3.5 text-teal-600" /> Preview PDF & Share
-          </button>
-          <button
-            disabled={isSaving}
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-300"
-          >
-            Cancel
-          </button>
-        </div>
+        {/* Top Header Mode Tabs for PINV */}
+        {docType === "PINV" && (
+          <div className="flex items-center gap-2.5 shrink-0">
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/90 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEnterprise3WayMatch(false);
+                  setLinkedPoId("");
+                  setLinkedGrnId("");
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${!isEnterprise3WayMatch
+                    ? "bg-emerald-600 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                  }`}
+              >
+                <span>⚡ Direct Inward Purchase</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsEnterprise3WayMatch(true)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${isEnterprise3WayMatch
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                  }`}
+              >
+                <span>🔗 Link PO & GRN (3-Way)</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Linked Sourcing Sync Card for PO */}
@@ -1792,116 +1806,73 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
         </div>
       )}
 
-      {/* Invoice Mode Selector for PINV (Direct Purchase vs 3-Way Match) */}
-      {docType === "PINV" && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-3">
+      {/* 3-Way Match PO & GRN Sourcing Linkage for PINV */}
+      {docType === "PINV" && isEnterprise3WayMatch && (
+        <div className="bg-indigo-50/70 rounded-2xl border border-indigo-200 shadow-sm p-4 space-y-3 animate-in fade-in">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className={`p-2.5 rounded-xl shadow-sm ${!isEnterprise3WayMatch ? "bg-emerald-600 text-white" : "bg-indigo-600 text-white"}`}>
+              <div className="p-2.5 rounded-xl shadow-sm bg-indigo-600 text-white">
                 <Boxes className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-black uppercase tracking-wider text-slate-900">
-                    Purchase Invoice Type: {!isEnterprise3WayMatch ? "Direct Inward Purchase" : "Enterprise 3-Way Match"}
+                  <span className="text-xs font-black uppercase tracking-wider text-indigo-950">
+                    Enterprise 3-Way Match Sourcing
                   </span>
-                  {!isEnterprise3WayMatch ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-300">
-                      ⚡ Auto-Updates Inventory Stock
-                    </span>
-                  ) : linkedPoId && linkedGrnId ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full border border-indigo-300">
-                      ✓ 3-Way Matched
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full border border-amber-300">
-                      🔗 Linked to PO
-                    </span>
-                  )}
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full border border-indigo-300">
+                    {linkedPoId && linkedGrnId ? "✓ 3-Way Matched" : "🔗 Linked to PO"}
+                  </span>
                 </div>
-                <div className="text-[11px] text-slate-500 font-medium mt-0.5">
-                  {!isEnterprise3WayMatch
-                    ? "⚡ Direct Spot Purchase: Line items will automatically credit and increase product stock upon recording this invoice."
-                    : "🔗 Enterprise Procurement: Stock was received via Goods Received Note (GRN); this invoice verifies vendor payment."}
+                <div className="text-[11px] text-indigo-700 font-medium mt-0.5">
+                  Stock was received via Goods Received Note (GRN); this invoice verifies vendor payment against PO & GRN.
                 </div>
               </div>
-            </div>
-
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsEnterprise3WayMatch(false);
-                  setLinkedPoId("");
-                  setLinkedGrnId("");
-                }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  !isEnterprise3WayMatch 
-                    ? "bg-emerald-600 text-white shadow-sm" 
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                ⚡ Direct Inward Purchase
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsEnterprise3WayMatch(true)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  isEnterprise3WayMatch 
-                    ? "bg-indigo-600 text-white shadow-sm" 
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                🔗 Link PO & GRN (3-Way)
-              </button>
             </div>
           </div>
 
-          {isEnterprise3WayMatch && (
-            <div className="pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-indigo-900 block mb-0.5">
-                  1. Linked Purchase Order (PO) *
-                </label>
-                <select
-                  value={linkedPoId}
-                  onChange={(e) => handleSelectPOLink(e.target.value)}
-                  className="w-full h-9 bg-white border border-indigo-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
-                >
-                  <option value="">-- Select Linked PO --</option>
-                  {purchaseOrders.map((po) => (
-                    <option key={po.id} value={po.id}>
-                      {po.po_number || po.id.slice(0, 8)} ({po.supplier?.name || "Vendor PO"})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-indigo-900 block mb-0.5">
-                  2. Linked GRN (Stock Receipt)
-                </label>
-                <select
-                  value={linkedGrnId}
-                  onChange={(e) => handleSelectGRNLink(e.target.value)}
-                  className="w-full h-9 bg-white border border-indigo-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
-                >
-                  <option value="">-- Select Inward GRN (Optional) --</option>
-                  {(linkedPoId ? grns.filter((g) => g.purchase_order_id === linkedPoId) : grns).map((grn) => (
-                    <option key={grn.id} value={grn.id}>
-                      {grn.grn_number} [{grn.status || "Received"}]
-                    </option>
-                  ))}
-                </select>
-              </div>
+          <div className="pt-3 border-t border-indigo-200/60 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-indigo-900 block mb-0.5">
+                1. Linked Purchase Order (PO) *
+              </label>
+              <select
+                value={linkedPoId}
+                onChange={(e) => handleSelectPOLink(e.target.value)}
+                className="w-full h-9 bg-white border border-indigo-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+              >
+                <option value="">-- Select Linked PO --</option>
+                {purchaseOrders.map((po) => (
+                  <option key={po.id} value={po.id}>
+                    {po.po_number || po.id.slice(0, 8)} ({po.supplier?.name || "Vendor PO"})
+                  </option>
+                ))}
+              </select>
             </div>
-          )}
+
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-indigo-900 block mb-0.5">
+                2. Linked GRN (Stock Receipt)
+              </label>
+              <select
+                value={linkedGrnId}
+                onChange={(e) => handleSelectGRNLink(e.target.value)}
+                className="w-full h-9 bg-white border border-indigo-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+              >
+                <option value="">-- Select Inward GRN (Optional) --</option>
+                {(linkedPoId ? grns.filter((g) => g.purchase_order_id === linkedPoId) : grns).map((grn) => (
+                  <option key={grn.id} value={grn.id}>
+                    {grn.grn_number} [{grn.status || "Received"}]
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
       )}
 
       {/* OCR Upload Section */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-        <div className="flex items-center gap-2 mb-4">
+      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-3.5 sm:p-4">
+        <div className="flex items-center gap-2 mb-2.5">
           <div className="p-1.5 bg-indigo-100 rounded-lg">
             <ScanLine className="w-4 h-4 text-indigo-600" />
           </div>
@@ -1913,12 +1884,12 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
           </span>
         </div>
 
-        <div className="flex items-start gap-4">
+        <div className="flex items-start gap-3">
           {/* Upload area */}
           <div className="flex-1">
-            <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/50 transition-all bg-slate-50/50">
-              <div className="flex flex-col items-center justify-center pt-3 pb-4">
-                <Upload className="w-6 h-6 text-slate-400 mb-1" />
+            <label className="flex flex-col items-center justify-center w-full h-20 sm:h-22 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/50 transition-all bg-slate-50/50">
+              <div className="flex flex-col items-center justify-center pt-2 pb-2">
+                <Upload className="w-5 h-5 text-slate-400 mb-0.5" />
                 <p className="text-xs font-medium text-slate-500">
                   {ocrFile ? ocrFile.name : "Drop a PO/GRN document here or click to browse"}
                 </p>
@@ -1952,10 +1923,10 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
                 <div className={`flex items-center gap-2 rounded-lg px-3 py-2 ${ocrResult.extracted ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}>
                   {ocrResult.extracted ? (
                     <><CheckCircle className="w-4 h-4 text-green-600" />
-                    <span className="text-[11px] font-bold text-green-700">Extracted</span></>
+                      <span className="text-[11px] font-bold text-green-700">Extracted</span></>
                   ) : (
                     <><AlertCircle className="w-4 h-4 text-amber-600" />
-                    <span className="text-[11px] font-bold text-amber-700">Partial</span></>
+                      <span className="text-[11px] font-bold text-amber-700">Partial</span></>
                   )}
                 </div>
                 {ocrResult.confidence && (
@@ -2006,19 +1977,17 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
                           void applyOcrInvoice(inv);
                           toast.success(`Loaded Invoice #${invNo} (${itemCount} items)`);
                         }}
-                        className={`p-3 rounded-xl text-left border transition-all flex flex-col justify-between ${
-                          isSelected
-                            ? "bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-400"
-                            : "bg-white text-slate-800 border-slate-200 hover:border-indigo-300 hover:bg-slate-50 shadow-xs"
-                        }`}
+                        className={`p-3 rounded-xl text-left border transition-all flex flex-col justify-between ${isSelected
+                          ? "bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-400"
+                          : "bg-white text-slate-800 border-slate-200 hover:border-indigo-300 hover:bg-slate-50 shadow-xs"
+                          }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className={`text-xs font-bold ${isSelected ? "text-white" : "text-slate-900"}`}>
                             Invoice #{invNo}
                           </span>
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                            isSelected ? "bg-indigo-700 text-indigo-100" : "bg-indigo-50 text-indigo-700"
-                          }`}>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isSelected ? "bg-indigo-700 text-indigo-100" : "bg-indigo-50 text-indigo-700"
+                            }`}>
                             {itemCount} Items
                           </span>
                         </div>
@@ -2122,10 +2091,10 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
       )}
 
       {/* Top 2-Column Section: Bill From / Vendor Party + Document Metadata */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         {/* Bill From / Vendor Party Card (2 Cols on lg) */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
               <Building className="w-4 h-4 text-blue-600" />
               {docType === "PR" ? "Target Supplier / Vendor (Optional)" : "Bill From / Vendor Party"}
@@ -2181,7 +2150,7 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
         </div>
 
         {/* Document Metadata Card (1 Col on lg) */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 space-y-3">
           <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 flex items-center gap-2">
             <FileText className="w-4 h-4 text-emerald-600" /> Document Metadata
           </h2>
@@ -2322,22 +2291,20 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
               <button
                 type="button"
                 onClick={() => setIsTaxInclusive(false)}
-                className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${
-                  !isTaxInclusive
-                    ? "bg-white text-blue-700 shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
+                className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${!isTaxInclusive
+                  ? "bg-white text-blue-700 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+                  }`}
               >
                 Tax-Exclusive (+GST)
               </button>
               <button
                 type="button"
                 onClick={() => setIsTaxInclusive(true)}
-                className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${
-                  isTaxInclusive
-                    ? "bg-white text-blue-700 shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
+                className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${isTaxInclusive
+                  ? "bg-white text-blue-700 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+                  }`}
               >
                 Tax-Inclusive (Gross)
               </button>
@@ -2358,14 +2325,11 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
 
             <button
               type="button"
-              onClick={() => {
-                loadProducts();
-                setIsMultiProductModalOpen(true);
-              }}
-              className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 shrink-0 transition-all cursor-pointer"
+              onClick={() => setIsAddProductModalOpen(true)}
+              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 shrink-0 transition-all cursor-pointer active:scale-95"
             >
-              <Boxes className="w-3.5 h-3.5" />
-              <span>Multi-Product Catalog ({products.length})</span>
+              <Plus className="w-3.5 h-3.5" />
+              <span>Create Product</span>
             </button>
 
             <div className="flex items-center gap-2 bg-white border border-slate-300 rounded-xl px-3 py-1.5 shadow-sm w-full md:w-64 focus-within:ring-2 focus-within:ring-blue-500">
@@ -2842,11 +2806,10 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
                             type="button"
                             onClick={() => updateItem(item.id, "is_free", !item.is_free)}
                             title={item.is_free ? "Mark as Paid Item" : "Mark as 100% Free / Promotional Item"}
-                            className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase transition-all shadow-2xs cursor-pointer ${
-                              item.is_free
-                                ? "bg-emerald-600 text-white border border-emerald-700 shadow-emerald-200"
-                                : "bg-slate-100 text-slate-500 border border-slate-300 hover:bg-emerald-50 hover:text-emerald-700"
-                            }`}
+                            className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase transition-all shadow-2xs cursor-pointer ${item.is_free
+                              ? "bg-emerald-600 text-white border border-emerald-700 shadow-emerald-200"
+                              : "bg-slate-100 text-slate-500 border border-slate-300 hover:bg-emerald-50 hover:text-emerald-700"
+                              }`}
                           >
                             {item.is_free ? "FREE" : "FREE?"}
                           </button>
@@ -2943,9 +2906,9 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
       </div>
 
       {/* Bottom Grid: Terms & Conditions + Financial Summary Card */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Terms & Conditions Box */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 space-y-3">
           <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2 border-b border-slate-100 pb-2">
             <FileText className="w-4 h-4 text-purple-600" /> Terms & Conditions / Departmental Notes
           </h2>
@@ -2959,7 +2922,7 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
         </div>
 
         {/* Financial Summary Box */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 space-y-3">
           <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 flex items-center gap-2">
             <CreditCard className="w-4 h-4 text-blue-600" /> Billing Financial Summary
           </h2>
@@ -3055,15 +3018,15 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
                         roundOffAmount > 0
                           ? "bg-emerald-50 text-emerald-700 border-emerald-300"
                           : roundOffAmount < 0
-                          ? "bg-rose-50 text-rose-700 border-rose-300"
-                          : "bg-slate-100 text-slate-600 border-slate-200"
+                            ? "bg-rose-50 text-rose-700 border-rose-300"
+                            : "bg-slate-100 text-slate-600 border-slate-200"
                       )}
                     >
                       {roundOffAmount > 0
                         ? `+${currency.symbol}${roundOffAmount.toFixed(2)}`
                         : roundOffAmount < 0
-                        ? `-${currency.symbol}${Math.abs(roundOffAmount).toFixed(2)}`
-                        : `${currency.symbol}0.00`}
+                          ? `-${currency.symbol}${Math.abs(roundOffAmount).toFixed(2)}`
+                          : `${currency.symbol}0.00`}
                     </span>
                   ) : (
                     <div className="flex items-center gap-1">
@@ -3203,14 +3166,16 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
       </div>
 
       {/* Bottom Submission Action Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-3 sm:p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <button
+            type="button"
             disabled={isSaving}
             onClick={onClose}
-            className="px-5 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-300 transition-all cursor-pointer"
+            className="group inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-slate-600 hover:text-rose-600 bg-white hover:bg-rose-50/70 border border-slate-200/90 hover:border-rose-200 rounded-xl transition-all shadow-2xs active:scale-95 cursor-pointer disabled:opacity-50"
           >
-            Cancel
+            <X className="w-3.5 h-3.5 text-slate-400 group-hover:text-rose-500 transition-colors" />
+            <span>Cancel</span>
           </button>
 
           {(docType === "PO" || docType === "PINV") && (
@@ -3759,11 +3724,10 @@ const normalizeDateToYyyyMmDd = (val?: string): string => {
                             key={page}
                             type="button"
                             onClick={() => setMultiProductPage(Number(page))}
-                            className={`min-w-[28px] h-7 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                              isCurrent
-                                ? "bg-indigo-600 text-white shadow-xs shadow-indigo-200"
-                                : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
-                            }`}
+                            className={`min-w-[28px] h-7 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${isCurrent
+                              ? "bg-indigo-600 text-white shadow-xs shadow-indigo-200"
+                              : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
+                              }`}
                           >
                             {page}
                           </button>

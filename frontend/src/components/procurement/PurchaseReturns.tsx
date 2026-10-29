@@ -59,7 +59,7 @@ export function PurchaseReturns() {
           <p className="text-sm text-muted-foreground">Return defective goods to vendors with automated Debit Note generation.</p>
         </div>
         <Button onClick={() => setIsCreateMode(true)} className="gradient-brand text-white border-0 font-semibold rounded-lg shadow-sm">
-          <Plus className="size-4 mr-2" /> Log Purchase Return
+          <Plus className="size-4 mr-2" /> Purchase Return
         </Button>
       </div>
 
@@ -70,7 +70,7 @@ export function PurchaseReturns() {
         </div>
       ) : returns.length === 0 ? (
         <div className="bg-card border p-8 rounded-xl text-center text-muted-foreground font-semibold shadow-sm">
-          No purchase returns recorded yet. Click "+ Log Purchase Return" to start.
+          No purchase returns recorded yet. Click "+ Purchase Return" to start.
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -95,9 +95,9 @@ export function PurchaseReturns() {
                     <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/10 text-rose-600 border border-rose-500/20">
                       {ret.status || "Returned"}
                     </span>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => setSelectedDoc(ret)}
                       className="h-7 px-2 font-bold rounded-lg hover:bg-rose-50"
                     >

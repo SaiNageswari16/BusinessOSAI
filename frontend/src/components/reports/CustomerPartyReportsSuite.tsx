@@ -351,10 +351,10 @@ export function CustomerPartyReportsSuite({
 
         // 1. Fetch live CRM customers, live products, POS and live SQL Invoices
         const [crmRes, invRes, posRes, sqlInvoicesRes] = await Promise.allSettled([
-          crmCustomersApi.list(1, 200),
-          inventoryApi.getProducts({ page_size: 500 }),
-          posApi.getProducts({ limit: 500 }),
-          invoicesApi.listInvoices({ page_size: 500 }),
+          crmCustomersApi.list(1, 1000),
+          inventoryApi.getProducts({ page_size: 1000 }),
+          posApi.getProducts({ limit: 1000 }),
+          invoicesApi.listInvoices({ page_size: 1000 }),
         ]);
 
         let dbCustomers: any[] = [];
@@ -526,21 +526,15 @@ export function CustomerPartyReportsSuite({
           }
         });
 
-        // Authoritative reconciliation: If customer record in CRM has balance explicitly settled to 0
+        // Authoritative fallback: If customer has an outstanding balance recorded in CRM with no billed invoices
         dbCustomers.forEach((c: any) => {
           const name = (c.name || c.company_name || c.contact_name || "").trim().toLowerCase();
           if (name && partyMap.has(name)) {
             const p = partyMap.get(name)!;
-            if (c.outstanding_balance !== undefined && c.outstanding_balance !== null) {
-              const explicitBal = Number(c.outstanding_balance);
-              if (explicitBal <= 0.01) {
-                p.closingBalance = 0;
-                p.overdue30Plus = 0;
-                p.overdue1_15 = 0;
-                p.overdue16_30 = 0;
-                p.upcomingDue = 0;
-                p.dueTomorrow = 0;
-              }
+            const explicitBal = Number(c.outstanding_balance || 0);
+            if (p.totalInvoiced === 0 && explicitBal > 0.01) {
+              p.closingBalance = explicitBal;
+              p.overdue30Plus = explicitBal;
             }
           }
         });
@@ -747,8 +741,96 @@ export function CustomerPartyReportsSuite({
   // ─────────────────────────────────────────────────────────────
   // 2. PARTY WISE OUTSTANDING COMPUTATION
   // ─────────────────────────────────────────────────────────────
+  // Dynamically compute parties with live dateFilter applied to invoices
+  const effectiveParties = useMemo(() => {
+    if (dateFilter === "all") {
+      return parties;
+    }
+
+    // Filter rawInvoices matching the date filter
+    const activeInvoices = rawInvoices.filter((inv: any) => {
+      const rawStatus = String(inv.status || inv.payment_status || "").toLowerCase();
+      if (rawStatus === "cancelled" || rawStatus === "voided") return false;
+      const isOpn = String(inv.invoice_number || "").toUpperCase().startsWith("OPN-") || inv.is_opening_balance || inv.invoice_type === "opening_balance";
+      if (isOpn) return false;
+      const invDate = inv.invoice_date || inv.created_at || inv.date;
+      return isDateInFilter(invDate);
+    });
+
+    // Map by lowercase party name
+    const periodMap = new Map<string, { closingBalance: number; totalInvoiced: number; totalPaid: number; overdue30Plus: number }>();
+
+    activeInvoices.forEach((inv: any) => {
+      const name = (inv.customer_name || inv.party_name || inv.customer?.name || inv.billing_to || "").trim().toLowerCase();
+      if (!name || name === "cash" || name === "cash customer") return;
+
+      const total = Number(inv.grand_total || inv.total_amount || 0);
+      const rawStatus = String(inv.status || inv.payment_status || "").toLowerCase();
+      const isPaid = rawStatus === "paid" || (Number(inv.amount_received || inv.amount_paid || 0) >= total - 0.05 && total > 0);
+      const balance = isPaid ? 0 : Number(inv.balance ?? inv.balance_due ?? inv.pending_amount ?? (total - Number(inv.amount_received || inv.amount_paid || 0)));
+      const paid = isPaid ? total : Math.min(total, Number(inv.amount_received || inv.amount_paid || 0));
+
+      if (!periodMap.has(name)) {
+        periodMap.set(name, { closingBalance: 0, totalInvoiced: 0, totalPaid: 0, overdue30Plus: 0 });
+      }
+      const pData = periodMap.get(name)!;
+      pData.closingBalance += balance;
+      pData.totalInvoiced += total;
+      pData.totalPaid += paid;
+      pData.overdue30Plus += balance;
+    });
+
+    const filteredParties: PartyRecord[] = [];
+    const matchedKeys = new Set<string>();
+
+    parties.forEach((p) => {
+      const key = p.name.trim().toLowerCase();
+      const pData = periodMap.get(key);
+      if (pData && (pData.totalInvoiced > 0 || pData.totalPaid > 0 || pData.closingBalance !== 0)) {
+        matchedKeys.add(key);
+        filteredParties.push({
+          ...p,
+          closingBalance: pData.closingBalance,
+          totalInvoiced: pData.totalInvoiced,
+          totalPaid: pData.totalPaid,
+          overdue30Plus: pData.overdue30Plus,
+        });
+      }
+    });
+
+    // Also include any party from periodMap that was billed in activeInvoices but might not have been in the initial parties list
+    periodMap.forEach((pData, key) => {
+      if (!matchedKeys.has(key) && (pData.totalInvoiced > 0 || pData.totalPaid > 0 || pData.closingBalance !== 0)) {
+        const sampleInv = activeInvoices.find((inv: any) =>
+          (inv.customer_name || inv.party_name || inv.customer?.name || inv.billing_to || "").trim().toLowerCase() === key
+        );
+        const phone = sampleInv?.customer_phone || sampleInv?.phone || sampleInv?.customer?.phone || "—";
+        const gstin = sampleInv?.customer_gstin || sampleInv?.gstin || sampleInv?.customer?.gstin || "URP";
+        filteredParties.push({
+          id: sampleInv?.customer_id || key,
+          name: sampleInv?.customer_name || sampleInv?.party_name || sampleInv?.customer?.name || key,
+          category: sampleInv?.customer_type || "Client",
+          phone: phone !== "—" ? phone : "-",
+          gstin: gstin !== "URP" ? gstin : "-",
+          closingBalance: pData.closingBalance,
+          openingBalance: 0,
+          type: "Customer",
+          totalInvoiced: pData.totalInvoiced,
+          totalPaid: pData.totalPaid,
+          dueTomorrow: 0,
+          upcomingDue: 0,
+          overdue1_15: 0,
+          overdue16_30: 0,
+          overdue30Plus: pData.overdue30Plus,
+        });
+      }
+    });
+
+    return filteredParties;
+  }, [parties, rawInvoices, dateFilter, customStartDate, customEndDate]);
+
   const outstandingList = useMemo(() => {
-    let list = parties;
+    let list = effectiveParties;
     if (searchParty.trim()) {
       const q = searchParty.toLowerCase();
       list = list.filter((p) => p.name.toLowerCase().includes(q) || p.phone.includes(q) || (p.gstin && p.gstin.toLowerCase().includes(q)));
@@ -762,17 +844,20 @@ export function CustomerPartyReportsSuite({
       list = list.filter((p) => p.closingBalance < 0);
     }
     return list;
-  }, [parties, searchParty, selectedCategory, outstandingTab]);
+  }, [effectiveParties, searchParty, selectedCategory, outstandingTab]);
 
   const outstandingTotals = useMemo(() => {
     let toCollect = 0;
     let toPay = 0;
-    parties.forEach((p) => {
+    effectiveParties.forEach((p) => {
+      if (selectedCategory !== "all" && p.category.toLowerCase() !== selectedCategory.toLowerCase()) {
+        return;
+      }
       if (p.closingBalance > 0) toCollect += p.closingBalance;
       if (p.closingBalance < 0) toPay += Math.abs(p.closingBalance);
     });
     return { toCollect, toPay };
-  }, [parties]);
+  }, [effectiveParties, selectedCategory]);
 
   const partyCategories = useMemo(() => {
     const set = new Set<string>();
@@ -1523,9 +1608,28 @@ export function CustomerPartyReportsSuite({
                     <option value="this_quarter">This Quarter</option>
                     <option value="this_year">This Financial Year</option>
                     <option value="all">All Time</option>
+                    <option value="custom">Custom Date</option>
                   </select>
                   <ChevronDown className="absolute right-2 size-3 text-slate-400 pointer-events-none" />
                 </div>
+
+                {dateFilter === "custom" && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="h-8 px-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
+                    />
+                    <span className="text-xs text-slate-400 font-medium">to</span>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="h-8 px-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Yellow notice matching reference ss1, ss2, ss3 */}

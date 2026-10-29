@@ -947,6 +947,11 @@ function PosTerminalInner() {
     removeAction: () => void,
     adjustAction?: (qty: number) => void
   ) => {
+    const invSettings = loadStoredInvoiceSettings(currentTenantId, currentCompanyId);
+    if (invSettings?.showStockAlerts === false) {
+      executeAction();
+      return;
+    }
     const { availableStock, reorderLevel } = getProductStockInfo(product);
     const prevAck = acknowledgedStockMap[itemId] || 0;
 
@@ -1619,86 +1624,89 @@ function PosTerminalInner() {
       return;
     }
 
-    // Validate stock for all items before proceeding to payment
-    for (const item of cart) {
-      const matched = products.find((p) => p.id === item.id) || item;
-      const { availableStock, reorderLevel } = getProductStockInfo(matched);
-      const reqQty = item.qty || 1;
-      const isAck = (acknowledgedStockMap[item.id] || 0) >= reqQty;
-      if (!isAck) {
-        if (availableStock <= 0) {
-          setStockAlertModal({
-            isOpen: true,
-            mode: "zero_stock",
-            productName: item.name || matched.name,
-            sku: item.sku || matched.sku || "",
-            availableStock: 0,
-            requestedQuantity: reqQty,
-            reorderLevel,
-            itemId: item.id,
-            onAllow: () => {
-              if (!isZeroStockAuthorized) {
-                toast.error("Supervisor authorization required to permit zero-stock sales.");
-                return;
-              }
-              setAcknowledgedStockMap((prev) => ({ ...prev, [item.id]: reqQty }));
-              setStockAlertModal((m) => ({ ...m, isOpen: false }));
-              toast.warning(`Zero-stock sale permitted for ${item.name}`);
-            },
-            onRemove: () => {
-              setStockAlertModal((m) => ({ ...m, isOpen: false }));
-              removeItem(item.id);
-            },
-          });
-          return;
-        } else if (reqQty > availableStock) {
-          setStockAlertModal({
-            isOpen: true,
-            mode: "excess_quantity",
-            productName: item.name || matched.name,
-            sku: item.sku || matched.sku || "",
-            availableStock,
-            requestedQuantity: reqQty,
-            reorderLevel,
-            itemId: item.id,
-            onAllow: () => {
-              if (!isZeroStockAuthorized) {
-                toast.error("Supervisor authorization required to permit quantity exceeding inventory stock.");
-                return;
-              }
-              setAcknowledgedStockMap((prev) => ({ ...prev, [item.id]: reqQty }));
-              setStockAlertModal((m) => ({ ...m, isOpen: false }));
-            },
-            onRemove: () => {
-              setStockAlertModal((m) => ({ ...m, isOpen: false }));
-              removeItem(item.id);
-            },
-            onAdjust: (adjQty) => {
-              setStockAlertModal((m) => ({ ...m, isOpen: false }));
-              setCart((prev) => prev.map((it) => (it.id === item.id ? { ...it, qty: adjQty } : it)));
-            },
-          });
-          return;
-        } else if (availableStock < 5 || (reorderLevel > 0 && availableStock <= reorderLevel)) {
-          setStockAlertModal({
-            isOpen: true,
-            mode: "low_stock",
-            productName: item.name || matched.name,
-            sku: item.sku || matched.sku || "",
-            availableStock,
-            requestedQuantity: reqQty,
-            reorderLevel,
-            itemId: item.id,
-            onAllow: () => {
-              setAcknowledgedStockMap((prev) => ({ ...prev, [item.id]: reqQty }));
-              setStockAlertModal((m) => ({ ...m, isOpen: false }));
-            },
-            onRemove: () => {
-              setStockAlertModal((m) => ({ ...m, isOpen: false }));
-              removeItem(item.id);
-            },
-          });
-          return;
+    const invSettings = loadStoredInvoiceSettings(currentTenantId, currentCompanyId);
+    if (invSettings?.showStockAlerts !== false) {
+      // Validate stock for all items before proceeding to payment
+      for (const item of cart) {
+        const matched = products.find((p) => p.id === item.id) || item;
+        const { availableStock, reorderLevel } = getProductStockInfo(matched);
+        const reqQty = item.qty || 1;
+        const isAck = (acknowledgedStockMap[item.id] || 0) >= reqQty;
+        if (!isAck) {
+          if (availableStock <= 0) {
+            setStockAlertModal({
+              isOpen: true,
+              mode: "zero_stock",
+              productName: item.name || matched.name,
+              sku: item.sku || matched.sku || "",
+              availableStock: 0,
+              requestedQuantity: reqQty,
+              reorderLevel,
+              itemId: item.id,
+              onAllow: () => {
+                if (!isZeroStockAuthorized) {
+                  toast.error("Supervisor authorization required to permit zero-stock sales.");
+                  return;
+                }
+                setAcknowledgedStockMap((prev) => ({ ...prev, [item.id]: reqQty }));
+                setStockAlertModal((m) => ({ ...m, isOpen: false }));
+                toast.warning(`Zero-stock sale permitted for ${item.name}`);
+              },
+              onRemove: () => {
+                setStockAlertModal((m) => ({ ...m, isOpen: false }));
+                removeItem(item.id);
+              },
+            });
+            return;
+          } else if (reqQty > availableStock) {
+            setStockAlertModal({
+              isOpen: true,
+              mode: "excess_quantity",
+              productName: item.name || matched.name,
+              sku: item.sku || matched.sku || "",
+              availableStock,
+              requestedQuantity: reqQty,
+              reorderLevel,
+              itemId: item.id,
+              onAllow: () => {
+                if (!isZeroStockAuthorized) {
+                  toast.error("Supervisor authorization required to permit quantity exceeding inventory stock.");
+                  return;
+                }
+                setAcknowledgedStockMap((prev) => ({ ...prev, [item.id]: reqQty }));
+                setStockAlertModal((m) => ({ ...m, isOpen: false }));
+              },
+              onRemove: () => {
+                setStockAlertModal((m) => ({ ...m, isOpen: false }));
+                removeItem(item.id);
+              },
+              onAdjust: (adjQty) => {
+                setStockAlertModal((m) => ({ ...m, isOpen: false }));
+                setCart((prev) => prev.map((it) => (it.id === item.id ? { ...it, qty: adjQty } : it)));
+              },
+            });
+            return;
+          } else if (availableStock < 5 || (reorderLevel > 0 && availableStock <= reorderLevel)) {
+            setStockAlertModal({
+              isOpen: true,
+              mode: "low_stock",
+              productName: item.name || matched.name,
+              sku: item.sku || matched.sku || "",
+              availableStock,
+              requestedQuantity: reqQty,
+              reorderLevel,
+              itemId: item.id,
+              onAllow: () => {
+                setAcknowledgedStockMap((prev) => ({ ...prev, [item.id]: reqQty }));
+                setStockAlertModal((m) => ({ ...m, isOpen: false }));
+              },
+              onRemove: () => {
+                setStockAlertModal((m) => ({ ...m, isOpen: false }));
+                removeItem(item.id);
+              },
+            });
+            return;
+          }
         }
       }
     }
@@ -2395,6 +2403,26 @@ function PosTerminalInner() {
 
       {/* Terminal Header Nav */}
       <div className="flex-shrink-0 bg-white border-b border-slate-200/80 px-4 flex items-center overflow-x-auto gap-3 py-2.5 shadow-xs z-50">
+        {/* Back Button to Exit Terminal */}
+        <button
+          type="button"
+          onClick={() => {
+            if (document.fullscreenElement) {
+              document.exitFullscreen().catch(() => {});
+            }
+            if (window.history.length > 1) {
+              window.history.back();
+            } else {
+              navigate({ to: "/pos", search: { tab: "sales_history" } });
+            }
+          }}
+          className="group inline-flex items-center justify-center size-8 sm:size-8.5 rounded-xl border border-slate-200/90 bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 shadow-2xs hover:shadow-xs transition-all active:scale-95 cursor-pointer shrink-0"
+          title="Back / Exit Terminal"
+          aria-label="Back / Exit Terminal"
+        >
+          <ArrowLeft className="w-4 h-4 text-slate-600 group-hover:text-slate-900 group-hover:-translate-x-0.5 transition-transform duration-150" />
+        </button>
+
         {/* Brand Logo */}
         <div
           onClick={() => {
@@ -2428,7 +2456,7 @@ function PosTerminalInner() {
             return (
               <button
                 key={tab.id}
-                onClick={() => navigate({ to: "/pos", search: { tab: "terminal", view: tab.id } })}
+                onClick={() => navigate({ to: "/pos", search: { tab: "terminal", view: tab.id }, replace: true })}
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 whitespace-nowrap transition-all ${isActive
                     ? "bg-[#5B4DF5] text-white shadow-md shadow-[#5B4DF5]/20"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"

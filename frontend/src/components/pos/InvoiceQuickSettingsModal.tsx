@@ -119,6 +119,9 @@ export interface InvoiceSettings {
   showSerialNo: boolean;
   showWarranty: boolean;
   itemCustomColumns: ItemCustomColumn[];
+
+  // Stock Alerts & Warnings
+  showStockAlerts?: boolean;
 }
 
 export const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
@@ -163,6 +166,7 @@ export const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
   showSerialNo: false,
   showWarranty: false,
   itemCustomColumns: [],
+  showStockAlerts: true,
 };
 
 export function getInvoiceSettingsStorageKey(tenantId?: string, companyId?: string): string {
@@ -181,7 +185,8 @@ export function loadStoredInvoiceSettings(tenantId?: string, companyId?: string)
       const parsed = JSON.parse(raw);
       const hasExplicitBatchChoice = localStorage.getItem("pos_batch_explicitly_set") === "true";
       const showBatchNo = hasExplicitBatchChoice ? (parsed.showBatchNo ?? true) : true;
-      return { ...DEFAULT_INVOICE_SETTINGS, ...parsed, showBatchNo };
+      const showStockAlerts = parsed.showStockAlerts !== undefined ? Boolean(parsed.showStockAlerts) : true;
+      return { ...DEFAULT_INVOICE_SETTINGS, ...parsed, showBatchNo, showStockAlerts };
     }
   } catch (err) {
     console.warn("Failed to load invoice quick settings:", err);
@@ -1832,12 +1837,82 @@ export function InvoiceQuickSettingsModal({
                     </button>
                   </div>
                 </div>
+
+                {/* Inventory & Stock Validation Warning Toggle */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs flex items-center justify-between">
+                  <div className="max-w-[80%]">
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="text-xs font-bold text-slate-800">
+                        {t("Stock Alert & Out-of-Stock Warnings", "Stock Alert & Out-of-Stock Warnings")}
+                      </h3>
+                      <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black ${
+                        draftSettings.showStockAlerts !== false ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"
+                      }`}>
+                        {draftSettings.showStockAlerts !== false ? "Active" : "Disabled"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {t(
+                        "Show warning banners and require supervisor authorization when billing items with zero stock or quantity exceeding available inventory.",
+                        "Show warning banners and require supervisor authorization when billing items with zero stock or quantity exceeding available inventory."
+                      )}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleToggle("showStockAlerts")}
+                    className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200 cursor-pointer ${
+                      draftSettings.showStockAlerts !== false ? "bg-indigo-600" : "bg-slate-300"
+                    }`}
+                  >
+                    <div
+                      className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ${
+                        draftSettings.showStockAlerts !== false ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
             )}
 
             {/* TAB 2: ITEM TABLE COLUMNS */}
             {activeTab === "item" && (
               <div className="space-y-4 animate-in fade-in duration-150">
+                {/* Stock Alert & Zero/Insufficient Stock Warnings Toggle */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs flex items-center justify-between">
+                  <div className="max-w-[80%]">
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="text-xs font-bold text-slate-800">
+                        {t("Stock Alert & Out-of-Stock Warnings", "Stock Alert & Out-of-Stock Warnings")}
+                      </h3>
+                      <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black ${
+                        draftSettings.showStockAlerts !== false ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"
+                      }`}>
+                        {draftSettings.showStockAlerts !== false ? "Active" : "Disabled"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {t(
+                        "Show warning banners and require supervisor authorization when billing items with zero stock or quantity exceeding available inventory.",
+                        "Show warning banners and require supervisor authorization when billing items with zero stock or quantity exceeding available inventory."
+                      )}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleToggle("showStockAlerts")}
+                    className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200 cursor-pointer ${
+                      draftSettings.showStockAlerts !== false ? "bg-indigo-600" : "bg-slate-300"
+                    }`}
+                  >
+                    <div
+                      className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ${
+                        draftSettings.showStockAlerts !== false ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+
                 {/* 1. Show Purchase Price */}
                 <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-2xs flex items-center justify-between">
                   <div>

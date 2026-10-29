@@ -425,7 +425,7 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
   };
 
   return (
-    <div className="bg-slate-50/50 min-h-screen p-4 md:p-6 text-slate-800 space-y-6 max-w-[1600px] mx-auto pb-24">
+    <div className="w-full text-slate-800 space-y-3 pb-8">
       {/* Hidden OCR File Input */}
       <input
         ref={prOcrFileRef}
@@ -435,39 +435,42 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
         onChange={handleOcrUpload}
       />
 
-      {/* Top Header */}
-      <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+      {/* Top Header - Open Header style matching Invoices History */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3.5 md:gap-4">
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all font-bold text-xs flex items-center gap-1"
+            className="group inline-flex items-center gap-2 h-10 px-4 text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200/90 hover:border-slate-300 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer shrink-0"
           >
-            <ArrowLeft className="w-4 h-4" /> Back to Requisitions List
+            <ArrowLeft className="w-4 h-4 text-slate-500 group-hover:text-slate-900 group-hover:-translate-x-0.5 transition-transform duration-150" />
+            <span>Back to Requisitions List</span>
           </button>
 
+          <div className="h-8 w-px bg-slate-200 hidden sm:block shrink-0" />
+
           <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-200">
-                Purchase Requisition (PR)
-              </span>
-              <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
                 Raise Purchase Requisition
               </h1>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-200 shadow-2xs">
+                Purchase Requisition (PR)
+              </span>
             </div>
-            <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1">
-              <Info className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+            <p className="text-sm text-slate-500 font-normal mt-1">
               Internal material requisition request. Does not contain financial vendor bills or payment terms until awarded via RFQ.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5 shrink-0">
           {/* OCR AI Extraction Trigger Button */}
           <button
             type="button"
             disabled={isExtractingOcr || isSaving}
             onClick={() => prOcrFileRef.current?.click()}
-            className="px-3.5 py-2.5 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-xl border border-purple-200 shadow-sm flex items-center gap-1.5 transition-all"
+            className="h-10 px-3.5 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-xl border border-purple-200 shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
           >
             {isExtractingOcr ? <Loader2 className="w-4 h-4 animate-spin text-purple-600" /> : <Sparkles className="w-4 h-4 text-purple-600" />}
             {isExtractingOcr ? "Scanning Indent..." : "Upload Indent (OCR AI)"}
@@ -477,7 +480,7 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
           <select
             value={prStatus}
             onChange={(e) => setPrStatus(e.target.value)}
-            className="h-9 px-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-purple-500"
+            className="h-10 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-purple-500 shadow-xs cursor-pointer"
           >
             <option value="Draft">Save as Draft</option>
             <option value="Pending Approval">Submit for Approval</option>
@@ -485,11 +488,13 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
           </select>
 
           <button
+            type="button"
             disabled={isSaving}
             onClick={onClose}
-            className="px-4 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-300"
+            className="group inline-flex items-center gap-2 h-10 px-4 text-xs font-bold text-slate-700 hover:text-rose-600 bg-white hover:bg-rose-50 border border-slate-200/90 hover:border-rose-300 rounded-xl transition-all shadow-xs active:scale-95 cursor-pointer disabled:opacity-50"
           >
-            Cancel
+            <X className="size-4 text-slate-400 group-hover:text-rose-500 transition-colors" />
+            <span>Cancel</span>
           </button>
           <button
             disabled={isSaving || isExtractingOcr}

@@ -23,6 +23,7 @@ import {
   Upload,
   ScanLine,
   Loader2,
+  X,
 } from "lucide-react";
 import { inventoryApi, fetchSalesEmployees } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -355,45 +356,52 @@ export function GoodsReceivedNoteForm({ onClose, onSaved, initialData }: GoodsRe
   };
 
   return (
-    <div className="bg-slate-50/50 min-h-screen p-4 md:p-6 text-slate-800 space-y-6 max-w-[1600px] mx-auto pb-24">
+    <div className="w-full text-slate-800 space-y-3 pb-8">
       {/* Header */}
-      <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+      {/* Top Header - Open Header style matching Invoices History */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3.5 md:gap-4">
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all font-bold text-xs flex items-center gap-1"
+            className="group inline-flex items-center gap-2 h-10 px-4 text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200/90 hover:border-slate-300 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer shrink-0"
           >
-            <ArrowLeft className="w-4 h-4" /> Back to GRNs List
+            <ArrowLeft className="w-4 h-4 text-slate-500 group-hover:text-slate-900 group-hover:-translate-x-0.5 transition-transform duration-150" />
+            <span>Back to GRNs List</span>
           </button>
 
+          <div className="h-8 w-px bg-slate-200 hidden sm:block shrink-0" />
+
           <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200">
-                Goods Received Note (GRN)
-              </span>
-              <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
                 Log Material Inward Receipt & QC
               </h1>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200 shadow-2xs">
+                Goods Received Note (GRN)
+              </span>
             </div>
-            <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1">
-              <Info className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <p className="text-sm text-slate-500 font-normal mt-1">
               Record delivered shipments, inspect quality, accept/reject items, and automatically adjust inventory stock.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5 shrink-0">
           <button
+            type="button"
             disabled={isSaving}
             onClick={onClose}
-            className="px-4 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-300"
+            className="group inline-flex items-center gap-2 h-10 px-4 text-xs font-bold text-slate-700 hover:text-rose-600 bg-white hover:bg-rose-50 border border-slate-200/90 hover:border-rose-300 rounded-xl transition-all shadow-xs active:scale-95 cursor-pointer disabled:opacity-50"
           >
-            Cancel
+            <X className="size-4 text-slate-400 group-hover:text-rose-500 transition-colors" />
+            <span>Cancel</span>
           </button>
           <button
+            type="button"
             disabled={isSaving}
             onClick={handleSubmitGRN}
-            className="px-5 py-2.5 text-xs font-black text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 rounded-xl shadow-md shadow-amber-600/20 flex items-center gap-1.5 uppercase tracking-wider disabled:opacity-50"
+            className="h-10 px-5 text-xs font-black text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 rounded-xl shadow-md shadow-amber-600/20 flex items-center gap-2 uppercase tracking-wider disabled:opacity-50 transition-all active:scale-95 cursor-pointer"
           >
             <Boxes className="w-4 h-4" />
             {isSaving ? "Saving..." : "Submit GRN & Update Stock"}
@@ -401,377 +409,379 @@ export function GoodsReceivedNoteForm({ onClose, onSaved, initialData }: GoodsRe
         </div>
       </div>
 
-      {/* Metadata Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 flex items-center gap-2">
-            <Truck className="w-4 h-4 text-amber-600" /> Inward Logistics & Delivery Details
-          </h2>
+      {/* Metadata Cards */ }
+  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+      <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 flex items-center gap-2">
+        <Truck className="w-4 h-4 text-amber-600" /> Inward Logistics & Delivery Details
+      </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[11px] font-semibold text-slate-500 block mb-1">
-                Linked Purchase Order (PO)
-              </label>
-              <select
-                value={linkedPoId}
-                onChange={(e) => handleSelectPO(e.target.value)}
-                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500"
-              >
-                <option value="">-- Select Linked PO --</option>
-                {purchaseOrders.map((po) => (
-                  <option key={po.id} value={po.id}>
-                    {po.po_number || po.id.slice(0, 8)} - {po.supplier?.name || "Vendor PO"}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-[11px] font-semibold text-slate-500 block mb-1">
-                Receiving Warehouse / Location *
-              </label>
-              <select
-                value={receivingLocation || selectedStore}
-                onChange={(e) => {
-                  setReceivingLocation(e.target.value);
-                  setSelectedStore(e.target.value);
-                }}
-                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500"
-              >
-                {stores.map((s) => (
-                  <option key={s.id} value={s.name}>
-                    {s.displayName}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-[11px] font-semibold text-slate-500 block mb-1">
-                Receiving Inspector / Staff *
-              </label>
-              <select
-                value={selectedInspectorId}
-                onChange={(e) => setSelectedInspectorId(e.target.value)}
-                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500"
-              >
-                {employees.length > 0 ? (
-                  employees.map((emp) => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.full_name} ({emp.employee_code || "Inspector"})
-                    </option>
-                  ))
-                ) : (
-                  <option value="">Abhilash (Store Receiving Manager)</option>
-                )}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[11px] font-semibold text-slate-500 block mb-1">
-                Delivery Vehicle / Lorry Number
-              </label>
-              <input
-                type="text"
-                value={vehicleNo}
-                onChange={(e) => setVehicleNo(e.target.value)}
-                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] font-semibold text-slate-500 block mb-1">
-                Carrier / AWB Transport Note
-              </label>
-              <input
-                type="text"
-                value={carrierNote}
-                onChange={(e) => setCarrierNote(e.target.value)}
-                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs text-slate-700 outline-none"
-              />
-            </div>
-          </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+            Linked Purchase Order (PO)
+          </label>
+          <select
+            value={linkedPoId}
+            onChange={(e) => handleSelectPO(e.target.value)}
+            className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500"
+          >
+            <option value="">-- Select Linked PO --</option>
+            {purchaseOrders.map((po) => (
+              <option key={po.id} value={po.id}>
+                {po.po_number || po.id.slice(0, 8)} - {po.supplier?.name || "Vendor PO"}
+              </option>
+            ))}
+          </select>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 flex items-center gap-2">
-            <FileText className="w-4 h-4 text-emerald-600" /> GRN Metadata
-          </h2>
+        <div>
+          <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+            Receiving Warehouse / Location *
+          </label>
+          <select
+            value={receivingLocation || selectedStore}
+            onChange={(e) => {
+              setReceivingLocation(e.target.value);
+              setSelectedStore(e.target.value);
+            }}
+            className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500"
+          >
+            {stores.map((s) => (
+              <option key={s.id} value={s.name}>
+                {s.displayName}
+              </option>
+            ))}
+          </select>
+        </div>
 
-          <div className="space-y-3">
-            <div>
-              <label className="text-[11px] font-semibold text-slate-500 block mb-1">GRN Document Number</label>
-              <input
-                type="text"
-                value={grnNumber}
-                onChange={(e) => setGrnNumber(e.target.value)}
-                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-mono font-bold text-amber-900 outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] font-semibold text-slate-500 block mb-1">Inward Inspection Date</label>
-              <input
-                type="date"
-                value={receivedDate}
-                onChange={(e) => setReceivedDate(e.target.value)}
-                className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-semibold text-slate-800 outline-none"
-              />
-            </div>
-          </div>
+        <div>
+          <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+            Receiving Inspector / Staff *
+          </label>
+          <select
+            value={selectedInspectorId}
+            onChange={(e) => setSelectedInspectorId(e.target.value)}
+            className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500"
+          >
+            {employees.length > 0 ? (
+              employees.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.full_name} ({emp.employee_code || "Inspector"})
+                </option>
+              ))
+            ) : (
+              <option value="">Abhilash (Store Receiving Manager)</option>
+            )}
+          </select>
         </div>
       </div>
 
-      {/* Inward Items Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-visible p-5 space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
-            <Package className="w-4 h-4 text-amber-600" /> Delivered Items & Quality Inspection Checklist ({items.length})
-          </h2>
-
-          <div className="flex items-center gap-2 bg-white border border-slate-300 rounded-xl px-3 py-1.5 shadow-sm w-full md:w-80 focus-within:ring-2 focus-within:ring-amber-500">
-            <ScanBarcode className="w-4 h-4 text-slate-400 shrink-0" />
-            <input
-              type="text"
-              value={barcodeInput}
-              onChange={(e) => setBarcodeInput(e.target.value)}
-              onKeyDown={handleBarcodeSubmit}
-              placeholder="Scan SKU / Barcode..."
-              className="bg-transparent border-none text-xs text-slate-800 outline-none w-full"
-            />
-          </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+            Delivery Vehicle / Lorry Number
+          </label>
+          <input
+            type="text"
+            value={vehicleNo}
+            onChange={(e) => setVehicleNo(e.target.value)}
+            className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-800 outline-none"
+          />
         </div>
 
-        <div className="overflow-x-auto overflow-y-visible">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
-              <tr>
-                <th className="px-3 py-3 w-10 text-center">#</th>
-                <th className="px-3 py-3 min-w-[260px]">Catalog Item Description</th>
-                <th className="px-3 py-3 w-28">Batch No</th>
-                <th className="px-3 py-3 w-28">Expiry Date</th>
-                <th className="px-3 py-3 w-20 text-right">Ordered</th>
-                <th className="px-3 py-3 w-24 text-right">Received</th>
-                <th className="px-3 py-3 w-24 text-right font-bold text-emerald-600">Accepted</th>
-                <th className="px-3 py-3 w-24 text-right font-bold text-rose-600">Rejected</th>
-                <th className="px-3 py-3 min-w-[200px]">Defect Reason / Quality Status</th>
-                <th className="px-3 py-3 w-10 text-center">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {items.map((item, idx) => {
-                const matchingProducts = products.filter(
-                  (p) =>
-                    !item.search_query ||
-                    p.name.toLowerCase().includes((item.search_query || "").toLowerCase())
-                );
+        <div>
+          <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+            Carrier / AWB Transport Note
+          </label>
+          <input
+            type="text"
+            value={carrierNote}
+            onChange={(e) => setCarrierNote(e.target.value)}
+            className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs text-slate-700 outline-none"
+          />
+        </div>
+      </div>
+    </div>
 
-                return (
-                  <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="px-3 py-2.5 text-center font-bold text-slate-400">{idx + 1}</td>
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+      <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 flex items-center gap-2">
+        <FileText className="w-4 h-4 text-emerald-600" /> GRN Metadata
+      </h2>
 
-                    <td className="px-3 py-2.5 relative">
-                      <div className="relative">
-                        <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-2.5 py-1 focus-within:ring-2 focus-within:ring-amber-500">
-                          <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <input
-                            type="text"
-                            placeholder="Search product..."
-                            value={item.search_query !== undefined ? item.search_query : item.product_name}
-                            onChange={(e) => {
-                              setItems(
-                                items.map((it) =>
-                                  it.id === item.id
-                                    ? { ...it, search_query: e.target.value, product_name: e.target.value, is_search_open: true }
-                                    : it
-                                )
-                              );
-                            }}
-                            onFocus={() =>
-                              setItems(items.map((it) => (it.id === item.id ? { ...it, is_search_open: true } : it)))
-                            }
-                            className="w-full bg-transparent text-xs font-bold text-slate-800 outline-none"
-                          />
-                        </div>
+      <div className="space-y-3">
+        <div>
+          <label className="text-[11px] font-semibold text-slate-500 block mb-1">GRN Document Number</label>
+          <input
+            type="text"
+            value={grnNumber}
+            onChange={(e) => setGrnNumber(e.target.value)}
+            className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-mono font-bold text-amber-900 outline-none"
+          />
+        </div>
 
-                        {item.is_search_open && (
-                          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-100">
-                            {matchingProducts.slice(0, 10).map((prod) => (
-                              <div
-                                key={prod.id}
-                                onClick={() => selectCatalogProduct(item.id, prod)}
-                                className="p-2 hover:bg-amber-50 cursor-pointer flex items-center justify-between text-xs"
-                              >
-                                <div>
-                                  <div className="font-bold text-slate-900">{prod.name}</div>
-                                  <div className="text-[10px] text-slate-500">
-                                    SKU: {prod.sku || "N/A"}{prod.barcode ? ` | Barcode: ${prod.barcode}` : ""}
-                                  </div>
-                                </div>
-                                <div className="text-right font-bold text-amber-700">
-                                  {formatCurrency(Number(prod.purchase_price || prod.cost_price || prod.selling_price || 0))}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </td>
+        <div>
+          <label className="text-[11px] font-semibold text-slate-500 block mb-1">Inward Inspection Date</label>
+          <input
+            type="date"
+            value={receivedDate}
+            onChange={(e) => setReceivedDate(e.target.value)}
+            className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-2.5 text-xs font-semibold text-slate-800 outline-none"
+          />
+        </div>
+      </div>
+    </div>
+  </div>
 
-                    <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-1 min-w-[130px]">
-                        <input
-                          type="text"
-                          value={item.batch_number}
-                          onChange={(e) =>
-                            setItems(items.map((it) => (it.id === item.id ? { ...it, batch_number: e.target.value } : it)))
-                          }
-                          className="w-full bg-white border border-slate-200 focus:border-amber-500 rounded px-2 py-1 text-xs font-mono font-bold text-slate-800 outline-none"
-                          placeholder="Batch #"
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setBatchModalItem({
-                              id: item.id,
-                              productId: item.product_id,
-                              productName: item.product_name,
-                              currentBatch: item.batch_number,
-                            })
-                          }
-                          className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg shrink-0 transition shadow-2xs cursor-pointer"
-                          title="Select Existing Batch or Create New Batch"
-                        >
-                          <Boxes className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
+  {/* Inward Items Table */ }
+  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-visible p-5 space-y-4">
+    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+      <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+        <Package className="w-4 h-4 text-amber-600" /> Delivered Items & Quality Inspection Checklist ({items.length})
+      </h2>
 
-                    <td className="px-3 py-2.5">
-                      <input
-                        type="date"
-                        value={item.expiry_date || ""}
-                        onChange={(e) =>
-                          setItems(items.map((it) => (it.id === item.id ? { ...it, expiry_date: e.target.value } : it)))
-                        }
-                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-800 outline-none"
-                      />
-                    </td>
+      <div className="flex items-center gap-2 bg-white border border-slate-300 rounded-xl px-3 py-1.5 shadow-sm w-full md:w-80 focus-within:ring-2 focus-within:ring-amber-500">
+        <ScanBarcode className="w-4 h-4 text-slate-400 shrink-0" />
+        <input
+          type="text"
+          value={barcodeInput}
+          onChange={(e) => setBarcodeInput(e.target.value)}
+          onKeyDown={handleBarcodeSubmit}
+          placeholder="Scan SKU / Barcode..."
+          className="bg-transparent border-none text-xs text-slate-800 outline-none w-full"
+        />
+      </div>
+    </div>
 
-                    <td className="px-3 py-2.5 text-right font-bold text-slate-600">{item.quantity_ordered}</td>
+    <div className="overflow-x-auto overflow-y-visible">
+      <table className="w-full text-xs text-left">
+        <thead className="bg-slate-50 border-b text-slate-600 text-xs uppercase font-semibold">
+          <tr>
+            <th className="px-3 py-3 w-10 text-center">#</th>
+            <th className="px-3 py-3 min-w-[260px]">Catalog Item Description</th>
+            <th className="px-3 py-3 w-28">Batch No</th>
+            <th className="px-3 py-3 w-28">Expiry Date</th>
+            <th className="px-3 py-3 w-20 text-right">Ordered</th>
+            <th className="px-3 py-3 w-24 text-right">Received</th>
+            <th className="px-3 py-3 w-24 text-right font-bold text-emerald-600">Accepted</th>
+            <th className="px-3 py-3 w-24 text-right font-bold text-rose-600">Rejected</th>
+            <th className="px-3 py-3 min-w-[200px]">Defect Reason / Quality Status</th>
+            <th className="px-3 py-3 w-10 text-center">Action</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {items.map((item, idx) => {
+            const matchingProducts = products.filter(
+              (p) =>
+                !item.search_query ||
+                p.name.toLowerCase().includes((item.search_query || "").toLowerCase())
+            );
 
-                    <td className="px-3 py-2.5 text-right">
-                      <input
-                        type="number"
-                        min="0"
-                        value={item.quantity_received}
-                        onChange={(e) => updateItemQty(item.id, "quantity_received", Number(e.target.value) || 0)}
-                        className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs text-right font-bold text-slate-900 outline-none focus:ring-1 focus:ring-amber-500"
-                      />
-                    </td>
+            return (
+              <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                <td className="px-3 py-2.5 text-center font-bold text-slate-400">{idx + 1}</td>
 
-                    <td className="px-3 py-2.5 text-right font-black text-emerald-700 text-xs">
-                      {item.quantity_accepted}
-                    </td>
-
-                    <td className="px-3 py-2.5 text-right">
-                      <input
-                        type="number"
-                        min="0"
-                        value={item.quantity_rejected}
-                        onChange={(e) => updateItemQty(item.id, "quantity_rejected", Number(e.target.value) || 0)}
-                        className="w-full bg-white border border-rose-300 rounded px-2 py-1 text-xs text-right font-bold text-rose-700 outline-none focus:ring-1 focus:ring-rose-500"
-                      />
-                    </td>
-
-                    <td className="px-3 py-2.5">
+                <td className="px-3 py-2.5 relative">
+                  <div className="relative">
+                    <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-2.5 py-1 focus-within:ring-2 focus-within:ring-amber-500">
+                      <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                       <input
                         type="text"
-                        placeholder="Passed check / Damaged details"
-                        value={item.defect_reason || ""}
-                        onChange={(e) =>
-                          setItems(items.map((it) => (it.id === item.id ? { ...it, defect_reason: e.target.value } : it)))
+                        placeholder="Search product..."
+                        value={item.search_query !== undefined ? item.search_query : item.product_name}
+                        onChange={(e) => {
+                          setItems(
+                            items.map((it) =>
+                              it.id === item.id
+                                ? { ...it, search_query: e.target.value, product_name: e.target.value, is_search_open: true }
+                                : it
+                            )
+                          );
+                        }}
+                        onFocus={() =>
+                          setItems(items.map((it) => (it.id === item.id ? { ...it, is_search_open: true } : it)))
                         }
-                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-700 outline-none"
+                        className="w-full bg-transparent text-xs font-bold text-slate-800 outline-none"
                       />
-                    </td>
+                    </div>
 
-                    <td className="px-3 py-2.5 text-center">
-                      <button
-                        type="button"
-                        onClick={() => setItems(items.filter((it) => it.id !== item.id))}
-                        className="p-1 text-slate-400 hover:text-rose-600 rounded"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                    {item.is_search_open && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-100">
+                        {matchingProducts.slice(0, 10).map((prod) => (
+                          <div
+                            key={prod.id}
+                            onClick={() => selectCatalogProduct(item.id, prod)}
+                            className="p-2 hover:bg-amber-50 cursor-pointer flex items-center justify-between text-xs"
+                          >
+                            <div>
+                              <div className="font-bold text-slate-900">{prod.name}</div>
+                              <div className="text-[10px] text-slate-500">
+                                SKU: {prod.sku || "N/A"}{prod.barcode ? ` | Barcode: ${prod.barcode}` : ""}
+                              </div>
+                            </div>
+                            <div className="text-right font-bold text-amber-700">
+                              {formatCurrency(Number(prod.purchase_price || prod.cost_price || prod.selling_price || 0))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </td>
 
-        <div className="p-3 bg-slate-50/50 border-t border-slate-200">
-          <button
-            type="button"
-            onClick={handleAddItem}
-            className="px-3.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-amber-700 font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5"
-          >
-            <Plus className="w-3.5 h-3.5" /> Add Delivered Item
-          </button>
-        </div>
-      </div>
+                <td className="px-3 py-2.5">
+                  <div className="flex items-center gap-1 min-w-[130px]">
+                    <input
+                      type="text"
+                      value={item.batch_number}
+                      onChange={(e) =>
+                        setItems(items.map((it) => (it.id === item.id ? { ...it, batch_number: e.target.value } : it)))
+                      }
+                      className="w-full bg-white border border-slate-200 focus:border-amber-500 rounded px-2 py-1 text-xs font-mono font-bold text-slate-800 outline-none"
+                      placeholder="Batch #"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setBatchModalItem({
+                          id: item.id,
+                          productId: item.product_id,
+                          productName: item.product_name,
+                          currentBatch: item.batch_number,
+                        })
+                      }
+                      className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg shrink-0 transition shadow-2xs cursor-pointer"
+                      title="Select Existing Batch or Create New Batch"
+                    >
+                      <Boxes className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </td>
 
-      {/* Footer Summary */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-4 text-xs">
-          <div>
-            <span className="text-slate-500 font-medium">Total Received:</span>{" "}
-            <span className="font-extrabold text-slate-900">{totalReceived} Units</span>
-          </div>
-          <div>
-            <span className="text-slate-500 font-medium">Accepted (Added to Stock):</span>{" "}
-            <span className="font-extrabold text-emerald-700">{totalAccepted} Units</span>
-          </div>
-          <div>
-            <span className="text-slate-500 font-medium">Rejected:</span>{" "}
-            <span className="font-extrabold text-rose-600">{totalRejected} Units</span>
-          </div>
-        </div>
+                <td className="px-3 py-2.5">
+                  <input
+                    type="date"
+                    value={item.expiry_date || ""}
+                    onChange={(e) =>
+                      setItems(items.map((it) => (it.id === item.id ? { ...it, expiry_date: e.target.value } : it)))
+                    }
+                    className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-800 outline-none"
+                  />
+                </td>
 
-        <div className="p-3 bg-amber-50 rounded-xl border border-amber-100 text-[11px] text-amber-900 flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
-          <span>Submitting this GRN will automatically update inventory stock balances in {receivingLocation}.</span>
-        </div>
-      </div>
+                <td className="px-3 py-2.5 text-right font-bold text-slate-600">{item.quantity_ordered}</td>
 
-      {/* Product Batch & Traceability Selection Modal */}
-      {batchModalItem && (
-        <BatchSelectorModal
-          isOpen={!!batchModalItem}
-          onClose={() => setBatchModalItem(null)}
-          productId={batchModalItem.productId}
-          productName={batchModalItem.productName}
-          currentBatchNumber={batchModalItem.currentBatch}
-          onSelectBatch={(batch) => {
-            setItems((prev) =>
-              prev.map((it) => {
-                if (it.id !== batchModalItem.id) return it;
-                return {
-                  ...it,
-                  batch_number: batch.batch_number,
-                  expiry_date: batch.expiry_date || it.expiry_date,
-                };
-              })
+                <td className="px-3 py-2.5 text-right">
+                  <input
+                    type="number"
+                    min="0"
+                    value={item.quantity_received}
+                    onChange={(e) => updateItemQty(item.id, "quantity_received", Number(e.target.value) || 0)}
+                    className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs text-right font-bold text-slate-900 outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </td>
+
+                <td className="px-3 py-2.5 text-right font-black text-emerald-700 text-xs">
+                  {item.quantity_accepted}
+                </td>
+
+                <td className="px-3 py-2.5 text-right">
+                  <input
+                    type="number"
+                    min="0"
+                    value={item.quantity_rejected}
+                    onChange={(e) => updateItemQty(item.id, "quantity_rejected", Number(e.target.value) || 0)}
+                    className="w-full bg-white border border-rose-300 rounded px-2 py-1 text-xs text-right font-bold text-rose-700 outline-none focus:ring-1 focus:ring-rose-500"
+                  />
+                </td>
+
+                <td className="px-3 py-2.5">
+                  <input
+                    type="text"
+                    placeholder="Passed check / Damaged details"
+                    value={item.defect_reason || ""}
+                    onChange={(e) =>
+                      setItems(items.map((it) => (it.id === item.id ? { ...it, defect_reason: e.target.value } : it)))
+                    }
+                    className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-700 outline-none"
+                  />
+                </td>
+
+                <td className="px-3 py-2.5 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setItems(items.filter((it) => it.id !== item.id))}
+                    className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </td>
+              </tr>
             );
-            toast.success(`Selected Batch #${batch.batch_number} for ${batchModalItem.productName || "item"}`);
-          }}
-        />
-      )}
+          })}
+        </tbody>
+      </table>
     </div>
-  );
+
+    <div className="p-3 bg-slate-50/50 border-t border-slate-200">
+      <button
+        type="button"
+        onClick={handleAddItem}
+        className="px-3.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-amber-700 font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5"
+      >
+        <Plus className="w-3.5 h-3.5" /> Add Delivered Item
+      </button>
+    </div>
+  </div>
+
+  {/* Footer Summary */}
+  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col md:flex-row items-center justify-between gap-4">
+    <div className="flex items-center gap-4 text-xs">
+      <div>
+        <span className="text-slate-500 font-medium">Total Received:</span>{" "}
+        <span className="font-extrabold text-slate-900">{totalReceived} Units</span>
+      </div>
+      <div>
+        <span className="text-slate-500 font-medium">Accepted (Added to Stock):</span>{" "}
+        <span className="font-extrabold text-emerald-700">{totalAccepted} Units</span>
+      </div>
+      <div>
+        <span className="text-slate-500 font-medium">Rejected:</span>{" "}
+        <span className="font-extrabold text-rose-600">{totalRejected} Units</span>
+      </div>
+    </div>
+
+    <div className="p-3 bg-amber-50 rounded-xl border border-amber-100 text-[11px] text-amber-900 flex items-center gap-2">
+      <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
+      <span>Submitting this GRN will automatically update inventory stock balances in {receivingLocation}.</span>
+    </div>
+  </div>
+
+  {/* Product Batch & Traceability Selection Modal */}
+  {batchModalItem && (
+    <BatchSelectorModal
+      isOpen={true}
+      onClose={() => setBatchModalItem(null)}
+      productId={batchModalItem.productId}
+      productName={batchModalItem.productName}
+      currentBatchNumber={batchModalItem.currentBatch}
+      onSelectBatch={(batch) => {
+        const activeBatch = batchModalItem;
+        if (!activeBatch) return;
+        setItems((prev) =>
+          prev.map((it) => {
+            if (it.id !== activeBatch.id) return it;
+            return {
+              ...it,
+              batch_number: batch.batch_number,
+              expiry_date: batch.expiry_date || it.expiry_date,
+            };
+          })
+        );
+        toast.success(`Selected Batch #${batch.batch_number} for ${activeBatch.productName || "item"}`);
+      }}
+    />
+  )}
+</div>
+);
 }
