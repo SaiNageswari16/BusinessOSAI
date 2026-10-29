@@ -18,7 +18,8 @@ import {
   Briefcase,
   AlertCircle,
   Globe,
-  Award
+  Award,
+  X,
 } from "lucide-react";
 import { inventoryApi } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -159,12 +160,12 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
         setContactName((prev) => prev || res.contact_person || (resolvedTradeName.split(" ")[0] + " (Primary Contact)"));
         setEmail((prev) => prev || res.email || `contact@${resolvedTradeName.toLowerCase().replace(/[^a-z0-9]/g, "") || "vendor"}.in`);
         setPhone((prev) => prev || res.phone || "+91 98765 43210");
-        if (res.bank_name) setBankName((prev) => prev || res.bank_name);
-        if (res.account_number) setAccountNumber((prev) => prev || res.account_number);
-        if (res.ifsc_code) setIfscCode((prev) => prev || res.ifsc_code);
+        if (res.bank_name) setBankName((prev) => prev || res.bank_name || "");
+        if (res.account_number) setAccountNumber((prev) => prev || res.account_number || "");
+        if (res.ifsc_code) setIfscCode((prev) => prev || res.ifsc_code || "");
 
         // Auto-fill Address, City, State, PIN
-        const resolvedAddress = res.principal_address || res.address || "";
+        const resolvedAddress = (res as any).principal_address || res.address || "";
         if (resolvedAddress) {
           setAddress((prev) => prev || resolvedAddress);
         }
@@ -280,8 +281,9 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
             if (loadedGst && loadedGst.length === 15 && (!existing.address || !existing.state || !existing.city)) {
               inventoryApi.verifyGstin(loadedGst).then((gstRes) => {
                 if (gstRes && gstRes.valid) {
-                  if (!existing.address && (gstRes.principal_address || gstRes.address)) {
-                    setAddress(gstRes.principal_address || gstRes.address);
+                  const resolvedGstAddr = (gstRes as any).principal_address || gstRes.address;
+                  if (!existing.address && resolvedGstAddr) {
+                    setAddress(resolvedGstAddr);
                   }
                   if (!existing.city && gstRes.city) setCity(gstRes.city);
                   if (!existing.state && gstRes.state) {
@@ -375,45 +377,51 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
   };
 
   return (
-    <div className="bg-slate-50/50 min-h-screen p-4 md:p-6 text-slate-800 space-y-6 max-w-[1600px] mx-auto pb-24">
-      {/* Top Header */}
-      <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+    <div className="w-full text-slate-800 space-y-3 pb-8">
+      {/* Top Header - Open Header style matching Invoices History */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3.5 md:gap-4">
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all font-bold text-xs flex items-center gap-1"
+            className="group inline-flex items-center gap-2 h-10 px-4 text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200/90 hover:border-slate-300 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer shrink-0"
           >
-            <ArrowLeft className="w-4 h-4" /> Back to Vendors List
+            <ArrowLeft className="w-4 h-4 text-slate-500 group-hover:text-slate-900 group-hover:-translate-x-0.5 transition-transform duration-150" />
+            <span>Back to Vendors List</span>
           </button>
 
+          <div className="h-8 w-px bg-slate-200 hidden sm:block shrink-0" />
+
           <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-teal-100 text-teal-800 border border-teal-200">
-                Supplier Profile
-              </span>
-              <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
                 {supplierId ? "Edit Vendor / Supplier Profile" : "Onboard New Supplier Party"}
               </h1>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-teal-100 text-teal-800 border border-teal-200 shadow-2xs">
+                Supplier Profile
+              </span>
             </div>
-            <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1">
-              <Info className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+            <p className="text-sm text-slate-500 font-normal mt-1">
               Manage comprehensive vendor credentials, tax GSTIN, credit limits, bank account details, and catalog items.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5 shrink-0">
           <button
+            type="button"
             disabled={isSaving}
             onClick={onClose}
-            className="px-4 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-300"
+            className="group inline-flex items-center gap-2 h-10 px-4 text-xs font-bold text-slate-700 hover:text-rose-600 bg-white hover:bg-rose-50 border border-slate-200/90 hover:border-rose-300 rounded-xl transition-all shadow-xs active:scale-95 cursor-pointer disabled:opacity-50"
           >
-            Cancel
+            <X className="size-4 text-slate-400 group-hover:text-rose-500 transition-colors" />
+            <span>Cancel</span>
           </button>
           <button
+            type="button"
             disabled={isSaving}
             onClick={handleSubmit}
-            className="px-5 py-2.5 text-xs font-black text-white bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 rounded-xl shadow-md shadow-teal-600/20 flex items-center gap-1.5 uppercase tracking-wider disabled:opacity-50"
+            className="h-10 px-6 text-xs font-black text-white bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 rounded-xl shadow-md shadow-teal-600/20 flex items-center gap-2 uppercase tracking-wider disabled:opacity-50 transition-all active:scale-95 cursor-pointer"
           >
             <Save className="w-4 h-4" />
             {isSaving ? "Saving..." : "Save Supplier Profile"}

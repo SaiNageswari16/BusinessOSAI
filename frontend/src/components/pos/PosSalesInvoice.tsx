@@ -987,6 +987,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     removeAction: () => void,
     adjustAction?: (qty: number) => void
   ) => {
+    // If user disabled stock alerts in settings, allow immediate execution without alert modal
+    if (invoiceSettings?.showStockAlerts === false) {
+      executeAction();
+      return;
+    }
     const { availableStock, reorderLevel } = getProductStockInfo(product);
     const prevAck = acknowledgedStockMap[itemId] || 0;
 
@@ -4470,7 +4475,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     if (items.length === 0) return toast.error("Please add at least one item.");
 
     // Validate out-of-stock items before saving
-    if (invoiceType !== "PROFORMA" && (invoiceType as string) !== "QUOTATION") {
+    if (invoiceSettings?.showStockAlerts !== false && invoiceType !== "PROFORMA" && (invoiceType as string) !== "QUOTATION") {
       for (const line of items) {
         if (!line.product_name && !line.product_id) continue;
         const matched = products.find((p) => {
@@ -6888,9 +6893,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                     const isProductMatched = Boolean(matchedProduct && (item.product_name || item.product_id));
                     const { availableStock, reorderLevel } = getProductStockInfo(matchedProduct);
                     const requestedQty = qty;
-                    const isZeroStock = isProductMatched && availableStock <= 0;
-                    const isStockExceeded = isProductMatched && availableStock > 0 && requestedQty > availableStock;
-                    const isLowStock = isProductMatched && availableStock > 0 && (availableStock < 5 || availableStock <= reorderLevel) && requestedQty <= availableStock;
+                    const stockAlertsEnabled = invoiceSettings?.showStockAlerts !== false;
+                    const isZeroStock = stockAlertsEnabled && isProductMatched && availableStock <= 0;
+                    const isStockExceeded = stockAlertsEnabled && isProductMatched && availableStock > 0 && requestedQty > availableStock;
+                    const isLowStock = stockAlertsEnabled && isProductMatched && availableStock > 0 && (availableStock < 5 || availableStock <= reorderLevel) && requestedQty <= availableStock;
                     const isStockAcknowledged = (acknowledgedStockMap[item.id] || 0) >= requestedQty;
 
                     return (
@@ -7498,7 +7504,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                         )}
 
                         {/* Stock Alert Warning Row */}
-                        {isProductMatched && !isStockAcknowledged && (isZeroStock || isStockExceeded || isLowStock) && (
+                        {invoiceSettings?.showStockAlerts !== false && isProductMatched && !isStockAcknowledged && (isZeroStock || isStockExceeded || isLowStock) && (
                           <tr
                             key={`${item.id}-stock-warn`}
                             className={cn(
@@ -7692,26 +7698,49 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 </span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  const nextVal = invoiceSettings.showDiscount === false ? true : false;
-                  const newSettings = { ...invoiceSettings, showDiscount: nextVal };
-                  setInvoiceSettings(newSettings);
-                  saveStoredInvoiceSettings(newSettings);
-                  toast.success(nextVal ? "Discount column is now visible" : "Discount column hidden");
-                }}
-                className={cn(
-                  "px-3 py-2 font-bold text-xs rounded-xl border shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer ml-auto",
-                  invoiceSettings.showDiscount !== false
-                    ? "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200"
-                    : "bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-300"
-                )}
-                title="Toggle visibility of the Discount column in item table"
-              >
-                <Tag className="size-3.5" />
-                <span>Discount Column: {invoiceSettings.showDiscount !== false ? "Visible" : "Hidden"}</span>
-              </button>
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextVal = invoiceSettings.showStockAlerts === false ? true : false;
+                    const newSettings = { ...invoiceSettings, showStockAlerts: nextVal };
+                    setInvoiceSettings(newSettings);
+                    saveStoredInvoiceSettings(newSettings);
+                    toast.success(nextVal ? "Stock alert warnings enabled" : "Stock alert warnings disabled");
+                  }}
+                  className={cn(
+                    "px-3 py-2 font-bold text-xs rounded-xl border shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer",
+                    invoiceSettings.showStockAlerts !== false
+                      ? "bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300"
+                      : "bg-slate-100 hover:bg-slate-200 text-slate-500 border-slate-300"
+                  )}
+                  title="Toggle stock alert warnings on zero / insufficient stock during billing"
+                >
+                  <AlertTriangle className={cn("size-3.5", invoiceSettings.showStockAlerts !== false ? "text-amber-600" : "text-slate-400")} />
+                  <span>Stock Alerts: {invoiceSettings.showStockAlerts !== false ? "Active" : "Disabled"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextVal = invoiceSettings.showDiscount === false ? true : false;
+                    const newSettings = { ...invoiceSettings, showDiscount: nextVal };
+                    setInvoiceSettings(newSettings);
+                    saveStoredInvoiceSettings(newSettings);
+                    toast.success(nextVal ? "Discount column is now visible" : "Discount column hidden");
+                  }}
+                  className={cn(
+                    "px-3 py-2 font-bold text-xs rounded-xl border shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer",
+                    invoiceSettings.showDiscount !== false
+                      ? "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200"
+                      : "bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-300"
+                  )}
+                  title="Toggle visibility of the Discount column in item table"
+                >
+                  <Tag className="size-3.5" />
+                  <span>Discount Column: {invoiceSettings.showDiscount !== false ? "Visible" : "Hidden"}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

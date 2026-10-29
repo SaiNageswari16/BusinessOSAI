@@ -316,11 +316,11 @@ export function VendorBills() {
       if (b.grn_number || b.grn_id) matchedCount++;
     });
 
-    return { 
-      totalInvoiced, 
-      totalPaid, 
-      totalOutstanding, 
-      matchedCount, 
+    return {
+      totalInvoiced,
+      totalPaid,
+      totalOutstanding,
+      matchedCount,
       activeCount: activeList.length,
       cancelledCount: filteredBills.length - activeList.length
     };
@@ -368,11 +368,11 @@ export function VendorBills() {
             <Sliders className="size-4 text-primary" />
             <span>Invoice Settings</span>
           </Button>
-          <Button 
-            onClick={() => setIsCreateMode(true)} 
+          <Button
+            onClick={() => setIsCreateMode(true)}
             className="gradient-brand text-white border-0 font-bold px-5 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center gap-2"
           >
-            <Plus className="size-4" /> Log Purchase Invoice
+            <Plus className="size-4" /> Purchase Invoice
           </Button>
         </div>
       </div>
@@ -459,7 +459,7 @@ export function VendorBills() {
               className="w-full h-10 pl-9 pr-8 bg-muted/30 hover:bg-muted/50 border border-input rounded-xl text-xs font-semibold text-foreground outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
             />
             {searchQuery && (
-              <button 
+              <button
                 onClick={() => setSearchQuery("")}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1 rounded-full cursor-pointer"
               >
@@ -484,11 +484,10 @@ export function VendorBills() {
               <button
                 key={preset.key}
                 onClick={() => handleDatePresetChange(preset.key)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                  datePreset === preset.key
-                    ? "bg-primary text-primary-foreground shadow-xs"
-                    : "bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground border border-border/50"
-                }`}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${datePreset === preset.key
+                  ? "bg-primary text-primary-foreground shadow-xs"
+                  : "bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground border border-border/50"
+                  }`}
               >
                 {preset.label}
               </button>
@@ -501,11 +500,10 @@ export function VendorBills() {
               variant="outline"
               size="sm"
               onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-              className={`h-9 px-3 rounded-xl text-xs font-bold gap-1.5 cursor-pointer ${
-                showAdvancedFilters || (isFiltered && datePreset === "custom") 
-                  ? "bg-primary/10 text-primary border-primary/30" 
-                  : ""
-              }`}
+              className={`h-9 px-3 rounded-xl text-xs font-bold gap-1.5 cursor-pointer ${showAdvancedFilters || (isFiltered && datePreset === "custom")
+                ? "bg-primary/10 text-primary border-primary/30"
+                : ""
+                }`}
             >
               <Filter className="w-3.5 h-3.5" />
               {showAdvancedFilters ? "Hide Filters" : "More Filters"}
@@ -659,14 +657,14 @@ export function VendorBills() {
                       <Receipt className="w-10 h-10 mx-auto text-muted-foreground/50" />
                       <h4 className="text-base font-bold text-foreground">No purchase invoices found</h4>
                       <p className="text-xs text-muted-foreground">
-                        {isFiltered 
+                        {isFiltered
                           ? "No records match your selected date, amount, or search filters. Try clearing some filters."
-                          : "No vendor purchase bills logged yet. Click '+ Log Purchase Invoice' above to create one."}
+                          : "No vendor purchase bills logged yet. Click '+ Purchase Invoice' above to create one."}
                       </p>
                       {isFiltered && (
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={handleResetFilters}
                           className="rounded-xl font-bold text-xs mt-2"
                         >
@@ -725,15 +723,14 @@ export function VendorBills() {
                       {b.due_date ? formatDisplayDate(b.due_date) : "Net 30"}
                     </td>
                     <td className="py-4 px-6">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 ${
-                        b.status === 'Paid' 
-                          ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' 
-                          : b.status === 'Partial' 
-                          ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20' 
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 ${b.status === 'Paid'
+                        ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
+                        : b.status === 'Partial'
+                          ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
                           : b.status === 'Cancelled'
-                          ? 'bg-slate-500/10 text-slate-500 border border-slate-500/20 line-through'
-                          : 'bg-rose-500/10 text-rose-600 border border-rose-500/20'
-                      }`}>
+                            ? 'bg-slate-500/10 text-slate-500 border border-slate-500/20 line-through'
+                            : 'bg-rose-500/10 text-rose-600 border border-rose-500/20'
+                        }`}>
                         {b.status === 'Paid' && <CheckCircle2 className="w-3 h-3" />}
                         {b.status === 'Cancelled' && <Ban className="w-3 h-3 text-slate-400" />}
                         {b.status || 'Unpaid'}
@@ -741,17 +738,17 @@ export function VendorBills() {
                     </td>
                     <td className="py-4 px-6 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={() => setShareDoc(b)}
                           className="h-8 gap-1.5 font-bold rounded-lg border-teal-200 text-teal-700 bg-teal-50/50 hover:bg-teal-100 dark:bg-teal-950/30 dark:border-teal-800 dark:text-teal-300 shadow-2xs cursor-pointer"
                         >
                           <FileText className="size-3.5 text-teal-600" /> PDF & Share
                         </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={() => setSelectedDoc(b)}
                           className="h-8 gap-1.5 font-bold rounded-lg hover:bg-primary/10 cursor-pointer"
                         >
