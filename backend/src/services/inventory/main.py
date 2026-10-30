@@ -18,6 +18,7 @@ from src.services.inventory import models  # noqa: F401 - registers tables first
 from src.services.inventory.api import router as inventory_router
 from src.services.inventory.api_barcode import router as identifier_router
 from src.services.inventory.api_proxy import router as procurement_router
+from src.services.inventory import events  # noqa: F401 - @bus.on registrations
 
 TAGS = [
     {"name": "inventory", "description": "Items, stock, movements, wastage, adjustments"},

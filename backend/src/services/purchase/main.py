@@ -16,6 +16,7 @@ from src.services.event_bus.dedupe import install_service_ledger
 from src.services.purchase import models  # noqa: F401 - registers tables first
 from src.services.purchase.api import router as purchase_router
 from src.services.purchase.outbox import OutboxRelay
+from src.services.purchase import events  # noqa: F401 - @bus.on registrations
 
 TAGS = [
     {"name": "purchase",
