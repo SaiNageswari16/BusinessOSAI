@@ -7,9 +7,11 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from src.services.kitchen.models import (
+    DeviceType,
     KOTItemStatus,
     KOTPriority,
     KOTStatus,
+    PrintStatus,
     StationType,
 )
 
@@ -73,6 +75,11 @@ class DeviceCreate(BaseModel):
     outlet_id: uuid.UUID
     station_id: uuid.UUID | None = None
     name: str = Field(min_length=1, max_length=100)
+    # What this device can render: KDS display, receipt printer, or both.
+    # Optional — a screen registered before the field existed is read back
+    # as KDS. A device with no station binding is an outlet-level receipt
+    # printer, not a pass screen.
+    device_type: DeviceType = DeviceType.KDS
 
 
 class DeviceResponse(OrmModel):
@@ -81,9 +88,19 @@ class DeviceResponse(OrmModel):
     station_id: uuid.UUID | None
     name: str
     device_token: str
+    device_type: DeviceType | None
     is_active: bool
     last_seen_at: datetime | None
     created_at: datetime
+
+    @model_validator(mode="after")
+    def _default_device_type(self) -> "DeviceResponse":
+        # A NULL device_type (a row written before the column existed) is the
+        # same as KDS — that is what every existing screen is — so the caller
+        # never has to special-case the null.
+        if self.device_type is None:
+            self.device_type = DeviceType.KDS
+        return self
 
 
 # ─── KOT tickets ─────────────────────────────────────────────────────────────
@@ -247,3 +264,91 @@ class KOTCreate(BaseModel):
     priority: KOTPriority = KOTPriority.NORMAL
     notes: str | None = None
     items: list[KOTItemCreate] = []
+
+
+# ─── Kitchen print requests ──────────────────────────────────────────────────
+
+class PrintRequest(BaseModel):
+    """Route a print request to a printer destination.
+
+    ``printer_ref`` is a bare UUID into the printers service's hardware
+    registry — the kitchen does not resolve it. Omitted means "use the
+    station's configured printer" (or the outlet default when there is no
+    station binding), and the printers service is the one that maps a
+    destination to a physical device.
+    """
+
+    printer_ref: uuid.UUID | None = None
+    notes: str | None = Field(default=None, max_length=300)
+
+
+class PrintLogResponse(OrmModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    outlet_id: uuid.UUID
+    kot_id: uuid.UUID | None
+    station_id: uuid.UUID | None
+    status: PrintStatus
+    printer_ref: uuid.UUID | None
+    ack_reason: str | None
+    acked_at: datetime | None
+    created_at: datetime
+
+
+class PrintLogUpdate(BaseModel):
+    """The printers service's ack of a print request.
+
+    Flips the row to SENT or FAILED. ``ack_reason`` is optional free text —
+    a job id on success, the error on failure — kept short because the
+    column is a string, not JSON.
+    """
+
+    status: PrintStatus
+    ack_reason: str | None = Field(default=None, max_length=300)
+
+
+class PrintQueueResponse(BaseModel):
+    """Open print requests for a station, oldest first.
+
+    This is how the printers service polls for work: it reads this, then
+    acks each row it completes through ``PATCH /print-log/{id}``. No items
+    here — the queue is a flat list by design, the way the KDS board is.
+    """
+
+    station_id: uuid.UUID
+    rows: list[PrintLogResponse]
+    total: int
+
+
+class KOTPrintPreview(BaseModel):
+    """A structured receipt/thermal render of one ticket. No HTML.
+
+    The frontend and the printers service both consume this — it is the
+    single source of truth for "what goes on the paper," with the item
+    lines, modifiers and notes in a form a thermal printer can lay out
+    without needing to know about the KOT row shape.
+    """
+
+    kot_id: uuid.UUID
+    kot_number: str
+    order_number: str | None
+    order_type: str | None
+    table_name: str | None
+    station_id: uuid.UUID
+    station_name: str | None
+    status: KOTStatus
+    priority: KOTPriority
+    item_count: int = 0
+
+    @model_validator(mode="after")
+    def _fill_item_count(self) -> "KOTPrintPreview":
+        self.item_count = len(self.items)
+        return self
+    course_number: int | None
+    covers: int
+    notes: str | None
+    fired_at: datetime | None
+    ready_at: datetime | None
+    served_at: datetime | None
+    items: list[dict]
+    """Each item: {name, variant_name, qty, notes, modifiers, course_number}."""

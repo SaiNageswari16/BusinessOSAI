@@ -22,8 +22,10 @@ from src.services.kitchen.models import (
     KOTPriority,
     KOTStatus,
     KOTStatusLog,
+    KitchenPrintLog,
     KitchenStation,
     NumberCounter,
+    PrintStatus,
     status_value,
 )
 
@@ -653,3 +655,95 @@ async def kot_history(
     the sort the UI wants (time order, not insert order, which are only the
     same thing when a human is the one appending)."""
     return sorted(kot.status_logs or [], key=lambda log: log.created_at)
+
+
+# ─── Kitchen print requests ──────────────────────────────────────────────────
+
+async def create_print_log(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    outlet_id: uuid.UUID,
+    *,
+    kot_id: uuid.UUID | None = None,
+    station_id: uuid.UUID | None = None,
+    printer_ref: uuid.UUID | None = None,
+) -> KitchenPrintLog:
+    """Record one print request, flushed into the caller's open transaction.
+
+    The row is written before the outbox event that follows, so the two
+    commit or roll back together — a print request whose event is lost would
+    leave the printers service with no way to know there was work to do.
+    """
+    log = KitchenPrintLog(
+        tenant_id=tenant_id,
+        outlet_id=outlet_id,
+        kot_id=kot_id,
+        station_id=station_id,
+        status=PrintStatus.PENDING,
+        printer_ref=printer_ref,
+    )
+    db.add(log)
+    await db.flush()
+    return log
+
+
+async def print_queue(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    station_id: uuid.UUID,
+    *,
+    include_acked: bool = False,
+    limit: int = 100,
+) -> list[KitchenPrintLog]:
+    """Open print requests for one station, oldest first.
+
+    The printers service polls this to find work. Oldest-first is deliberate:
+    a rush order printed after a normal one must not overtake it in the queue.
+    Acked rows (SENT/FAILED) are excluded unless ``include_acked`` is set,
+    which is how a queue view shows history without mixing it into the
+    live backlog.
+    """
+    stmt = select(KitchenPrintLog).where(
+        KitchenPrintLog.tenant_id == tenant_id,
+        KitchenPrintLog.station_id == station_id,
+    )
+    if not include_acked:
+        stmt = stmt.where(KitchenPrintLog.status == PrintStatus.PENDING)
+    stmt = stmt.order_by(KitchenPrintLog.created_at.asc()).limit(limit)
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def load_print_log(
+    db: AsyncSession, tenant_id: uuid.UUID, log_id: uuid.UUID
+) -> KitchenPrintLog | None:
+    return await db.scalar(
+        select(KitchenPrintLog).where(
+            KitchenPrintLog.id == log_id,
+            KitchenPrintLog.tenant_id == tenant_id,
+        )
+    )
+
+
+async def ack_print_log(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    log: KitchenPrintLog,
+    *,
+    status: PrintStatus,
+    ack_reason: str | None = None,
+) -> KitchenPrintLog:
+    """The printers service's confirmation that a request was handled.
+
+    Only a PENDING row moves — a row already SENT or FAILED is a fact the
+    kitchen has surfaced to a queue view, and letting a late ack silently
+    rewrite it would corrupt the audit trail.
+    """
+    if status_value(log.status) != PrintStatus.PENDING.value:
+        raise KitchenError(
+            f"Print log {log.id} is already {status_value(log.status)}"
+        )
+    log.status = status
+    log.ack_reason = ack_reason
+    log.acked_at = _now()
+    await db.flush()
+    return log

@@ -84,6 +84,34 @@ class KOTItemStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class DeviceType(str, enum.Enum):
+    """What a registered device can render.
+
+    A screen that is only a KDS should not be offered as a receipt target,
+    and a counter receipt printer is useless as a pass display. A device can
+    be both when a combined unit is on the pass.
+    """
+
+    KDS = "kds"
+    RECEIPT = "receipt"
+    BOTH = "both"
+
+
+class PrintStatus(str, enum.Enum):
+    """Lifecycle of one kitchen print request.
+
+    PENDING is the kitchen's own state: the request is recorded and its
+    outbox event emitted. The printers service moves it to SENT once the
+    print job has actually left, or FAILED when it cannot. The kitchen does
+    not retry on its own — a FAILED row is a fact for the queue view, and a
+    re-print is a new request.
+    """
+
+    PENDING = "pending"
+    SENT = "sent"
+    FAILED = "failed"
+
+
 def status_value(value: object) -> str:
     """The plain string for a status field, however it was obtained.
 
@@ -168,6 +196,11 @@ class KDSDevice(ServiceBase, TimestampMixin):
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     device_token: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    # What this device can render. Nullable-safe: added after the table first
+    # existed, so older rows are NULL and the API layer reads that as KDS.
+    device_type: Mapped[DeviceType | None] = mapped_column(
+        String(20), default=DeviceType.KDS, nullable=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -352,6 +385,63 @@ class NumberCounter(ServiceBase, TimestampMixin):
     prefix: Mapped[str] = mapped_column(String(40), nullable=False)
     next_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
+
+
+class KitchenPrintLog(ServiceBase, TimestampMixin):
+    """One print request for one KOT at one station.
+
+    The kitchen's half of the printer flow: it records the request and emits
+    the ``kot.print.requested`` outbox event in the same transaction. The
+    printers service consumes that event, does the actual hardware work, and
+    acks back through ``PATCH /print-log/{id}`` flipping ``status`` to SENT or
+    FAILED (optionally with an ``ack_reason``). The kitchen never talks to
+    printer hardware itself — this row is the audit trail, and the queue
+    endpoint is how the printers service learns there is work to do.
+
+    ``kot_id`` is a bare UUID with no FK: the KOT is in this same database,
+    but a print log must survive a KOT being deleted in a retention sweep,
+    and the log row is what the queue view keys on, not the ticket.
+    """
+
+    __tablename__ = "kitchen_print_logs"
+    __table_args__ = (
+        Index("ix_kitchen_print_logs_station_status", "station_id", "status"),
+        Index("ix_kitchen_print_logs_kot", "kot_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    outlet_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    # Bare UUIDs, no FK: kot and station are kitchen's own rows, but the log
+    # must outlive a ticket and carry the printer reference that belongs to
+    # the printers service's hardware registry.
+    kot_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    station_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    # Set on station-wide prints (a "print everything open at station X");
+    # None when the request is for one specific ticket.
+    status: Mapped[PrintStatus] = mapped_column(
+        String(20), default=PrintStatus.PENDING, nullable=False, index=True
+    )
+    # The printer destination the request routed to. A bare UUID with no FK —
+    # it belongs to the printers service's hardware registry, which the
+    # kitchen cannot and must not read.
+    printer_ref: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    # The printers service's ack: a short reason when status is FAILED, or
+    # the job id when SENT. Written by the PATCH ack, never by the request.
+    ack_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    acked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class OutboxMessage(ServiceBase, TimestampMixin):

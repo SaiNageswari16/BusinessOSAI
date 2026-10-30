@@ -33,7 +33,6 @@ from src.services.kitchen.models import (
     KOTStatus,
     KitchenStation,
     KDSDevice,
-    StationType,
     status_value,
 )
 from src.services.kitchen.schemas import (
@@ -43,11 +42,15 @@ from src.services.kitchen.schemas import (
     KOTCancelRequest,
     KOTCreate,
     KOTItemStatusRequest,
-    KOTListResponse,
     KOTListResponseModel,
+    KOTPrintPreview,
     KOTRefireRequest,
     KOTResponse,
     KOTStatusUpdate,
+    PrintLogResponse,
+    PrintLogUpdate,
+    PrintQueueResponse,
+    PrintRequest,
     StationCreate,
     StationMetricsResponse,
     StationResponse,
@@ -384,9 +387,46 @@ async def create_device(payload: DeviceCreate, identity: CurrentIdentity, db: Db
         outlet_id=payload.outlet_id,
         station_id=payload.station_id,
         name=payload.name,
+        device_type=payload.device_type,
         device_token=token,
+        last_seen_at=_stamp(),
     )
     db.add(device)
+    await db.flush()
+    return device
+
+
+@router.post("/kds-devices/{device_id}/heartbeat", response_model=DeviceResponse,
+             tags=["kds"],
+             summary="Liveness ping — updates last_seen_at without a full poll")
+async def device_heartbeat(
+    device_id: uuid.UUID,
+    identity: CurrentIdentity,
+    db: DbDep,
+):
+    """A screen that only polls /kots/poll on an interval is one thing; a
+    screen that wants to say "I am alive" between polls without dragging
+    the ticket payload with it is another. This is the cheap one — it stamps
+    ``last_seen_at`` and nothing else, so a board can heartbeat every few
+    seconds on the cheap and only pay for the ticket fetch when it needs to
+    redraw.
+
+    The device must belong to this tenant — unlike the token-authenticated
+    poll, this one is user-authenticated, and a user must not be able to
+    heartbeat another tenant's screen into looking alive.
+    """
+    identity.require("prepare:kot")
+    device = await db.scalar(
+        select(KDSDevice).where(
+            KDSDevice.id == device_id,
+            KDSDevice.tenant_id == identity.tenant_id,
+        )
+    )
+    if device is None:
+        raise HTTPException(status_code=404, detail="KDS device not found")
+    if not identity.can_access_outlet(device.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+    device.last_seen_at = _stamp()
     await db.flush()
     return device
 
@@ -468,21 +508,75 @@ async def kds_poll(
 @router.get("/kots", response_model=KOTListResponseModel, tags=["kds"],
             summary="Board view: open tickets for one station (JWT)")
 async def list_kots(identity: CurrentIdentity, db: DbDep,
-                    station_id: uuid.UUID,
+                    station_id: uuid.UUID | None = None,
                     outlet_id: uuid.UUID | None = None,
+                    order_number: str | None = Query(
+                        default=None,
+                        description="Filter to tickets fired for this order number. "
+                                    "Case-insensitive prefix match, so a cashier typing "
+                                    "the order's printed number finds every station's KOT "
+                                    "for that one sale.",
+                    ),
                     include_closed: bool = False,
                     limit: int = Query(default=100, le=500)):
     """The pass screen polls this. It is a flat column SELECT by design —
     no nested items — because the board refreshes every couple of seconds and
-    per-ticket line detail here would be an N+1 on every poll."""
+    per-ticket line detail here would be an N+1 on every poll.
+
+    ``station_id`` is now optional: the KDS-by-number screen (a cashier
+    looking up every KOT for order #1234 across all stations) leaves it
+    out. When it is set, the query is scoped to that station, which is the
+    by-station board's poll."""
     identity.require("prepare:kot")
     if outlet_id:
         await _resolve_outlet(identity, outlet_id)
 
     stmt = select(KOT).where(
         KOT.tenant_id == identity.tenant_id,
-        KOT.station_id == station_id,
     )
+    if station_id is not None:
+        stmt = stmt.where(KOT.station_id == station_id)
+    if outlet_id is not None:
+        stmt = stmt.where(KOT.outlet_id == outlet_id)
+    if order_number:
+        # ILIKE prefix match: a cashier types the order number exactly as it
+        # appears on the bill, and the search must find it. A contains
+        # wildcard in the middle of the string is wasted work and returns
+        # unrelated tickets, so it is a prefix match, not a substring one.
+        stmt = stmt.where(KOT.order_number.ilike(f"{order_number.strip()}%"))
+    if not include_closed:
+        stmt = stmt.where(KOT.status.not_in([KOTStatus.SERVED, KOTStatus.CANCELLED]))
+    stmt = stmt.order_by(KOT.priority, KOT.fired_at).limit(limit)
+    tickets = list((await db.execute(stmt)).scalars().all())
+    return KOTListResponseModel(tickets=tickets, total=len(tickets))
+
+
+@router.get("/kots/by-number", response_model=KOTListResponseModel, tags=["kds"],
+            summary="Look up KOTs by the order number a cashier has on the bill")
+async def kots_by_number(
+    identity: CurrentIdentity,
+    db: DbDep,
+    n: str = Query(..., alias="n", description="The order number to search for"),
+    outlet_id: uuid.UUID | None = None,
+    include_closed: bool = False,
+    limit: int = Query(default=100, le=500),
+):
+    """KDS-by-number: every station's KOT for one order, no station required.
+
+    The by-station board polls ``/kots`` with its own ``station_id``; this
+    endpoint is the cashier's tool for "which tickets does order #1234 have
+    open at each station," so it intentionally omits ``station_id`` and only
+    filters on the order number.
+    """
+    identity.require("prepare:kot")
+    if outlet_id:
+        await _resolve_outlet(identity, outlet_id)
+    stmt = select(KOT).where(
+        KOT.tenant_id == identity.tenant_id,
+        KOT.order_number.ilike(f"{n.strip()}%"),
+    )
+    if outlet_id is not None:
+        stmt = stmt.where(KOT.outlet_id == outlet_id)
     if not include_closed:
         stmt = stmt.where(KOT.status.not_in([KOTStatus.SERVED, KOTStatus.CANCELLED]))
     stmt = stmt.order_by(KOT.priority, KOT.fired_at).limit(limit)
@@ -715,6 +809,226 @@ async def update_kot_item(kot_id: uuid.UUID, item_id: uuid.UUID,
     _outbox(db, event)
     await bus.publish(event, local=True)
     return kot
+
+
+# ─── Kitchen print requests ─────────────────────────────────────────────────
+#
+# The kitchen records the request and emits the ``kot.print.requested`` outbox
+# event. It does NOT call the printers service directly — the printers service
+# consumes that event (and polls ``/print/queue``) and acks back through
+# ``PATCH /print-log/{id}``. Keeping the call one-way is the house rule:
+# kitchen never writes into printers' database, and never awaits its response.
+
+@router.post("/kots/{kot_id}/print", response_model=PrintLogResponse,
+             status_code=http_status.HTTP_201_CREATED, tags=["kitchen"],
+             summary="Request a print of one ticket")
+async def print_kot(
+    kot_id: uuid.UUID,
+    payload: PrintRequest,
+    identity: CurrentIdentity,
+    db: DbDep,
+):
+    """Send one ticket to the printer destination for its station.
+
+    The ticket's ``printed_count`` is bumped in the same transaction as the
+    log row, so a crash between the two is not possible. The outbox event is
+    written before the commit, the way every durable event in this service
+    is, so a committed print request can never be lost.
+    """
+    identity.require("prepare:kot")
+    kot = await svc.load_kot(db, identity.tenant_id, kot_id)
+    if kot is None:
+        raise HTTPException(status_code=404, detail="KOT not found")
+    if not identity.can_access_outlet(kot.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+
+    log = await svc.create_print_log(
+        db, identity.tenant_id, kot.outlet_id,
+        kot_id=kot.id,
+        station_id=kot.station_id,
+        printer_ref=payload.printer_ref,
+    )
+    kot.printed_count = (kot.printed_count or 0) + 1
+    await db.flush()
+
+    event = _ev(
+        "kot.print.requested", identity.tenant_id, outlet_id=kot.outlet_id,
+        data={
+            "kot_id": str(kot.id),
+            "kot_number": kot.kot_number,
+            "station_id": str(kot.station_id),
+            "printer_ref": str(payload.printer_ref) if payload.printer_ref else None,
+            "requested_at": _stamp().isoformat(),
+        },
+    )
+    _outbox(db, event)
+    await db.commit()
+    await bus.publish(event, local=True)
+    return log
+
+
+@router.post("/stations/{station_id}/print", response_model=PrintLogResponse,
+             status_code=http_status.HTTP_201_CREATED, tags=["kitchen"],
+             summary="Request a print of every open ticket at one station")
+async def print_station(
+    station_id: uuid.UUID,
+    payload: PrintRequest,
+    identity: CurrentIdentity,
+    db: DbDep,
+):
+    """A station-wide reprint — "print everything still open at this station."
+
+    The log row carries no ``kot_id`` because the request is for the whole
+    station, not one ticket. The outbox event's ``kot_id`` is therefore
+    ``None``; the printers service is expected to look the station's open
+    tickets up on its own if it needs the ticket list, or to re-print the
+    station's last known state. The kitchen does not enumerate tickets here
+    and keep the list in the event — that would go stale the moment a ticket
+    is served between the request and the print.
+    """
+    identity.require("prepare:kot")
+    station = await svc.load_station(db, identity.tenant_id, station_id)
+    if station is None:
+        raise HTTPException(status_code=404, detail="Station not found")
+    if not identity.can_access_outlet(station.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+
+    log = await svc.create_print_log(
+        db, identity.tenant_id, station.outlet_id,
+        kot_id=None,
+        station_id=station.id,
+        printer_ref=payload.printer_ref,
+    )
+    await db.flush()
+
+    event = _ev(
+        "kot.print.requested", identity.tenant_id, outlet_id=station.outlet_id,
+        data={
+            "kot_id": None,
+            "kot_number": None,
+            "station_id": str(station.id),
+            "printer_ref": str(payload.printer_ref) if payload.printer_ref else None,
+            "requested_at": _stamp().isoformat(),
+        },
+    )
+    _outbox(db, event)
+    await db.commit()
+    await bus.publish(event, local=True)
+    return log
+
+
+@router.get("/print/queue", response_model=PrintQueueResponse,
+            tags=["kitchen"],
+            summary="Open print requests for a station, oldest first")
+async def print_queue(
+    identity: CurrentIdentity,
+    db: DbDep,
+    station_id: uuid.UUID,
+    include_acked: bool = False,
+    limit: int = Query(default=100, le=500),
+):
+    """The printers service's work queue. Read-only here — the ack path is
+    ``PATCH /print-log/{id}``, so a printer that fails a job marks it FAILED
+    and the next poll no longer shows it as pending."""
+    identity.require("prepare:kot")
+    station = await svc.load_station(db, identity.tenant_id, station_id)
+    if station is None:
+        raise HTTPException(status_code=404, detail="Station not found")
+    if not identity.can_access_outlet(station.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+    rows = await svc.print_queue(
+        db, identity.tenant_id, station_id,
+        include_acked=include_acked, limit=limit,
+    )
+    return PrintQueueResponse(
+        station_id=station_id,
+        rows=[PrintLogResponse.model_validate(r) for r in rows],
+        total=len(rows),
+    )
+
+
+@router.patch("/print-log/{log_id}", response_model=PrintLogResponse,
+              tags=["kitchen"],
+              summary="The printers service's ack of a print request")
+async def ack_print_log(
+    log_id: uuid.UUID,
+    payload: PrintLogUpdate,
+    identity: CurrentIdentity,
+    db: DbDep,
+):
+    """Flip a PENDING print request to SENT or FAILED.
+
+    The printers service is the only caller, and the gate is on the status:
+    a row already settled by an earlier ack returns 409, not a silent no-op,
+    so a double-delivery of the print event does not look like success.
+    """
+    identity.require("prepare:kot")
+    log = await svc.load_print_log(db, identity.tenant_id, log_id)
+    if log is None:
+        raise HTTPException(status_code=404, detail="Print log not found")
+    if not identity.can_access_outlet(log.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+    try:
+        await svc.ack_print_log(
+            db, identity.tenant_id, log,
+            status=payload.status, ack_reason=payload.ack_reason,
+        )
+    except svc.KitchenError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return log
+
+
+@router.get("/kots/{kot_id}/print-preview", response_model=KOTPrintPreview,
+            tags=["kitchen"],
+            summary="Structured receipt/thermal render of one ticket. No HTML.")
+async def kot_print_preview(
+    kot_id: uuid.UUID,
+    identity: CurrentIdentity,
+    db: DbDep,
+):
+    """The single source of truth for "what goes on the paper."
+
+    The frontend's receipt preview and the printers service's render path both
+    read this — it is a plain dict shape, not HTML, so a thermal printer's
+    layout engine does not need to know about the KOT ORM row.
+    """
+    identity.require("prepare:kot")
+    kot = await svc.load_kot(db, identity.tenant_id, kot_id)
+    if kot is None:
+        raise HTTPException(status_code=404, detail="KOT not found")
+    if not identity.can_access_outlet(kot.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+
+    station = await svc.load_station(db, identity.tenant_id, kot.station_id)
+    items = [
+        {
+            "name": it.name,
+            "variant_name": it.variant_name,
+            "qty": it.qty,
+            "notes": it.notes,
+            "modifiers": list(it.modifiers or []),
+            "course_number": it.course_number,
+        }
+        for it in (kot.items or [])
+    ]
+    return KOTPrintPreview(
+        kot_id=kot.id,
+        kot_number=kot.kot_number,
+        order_number=kot.order_number,
+        order_type=kot.order_type,
+        table_name=kot.table_name,
+        station_id=kot.station_id,
+        station_name=station.name if station else None,
+        status=status_value(kot.status),
+        priority=status_value(kot.priority),
+        course_number=kot.course_number,
+        covers=kot.covers,
+        notes=kot.notes,
+        fired_at=kot.fired_at,
+        ready_at=kot.ready_at,
+        served_at=kot.served_at,
+        items=items,
+    )
 
 
 async def _emit_kot_event(kot: KOT, to: KOTStatus, *, from_status: str | None = None,
