@@ -124,6 +124,7 @@ export const SYSTEM_MODULES: SystemModule[] = [
     routePrefix: "/procurement",
     subTabs: [
       { id: "vendor_bills", label: "Purchase Invoices & Bills", route: "/procurement?tab=vendor_bills" },
+      { id: "purchase_returns", label: "Purchase Returns", route: "/procurement?tab=purchase_returns" },
       { id: "pending_payments", label: "Vendor Payments Out", route: "/procurement?tab=pending_payments" },
       { id: "suppliers", label: "Suppliers & Vendors Directory", route: "/procurement?tab=suppliers" },
       { id: "purchase_requests", label: "Purchase Requisitions (PR)", route: "/procurement?tab=purchase_requests" },

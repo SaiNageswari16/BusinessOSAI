@@ -214,7 +214,7 @@ class GoodsReceivedNote(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampM
     
     grn_number: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
     purchase_order_id = mapped_column(ForeignKey("erp_purchase_orders.id", ondelete="RESTRICT"), nullable=False)
-    purchase_order: Mapped[PurchaseOrder] = relationship()
+    purchase_order: Mapped[PurchaseOrder] = relationship(foreign_keys=[purchase_order_id])
     company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
     
     received_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -245,7 +245,7 @@ class PurchaseReturn(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixi
     
     return_number: Mapped[str] = mapped_column(String(100), nullable=False)
     purchase_order_id = mapped_column(ForeignKey("erp_purchase_orders.id", ondelete="RESTRICT"), nullable=False)
-    purchase_order: Mapped[PurchaseOrder] = relationship()
+    purchase_order: Mapped[PurchaseOrder] = relationship(foreign_keys=[purchase_order_id])
     company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
     
     return_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -275,7 +275,7 @@ class VendorBill(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     
     bill_number: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
     purchase_order_id = mapped_column(ForeignKey("erp_purchase_orders.id", ondelete="RESTRICT"), nullable=False)
-    purchase_order: Mapped[PurchaseOrder] = relationship()
+    purchase_order: Mapped[PurchaseOrder] = relationship(foreign_keys=[purchase_order_id])
     company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
     
     # 3-Way Match: GRN → Bill link. Optional so legacy bills without GRN are not broken.
@@ -323,6 +323,9 @@ class VendorCreditNote(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMi
     
     amount: Mapped[float] = mapped_column(Numeric(15, 2), default=0.0)
     status: Mapped[str] = mapped_column(String(50), default="Unapplied") # Unapplied, Applied, Refunded
+    reference_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    vendor_bill_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_vendor_bills.id", ondelete="SET NULL"), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class VendorDebitNote(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
@@ -338,6 +341,9 @@ class VendorDebitNote(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMix
     
     amount: Mapped[float] = mapped_column(Numeric(15, 2), default=0.0)
     status: Mapped[str] = mapped_column(String(50), default="Draft") # Draft, Sent, Settled
+    reference_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    vendor_bill_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_vendor_bills.id", ondelete="SET NULL"), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ProcurementAISuggestion(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):

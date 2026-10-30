@@ -6798,6 +6798,40 @@ export function PrintTemplates() {
                               </div>
                             </div>
 
+                            <div className="p-2.5 bg-blue-50/60 dark:bg-blue-950/20 rounded-lg space-y-2">
+                              <span className="text-[11px] font-bold text-blue-800 dark:text-blue-300 block">📦 Wholesale Invoice Prefix</span>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
+                                  <input
+                                    type="text"
+                                    value={liveInvoiceSettings.wholesalePrefix || "WS-"}
+                                    onChange={(e) => {
+                                      const updated = { ...liveInvoiceSettings, wholesalePrefix: e.target.value.toUpperCase() };
+                                      setLiveInvoiceSettings(updated);
+                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                    }}
+                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-mono font-bold"
+                                    placeholder="WS-"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Next Number</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={liveInvoiceSettings.wholesaleSequenceNumber || 1}
+                                    onChange={(e) => {
+                                      const updated = { ...liveInvoiceSettings, wholesaleSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) };
+                                      setLiveInvoiceSettings(updated);
+                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                    }}
+                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-bold"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
                             <div className="p-2.5 bg-emerald-50/60 dark:bg-emerald-950/20 rounded-lg space-y-2">
                               <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 block">🛒 B2C Consumer Retail Prefix</span>
                               <div className="grid grid-cols-2 gap-2">

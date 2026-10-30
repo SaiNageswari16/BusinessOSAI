@@ -346,10 +346,21 @@ export function SalesSummaryReportSuite({ onBack }: SalesSummaryReportSuiteProps
     let totGross = 0;
 
     filteredInvoices.forEach((inv) => {
-      totTaxable += inv.raw_taxable || 0;
-      totCgst += inv.raw_cgst || 0;
-      totSgst += inv.raw_sgst || 0;
-      totIgst += inv.raw_igst || 0;
+      const rawTax = inv.raw_tax || 0;
+      const rawTot = Math.abs(inv.raw_total || 0);
+      const rawTaxable = inv.raw_taxable || 0;
+      const effectiveTaxable = ((rawTaxable >= rawTot - 1 || rawTaxable + rawTax > rawTot + 1) && rawTax > 0)
+        ? Math.max(0, rawTot - rawTax)
+        : rawTaxable;
+      const isIntra = (inv.raw_cgst || 0) > 0 || (inv.raw_igst || 0) === 0 || !inv.customer_gstin || inv.customer_gstin.startsWith("37") || inv.source.toLowerCase().includes("pos");
+      const effectiveCgst = (isIntra && (inv.raw_cgst || 0) === 0 && rawTax > 0) ? rawTax / 2 : (inv.raw_cgst || 0);
+      const effectiveSgst = (isIntra && (inv.raw_sgst || 0) === 0 && rawTax > 0) ? rawTax / 2 : (inv.raw_sgst || 0);
+      const effectiveIgst = isIntra ? 0 : (inv.raw_igst || 0);
+
+      totTaxable += effectiveTaxable;
+      totCgst += effectiveCgst;
+      totSgst += effectiveSgst;
+      totIgst += effectiveIgst;
       totTax += inv.raw_tax || 0;
       totDisc += inv.raw_discount || 0;
       totGross += inv.raw_total || 0;
@@ -1079,29 +1090,55 @@ export function SalesSummaryReportSuite({ onBack }: SalesSummaryReportSuiteProps
 
                             {/* Taxable Base */}
                             <td className="py-3 px-3 text-right font-mono font-semibold text-slate-800 whitespace-nowrap">
-                              {inv.taxable_amount}
+                              {(() => {
+                                const rawTax = inv.raw_tax || 0;
+                                const rawTot = Math.abs(inv.raw_total || 0);
+                                const rawTaxable = inv.raw_taxable || 0;
+                                if ((rawTaxable >= rawTot - 1 || rawTaxable + rawTax > rawTot + 1) && rawTax > 0) {
+                                  return formatCurrency(Math.max(0, rawTot - rawTax));
+                                }
+                                return inv.taxable_amount;
+                              })()}
                             </td>
 
                             {/* Tax Rate */}
                             <td className="py-3 px-2 text-center whitespace-nowrap">
                               <span className="inline-block px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-bold text-[10px]">
-                                {inv.tax_rate}
+                                {inv.tax_rate && inv.tax_rate !== "0%" ? inv.tax_rate : (inv.items && inv.items.length > 0 && inv.items[0].tax_rate ? inv.items[0].tax_rate : (inv.raw_tax && inv.raw_tax > 0 ? "5%" : "0%"))}
                               </span>
                             </td>
 
                             {/* CGST */}
                             <td className="py-3 px-3 text-right font-mono text-indigo-800 whitespace-nowrap">
-                              {inv.cgst}
+                              {(() => {
+                                const isIntra = (inv.raw_cgst || 0) > 0 || (inv.raw_igst || 0) === 0 || !inv.customer_gstin || inv.customer_gstin.startsWith("37") || inv.source.toLowerCase().includes("pos");
+                                if (isIntra && (inv.raw_cgst || 0) === 0 && (inv.raw_tax || 0) > 0) {
+                                  return formatCurrency((inv.raw_tax || 0) / 2);
+                                }
+                                return inv.cgst;
+                              })()}
                             </td>
 
                             {/* SGST */}
                             <td className="py-3 px-3 text-right font-mono text-indigo-800 whitespace-nowrap">
-                              {inv.sgst}
+                              {(() => {
+                                const isIntra = (inv.raw_sgst || 0) > 0 || (inv.raw_igst || 0) === 0 || !inv.customer_gstin || inv.customer_gstin.startsWith("37") || inv.source.toLowerCase().includes("pos");
+                                if (isIntra && (inv.raw_sgst || 0) === 0 && (inv.raw_tax || 0) > 0) {
+                                  return formatCurrency((inv.raw_tax || 0) / 2);
+                                }
+                                return inv.sgst;
+                              })()}
                             </td>
 
                             {/* IGST */}
                             <td className="py-3 px-3 text-right font-mono text-purple-800 whitespace-nowrap">
-                              {inv.igst}
+                              {(() => {
+                                const isIntra = (inv.raw_cgst || 0) > 0 || (inv.raw_igst || 0) === 0 || !inv.customer_gstin || inv.customer_gstin.startsWith("37") || inv.source.toLowerCase().includes("pos");
+                                if (isIntra) {
+                                  return formatCurrency(0);
+                                }
+                                return inv.igst;
+                              })()}
                             </td>
 
                             {/* Total Tax */}

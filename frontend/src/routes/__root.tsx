@@ -54,6 +54,11 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
         <p className="mt-2 text-sm text-slate-600">
           Something went wrong on our end. You can try refreshing or head back home.
         </p>
+        {(error?.message || error?.name) && (
+          <div className="mt-3 p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-mono rounded text-left overflow-auto max-h-36">
+            <strong>Error:</strong> {error.message || String(error)}
+          </div>
+        )}
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {

@@ -1177,6 +1177,40 @@ export function PosInvoicesHistory() {
         }
       });
 
+      // Apply settlement vouchers from localStorage to ensure invoice paid status is updated
+      try {
+        const vListKey = `bos_settlement_vouchers_${currentTenantId}`;
+        const storedVouchers = localStorage.getItem(vListKey);
+        if (storedVouchers) {
+          const vouchers = JSON.parse(storedVouchers);
+          if (Array.isArray(vouchers)) {
+            vouchers.forEach((v: any) => {
+              if (Array.isArray(v.covered_invoices)) {
+                v.covered_invoices.forEach((cov: any) => {
+                  const targetInv =
+                    (cov.invoice_number && mergedMap.get(cov.invoice_number)) ||
+                    (cov.invoice_id && aliasMap.get(String(cov.invoice_id).toLowerCase().trim())) ||
+                    (cov.realId && aliasMap.get(String(cov.realId).toLowerCase().trim()));
+                  if (targetInv && Number(cov.amount_allocated || 0) > 0) {
+                    const currentRec = Number(targetInv.amount_received || 0);
+                    const newRec = Math.min(Number(targetInv.grand_total || 0), currentRec + Number(cov.amount_allocated));
+                    targetInv.amount_received = newRec;
+                    if (newRec >= Number(targetInv.grand_total || 0) - 0.05) {
+                      targetInv.payment_status = "Paid";
+                    } else if (newRec > 0) {
+                      targetInv.payment_status = "Partial";
+                    }
+                    if (v.payment_mode) {
+                      targetInv.payment_mode = v.payment_mode;
+                    }
+                  }
+                });
+              }
+            });
+          }
+        }
+      } catch (err) {}
+
       const getInvoiceSortTime = (inv: LocalInvoiceRecord): number => {
         if (inv.created_at) {
           const t = parseSafeDateTimestamp(inv.created_at);
@@ -3332,11 +3366,37 @@ export function PosInvoicesHistory() {
               {/* Summary Financials */}
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-xs">
                 <div className="flex justify-between text-slate-600">
-                  <span>Subtotal Amount:</span>
-                  <span className="font-bold text-slate-800">{currency.symbol}{Number(selectedInvoice.subtotal || 0).toFixed(2)}</span>
+                  <span>Subtotal (Taxable Base):</span>
+                  <span className="font-bold text-slate-800">
+                    {currency.symbol}
+                    {(() => {
+                      const totalTax = Number(selectedInvoice.total_tax || 0);
+                      const grandTotal = Number(selectedInvoice.grand_total || 0);
+                      const rawSubtotal = Number(selectedInvoice.subtotal || 0);
+                      const taxableSubtotal = (Number(selectedInvoice.taxable_value || 0) > 0)
+                        ? Number(selectedInvoice.taxable_value)
+                        : ((rawSubtotal >= grandTotal - 1 && totalTax > 0) ? Math.max(0, grandTotal - totalTax) : rawSubtotal);
+                      return taxableSubtotal.toFixed(2);
+                    })()}
+                  </span>
                 </div>
                 <div className="flex justify-between text-slate-600">
-                  <span>GST Tax Breakdown:</span>
+                  <span>
+                    GST Tax Breakdown
+                    {(() => {
+                      const totalTax = Number(selectedInvoice.total_tax || 0);
+                      if (totalTax <= 0) return null;
+                      const isInterState = selectedInvoice.is_interstate === true || selectedInvoice.gst_type === "igst";
+                      const cgst = selectedInvoice.cgst_amount !== undefined ? Number(selectedInvoice.cgst_amount) : (!isInterState ? totalTax / 2 : 0);
+                      const sgst = selectedInvoice.sgst_amount !== undefined ? Number(selectedInvoice.sgst_amount) : (!isInterState ? totalTax / 2 : 0);
+                      const igst = selectedInvoice.igst_amount !== undefined ? Number(selectedInvoice.igst_amount) : (isInterState ? totalTax : 0);
+                      return (
+                        <span className="text-[10px] text-slate-500 font-mono ml-1.5 font-normal">
+                          {isInterState ? `(IGST: ${currency.symbol}${igst.toFixed(2)})` : `(CGST: ${currency.symbol}${cgst.toFixed(2)} + SGST: ${currency.symbol}${sgst.toFixed(2)})`}
+                        </span>
+                      );
+                    })()}:
+                  </span>
                   <span className="font-bold text-slate-800">+{currency.symbol}{Number(selectedInvoice.total_tax || 0).toFixed(2)}</span>
                 </div>
                 {Number(selectedInvoice.discount_amount || 0) > 0 && (
@@ -3346,7 +3406,26 @@ export function PosInvoicesHistory() {
                   </div>
                 )}
                 <div className="pt-2 border-t border-slate-200 flex justify-between text-base font-black text-slate-900">
-                  <span>Grand Total Amount:</span>
+                  {(() => {
+                  const totalTax = Number(selectedInvoice.total_tax || 0);
+                  const grandTotal = Number(selectedInvoice.grand_total || 0);
+                  const discount = Number(selectedInvoice.discount_amount || 0);
+                  const rawSubtotal = Number(selectedInvoice.subtotal || 0);
+                  const taxableSubtotal = (Number(selectedInvoice.taxable_value || 0) > 0)
+                    ? Number(selectedInvoice.taxable_value)
+                    : ((rawSubtotal >= grandTotal - 1 && totalTax > 0) ? Math.max(0, grandTotal - totalTax) : rawSubtotal);
+                  const roundOff = Number((grandTotal - (taxableSubtotal + totalTax - discount)).toFixed(2));
+                  if (Math.abs(roundOff) > 0.001 && Math.abs(roundOff) < 5) {
+                    return (
+                      <div className="flex justify-between text-slate-500 text-[11px]">
+                        <span>Round Off:</span>
+                        <span>{roundOff > 0 ? `+${currency.symbol}${roundOff.toFixed(2)}` : `-${currency.symbol}${Math.abs(roundOff).toFixed(2)}`}</span>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+                <span>Grand Total Amount:</span>
                   <span className="text-blue-600">{currency.symbol}{Number(selectedInvoice.grand_total || 0).toFixed(2)}</span>
                 </div>
               </div>

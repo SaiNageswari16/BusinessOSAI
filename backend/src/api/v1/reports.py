@@ -1090,7 +1090,12 @@ async def _get_all_sales_invoices(
         inv_sgst = float(inv.sgst_amount or 0)
         inv_igst = float(inv.igst_amount or 0)
         has_header_tax = (inv_cgst > 0 or inv_sgst > 0 or inv_igst > 0)
-        if has_header_tax:
+        if inv.lines and len(inv.lines) > 0 and sum(float(getattr(l, "cgst_amount", 0) or 0) for l in inv.lines) > 0:
+            inv_cgst = sum(float(getattr(l, "cgst_amount", 0) or 0) for l in inv.lines)
+            inv_sgst = sum(float(getattr(l, "sgst_amount", 0) or 0) for l in inv.lines)
+            inv_igst = sum(float(getattr(l, "igst_amount", 0) or 0) for l in inv.lines)
+            tax = float(inv_cgst + inv_sgst + inv_igst)
+        elif has_header_tax:
             tax = float(inv_cgst + inv_sgst + inv_igst)
         elif inv.lines and len(inv.lines) > 0:
             inv_cgst = sum(float(getattr(l, "cgst_amount", 0) or 0) for l in inv.lines)
@@ -1152,6 +1157,14 @@ async def _get_all_sales_invoices(
                 "name": l_name,
                 "product_name": l_name,
                 "sku": l_sku,
+                "hsn_code": getattr(line, "hsn_code", None) or "—",
+                "tax_rate": f"{int(getattr(line, 'tax_rate', 0) or 0)}%" if float(getattr(line, 'tax_rate', 0) or 0) > 0 else "5%",
+                "cgst": f"₹{float(getattr(line, 'cgst_amount', 0) or round(l_tax / 2, 2)):,.2f}",
+                "sgst": f"₹{float(getattr(line, 'sgst_amount', 0) or round(l_tax / 2, 2)):,.2f}",
+                "igst": f"₹{float(getattr(line, 'igst_amount', 0) or 0):,.2f}",
+                "raw_cgst": float(getattr(line, 'cgst_amount', 0) or round(l_tax / 2, 2)),
+                "raw_sgst": float(getattr(line, 'sgst_amount', 0) or round(l_tax / 2, 2)),
+                "raw_igst": float(getattr(line, 'igst_amount', 0) or 0),
                 "qty": l_qty,
                 "price": f"₹{l_price:,.2f}",
                 "tax": f"₹{l_tax:,.2f}",
@@ -1455,18 +1468,30 @@ async def generate_custom_report(
                 inv_tax = max(0.0, float(tx.get("tax", 0) or 0))
                 inv_disc = float(tx.get("discount", 0) or 0)
                 inv_sub = float(tx.get("subtotal", 0) or 0)
-                taxable = inv_sub if inv_sub > 0 else max(0.0, inv_tot - inv_tax + inv_disc)
+                if (inv_sub >= inv_tot - 1.0 or inv_sub + inv_tax > inv_tot + 1.0) and inv_tax > 0:
+                    taxable = max(0.0, round(inv_tot - inv_tax, 2))
+                elif inv_sub > 0:
+                    taxable = round(inv_sub, 2)
+                else:
+                    taxable = max(0.0, round(inv_tot - inv_tax + inv_disc, 2))
 
                 cgst = float(tx.get("cgst", 0) or 0)
                 sgst = float(tx.get("sgst", 0) or 0)
                 igst = float(tx.get("igst", 0) or 0)
-                if (cgst + sgst + igst) <= 0 and inv_tax > 0:
+                if (cgst + sgst) <= 0 and (inv_tax > 0 or igst > 0):
+                    cgst = round(inv_tax / 2, 2)
+                    sgst = round(inv_tax - cgst, 2)
+                    igst = 0.0
+                elif (cgst + sgst + igst) <= 0 and inv_tax > 0:
                     cgst = round(inv_tax / 2, 2)
                     sgst = round(inv_tax - cgst, 2)
                     igst = 0.0
 
                 # Determine effective tax rate
-                if taxable > 0 and inv_tax > 0:
+                item_rates = [int(round(float(str(it.get("tax_rate", "")).replace("%", "").strip()))) for it in tx.get("items", []) if str(it.get("tax_rate", "")).replace("%", "").strip().replace(".", "").isdigit() and float(str(it.get("tax_rate", "")).replace("%", "").strip()) > 0]
+                if item_rates:
+                    rate_label = f"{max(set(item_rates), key=item_rates.count)}%"
+                elif taxable > 0 and inv_tax > 0:
                     calc_rate = round((inv_tax / taxable) * 100)
                     if calc_rate in [5, 12, 18, 28]:
                         rate_label = f"{calc_rate}%"

@@ -266,7 +266,7 @@ def _enrich_invoice_tax_details(invoices: list[Invoice]):
             calc_sgst += l_sgst
             calc_igst += l_igst
 
-        if not (has_tax and subtotal_differs):
+        if not (has_tax and subtotal_differs) or (float(inv.subtotal or 0) >= float(inv.total_amount or 0) - 1.0 and calc_subtotal > 0):
             inv.subtotal = round(calc_subtotal, 2)
             inv.cgst_amount = round(calc_cgst, 2)
             inv.sgst_amount = round(calc_sgst, 2)
@@ -968,7 +968,11 @@ async def create_invoice(
             totals["cgst_amount"] = round(float(payload.tax_amount) / 2.0, 2)
             totals["sgst_amount"] = round(float(payload.tax_amount) / 2.0, 2)
     if getattr(payload, "subtotal", None) is not None and float(payload.subtotal) > 0:
-        totals["subtotal"] = round(float(payload.subtotal), 2)
+        tot_tax_val = float(totals.get("cgst_amount", 0) + totals.get("sgst_amount", 0) + totals.get("igst_amount", 0))
+        if float(payload.subtotal) >= float(totals.get("total_amount", 0)) - 1.0 and tot_tax_val > 0:
+            totals["subtotal"] = max(0.0, round(float(totals["total_amount"]) - tot_tax_val, 2))
+        else:
+            totals["subtotal"] = round(float(payload.subtotal), 2)
     if getattr(payload, "round_off", None) is not None:
         totals["round_off"] = round(float(payload.round_off), 2)
 
@@ -2038,22 +2042,38 @@ async def create_payment_settlement(
                                 or_(Invoice.invoice_type == "opening_balance", Invoice.invoice_number.startswith("OPN-"))
                             )
                         )
-                        if op_inv:
-                            payment = InvoicePayment(
+                        if not op_inv:
+                            op_inv = Invoice(
                                 tenant_id=ctx.tenant_id,
-                                invoice_id=op_inv.id,
-                                payment_date=pay_date,
-                                payment_method=pay_method.lower(),
-                                amount=apply_amt,
-                                reference_number=voucher_num,
-                                notes=payload.notes or f"Voucher #{voucher_num} settlement on Opening Balance",
+                                customer_id=cust.id,
+                                customer_name=cust.name,
+                                customer_phone=cust.phone,
+                                invoice_number=f"OPN-{str(cust.id)[:6].upper()}",
+                                invoice_type="opening_balance",
+                                total_amount=curr_bal,
+                                amount_paid=0.0,
+                                balance_due=curr_bal,
+                                status="unpaid",
+                                invoice_date=clock.today(),
                             )
-                            db.add(payment)
-                            op_new_paid = round(float(op_inv.amount_paid or 0) + apply_amt, 2)
-                            op_new_due = round(max(0.0, float(op_inv.total_amount or 0) - op_new_paid), 2)
-                            op_inv.amount_paid = op_new_paid
-                            op_inv.balance_due = op_new_due
-                            op_inv.status = "paid" if op_new_due <= 0.05 else "partially_paid"
+                            db.add(op_inv)
+                            await db.flush()
+
+                        payment = InvoicePayment(
+                            tenant_id=ctx.tenant_id,
+                            invoice_id=op_inv.id,
+                            payment_date=pay_date,
+                            payment_method=pay_method.lower(),
+                            amount=apply_amt,
+                            reference_number=voucher_num,
+                            notes=payload.notes or f"Voucher #{voucher_num} settlement on Opening Balance",
+                        )
+                        db.add(payment)
+                        op_new_paid = round(float(op_inv.amount_paid or 0) + apply_amt, 2)
+                        op_new_due = round(max(0.0, float(op_inv.total_amount or 0) - op_new_paid), 2)
+                        op_inv.amount_paid = op_new_paid
+                        op_inv.balance_due = op_new_due
+                        op_inv.status = "paid" if op_new_due <= 0.05 else "partially_paid"
                         
                         total_allocated += apply_amt
                         covered.append({

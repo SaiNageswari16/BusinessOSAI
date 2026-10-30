@@ -448,12 +448,13 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [originalInvoiceDate, setOriginalInvoiceDate] = useState<string>("");
   const [noteReason, setNoteReason] = useState<string>("Sales Return");
 
-  const getNextSequentialInvoiceNumber = useCallback((type: DocumentType = invoiceType, currentSettings?: InvoiceSettings) => {
+  const getNextSequentialInvoiceNumber = useCallback((type: DocumentType = invoiceType, currentSettings?: InvoiceSettings, targetTier?: "Retail" | "Wholesale" | "B2B") => {
     const s = currentSettings || invoiceSettings || loadStoredInvoiceSettings();
     const activeGst = getActiveBillingGst(tenant?.id);
     const isTaxInv = type === "TAX_INVOICE";
     const isProforma = type === "PROFORMA";
     const isQuotation = type === "QUOTATION";
+    const effectiveTier = targetTier || pricingMode;
 
     // 1. Identify valid Tax Invoice Prefix (strictly ignore PI-, QT-, CN-, DN-, EST-)
     const rawOrgTaxPrefix = activeGst?.invoice_prefix?.trim() || getOrgDocumentPrefix("TAX_INVOICE", tenant?.id);
@@ -506,7 +507,21 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       // Determine final prefix for current doc type
       if (isTaxInv) {
-        if (validSettingsTaxPrefix && validSettingsTaxPrefix !== "INV-") {
+        if (s.separateB2BSequenceEnabled || effectiveTier === "B2B" || effectiveTier === "Wholesale") {
+          if (effectiveTier === "B2B") {
+            prefix = s.b2bPrefix || "B2B-";
+            if (!prefix.endsWith("-") && !prefix.endsWith("/")) prefix = `${prefix}-`;
+            if (s.b2bPadding) detectedPadding = s.b2bPadding;
+          } else if (effectiveTier === "Wholesale") {
+            prefix = s.wholesalePrefix || "WS-";
+            if (!prefix.endsWith("-") && !prefix.endsWith("/")) prefix = `${prefix}-`;
+            if (s.wholesalePadding) detectedPadding = s.wholesalePadding;
+          } else {
+            prefix = s.b2cPrefix || s.prefix || validSettingsTaxPrefix || "INV-";
+            if (!prefix.endsWith("-") && !prefix.endsWith("/")) prefix = `${prefix}-`;
+            if (s.b2cPadding) detectedPadding = s.b2cPadding;
+          }
+        } else if (validSettingsTaxPrefix && validSettingsTaxPrefix !== "INV-") {
           prefix = validSettingsTaxPrefix;
         } else if (validOrgTaxPrefix && validOrgTaxPrefix !== "INV-") {
           prefix = validOrgTaxPrefix;
@@ -571,7 +586,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       }
 
       const configuredMinSeq = isTaxInv
-        ? (s.sequenceNumber || 1)
+        ? (effectiveTier === "B2B" ? (s.b2bSequenceNumber || 1) : (effectiveTier === "Wholesale" ? (s.wholesaleSequenceNumber || 1) : (s.b2cSequenceNumber || s.sequenceNumber || 1)))
         : isProforma
           ? (s.proformaSequenceNumber || 1)
           : (s.quotationSequenceNumber || 1);
@@ -587,7 +602,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       console.warn("Could not scan pos storage for sequence:", e);
       return `${prefix}0001`;
     }
-  }, [invoiceSettings, posStorageKey, tenant?.id]);
+  }, [invoiceSettings, posStorageKey, tenant?.id, pricingMode]);
 
   const [invoiceNumber, setInvoiceNumber] = useState(() => {
     if (editingInvoice?.invoice_number) {
@@ -2194,6 +2209,10 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
   const handleSwitchPricingTier = (newMode: "Retail" | "Wholesale" | "B2B") => {
     setPricingMode(newMode);
+    if (!activeEditingInvoice && !editingInvoice && !isRecreatingInvoice) {
+      const nextNum = getNextSequentialInvoiceNumber(invoiceType, undefined, newMode);
+      setInvoiceNumber(nextNum);
+    }
     setItems((prev) =>
       prev.map((item) => {
         const prod = products.find(
@@ -5852,6 +5871,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                 setSelectedCustomer(c.id);
                                 setCustomerSearchQuery(label);
                                 setIsCustomerDropdownOpen(false);
+                                if (c.gst_number || c.gstin || c.tax_id || c.customer_type === "B2B" || c.type === "B2B") {
+                                  handleSwitchPricingTier("B2B");
+                                } else if (c.customer_type === "Wholesale" || c.type === "Wholesale") {
+                                  handleSwitchPricingTier("Wholesale");
+                                }
                               }}
                               className={`w-full px-3 py-1.5 text-left text-xs transition-colors cursor-pointer truncate leading-snug ${isSelected
                                   ? "bg-indigo-600 text-white font-medium"
