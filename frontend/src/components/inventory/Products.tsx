@@ -18,6 +18,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { useI18n } from "@/contexts/i18n-context";
 import { formatDisplayDate } from "@/lib/utils";
 import { FreeQtySettingsModal } from "./FreeQtySettingsModal";
+import { ProductMasterDetailView } from "./ProductMasterDetailView";
 import {
   PRODUCT_MASTER_FIELDS,
   getMasterExportHeaders,
@@ -1565,6 +1566,20 @@ export function Products() {
 
   // ── Tab state ────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<"inventory" | "catalog">("inventory");
+  const [selectedProductForDetail, setSelectedProductForDetail] = useState<InventoryProduct | null>(null);
+  const [viewLayout, setViewLayout] = useState<"detail" | "table">(() => {
+    const saved = localStorage.getItem("inventory_products_view_layout");
+    return saved === "table" ? "table" : "detail";
+  });
+  const handleToggleViewLayout = (layout: "detail" | "table") => {
+    setViewLayout(layout);
+    localStorage.setItem("inventory_products_view_layout", layout);
+  };
+  const [isStockAdjModalOpen, setIsStockAdjModalOpen] = useState(false);
+  const [stockAdjProduct, setStockAdjProduct] = useState<InventoryProduct | null>(null);
+  const [stockAdjNewQty, setStockAdjNewQty] = useState<number | string>("");
+  const [stockAdjReason, setStockAdjReason] = useState("Physical Count Audit");
+  const [isSavingStockAdj, setIsSavingStockAdj] = useState(false);
 
   // ── Search state ─────────────────────────────────────────────────
   const [search, setSearch] = useState("");
@@ -1764,7 +1779,8 @@ export function Products() {
           const invList = res.items || res || [];
           const matching: any[] = [];
           invList.forEach((inv: any) => {
-            (inv.items || []).forEach((it: any) => {
+            const rawLines = inv.lines || inv.items || [];
+            rawLines.forEach((it: any) => {
               if (
                 it.product_id === editingProductId ||
                 (it.product_name && currentForm.name && it.product_name.toLowerCase().trim() === currentForm.name.toLowerCase().trim())
@@ -1777,7 +1793,7 @@ export function Products() {
                   customer_phone: inv.customer_phone || inv.customer?.phone || "—",
                   quantity: Number(it.quantity) || 1,
                   unit_price: Number(it.unit_price) || 0,
-                  total: Number(it.total || (it.quantity * it.unit_price)) || 0,
+                  total: Number(it.line_total || it.total || (it.quantity * it.unit_price)) || 0,
                   status: inv.status || "Completed",
                 });
               }
@@ -2463,6 +2479,48 @@ export function Products() {
     setEditingProductId(null);
     setIsModalOpen(true);
   };
+  const handleOpenAdjustStock = (prod: InventoryProduct) => {
+    setStockAdjProduct(prod);
+    setStockAdjNewQty(Number(prod.current_stock ?? prod.stock ?? 0));
+    setStockAdjReason("Physical Count Audit");
+    setIsStockAdjModalOpen(true);
+  };
+
+  const handleSaveStockAdjustment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stockAdjProduct) return;
+    setIsSavingStockAdj(true);
+    try {
+      const qty = Number(stockAdjNewQty);
+      if (isNaN(qty)) {
+        toast.error("Please enter a valid numeric stock quantity");
+        return;
+      }
+      const specs = (stockAdjProduct.specifications && typeof stockAdjProduct.specifications === 'object') ? stockAdjProduct.specifications : {};
+      await inventoryApi.updateProduct(stockAdjProduct.id, {
+        ...stockAdjProduct,
+        current_stock: qty,
+        stock: qty,
+        initial_stock: qty,
+        specifications: {
+          ...specs,
+          current_stock: qty,
+          stock: qty,
+          initial_stock: qty,
+        }
+      });
+      toast.success(`Stock for "${stockAdjProduct.name}" updated to ${qty}!`);
+      setIsStockAdjModalOpen(false);
+      setStockAdjProduct(null);
+      await loadData(search);
+      window.dispatchEvent(new CustomEvent("inventory_updated"));
+    } catch (err: any) {
+      toast.error("Failed to adjust stock: " + (err.detail || err.message || "Unknown error"));
+    } finally {
+      setIsSavingStockAdj(false);
+    }
+  };
+
   const handleDelete = (idOrProduct: string | InventoryProduct) => {
     if (typeof idOrProduct === "string") {
       const found = products.find(p => p.id === idOrProduct);
@@ -5318,7 +5376,8 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
     return (
       <tr
         key={product.id}
-        className={`hover:bg-slate-50/80 transition-colors border-b border-slate-100 text-xs text-slate-700 ${
+        onClick={() => setSelectedProductForDetail(product)}
+        className={`hover:bg-slate-50/80 transition-colors border-b border-slate-100 text-xs text-slate-700 cursor-pointer ${
           isSelected ? "bg-indigo-50/50 hover:bg-indigo-50/80" : isExact ? "bg-amber-50/40 font-semibold" : ""
         }`}
       >
@@ -5373,8 +5432,8 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
             case "name":
               return (
                 <td key={colId} className={`px-4 py-2.5 font-bold text-slate-900 min-w-[200px] ${alignClass}`}>
-                  <div className="flex flex-col">
-                    <span className="truncate">{product.name}</span>
+                  <div className="flex flex-col group/pname">
+                    <span className="truncate group-hover/pname:text-indigo-600 font-bold transition-colors">{product.name}</span>
                     {specs.unique_item_name && specs.unique_item_name !== product.name && (
                       <span className="text-[10px] text-slate-400 font-normal truncate">{specs.unique_item_name}</span>
                     )}
@@ -6022,7 +6081,16 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
             <Button
               size="icon"
               variant="ghost"
-              onClick={() => handleEdit(product)}
+              onClick={(e) => { e.stopPropagation(); setSelectedProductForDetail(product); }}
+              className="size-8 rounded-lg hover:bg-purple-50 text-purple-600"
+              title="View Product Deep Details"
+            >
+              <Eye className="size-3.5" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={(e) => { e.stopPropagation(); handleEdit(product); }}
               className="size-8 rounded-lg hover:bg-slate-100 text-slate-600"
               title="Edit Product"
             >
@@ -6031,7 +6099,7 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
             <Button
               size="icon"
               variant="ghost"
-              onClick={() => handleDuplicate(product)}
+              onClick={(e) => { e.stopPropagation(); handleDuplicate(product); }}
               className="size-8 rounded-lg hover:bg-slate-100 text-slate-600"
               title="Duplicate Product"
             >
@@ -6040,7 +6108,7 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
             <Button
               size="icon"
               variant="ghost"
-              onClick={() => handleDelete(product.id)}
+              onClick={(e) => { e.stopPropagation(); handleDelete(product.id); }}
               className="size-8 rounded-lg hover:bg-rose-50 text-rose-600"
               title="Delete Product"
             >
@@ -6137,14 +6205,145 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
   // ══════════════════════════════════════════════════════════════════
   //  RENDER
   // ══════════════════════════════════════════════════════════════════
+  const renderStockAdjustmentModal = () => {
+    if (!isStockAdjModalOpen || !stockAdjProduct) return null;
+    return (
+      <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="p-4 border-b flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
+                <Sliders className="size-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Adjust Stock Quantity</h3>
+                <p className="text-[11px] text-slate-500 truncate max-w-[260px]">{stockAdjProduct.name}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setIsStockAdjModalOpen(false); setStockAdjProduct(null); }}
+              className="p-1 rounded-lg hover:bg-slate-200 text-slate-400"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+
+          <form onSubmit={handleSaveStockAdjustment} className="p-5 space-y-4">
+            <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border text-xs">
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Current Stock</span>
+                <span className="text-base font-black text-slate-800 dark:text-slate-200">
+                  {Number(stockAdjProduct.current_stock ?? stockAdjProduct.stock ?? 0)} {stockAdjProduct.uom_name || "Units"}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">SKU / Item Code</span>
+                <span className="text-xs font-mono font-bold text-slate-700 dark:text-slate-300">
+                  {stockAdjProduct.sku || "—"}
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                New On-Hand Stock Quantity <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="number"
+                step="any"
+                required
+                value={stockAdjNewQty}
+                onChange={(e) => setStockAdjNewQty(e.target.value)}
+                placeholder="Enter new quantity"
+                autoFocus
+                className="w-full h-10 px-3 text-sm font-bold rounded-xl border border-slate-300 bg-white dark:bg-slate-950 focus:ring-2 focus:ring-purple-500 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Adjustment Reason
+              </label>
+              <select
+                value={stockAdjReason}
+                onChange={(e) => setStockAdjReason(e.target.value)}
+                className="w-full h-10 px-3 text-xs font-semibold rounded-xl border border-slate-300 bg-white dark:bg-slate-950 focus:ring-2 focus:ring-purple-500 outline-none"
+              >
+                <option value="Physical Count Audit">Physical Count Audit</option>
+                <option value="Damaged / Spoiled Goods">Damaged / Spoiled Goods</option>
+                <option value="Internal Use / Sampling">Internal Use / Sampling</option>
+                <option value="Stock Correction">Stock Correction</option>
+                <option value="Received Return">Received Return</option>
+                <option value="Initial Opening Stock">Initial Opening Stock</option>
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => { setIsStockAdjModalOpen(false); setStockAdjProduct(null); }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSavingStockAdj}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-bold border-0"
+              >
+                {isSavingStockAdj ? "Saving..." : "Update Stock"}
+              </Button>
+            </div>
+          </form>
+        </motion.div>
+      </div>
+    );
+  };
+
   const hasSearch = search.trim().length >= 2;
   const showLocalResults = fuzzyLocalResults.length > 0;
   const showMasterResults = uniqueMasterResults.length > 0;
   const hasNoResults = hasSearch && !exactMatch && !showLocalResults && !showMasterResults && !isSearchingMaster;
 
   return (
-    <div className="space-y-6">
-      {/* ── Header ─────────────────────────────────────────────────── */}
+    <div className="space-y-4">
+      {/* ── MASTER-DETAIL 2-PANE VIEW (Primary View matching screenshot) ── */}
+      {selectedProductForDetail ? (
+        <ProductMasterDetailView
+          products={products}
+          categories={categories}
+          warehouses={warehouses}
+          isLoading={isLoading}
+          initialProductId={selectedProductForDetail.id}
+          onEditProduct={handleEdit}
+          onDeleteProduct={handleDelete}
+          onDuplicateProduct={handleDuplicate}
+          onCreateProduct={openCreateModal}
+          onAdjustStock={handleOpenAdjustStock}
+          onPrintBarcode={(productId) => {
+            setBarcodeDrawerInitialId(productId);
+            setIsBarcodeDrawerOpen(true);
+          }}
+          onExport={handleExport}
+          onImport={() => fileInputRef.current?.click()}
+          onOpenFreeQty={() => {
+            setFreeQtyTriggerProductId(undefined);
+            setIsFreeQtyModalOpen(true);
+          }}
+          viewLayout={viewLayout}
+          onToggleLayout={handleToggleViewLayout}
+          onBackToProducts={() => setSelectedProductForDetail(null)}
+        />
+      ) : (
+        <div className="space-y-6">
+          {/* ── Header ─────────────────────────────────────────────────── */}
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Products", "Products")}</h2>
@@ -6152,7 +6351,37 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
             {t("Manage your inventory products and browse the global master catalog.", "Manage your inventory products and browse the global master catalog.")}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center flex-wrap">
+
+          <div className="hidden">
+            <button
+              type="button"
+              onClick={() => handleToggleViewLayout("detail")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                viewLayout === "detail"
+                  ? "bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-400 shadow-2xs font-extrabold"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
+              title="Master-Detail 2-Pane View"
+            >
+              <LayoutGrid className="size-3.5" />
+              <span>Detail View</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleViewLayout("table")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                viewLayout === "table"
+                  ? "bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-2xs font-extrabold"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
+              title="Full Spreadsheet Table View"
+            >
+              <Rows3 className="size-3.5" />
+              <span>Table View</span>
+            </button>
+          </div>
+
           <input type="file" accept=".csv,.xlsx,.xls" ref={fileInputRef} onChange={handleImportFile} className="hidden" />
           <Button variant="outline" className="hidden lg:flex text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border-emerald-200" onClick={handleDownloadSample}>
             <Download className="size-4 mr-2" /> {t("Sample Excel", "Sample Excel")}
@@ -6840,6 +7069,14 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
           </div>
         </div>
       )}
+        </div>
+      )}
+
+      {/* ── Global Hidden File Input for Import (accessible from both views) ── */}
+      <input type="file" accept=".csv,.xlsx,.xls" ref={fileInputRef} onChange={handleImportFile} className="hidden" />
+
+      {/* ── Stock Adjustment Inline Modal ── */}
+      {renderStockAdjustmentModal()}
 
       {/* ── Product form modal ─────────────────────────────────────── */}
       <AnimatePresence>

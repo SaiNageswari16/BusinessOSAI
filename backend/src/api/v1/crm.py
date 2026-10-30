@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, U
 import io
 import csv
 from fastapi.responses import StreamingResponse, Response
-from sqlalchemy import func, or_, and_, select, text, update
+from sqlalchemy import func, or_, and_, select, text, update, delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -585,7 +585,7 @@ async def get_customer_ledger(
                     "date": p_dt,
                     "type": "payment",
                     "type_label": "Payment In",
-                    "voucher_no": f"REC-{str(pay.id)[:6].upper()}",
+                    "voucher_no": pay.reference_number or f"PAY-{str(pay.id)[:6].upper()}",
                     "reference_no": pay.reference_number or inv.invoice_number or "Payment Receipt",
                     "particulars": f"Payment against {inv.invoice_number or 'Bill'} via {pay.payment_method or 'Cash'}",
                     "payment_mode": pay.payment_method or "UPI / Cash",

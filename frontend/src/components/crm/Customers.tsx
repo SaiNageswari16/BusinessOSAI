@@ -24,13 +24,28 @@ import { cn, formatDisplayDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useI18n } from "@/contexts/i18n-context";
-import { Sparkles, Loader2, PhoneCall, CheckCircle2, Clock, Trash2, Check, Pencil, Eye, BookOpen, Receipt } from "lucide-react";
+import {
+  Sparkles,
+  Loader2,
+  PhoneCall,
+  CheckCircle2,
+  Clock,
+  Trash2,
+  Check,
+  Pencil,
+  Eye,
+  BookOpen,
+  Receipt,
+  LayoutGrid,
+  Rows3,
+} from "lucide-react";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { AiCallingModal } from "./AiCallingModal";
 import { crmCallsApi, type CRMCallLog } from "@/lib/api-client";
 import { downloadCustomersTemplateExcel } from "@/lib/crm-excel-utils";
 import { BulkImportCustomersModal } from "./BulkImportCustomersModal";
 import { CustomerLedgerModal } from "./CustomerLedgerModal";
+import { CustomerMasterDetailView } from "./CustomerMasterDetailView";
 import { PaginationControl } from "@/components/ui/PaginationControl";
 import { useTenant } from "@/contexts/tenant-context";
 import { syncLocalStorageCustomerInvoices } from "@/lib/safe-storage";
@@ -120,6 +135,10 @@ export function Customers() {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(25);
 
+  // 2-Pane Master Detail View layout state
+  const [viewLayout, setViewLayout] = useState<"detail" | "table">("table");
+  const [selectedCustomerForDetail, setSelectedCustomerForDetail] = useState<CrmCustomer | null>(null);
+
   // Quick Adjust Outstanding Balance State
   const [adjustBalanceCustomer, setAdjustBalanceCustomer] = useState<CrmCustomer | null>(null);
   const [adjustBalanceAmount, setAdjustBalanceAmount] = useState<string>("");
@@ -133,17 +152,17 @@ export function Customers() {
   const { lookup: lookupPincode, loading: isLookingUpPincode } = usePincodeLookup();
 
   const handlePincodeChange = async (val: string) => {
-    setForm(prev => ({ ...prev, postal_code: val }));
+    setForm((prev) => ({ ...prev, postal_code: val }));
     const clean = val.replace(/\D/g, "").slice(0, 6);
     if (clean.length === 6) {
       const res = await lookupPincode(clean);
       if (res) {
-        setForm(prev => ({
+        setForm((prev) => ({
           ...prev,
           city: res.city || prev.city,
           state: res.state || prev.state,
           country: res.country || prev.country || "India",
-          address: prev.address || res.area || ""
+          address: prev.address || res.area || "",
         }));
       }
     }
@@ -175,7 +194,7 @@ export function Customers() {
             gst_number: res.gstin || cleanGst,
             contact_person: res.trade_name || res.legal_name || "",
             phone: (form.phone as string) || "",
-          }
+          },
         ];
 
         setForm((prev) => ({
@@ -218,13 +237,15 @@ export function Customers() {
       try {
         const callRes = await crmCallsApi.listLogs(1, 200, "customer");
         const map: Record<string, CRMCallLog> = {};
-        for (const log of (callRes.items || [])) {
+        for (const log of callRes.items || []) {
           if (log.target_id && !map[log.target_id]) {
             map[log.target_id] = log;
           }
         }
         setCallStatusMap(map);
-      } catch { /* silent */ }
+      } catch {
+        /* silent */
+      }
     } catch {
       toast.error("Could not load customers");
     } finally {
@@ -281,7 +302,7 @@ export function Customers() {
 
   const openEdit = (customer: CrmCustomer) => {
     setEditingId(customer.id);
-    
+
     // Normalize address list from customer object
     let loadedAddresses: CustomerAddressItem[] = [];
     if (Array.isArray(customer.addresses) && customer.addresses.length > 0) {
@@ -297,8 +318,8 @@ export function Customers() {
         gst_number: a.gst_number || "",
         contact_person: a.contact_person || customer.contact_person || "",
         contact_phone: a.contact_phone || customer.phone || "",
-        is_default_billing: a.is_default_billing ?? (idx === 0),
-        is_default_shipping: a.is_default_shipping ?? (idx === 0),
+        is_default_billing: a.is_default_billing ?? idx === 0,
+        is_default_shipping: a.is_default_shipping ?? idx === 0,
       }));
     } else if (customer.billing_address || customer.address || customer.shipping_address) {
       const bAddr = customer.billing_address || customer.address || "";
@@ -353,7 +374,9 @@ export function Customers() {
       address: customer.address || "",
       billing_address: customer.billing_address || customer.address || "",
       shipping_address: customer.shipping_address || "",
-      isShippingSameAsBilling: customer.shipping_address ? (customer.shipping_address === (customer.billing_address || customer.address)) : true,
+      isShippingSameAsBilling: customer.shipping_address
+        ? customer.shipping_address === (customer.billing_address || customer.address)
+        : true,
       city: customer.city || "",
       state: customer.state || "",
       country: customer.country || "India",
@@ -376,7 +399,7 @@ export function Customers() {
     const currList = (form.addresses as CustomerAddressItem[]) || [];
     const nextIdx = currList.length + 1;
     const newAddr = createBlankAddress(nextIdx, `Location / Branch ${nextIdx}`);
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
       addresses: [...currList, newAddr],
     }));
@@ -388,20 +411,19 @@ export function Customers() {
       toast.error("Customer must have at least one address location");
       return;
     }
-    const updated = currList.filter(a => a.id !== id);
-    // If we removed default billing or shipping, ensure first one becomes default
-    if (!updated.some(a => a.is_default_billing)) updated[0].is_default_billing = true;
-    if (!updated.some(a => a.is_default_shipping)) updated[0].is_default_shipping = true;
-    setForm(prev => ({ ...prev, addresses: updated }));
+    const updated = currList.filter((a) => a.id !== id);
+    if (!updated.some((a) => a.is_default_billing)) updated[0].is_default_billing = true;
+    if (!updated.some((a) => a.is_default_shipping)) updated[0].is_default_shipping = true;
+    setForm((prev) => ({ ...prev, addresses: updated }));
   };
 
   const handleUpdateAddressItem = (id: string, field: keyof CustomerAddressItem, val: any) => {
     const currList = (form.addresses as CustomerAddressItem[]) || [];
-    const updated = currList.map(item => {
+    const updated = currList.map((item) => {
       if (item.id !== id) return item;
       return { ...item, [field]: val };
     });
-    setForm(prev => ({ ...prev, addresses: updated }));
+    setForm((prev) => ({ ...prev, addresses: updated }));
   };
 
   const handleAddressPincodeLookup = async (id: string, val: string) => {
@@ -411,7 +433,7 @@ export function Customers() {
       const res = await lookupPincode(clean);
       if (res) {
         const currList = (form.addresses as CustomerAddressItem[]) || [];
-        const updated = currList.map(item => {
+        const updated = currList.map((item) => {
           if (item.id !== id) return item;
           return {
             ...item,
@@ -422,21 +444,21 @@ export function Customers() {
             street: item.street || res.area || "",
           };
         });
-        setForm(prev => ({ ...prev, addresses: updated }));
+        setForm((prev) => ({ ...prev, addresses: updated }));
       }
     }
   };
 
   const handleSetDefaultAddress = (id: string, defType: "billing" | "shipping") => {
     const currList = (form.addresses as CustomerAddressItem[]) || [];
-    const updated = currList.map(item => {
+    const updated = currList.map((item) => {
       if (defType === "billing") {
         return { ...item, is_default_billing: item.id === id };
       } else {
         return { ...item, is_default_shipping: item.id === id };
       }
     });
-    setForm(prev => ({ ...prev, addresses: updated }));
+    setForm((prev) => ({ ...prev, addresses: updated }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -444,11 +466,23 @@ export function Customers() {
     setSaving(true);
     try {
       const addrList = (form.addresses as CustomerAddressItem[]) || [];
-      const defaultBilling = addrList.find(a => a.is_default_billing) || addrList[0];
-      const defaultShipping = addrList.find(a => a.is_default_shipping) || addrList.find(a => a.type === "shipping" || a.type === "both") || addrList[0];
+      const defaultBilling = addrList.find((a) => a.is_default_billing) || addrList[0];
+      const defaultShipping =
+        addrList.find((a) => a.is_default_shipping) ||
+        addrList.find((a) => a.type === "shipping" || a.type === "both") ||
+        addrList[0];
 
-      const fullBilling = [defaultBilling?.street, defaultBilling?.city, defaultBilling?.state, defaultBilling?.pincode].filter(Boolean).join(", ");
-      const fullShipping = [defaultShipping?.street, defaultShipping?.city, defaultShipping?.state, defaultShipping?.pincode].filter(Boolean).join(", ");
+      const fullBilling = [defaultBilling?.street, defaultBilling?.city, defaultBilling?.state, defaultBilling?.pincode]
+        .filter(Boolean)
+        .join(", ");
+      const fullShipping = [
+        defaultShipping?.street,
+        defaultShipping?.city,
+        defaultShipping?.state,
+        defaultShipping?.pincode,
+      ]
+        .filter(Boolean)
+        .join(", ");
 
       const payload = {
         name: form.name,
@@ -476,12 +510,16 @@ export function Customers() {
         gender: form.gender || null,
         preferred_language: form.preferred_language || null,
         credit_limit: Number(form.credit_limit) || 0,
-        outstanding_balance: form.outstanding_balance !== undefined && form.outstanding_balance !== "" && !isNaN(Number(form.outstanding_balance))
-          ? Number(form.outstanding_balance)
-          : (form.opening_balance !== undefined && form.opening_balance !== "" && !isNaN(Number(form.opening_balance)) ? Number(form.opening_balance) : 0),
-        opening_balance: form.opening_balance !== undefined && form.opening_balance !== "" && !isNaN(Number(form.opening_balance))
-          ? Number(form.opening_balance)
-          : 0,
+        outstanding_balance:
+          form.outstanding_balance !== undefined && form.outstanding_balance !== "" && !isNaN(Number(form.outstanding_balance))
+            ? Number(form.outstanding_balance)
+            : form.opening_balance !== undefined && form.opening_balance !== "" && !isNaN(Number(form.opening_balance))
+            ? Number(form.opening_balance)
+            : 0,
+        opening_balance:
+          form.opening_balance !== undefined && form.opening_balance !== "" && !isNaN(Number(form.opening_balance))
+            ? Number(form.opening_balance)
+            : 0,
       };
 
       if (editingId) {
@@ -489,11 +527,13 @@ export function Customers() {
         syncLocalStorageCustomerInvoices(editingId, updated.name, updated.phone, updated.outstanding_balance);
         setCustomers((curr) => curr.map((c) => (c.id === editingId ? updated : c)));
         if (selectedCustomer?.id === editingId) setSelectedCustomer(updated);
+        if (selectedCustomerForDetail?.id === editingId) setSelectedCustomerForDetail(updated);
         toast.success("Customer updated successfully");
       } else {
         const created = await crmCustomersApi.create(payload);
         setCustomers((curr) => [created, ...curr]);
         setTotal((t) => t + 1);
+        setSelectedCustomerForDetail(created);
         toast.success("Customer created successfully");
       }
       setShowForm(false);
@@ -515,6 +555,7 @@ export function Customers() {
       setCustomers((curr) => curr.filter((c) => c.id !== id));
       setTotal((t) => Math.max(0, t - 1));
       if (selectedCustomer?.id === id) setSelectedCustomer(null);
+      if (selectedCustomerForDetail?.id === id) setSelectedCustomerForDetail(null);
       toast.success("Customer deleted successfully");
     } catch (err: any) {
       console.error("Delete customer error:", err);
@@ -556,6 +597,9 @@ export function Customers() {
       if (selectedCustomer?.id === adjustBalanceCustomer.id) {
         setSelectedCustomer((prev) => (prev ? { ...prev, outstanding_balance: num } : null));
       }
+      if (selectedCustomerForDetail?.id === adjustBalanceCustomer.id) {
+        setSelectedCustomerForDetail((prev) => (prev ? { ...prev, outstanding_balance: num } : null));
+      }
       toast.success(`Outstanding balance updated to ${currency.symbol}${num.toLocaleString()} for ${adjustBalanceCustomer.name}`);
       setAdjustBalanceCustomer(null);
       void load();
@@ -573,50 +617,9 @@ export function Customers() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Customers", "Customers")}</h2>
-          <p className="text-xs text-muted-foreground">
-            {t("Manage your customer relationships from one tenant-scoped source of truth.", "Manage your customer relationships from one tenant-scoped source of truth.")}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={downloadCustomersTemplateExcel}
-            className="flex items-center gap-1.5 px-3 h-8 bg-muted/60 hover:bg-muted border border-border rounded-xl text-xs font-semibold text-foreground transition-colors"
-            title="Download sample formatted Excel template for customer import"
-          >
-            <Download className="size-3.5 text-primary" />
-            {t("Sample Excel", "Sample Excel")}
-          </button>
-          <button
-            onClick={() => setShowBulkImport(true)}
-            className="flex items-center gap-1.5 px-3 h-8 bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-400 transition-colors"
-          >
-            <Upload className="size-3.5 text-emerald-600" />
-            {t("Import Customers", "Import Customers")}
-          </button>
-          <button
-            onClick={openCreate}
-            className="flex items-center justify-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold"
-          >
-            <UserPlus className="size-3.5" /> {t("Add Customer", "Add Customer")}
-          </button>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label={t("Total Customers", "Total Customers")} value={total} icon={<Users className="size-5" />} />
-        <StatCard label={t("Active", "Active")} value={stats.active} icon={<UserPlus className="size-5" />} />
-        <StatCard label={t("VIP / Corporate", "VIP / Corporate")} value={stats.vip} icon={<Star className="size-5" />} />
-        <StatCard label={t("Lifetime Value", "Lifetime Value")} value={formatCurrency(stats.totalLtv)} icon={<TrendingUp className="size-5" />} />
-      </div>
-
-      {/* Create / Edit Form */}
+      {/* Create / Edit Form Modal / Block */}
       {showForm && (
-        <form onSubmit={handleSubmit} className="rounded-xl border border-border bg-card p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="rounded-xl border border-border bg-card p-5 space-y-4 shadow-sm">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-lg">{editingId ? "Edit Customer" : "New Customer"}</h3>
             <button type="button" onClick={() => { setShowForm(false); resetForm(); }}>
@@ -818,7 +821,7 @@ export function Customers() {
                     type="button"
                     onClick={() => handleVerifyGstin()}
                     disabled={verifyingGst || !form.gst_number}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50 shrink-0"
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50 shrink-0 cursor-pointer"
                   >
                     {verifyingGst ? (
                       <Loader2 className="size-3.5 animate-spin" />
@@ -860,344 +863,462 @@ export function Customers() {
           </FieldSection>
 
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={() => { setShowForm(false); resetForm(); }} className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-muted">
+            <button type="button" onClick={() => { setShowForm(false); resetForm(); }} className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-muted cursor-pointer">
               Cancel
             </button>
-            <button disabled={saving} className="rounded-md bg-primary px-6 py-2 text-sm text-primary-foreground font-medium">
+            <button disabled={saving} className="rounded-md bg-primary px-6 py-2 text-sm text-primary-foreground font-medium cursor-pointer">
               {saving ? "Saving…" : editingId ? "Update Customer" : "Create Customer"}
             </button>
           </div>
         </form>
       )}
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row items-center gap-4 glass-panel p-4 rounded-xl border border-border/50">
-        <div className="relative flex-1 w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, email, phone, company, GST..."
-            className="w-full pl-9 pr-4 py-2 bg-background/50 border border-border rounded-lg text-sm"
-          />
-        </div>
-        <div className="flex gap-2 overflow-x-auto w-full sm:w-auto">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 rounded-lg text-sm border border-border bg-background"
-          >
-            <option value="All">All Status</option>
-            {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <select
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-            className="px-3 py-2 rounded-lg text-sm border border-border bg-background"
-          >
-            <option value="All">All Types</option>
-            {CUSTOMER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-      </div>
-
-      {/* Customer Table */}
-      {loading ? (
-        <div className="py-16 text-center text-muted-foreground">Loading customers…</div>
+      {/* ── 2-Pane Master Detail View (Matches Screenshot 2 Exactly) ── */}
+      {viewLayout === "detail" && customers.length > 0 ? (
+        <CustomerMasterDetailView
+          customer={selectedCustomerForDetail || selectedCustomer || customers[0]}
+          customers={customers}
+          onSelectCustomer={(c) => {
+            setSelectedCustomerForDetail(c);
+            setSelectedCustomer(c);
+          }}
+          onBackToCustomers={() => {
+            setViewLayout("table");
+          }}
+          onEditCustomer={openEdit}
+          onDeleteCustomer={handleDelete}
+          onAdjustBalance={(c) => handleOpenAdjustBalance(c)}
+          onOpenLedgerModal={(c) => setLedgerCustomer(c)}
+          onAiCall={(c) => setCallingCustomer(c)}
+          onCreateCustomer={openCreate}
+          callStatusMap={callStatusMap}
+          viewLayout={viewLayout}
+          onToggleLayout={setViewLayout}
+        />
       ) : (
-        <div className="bg-card rounded-2xl border border-border/70 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase font-semibold tracking-wider">
-                <tr>
-                  <th className="px-6 py-4 text-left whitespace-nowrap">Customer</th>
-                  <th className="px-6 py-4 text-left whitespace-nowrap">Contact</th>
-                  <th className="px-6 py-4 text-left whitespace-nowrap">Type</th>
-                  <th className="px-6 py-4 text-left whitespace-nowrap">City</th>
-                  <th className="px-6 py-4 text-center whitespace-nowrap">Status</th>
-                  <th className="px-6 py-4 text-right whitespace-nowrap">Lifetime Value</th>
-                  <th className="px-6 py-4 text-right whitespace-nowrap">Balance Due</th>
-                  <th className="px-6 py-4 text-right whitespace-nowrap">Orders</th>
-                  <th className="px-6 py-4 text-center whitespace-nowrap">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/30 font-medium">
-                {paginatedCustomers.map((customer) => (
-                  <tr
-                    key={customer.id}
-                    onClick={() => setSelectedCustomer(customer)}
-                    className={cn(
-                      "hover:bg-muted/30 cursor-pointer transition-colors",
-                      selectedCustomer?.id === customer.id && "bg-primary/5"
-                    )}
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="size-8 rounded-xl bg-primary/10 text-primary font-bold flex items-center justify-center text-xs shrink-0">
-                          {customer.name.split(" ").slice(0, 2).map((p) => p[0]).join("")}
-                        </div>
-                        <div>
-                          <p className="font-bold text-foreground">{customer.name}</p>
-                          {customer.company_name && <p className="text-[11px] text-muted-foreground">{customer.company_name}</p>}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {/* Contact info with call status indicator */}
-                      <div className="space-y-0.5">
-                        <p className="text-muted-foreground text-xs">{customer.email || customer.phone || "—"}</p>
-                        {(() => {
-                          const log = callStatusMap[customer.id];
-                          if (!log) return null;
-                          const days = Math.floor((Date.now() - new Date(log.created_at).getTime()) / (1000 * 60 * 60 * 24));
-                          const overdue = days >= 3;
-                          return (
-                            <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                              overdue
-                                ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
-                                : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
-                            }`}>
-                              {overdue ? <Clock className="size-2.5" /> : <CheckCircle2 className="size-2.5" />}
-                              {overdue ? `Follow-up ${days}d ago` : days === 0 ? "Called today" : `Called ${days}d ago`}
-                            </span>
-                          );
-                        })()}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
-                        <Tag className="size-3" />{customer.customer_type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {customer.city || "—"}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={cn("inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border",
-                        customer.status === "Active" && "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
-                        customer.status === "Inactive" && "bg-muted text-muted-foreground border-border/40",
-                        customer.status === "Blocked" && "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
-                        customer.status === "Pending" && "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-                      )}>
-                        {customer.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-foreground">{currency.symbol}{(customer.lifetime_value || 0).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right font-bold whitespace-nowrap">
-                      <div className="inline-flex items-center gap-1.5 justify-end">
-                        <span className={cn(
-                          (customer.outstanding_balance || 0) > 0.05
-                            ? "text-rose-600 dark:text-rose-400 font-black bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20"
-                            : "text-emerald-600 dark:text-emerald-400 font-semibold"
-                        )}>
-                          {currency.symbol}{(customer.outstanding_balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={(e) => handleOpenAdjustBalance(customer, e)}
-                          className="p-1 hover:bg-muted text-muted-foreground hover:text-primary rounded transition cursor-pointer"
-                          title="Click to edit customer outstanding amount"
-                        >
-                          <Pencil className="size-3" />
-                        </button>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-foreground">{customer.total_orders ?? 0}</td>
-                    <td className="px-4 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setLedgerCustomer(customer); }}
-                          className="p-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-lg transition"
-                          title="View Customer Statement & Ledger"
-                        >
-                          <Receipt className="size-3.5" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setCallingCustomer(customer); }}
-                          className={`p-1.5 rounded-lg transition ${
-                            callStatusMap[customer.id]
-                              ? Math.floor((Date.now() - new Date(callStatusMap[customer.id].created_at).getTime()) / (1000 * 60 * 60 * 24)) >= 3
-                                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 animate-pulse"
-                                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
-                              : "hover:bg-emerald-500/10 text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400"
-                          }`}
-                          title={callStatusMap[customer.id] ? "Called — Click to call again" : "Start AI Voice Call"}
-                        >
-                          <PhoneCall className="size-3.5" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openEdit(customer); }}
-                          className="p-1.5 hover:bg-indigo-500/10 text-muted-foreground hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg transition"
-                          title="Edit Customer"
-                        >
-                          <Pencil className="size-3.5" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDelete(customer.id); }}
-                          className="p-1.5 hover:bg-rose-500/10 text-muted-foreground hover:text-rose-600 dark:hover:text-rose-400 rounded-lg transition"
-                          title="Deactivate Customer"
-                        >
-                          <Trash2 className="size-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={9} className="text-center py-12 text-muted-foreground">
-                      {search || statusFilter !== "All" || type !== "All" ? "No matching customers found." : "No customers yet. Click \"Add Customer\" to create one."}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <PaginationControl
-            currentPage={currentPage}
-            totalPages={Math.max(1, Math.ceil(filtered.length / pageSize))}
-            totalItems={filtered.length}
-            pageSize={pageSize}
-            onPageChange={setCurrentPage}
-            onPageSizeChange={setPageSize}
-            itemLabel="customers"
-          />
-        </div>
-      )}
-
-      {/* Detail Panel */}
-      {selectedCustomer && (
-        <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-lg flex items-center gap-2">
-              <Building2 className="size-5 text-primary" /> Customer Details
-            </h3>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setLedgerCustomer(selectedCustomer)}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition active:scale-95"
-              >
-                <Receipt className="size-3.5" />
-                Party Statement & Ledger
-              </button>
-              <button
-                onClick={() => openEdit(selectedCustomer)}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition"
-              >
-                <Pencil className="size-3.5" />
-                Edit
-              </button>
-              <button
-                onClick={() => handleDelete(selectedCustomer.id)}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 transition"
-              >
-                <Trash2 className="size-3.5" />
-                Delete
-              </button>
-              <button
-                onClick={() => setCallingCustomer(selectedCustomer)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition"
-              >
-                <PhoneCall className="size-3.5" />
-                Start AI Voice Call
-              </button>
-              <button onClick={() => setSelectedCustomer(null)} className="p-1 text-muted-foreground hover:text-foreground">
-                <X className="size-5" />
-              </button>
+        <>
+          {/* Header */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">{t("Customers", "Customers")}</h2>
+              <p className="text-xs text-muted-foreground">
+                {t("Manage your customer relationships from one tenant-scoped source of truth.", "Manage your customer relationships from one tenant-scoped source of truth.")}
+              </p>
             </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Detail label="Name" value={selectedCustomer.name} />
-            <Detail label="Email" value={selectedCustomer.email} icon={<Mail className="size-3.5" />} />
-            <Detail label="Phone" value={selectedCustomer.phone} icon={<Phone className="size-3.5" />} />
-            <Detail label="Company" value={selectedCustomer.company_name} icon={<Building2 className="size-3.5" />} />
-            <Detail label="Address" value={selectedCustomer.address} icon={<MapPin className="size-3.5" />} />
-            <Detail label="City" value={selectedCustomer.city} />
-            <Detail label="State" value={selectedCustomer.state} />
-            <Detail label="GST" value={selectedCustomer.gst_number} icon={<Tag className="size-3.5" />} />
-            <Detail label="Credit Limit" value={`₹${(selectedCustomer.credit_limit || 0).toLocaleString()}`} icon={<DollarSign className="size-3.5" />} />
-            <div className="rounded-xl border border-border/80 bg-muted/20 p-3 flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground flex items-center gap-1"><DollarSign className="size-3.5" /> Outstanding Due</span>
+            <div className="flex items-center gap-2">
+              {/* Detail View / Table View Toggle */}
+              <div className="inline-flex items-center bg-muted/60 p-1 rounded-xl border border-border">
                 <button
                   type="button"
-                  onClick={(e) => handleOpenAdjustBalance(selectedCustomer, e)}
-                  className="px-2 py-0.5 text-[10px] font-bold text-primary hover:bg-primary/10 rounded flex items-center gap-1 cursor-pointer transition"
+                  onClick={() => {
+                    setSelectedCustomerForDetail((prev) => prev || customers[0] || null);
+                    setViewLayout("detail");
+                  }}
+                  className={cn(
+                    "px-2.5 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer",
+                    viewLayout === "detail"
+                      ? "bg-background text-primary shadow-xs border border-primary/20"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title="2-Pane Master Detail View"
                 >
-                  <Pencil className="size-2.5" /> Edit
+                  <LayoutGrid className="size-3.5" />
+                  <span>Detail View</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewLayout("table")}
+                  className={cn(
+                    "px-2.5 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer",
+                    viewLayout === "table"
+                      ? "bg-background text-primary shadow-xs border border-primary/20"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title="Table View"
+                >
+                  <Rows3 className="size-3.5" />
+                  <span>Table View</span>
                 </button>
               </div>
-              <p className={cn("text-base font-extrabold mt-1", (selectedCustomer.outstanding_balance || 0) > 0.05 ? "text-rose-600" : "text-emerald-600")}>
-                {currency.symbol}{(selectedCustomer.outstanding_balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </p>
+
+              <button
+                onClick={downloadCustomersTemplateExcel}
+                className="flex items-center gap-1.5 px-3 h-8 bg-muted/60 hover:bg-muted border border-border rounded-xl text-xs font-semibold text-foreground transition-colors cursor-pointer"
+                title="Download sample formatted Excel template for customer import"
+              >
+                <Download className="size-3.5 text-primary" />
+                {t("Sample Excel", "Sample Excel")}
+              </button>
+              <button
+                onClick={() => setShowBulkImport(true)}
+                className="flex items-center gap-1.5 px-3 h-8 bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-400 transition-colors cursor-pointer"
+              >
+                <Upload className="size-3.5 text-emerald-600" />
+                {t("Import Customers", "Import Customers")}
+              </button>
+              <button
+                onClick={openCreate}
+                className="flex items-center justify-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold cursor-pointer"
+              >
+                <UserPlus className="size-3.5" /> {t("Add Customer", "Add Customer")}
+              </button>
             </div>
-            <Detail label="Total Orders" value={String(selectedCustomer.total_orders)} icon={<ShoppingCart className="size-3.5" />} />
-            <Detail label="Last Order" value={selectedCustomer.last_order_at ? formatDisplayDate(selectedCustomer.last_order_at) : "—"} icon={<Calendar className="size-3.5" />} />
-            <Detail label="Lifetime Value" value={`₹${(selectedCustomer.lifetime_value || 0).toLocaleString()}`} icon={<Star className="size-3.5" />} />
-            <Detail label="Loyalty Points" value={String(selectedCustomer.loyalty_points_balance ?? 0)} />
           </div>
 
-          {/* Customer Multi-Address Book List */}
-          <div className="pt-3 border-t border-border space-y-2">
-            <h4 className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-              <MapPin className="size-3.5 text-primary" />
-              Saved Locations & Branches ({Array.isArray(selectedCustomer.addresses) && selectedCustomer.addresses.length > 0 ? selectedCustomer.addresses.length : 1})
-            </h4>
-            
-            {Array.isArray(selectedCustomer.addresses) && selectedCustomer.addresses.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {selectedCustomer.addresses.map((addr: CustomerAddressItem, idx: number) => (
-                  <div key={addr.id || idx} className="rounded-xl border border-border/80 bg-muted/20 p-3 text-xs space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-foreground flex items-center gap-1.5">
-                        <span className="size-2 rounded-full bg-primary" />
-                        {addr.tag || `Location ${idx + 1}`}
-                      </span>
-                      <div className="flex items-center gap-1">
-                        {addr.is_default_billing && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">
-                            Default Billing
-                          </span>
+          {/* Stats */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard label={t("Total Customers", "Total Customers")} value={total} icon={<Users className="size-5" />} />
+            <StatCard label={t("Active", "Active")} value={stats.active} icon={<UserPlus className="size-5" />} />
+            <StatCard label={t("VIP / Corporate", "VIP / Corporate")} value={stats.vip} icon={<Star className="size-5" />} />
+            <StatCard label={t("Lifetime Value", "Lifetime Value")} value={formatCurrency(stats.totalLtv)} icon={<TrendingUp className="size-5" />} />
+          </div>
+
+          {/* Filters */}
+          <div className="flex flex-col sm:flex-row items-center gap-4 glass-panel p-4 rounded-xl border border-border/50">
+            <div className="relative flex-1 w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name, email, phone, company, GST..."
+                className="w-full pl-9 pr-4 py-2 bg-background/50 border border-border rounded-lg text-sm"
+              />
+            </div>
+            <div className="flex gap-2 overflow-x-auto w-full sm:w-auto">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-2 rounded-lg text-sm border border-border bg-background cursor-pointer"
+              >
+                <option value="All">All Status</option>
+                {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value)}
+                className="px-3 py-2 rounded-lg text-sm border border-border bg-background cursor-pointer"
+              >
+                <option value="All">All Types</option>
+                {CUSTOMER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Customer Table */}
+          {loading ? (
+            <div className="py-16 text-center text-muted-foreground">Loading customers…</div>
+          ) : (
+            <div className="bg-card rounded-2xl border border-border/70 shadow-xs overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase font-semibold tracking-wider">
+                    <tr>
+                      <th className="px-6 py-4 text-left whitespace-nowrap">Customer</th>
+                      <th className="px-6 py-4 text-left whitespace-nowrap">Contact</th>
+                      <th className="px-6 py-4 text-left whitespace-nowrap">Type</th>
+                      <th className="px-6 py-4 text-left whitespace-nowrap">City</th>
+                      <th className="px-6 py-4 text-center whitespace-nowrap">Status</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">Lifetime Value</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">Balance Due</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">Orders</th>
+                      <th className="px-6 py-4 text-center whitespace-nowrap">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/30 font-medium">
+                    {paginatedCustomers.map((customer) => (
+                      <tr
+                        key={customer.id}
+                        onClick={() => {
+                          setSelectedCustomerForDetail(customer);
+                          setSelectedCustomer(customer);
+                          setViewLayout("detail");
+                        }}
+                        className={cn(
+                          "hover:bg-muted/30 cursor-pointer transition-colors",
+                          (selectedCustomerForDetail?.id === customer.id || selectedCustomer?.id === customer.id) && "bg-primary/5"
                         )}
-                        {addr.is_default_shipping && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                            Default Shipping
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="size-8 rounded-xl bg-primary/10 text-primary font-bold flex items-center justify-center text-xs shrink-0">
+                              {customer.name.split(" ").slice(0, 2).map((p) => p[0]).join("")}
+                            </div>
+                            <div>
+                              <p className="font-bold text-foreground">{customer.name}</p>
+                              {customer.company_name && <p className="text-[11px] text-muted-foreground">{customer.company_name}</p>}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {/* Contact info with call status indicator */}
+                          <div className="space-y-0.5">
+                            <p className="text-muted-foreground text-xs">{customer.email || customer.phone || "—"}</p>
+                            {(() => {
+                              const log = callStatusMap[customer.id];
+                              if (!log) return null;
+                              const days = Math.floor((Date.now() - new Date(log.created_at).getTime()) / (1000 * 60 * 60 * 24));
+                              const overdue = days >= 3;
+                              return (
+                                <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                                  overdue
+                                    ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                                    : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                                }`}>
+                                  {overdue ? <Clock className="size-2.5" /> : <CheckCircle2 className="size-2.5" />}
+                                  {overdue ? `Follow-up ${days}d ago` : days === 0 ? "Called today" : `Called ${days}d ago`}
+                                </span>
+                              );
+                            })()}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                            <Tag className="size-3" />{customer.customer_type}
                           </span>
-                        )}
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-muted text-muted-foreground uppercase">
-                          {addr.type || "Both"}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-muted-foreground leading-relaxed">
-                      {[addr.street, addr.city, addr.state, addr.pincode, addr.country].filter(Boolean).join(", ") || "No street address provided"}
-                    </p>
-                    {(addr.gst_number || addr.contact_person) && (
-                      <div className="flex items-center gap-3 pt-1 text-[11px] text-muted-foreground">
-                        {addr.gst_number && <span>GSTIN: <strong className="text-foreground">{addr.gst_number}</strong></span>}
-                        {addr.contact_person && <span>Contact: <strong className="text-foreground">{addr.contact_person}</strong></span>}
-                      </div>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {customer.city || "—"}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={cn("inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border",
+                            customer.status === "Active" && "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+                            customer.status === "Inactive" && "bg-muted text-muted-foreground border-border/40",
+                            customer.status === "Blocked" && "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+                            customer.status === "Pending" && "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+                          )}>
+                            {customer.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-foreground">{currency.symbol}{(customer.lifetime_value || 0).toLocaleString()}</td>
+                        <td className="px-4 py-3 text-right font-bold whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1.5 justify-end">
+                            <span className={cn(
+                              (customer.outstanding_balance || 0) > 0.05
+                                ? "text-rose-600 dark:text-rose-400 font-black bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20"
+                                : "text-emerald-600 dark:text-emerald-400 font-semibold"
+                            )}>
+                              {currency.symbol}{(customer.outstanding_balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => handleOpenAdjustBalance(customer, e)}
+                              className="p-1 hover:bg-muted text-muted-foreground hover:text-primary rounded transition cursor-pointer"
+                              title="Click to edit customer outstanding amount"
+                            >
+                              <Pencil className="size-3" />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-foreground">{customer.total_orders ?? 0}</td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedCustomerForDetail(customer);
+                                setSelectedCustomer(customer);
+                                setViewLayout("detail");
+                              }}
+                              className="p-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 rounded-lg transition cursor-pointer"
+                              title="View Customer Details in Master-Detail"
+                            >
+                              <Eye className="size-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setLedgerCustomer(customer); }}
+                              className="p-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-lg transition cursor-pointer"
+                              title="View Customer Statement & Ledger"
+                            >
+                              <Receipt className="size-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setCallingCustomer(customer); }}
+                              className={`p-1.5 rounded-lg transition cursor-pointer ${
+                                callStatusMap[customer.id]
+                                  ? Math.floor((Date.now() - new Date(callStatusMap[customer.id].created_at).getTime()) / (1000 * 60 * 60 * 24)) >= 3
+                                    ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 animate-pulse"
+                                    : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
+                                  : "hover:bg-emerald-500/10 text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400"
+                              }`}
+                              title={callStatusMap[customer.id] ? "Called — Click to call again" : "Start AI Voice Call"}
+                            >
+                              <PhoneCall className="size-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openEdit(customer); }}
+                              className="p-1.5 hover:bg-indigo-500/10 text-muted-foreground hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg transition cursor-pointer"
+                              title="Edit Customer"
+                            >
+                              <Pencil className="size-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDelete(customer.id); }}
+                              className="p-1.5 hover:bg-rose-500/10 text-muted-foreground hover:text-rose-600 dark:hover:text-rose-400 rounded-lg transition cursor-pointer"
+                              title="Deactivate Customer"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {filtered.length === 0 && (
+                      <tr>
+                        <td colSpan={9} className="text-center py-12 text-muted-foreground">
+                          {search || statusFilter !== "All" || type !== "All" ? "No matching customers found." : "No customers yet. Click \"Add Customer\" to create one."}
+                        </td>
+                      </tr>
                     )}
-                  </div>
-                ))}
+                  </tbody>
+                </table>
               </div>
-            ) : (
-              <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-xs text-muted-foreground">
-                <p className="font-medium text-foreground">Primary Location</p>
-                <p>{selectedCustomer.address || selectedCustomer.billing_address || "No address defined."}</p>
-              </div>
-            )}
-          </div>
-
-          {(selectedCustomer as any).membership_plan_id && (
-            <div className="pt-3 border-t">
-              <p className="text-xs text-muted-foreground">
-                Membership: <span className="font-medium text-foreground">{(selectedCustomer as any).membership_status as string || (selectedCustomer as any).membership_plan_id as string}</span>
-                {(selectedCustomer as any).membership_end_at && ` — Expires ${formatDisplayDate((selectedCustomer as any).membership_end_at as string)}`}
-              </p>
+              <PaginationControl
+                currentPage={currentPage}
+                totalPages={Math.max(1, Math.ceil(filtered.length / pageSize))}
+                totalItems={filtered.length}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={setPageSize}
+                itemLabel="customers"
+              />
             </div>
           )}
-        </div>
+
+          {/* Legacy Selected Customer Quick Detail Panel */}
+          {selectedCustomer && (
+            <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-lg flex items-center gap-2">
+                  <Building2 className="size-5 text-primary" /> Customer Details
+                </h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setLedgerCustomer(selectedCustomer)}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition active:scale-95 cursor-pointer"
+                  >
+                    <Receipt className="size-3.5" />
+                    Party Statement & Ledger
+                  </button>
+                  <button
+                    onClick={() => openEdit(selectedCustomer)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition cursor-pointer"
+                  >
+                    <Pencil className="size-3.5" />
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDelete(selectedCustomer.id)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 transition cursor-pointer"
+                  >
+                    <Trash2 className="size-3.5" />
+                    Delete
+                  </button>
+                  <button
+                    onClick={() => setCallingCustomer(selectedCustomer)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition cursor-pointer"
+                  >
+                    <PhoneCall className="size-3.5" />
+                    Start AI Voice Call
+                  </button>
+                  <button onClick={() => setSelectedCustomer(null)} className="p-1 text-muted-foreground hover:text-foreground cursor-pointer">
+                    <X className="size-5" />
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Detail label="Name" value={selectedCustomer.name} />
+                <Detail label="Email" value={selectedCustomer.email} icon={<Mail className="size-3.5" />} />
+                <Detail label="Phone" value={selectedCustomer.phone} icon={<Phone className="size-3.5" />} />
+                <Detail label="Company" value={selectedCustomer.company_name} icon={<Building2 className="size-3.5" />} />
+                <Detail label="Address" value={selectedCustomer.address} icon={<MapPin className="size-3.5" />} />
+                <Detail label="City" value={selectedCustomer.city} />
+                <Detail label="State" value={selectedCustomer.state} />
+                <Detail label="GST" value={selectedCustomer.gst_number} icon={<Tag className="size-3.5" />} />
+                <Detail label="Credit Limit" value={`₹${(selectedCustomer.credit_limit || 0).toLocaleString()}`} icon={<DollarSign className="size-3.5" />} />
+                <div className="rounded-xl border border-border/80 bg-muted/20 p-3 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground flex items-center gap-1"><DollarSign className="size-3.5" /> Outstanding Due</span>
+                    <button
+                      type="button"
+                      onClick={(e) => handleOpenAdjustBalance(selectedCustomer, e)}
+                      className="px-2 py-0.5 text-[10px] font-bold text-primary hover:bg-primary/10 rounded flex items-center gap-1 cursor-pointer transition"
+                    >
+                      <Pencil className="size-2.5" /> Edit
+                    </button>
+                  </div>
+                  <p className={cn("text-base font-extrabold mt-1", (selectedCustomer.outstanding_balance || 0) > 0.05 ? "text-rose-600" : "text-emerald-600")}>
+                    {currency.symbol}{(selectedCustomer.outstanding_balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+                <Detail label="Total Orders" value={String(selectedCustomer.total_orders)} icon={<ShoppingCart className="size-3.5" />} />
+                <Detail label="Last Order" value={selectedCustomer.last_order_at ? formatDisplayDate(selectedCustomer.last_order_at) : "—"} icon={<Calendar className="size-3.5" />} />
+                <Detail label="Lifetime Value" value={`₹${(selectedCustomer.lifetime_value || 0).toLocaleString()}`} icon={<Star className="size-3.5" />} />
+                <Detail label="Loyalty Points" value={String(selectedCustomer.loyalty_points_balance ?? 0)} />
+              </div>
+
+              {/* Customer Multi-Address Book List */}
+              <div className="pt-3 border-t border-border space-y-2">
+                <h4 className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <MapPin className="size-3.5 text-primary" />
+                  Saved Locations & Branches ({Array.isArray(selectedCustomer.addresses) && selectedCustomer.addresses.length > 0 ? selectedCustomer.addresses.length : 1})
+                </h4>
+                
+                {Array.isArray(selectedCustomer.addresses) && selectedCustomer.addresses.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {selectedCustomer.addresses.map((addr: CustomerAddressItem, idx: number) => (
+                      <div key={addr.id || idx} className="rounded-xl border border-border/80 bg-muted/20 p-3 text-xs space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-foreground flex items-center gap-1.5">
+                            <span className="size-2 rounded-full bg-primary" />
+                            {addr.tag || `Location ${idx + 1}`}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            {addr.is_default_billing && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">
+                                Default Billing
+                              </span>
+                            )}
+                            {addr.is_default_shipping && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                                Default Shipping
+                              </span>
+                            )}
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-muted text-muted-foreground uppercase">
+                              {addr.type || "Both"}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-muted-foreground leading-relaxed">
+                          {[addr.street, addr.city, addr.state, addr.pincode, addr.country].filter(Boolean).join(", ") || "No street address provided"}
+                        </p>
+                        {(addr.gst_number || addr.contact_person) && (
+                          <div className="flex items-center gap-3 pt-1 text-[11px] text-muted-foreground">
+                            {addr.gst_number && <span>GSTIN: <strong className="text-foreground">{addr.gst_number}</strong></span>}
+                            {addr.contact_person && <span>Contact: <strong className="text-foreground">{addr.contact_person}</strong></span>}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-xs text-muted-foreground">
+                    <p className="font-medium text-foreground">Primary Location</p>
+                    <p>{selectedCustomer.address || selectedCustomer.billing_address || "No address defined."}</p>
+                  </div>
+                )}
+              </div>
+
+              {(selectedCustomer as any).membership_plan_id && (
+                <div className="pt-3 border-t">
+                  <p className="text-xs text-muted-foreground">
+                    Membership: <span className="font-medium text-foreground">{(selectedCustomer as any).membership_status as string || (selectedCustomer as any).membership_plan_id as string}</span>
+                    {(selectedCustomer as any).membership_end_at && ` — Expires ${formatDisplayDate((selectedCustomer as any).membership_end_at as string)}`}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       {/* Universal AI Calling Modal */}
@@ -1258,7 +1379,7 @@ export function Customers() {
               <button
                 type="button"
                 onClick={() => setAdjustBalanceCustomer(null)}
-                className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
               >
                 <X className="size-4" />
               </button>
