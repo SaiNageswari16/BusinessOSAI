@@ -28,6 +28,7 @@ import subprocess
 import sys
 import time
 import uuid
+from urllib.parse import urlparse
 
 _BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _BACKEND)
@@ -36,10 +37,58 @@ RECEIVER = os.path.join(_BACKEND, "scripts", "_eventbus_receiver.py")
 TIMEOUT = 12.0
 
 
+def _load_backend_env() -> None:
+    """Load backend/.env into os.environ (no override of real env vars).
+
+    This process never imports src.config, so the settings module's
+    load_dotenv() never ran — without this, REDIS_URL can silently fall back
+    to the built-in default and disagree with what the real services use.
+    """
+    env_file = os.path.join(_BACKEND, ".env")
+    try:
+        with open(env_file, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key, value = key.strip(), value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+    except FileNotFoundError:
+        pass
+
+
+_load_backend_env()
+
+
+def _redis_port() -> int:
+    """The port the bus will actually connect to.
+
+    Derived from REDIS_URL (the value the bus itself uses) so this check
+    can never disagree with the connection it is meant to validate. An
+    explicit REDIS_PORT still wins if it is set.
+    """
+    explicit = os.environ.get("REDIS_PORT")
+    if explicit:
+        return int(explicit)
+    url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+    try:
+        parsed = urlparse(url)
+        if parsed.port:
+            return parsed.port
+        return 6379 if parsed.scheme in ("redis", "rediss") else 0
+    except ValueError:
+        return 6379
+
+
 def _redis_up() -> bool:
+    port = _redis_port()
+    if not port:
+        return False
     with socket.socket() as s:
         s.settimeout(2.0)
-        return s.connect_ex(("127.0.0.1", int(os.environ.get("REDIS_PORT", "6379")))) == 0
+        return s.connect_ex(("127.0.0.1", port)) == 0
 
 
 def _publish(topic: str, payload: dict) -> dict:
@@ -50,7 +99,7 @@ def _publish(topic: str, payload: dict) -> dict:
         # Distinct group: each service gets its own consumer group so it owns
         # its own read cursor. Two processes sharing one group would load-balance
         # the event between them and at most one would see it.
-        import os; bus.configure(os.environ.get("REDIS_URL", "redis://localhost:6380/0"), "eventbus-probe")
+        import os; bus.configure(os.environ.get("REDIS_URL", "redis://localhost:6379/0"), "eventbus-probe")
         await bus.start()
         # Give the consumer group a moment to be registered before publishing,
         # so a race between xgroup_create and xadd cannot eat the event.
@@ -69,7 +118,7 @@ def main() -> int:
     print("=" * 72)
     print("Event bus cross-process probe")
     print("=" * 72)
-    print(f"  redis 127.0.0.1:6379   {'UP' if _redis_up() else 'DOWN'}")
+    print(f"  redis 127.0.0.1:{_redis_port()}   {'UP' if _redis_up() else 'DOWN'}")
 
     if not _redis_up():
         print("\nRedis is not running. Cross-process events cannot be delivered")
@@ -125,7 +174,7 @@ def main() -> int:
             print("  DELIVERED — the event crossed the process boundary via Redis")
         else:
             print(f"  NOT DELIVERED — receiver exited {rc} without receiving it")
-            print("  Redis answered on :6379 but delivery failed. If the receiver")
+            print(f"  Redis answered on :{_redis_port()} but delivery failed. If the receiver")
             print("  printed nothing, it failed before subscribing — check the")
             print("  REDIS_URL in backend/.env matches what is actually listening.")
         print("=" * 72)

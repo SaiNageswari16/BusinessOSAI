@@ -42,6 +42,13 @@ frontend/*.local
 Thumbs.db
 .idea/
 .vscode/
+
+# PetPooja reference material (source docx + extracted screenshots, ~18MB)
+_petpooja_media/
+pet pooja.docx
+
+# Runtime static output (generated receipts / payslips)
+backend/static/
 *.suo
 *.ntvs*
 *.njsproj

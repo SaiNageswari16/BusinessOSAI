@@ -12,8 +12,33 @@ Run only via probe_eventbus.py:
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 import time
+
+_BACKEND_ENV = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+
+
+def _load_backend_env() -> None:
+    """Load backend/.env into os.environ (no override of real env vars).
+
+    The probe runs as a bare script that never imports src.config, so the
+    settings module's load_dotenv() never ran — without this, REDIS_URL
+    silently falls back to the built-in default and can disagree with what
+    the actual services use.
+    """
+    try:
+        with open(_BACKEND_ENV, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key, value = key.strip(), value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+    except FileNotFoundError:
+        pass
 
 
 async def run(topic: str, marker: str, timeout: float) -> int:
@@ -29,7 +54,8 @@ async def run(topic: str, marker: str, timeout: float) -> int:
     # Its own group, not the publisher's: a shared group would let Redis hand
     # the event to whichever consumer polled first instead of delivering it
     # here.
-    import os; bus.configure(os.environ.get("REDIS_URL", "redis://localhost:6380/0"), "eventbus-receiver")
+    _load_backend_env()
+    import os; bus.configure(os.environ.get("REDIS_URL", "redis://localhost:6379/0"), "eventbus-receiver")
     await bus.start()
 
     print(f"  receiver on '{topic}' — redis={'up' if bus.redis_available else 'DOWN'}")
