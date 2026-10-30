@@ -306,7 +306,14 @@ async def _on_payment_received(event: Event) -> None:
         return
     db = _handler_db()
     try:
-        ref_id = f"{data.get('bill_id')}:{datetime.now(timezone.utc).strftime('%y%m%d%H%M%S')}"
+        # The bill is the stable domain reference: a redelivered event and a
+        # re-settled same-cash-amount collection both land on the same
+        # journal. (An earlier version stamped a per-event timestamp in the
+        # reference, which made the guard below never fire and let every
+        # redelivery post a second journal.)
+        ref_id = str(data.get("bill_id"))
+        if await _already_posted(db, tenant, "bill-payment", ref_id):
+            return
         je = await _post(
             db, tenant, _coerce_uuid(event.outlet_id),
             reference_type="bill-payment", reference_id=ref_id,

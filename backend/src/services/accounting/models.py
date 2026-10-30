@@ -61,6 +61,26 @@ class DayCloseStatus(str, enum.Enum):
     RECONCILED = "reconciled"
 
 
+class WithdrawalStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class PaymentMode(str, enum.Enum):
+    CASH = "CASH"
+    CARD = "CARD"
+    BANK = "BANK"
+    UPI = "UPI"
+
+
+class WithdrawalMethod(str, enum.Enum):
+    CASH = "CASH"
+    BANK = "BANK"
+    UPI = "UPI"
+    CHEQUE = "CHEQUE"
+
+
 def status_value(value: object) -> str:
     return value.value if isinstance(value, enum.Enum) else str(value)
 
@@ -400,4 +420,148 @@ class ExpenseClaimLine(ServiceBase, TimestampMixin):
         back_populates="lines",
         primaryjoin="ExpenseClaimLine.claim_id == ExpenseClaim.id",
         foreign_keys="ExpenseClaimLine.claim_id",
+    )
+# ─── Operational expenses (distinct from staff expense-claims) ──────────────
+
+
+class ExpenseCategory(ServiceBase, TimestampMixin):
+    """An operational expense category, optionally mapped to a GL account.
+
+    ``gl_account_code`` is a *code* into this service's own
+    ``chart_of_accounts`` (no cross-service FK): when set, posting an expense
+    debits that account; when unset the 5000-series default is used.
+    """
+
+    __tablename__ = "expense_categories"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_accounting_tenant_expense_category_code"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    gl_account_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class Expense(ServiceBase, TimestampMixin):
+    """An operational expense (a vendor bill paid out, not a staff claim).
+
+    ``outlet_id`` — organization service (bare UUID, no FK). Posting creates a
+    JournalEntry (Dr GL account / Cr cash or bank) and an ``expense.recorded``
+    outbox row in the same transaction; ``posted`` tracks whether that happened.
+    """
+
+    __tablename__ = "expenses"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "expense_no", name="uq_accounting_tenant_expense_no"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    outlet_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    expense_no: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    category_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("expense_categories.id", ondelete="RESTRICT"),
+        nullable=False, index=True,
+    )
+    payment_mode: Mapped[PaymentMode] = mapped_column(String(10), nullable=False, index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    paid_to: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    posted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+    category: Mapped[ExpenseCategory | None] = relationship(
+        primaryjoin="Expense.category_id == ExpenseCategory.id",
+        foreign_keys="Expense.category_id",
+    )
+
+
+# ─── Withdrawals ─────────────────────────────────────────────────────────────
+
+
+class Withdrawal(ServiceBase, TimestampMixin):
+    """A cash/bank withdrawal request from an outlet.
+
+    Money leaves on approval: a JournalEntry (Dr 1010 Bank / Cr 3000 Owner's
+    Equity — an owner withdrawal) plus a ``withdrawal.recorded`` outbox row in
+    the same transaction.
+    """
+
+    __tablename__ = "withdrawals"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    outlet_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    method: Mapped[WithdrawalMethod] = mapped_column(String(10), nullable=False, index=True)
+    note: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    status: Mapped[WithdrawalStatus] = mapped_column(
+        String(20), default=WithdrawalStatus.PENDING, nullable=False, index=True
+    )
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+
+# ─── Currency book ───────────────────────────────────────────────────────────
+
+
+class ExchangeRate(ServiceBase, TimestampMixin):
+    """Tenant exchange rates for the multi-currency book.
+
+    ``GET /exchange-rates/current`` resolves the latest row with
+    ``effective_from <= today`` for the pair.
+    """
+
+    __tablename__ = "exchange_rates"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "from_currency", "to_currency", "effective_from",
+            name="uq_accounting_tenant_fx_pair_effective",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    from_currency: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    to_currency: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    rate: Mapped[Decimal] = mapped_column(Numeric(14, 6), nullable=False)
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+# ─── Outbox ──────────────────────────────────────────────────────────────────
+# Same shape as loyalty/billing OutboxMessage so the relay can drain it.
+
+
+class OutboxMessage(ServiceBase, TimestampMixin):
+    """Transactional outbox row — one per event this service publishes.
+
+    Written in the same transaction as the domain change (expense/withdrawal
+    postings) so the two commit or roll back together. A relay in main.py
+    polls pending rows and pushes them to the event bus, guaranteeing the
+    event is delivered even if this process crashes between commit and the
+    bus publish.
+    """
+
+    __tablename__ = "outbox_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    type: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    outlet_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    source_service: Mapped[str] = mapped_column(String(50), default="accounting")
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False, index=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )

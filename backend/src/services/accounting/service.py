@@ -13,11 +13,15 @@ from sqlalchemy.orm import selectinload
 
 from src.services.accounting.models import (
     AccountType,
+    BankAccount,
     BankReconciliation,
     Budget,
     ChartOfAccount,
     DayClose,
     DayCloseStatus,
+    ExchangeRate,
+    Expense,
+    ExpenseCategory,
     ExpenseClaim,
     ExpenseClaimLine,
     FixedAsset,
@@ -27,6 +31,9 @@ from src.services.accounting.models import (
     JournalEntryLine,
     JournalEntryStatus,
     TaxPayment,
+    Withdrawal,
+    WithdrawalStatus,
+    status_value,
 )
 from src.services.accounting.schemas import (
     ARAgingResponse,
@@ -37,6 +44,8 @@ from src.services.accounting.schemas import (
     BudgetSummaryRow,
     BudgetResponse,
     CashFlowResponse,
+    CashFlowWalletResponse,
+    CashFlowWalletRow,
     ChartOfAccountCreate,
     DayCloseCreate,
     DepreciationPeriod,
@@ -1017,6 +1026,424 @@ async def ar_aging(
         days_over_90=buckets["days_over_90"],
         total_outstanding=total,
         buckets_available=True,
+    )
+
+
+# ─── Operational finance: expenses, withdrawals, currency, cash-flow wallets
+#
+# Four operational finance domains on top of the existing chart-of-accounts /
+# journal engine, for the PetPooja Finance screens. They reuse the exact
+# posting machinery above (``_find_account`` / ``_post_entry`` /
+# ``seed_default_accounts``) and the same payable-account convention the
+# bill.paid auto-posting uses (``events.py`` ``_ACCT``): cash legs land on
+# 1000, everything else on 1010. Money stays Decimal end to end.
+
+
+class AccountingError(Exception):
+    """Business-rule violation in the operational-finance service layer.
+
+    ``api_finance`` maps these to 404 / 409 / 400 via ``kind`` — keeping the
+    service layer free of FastAPI (the existing posting helpers above already
+    raise ``HTTPException`` directly; this new class is the cleaner house rule
+    for the code added here).
+
+    ``kind`` ∈ {not_found, conflict, bad_request}; ``message`` is the
+    user-facing detail. Stored as real attributes so callers can read them
+    instead of unpacking ``args``.
+    """
+
+    def __init__(self, kind: str, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.message = message
+
+
+# GL codes we may need to post but that are not always seeded for a tenant.
+# Matches the ``_ACCT`` table in events.py.
+_EXPENSE_DEFAULT_CODE = "5000"          # COGS — catch-all when a category has no GL mapping
+_OWNER_EQUITY_CODE = "3000"            # an owner withdrawal reduces owner's equity
+
+# Payment/method → payable account, mirroring bill.paid: cash → 1000, the
+# rest (card/bank/UPI/cheque settle through the bank) → 1010.
+_PAYABLE_CODE = {
+    "CASH": "1000",
+    "CARD": "1010",
+    "BANK": "1010",
+    "UPI": "1010",
+    "CHEQUE": "1010",
+}
+
+
+async def _resolved_account(
+    db: AsyncSession, tenant_id: uuid.UUID, code: str,
+) -> ChartOfAccount | None:
+    """Find ``code``, seeding the default chart first if the tenant is new."""
+    acct = await _find_account(db, tenant_id, code)
+    if acct is None:
+        # Cheap, idempotent: only creates rows for a tenant that has no chart
+        # yet. A code that is not in DEFAULT_ACCOUNTS stays None after this.
+        await seed_default_accounts(db, tenant_id)
+        acct = await _find_account(db, tenant_id, code)
+    return acct
+
+
+# ─── Expenses ──────────────────────────────────────────────────────────────
+
+
+def expense_recorded_payload(expense: Expense, entry: JournalEntry | None) -> dict:
+    """The pinned ``expense.recorded`` event payload (contract §4).
+
+    Built in the service layer so the API stays thin and the keys never drift
+    from the published contract. ``category`` is the category name (not id);
+    ``account_id`` is the posted journal entry, when one was produced.
+    """
+    return {
+        "expense_id": str(expense.id),
+        "amount": float(_m(expense.amount)),
+        "category": expense.category.name if expense.category else None,
+        "payment_mode": status_value(expense.payment_mode),
+        "account_id": str(entry.id) if entry else None,
+        "date": expense.date.isoformat(),
+    }
+
+
+def withdrawal_recorded_payload(
+    withdrawal: Withdrawal, entry: JournalEntry | None,
+) -> dict:
+    """The pinned ``withdrawal.recorded`` event payload (contract §4)."""
+    return {
+        "withdrawal_id": str(withdrawal.id),
+        "amount": float(_m(withdrawal.amount)),
+        "method": status_value(withdrawal.method),
+        "account_id": str(entry.id) if entry else None,
+        "status": "approved",
+    }
+
+
+async def post_expense(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    expense_id: uuid.UUID,
+    user_id: uuid.UUID | None = None,
+) -> tuple[Expense, JournalEntry | None, dict]:
+    """Post an operational expense to the GL.
+
+    Debits the category's GL account (``ExpenseCategory.gl_account_code``) — or
+    the 5000-series default when the category has no mapping — and credits the
+    payable account chosen by payment mode (1000 cash / 1010 bank). The journal
+    entry is created POSTED and the ``Expense`` row is flagged
+    ``posted`` + stamped with the entry id, all in the caller's open
+    transaction so the GL and the flag commit together.
+
+    Raises ``AccountingError`` (409) if the expense is already posted, (404)
+    if it is not found for this tenant. Returns the updated expense, the posted
+    journal entry, and the pinned ``expense.recorded`` event payload.
+    """
+    expense = await db.scalar(
+        select(Expense)
+        .where(Expense.id == expense_id, Expense.tenant_id == tenant_id)
+        .options(selectinload(Expense.category))
+    )
+    if expense is None:
+        raise AccountingError("not_found", "Expense not found")
+    if expense.posted:
+        raise AccountingError(
+            "conflict", f"Expense {expense.expense_no} is already posted"
+        )
+
+    amount = _m(expense.amount)
+    if amount <= 0:
+        raise AccountingError("bad_request", "Expense amount must be greater than zero")
+
+    category = await db.scalar(
+        select(ExpenseCategory).where(
+            ExpenseCategory.id == expense.category_id,
+            ExpenseCategory.tenant_id == tenant_id,
+        )
+    )
+    if category is None:
+        raise AccountingError("not_found", "Expense category not found for this tenant")
+
+    mode_str = status_value(expense.payment_mode)
+    expense_code = category.gl_account_code or _EXPENSE_DEFAULT_CODE
+    payable_code = _PAYABLE_CODE.get(mode_str, "1010")
+
+    debit_acct = await _resolved_account(db, tenant_id, expense_code)
+    credit_acct = await _resolved_account(db, tenant_id, payable_code)
+    if debit_acct is None:
+        raise AccountingError(
+            "bad_request",
+            f"GL account '{expense_code}' is not available for posting this expense",
+        )
+    if credit_acct is None:
+        raise AccountingError(
+            "bad_request",
+            f"Payable GL account '{payable_code}' is not available for posting this expense",
+        )
+
+    entry = await _post_entry(
+        db,
+        tenant_id,
+        expense.date,
+        "expense",
+        str(expense.id),
+        f"Expense {expense.expense_no}: {category.name or expense.expense_no} "
+        f"paid via {mode_str} to {expense.paid_to or 'unspecified'}",
+        [
+            (debit_acct, amount, Decimal("0")),
+            (credit_acct, Decimal("0"), amount),
+        ],
+        user_id,
+    )
+    expense.posted = True
+    expense.journal_entry_id = entry.id
+    await db.flush()
+    return expense, entry, expense_recorded_payload(expense, entry)
+
+
+# ─── Withdrawals ───────────────────────────────────────────────────────────
+
+
+async def approve_withdrawal(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    withdrawal_id: uuid.UUID,
+    user_id: uuid.UUID | None = None,
+) -> tuple[Withdrawal, JournalEntry | None, dict]:
+    """Approve a pending withdrawal and post the GL outflow.
+
+    An owner's drawdown: debit the payable account chosen by the withdrawal
+    method (CASH → 1000, BANK/UPI/CHEQUE → 1010) and credit 3000 Owner's
+    Equity. The withdrawal is marked APPROVED, stamped with ``approved_by``
+    and the entry id, in the caller's open transaction.
+
+    Raises ``AccountingError`` (404 not found, 409 not pending) otherwise.
+    Returns the withdrawal, the posted entry, and the pinned
+    ``withdrawal.recorded`` payload.
+    """
+    withdrawal = await db.scalar(
+        select(Withdrawal).where(
+            Withdrawal.id == withdrawal_id, Withdrawal.tenant_id == tenant_id
+        )
+    )
+    if withdrawal is None:
+        raise AccountingError("not_found", "Withdrawal not found")
+    if status_value(withdrawal.status) != WithdrawalStatus.PENDING.value:
+        raise AccountingError(
+            "conflict", f"Withdrawal is '{status_value(withdrawal.status)}', not pending"
+        )
+
+    amount = _m(withdrawal.amount)
+    if amount <= 0:
+        raise AccountingError("bad_request", "Withdrawal amount must be greater than zero")
+
+    method_str = status_value(withdrawal.method)
+    payable_code = _PAYABLE_CODE.get(method_str, "1010")
+
+    debit_acct = await _resolved_account(db, tenant_id, payable_code)
+    credit_acct = await _resolved_account(db, tenant_id, _OWNER_EQUITY_CODE)
+    if debit_acct is None:
+        raise AccountingError(
+            "bad_request",
+            f"Payable GL account '{payable_code}' is not available for this withdrawal",
+        )
+    if credit_acct is None:
+        raise AccountingError(
+            "bad_request", f"Owner's equity GL account '{_OWNER_EQUITY_CODE}' is not available"
+        )
+
+    entry = await _post_entry(
+        db,
+        tenant_id,
+        withdrawal.date,
+        "withdrawal",
+        str(withdrawal.id),
+        f"Withdrawal {withdrawal.id} {method_str} {amount}: owner's drawdown "
+        f"{withdrawal.note or ''}".strip(),
+        [
+            (debit_acct, amount, Decimal("0")),
+            (credit_acct, Decimal("0"), amount),
+        ],
+        user_id,
+    )
+    withdrawal.status = WithdrawalStatus.APPROVED
+    withdrawal.approved_by = user_id
+    withdrawal.journal_entry_id = entry.id
+    await db.flush()
+    return withdrawal, entry, withdrawal_recorded_payload(withdrawal, entry)
+
+
+async def reject_withdrawal(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    withdrawal_id: uuid.UUID,
+    reason: str | None = None,
+) -> Withdrawal:
+    """Mark a pending withdrawal REJECTED. No GL, no outbox — state only."""
+    withdrawal = await db.scalar(
+        select(Withdrawal).where(
+            Withdrawal.id == withdrawal_id, Withdrawal.tenant_id == tenant_id
+        )
+    )
+    if withdrawal is None:
+        raise AccountingError("not_found", "Withdrawal not found")
+    if status_value(withdrawal.status) != WithdrawalStatus.PENDING.value:
+        raise AccountingError(
+            "conflict", f"Withdrawal is '{status_value(withdrawal.status)}', not pending"
+        )
+    withdrawal.status = WithdrawalStatus.REJECTED
+    if reason:
+        withdrawal.note = f"Rejected: {reason}"
+    await db.flush()
+    return withdrawal
+
+
+# ─── Currency book ─────────────────────────────────────────────────────────
+
+
+async def current_exchange_rate(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    from_currency: str,
+    to_currency: str,
+) -> ExchangeRate:
+    """The latest row with ``effective_from <= today`` for the exact pair.
+
+    Raises ``AccountingError`` (404) when no rate is effective yet — the API
+    layer renders that as an ``available: false`` envelope rather than an
+    error. (No reverse-pair inversion: a returned row must always match the
+    requested direction, and the spec only asks for the exact-pair lookup.)
+    """
+    today = date.today()
+    stmt = (
+        select(ExchangeRate)
+        .where(
+            ExchangeRate.tenant_id == tenant_id,
+            ExchangeRate.from_currency == from_currency,
+            ExchangeRate.to_currency == to_currency,
+            ExchangeRate.effective_from <= today,
+        )
+        .order_by(ExchangeRate.effective_from.desc())
+        .limit(1)
+    )
+    row = await db.scalar(stmt)
+    if row is None:
+        raise AccountingError(
+            "not_found",
+            f"No exchange rate effective on or before {today.isoformat()} "
+            f"for {from_currency}->{to_currency}",
+        )
+    return row
+
+
+# ─── Cash-flow "all wallets" summary ───────────────────────────────────────
+
+
+async def cash_flow_wallets(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    days: int,
+    outlet_id: uuid.UUID | None = None,
+) -> CashFlowWalletResponse:
+    """Windowed in/out roll-up over THIS service's own tables only.
+
+    Exactly what is summed:
+
+    * **outflow** — posted operational expenses (``Expense.posted``) plus
+      approved withdrawals, both in the trailing ``days``-day window ending
+      today. This service records outflows, not inflows: revenue/sales live
+      in the billing service and reach us only through posted journal lines,
+      which the wallet view deliberately does not read. So **inflow is
+      always 0** and **net = inflow − outflow ≤ 0** here by construction.
+    * **balance** — the sum of ``BankAccount.balance_snapshot`` over the
+      tenant's *active* bank accounts (a point-in-time figure, not windowed).
+    * **daily** — per-calendar-day in (always 0) / out buckets within the
+      window; days with no activity are omitted.
+
+    All sums are Decimal. Never crosses into another service's database.
+    """
+    today = date.today()
+    window_start = today - timedelta(days=max(days, 0))
+
+    out_stmt = (
+        select(Expense.date, func.coalesce(func.sum(Expense.amount), 0))
+        .where(
+            Expense.tenant_id == tenant_id,
+            Expense.posted.is_(True),
+            Expense.date >= window_start,
+            Expense.date <= today,
+        )
+        .group_by(Expense.date)
+    )
+    wd_stmt = (
+        select(Withdrawal.date, func.coalesce(func.sum(Withdrawal.amount), 0))
+        .where(
+            Withdrawal.tenant_id == tenant_id,
+            Withdrawal.status == WithdrawalStatus.APPROVED,
+            Withdrawal.date >= window_start,
+            Withdrawal.date <= today,
+        )
+        .group_by(Withdrawal.date)
+    )
+    mode_stmt = (
+        select(Expense.payment_mode, func.coalesce(func.sum(Expense.amount), 0))
+        .where(
+            Expense.tenant_id == tenant_id,
+            Expense.posted.is_(True),
+            Expense.date >= window_start,
+            Expense.date <= today,
+        )
+        .group_by(Expense.payment_mode)
+    )
+    if outlet_id is not None:
+        out_stmt = out_stmt.where(Expense.outlet_id == outlet_id)
+        wd_stmt = wd_stmt.where(Withdrawal.outlet_id == outlet_id)
+        mode_stmt = mode_stmt.where(Expense.outlet_id == outlet_id)
+
+    daily_out: dict[date, Decimal] = {}
+    outflow = Decimal("0")
+    for _day, total in (await db.execute(out_stmt)).all():
+        total = _m(total)
+        daily_out[_day] = total
+        outflow += total
+    for _day, total in (await db.execute(wd_stmt)).all():
+        total = _m(total)
+        daily_out[_day] = daily_out.get(_day, Decimal("0")) + total
+        outflow += total
+
+    by_mode: dict[str, Decimal] = {}
+    for mode, total in (await db.execute(mode_stmt)).all():
+        by_mode[status_value(mode)] = _m(total)
+
+    # Balance: point-in-time snapshot of active bank accounts. BankAccount has
+    # no outlet column, so an outlet-local screen sees the tenant-wide figure.
+    balance = _m(await db.scalar(
+        select(func.coalesce(func.sum(BankAccount.balance_snapshot), 0)).where(
+            BankAccount.tenant_id == tenant_id,
+            BankAccount.is_active.is_(True),
+        )
+    ))
+
+    inflow = Decimal("0")
+    daily = [
+        CashFlowWalletRow(date=d, in_amount=inflow, out_amount=amount)
+        for d, amount in sorted(daily_out.items())
+    ]
+
+    return CashFlowWalletResponse(
+        days=days,
+        inflow=inflow,
+        outflow=outflow,
+        net=inflow - outflow,
+        balance=balance,
+        daily=daily,
+        by_payment_mode=by_mode,
+        notes=[
+            "Outflow = posted operational expenses + approved withdrawals in the window. "
+            "Inflow is 0 (sales/revenue live in the billing service, not these tables). "
+            "Balance = current snapshot of active bank account balances "
+            "(tenant-wide; BankAccount has no outlet column).",
+        ],
     )
 
 

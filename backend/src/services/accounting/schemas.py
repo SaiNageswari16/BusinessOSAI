@@ -3,12 +3,20 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from datetime import date as _date  # alias: classes with a field named "date" must reference the type via _date, or the field shadows it during annotation evaluation
 from decimal import Decimal
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.services.accounting.models import AccountType, DayCloseStatus, JournalEntryStatus
+from src.services.accounting.models import (
+    AccountType,
+    DayCloseStatus,
+    JournalEntryStatus,
+    PaymentMode,
+    WithdrawalMethod,
+    WithdrawalStatus,
+)
 
 
 class ChartOfAccountBase(BaseModel):
@@ -567,4 +575,165 @@ class GSTSummaryResponse(BaseModel):
     total_tax: Decimal = Decimal("0")
     invoices_available: bool = False
     invoice_count: int = 0
+    notes: list[str] = []
+
+
+# ─── Operational expenses ───────────────────────────────────────────────────
+
+
+class ExpenseCategoryCreate(BaseModel):
+    code: str = Field(..., max_length=20)
+    name: str = Field(..., max_length=200)
+    gl_account_code: str | None = Field(default=None, max_length=20)
+    is_active: bool = True
+
+
+class ExpenseCategoryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    code: str
+    name: str
+    gl_account_code: str | None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExpenseCreate(BaseModel):
+    outlet_id: uuid.UUID | None = None
+    date: _date | None = None
+    description: str | None = Field(default=None, max_length=300)
+    category_id: uuid.UUID
+    payment_mode: PaymentMode
+    amount: Decimal
+    paid_to: str | None = Field(default=None, max_length=200)
+
+
+class ExpenseResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    outlet_id: uuid.UUID | None
+    expense_no: str
+    date: _date
+    description: str | None
+    category_id: uuid.UUID
+    payment_mode: PaymentMode
+    amount: Decimal
+    paid_to: str | None
+    posted: bool
+    journal_entry_id: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExpensePostResponse(BaseModel):
+    expense: ExpenseResponse
+    posted: bool
+    journal_entry_id: uuid.UUID | None
+    message: str
+
+
+# ─── Withdrawals ────────────────────────────────────────────────────────────
+
+
+class WithdrawalCreate(BaseModel):
+    outlet_id: uuid.UUID | None = None
+    date: _date | None = None
+    amount: Decimal
+    method: WithdrawalMethod
+    note: str | None = Field(default=None, max_length=300)
+
+
+class WithdrawalResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    outlet_id: uuid.UUID | None
+    date: _date
+    amount: Decimal
+    method: WithdrawalMethod
+    note: str | None
+    status: WithdrawalStatus
+    approved_by: uuid.UUID | None
+    journal_entry_id: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WithdrawalActionResponse(BaseModel):
+    message: str
+    withdrawal: WithdrawalResponse
+
+
+# ─── Currency book ──────────────────────────────────────────────────────────
+
+
+class ExchangeRateCreate(BaseModel):
+    from_currency: str = Field(..., max_length=10)
+    to_currency: str = Field(..., max_length=10)
+    rate: Decimal
+    effective_from: date
+    notes: str | None = None
+
+
+class ExchangeRateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    from_currency: str
+    to_currency: str
+    rate: Decimal
+    effective_from: date
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExchangeRateCurrentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    from_currency: str
+    to_currency: str
+    rate: Decimal
+    effective_from: date
+    notes: str | None
+    available: bool
+    reason: str | None = None
+
+
+# ─── Cash-flow "all wallets" summary ────────────────────────────────────────
+
+
+class CashFlowWalletRow(BaseModel):
+    """A day in the ``cash-flow/summary`` window.
+
+    The payload keys are ``in``/``out`` (as the screen expects) — modelled as
+    aliased fields because ``in`` is a Python keyword; ``in_amount``/
+    ``out_amount`` are the in-process names, the aliases are the wire names.
+    """
+
+    date: _date
+    in_amount: Decimal = Field(default=Decimal("0"), alias="in")
+    out_amount: Decimal = Field(default=Decimal("0"), alias="out")
+
+    model_config = ConfigDict(
+        populate_by_name=True, from_attributes=True, serialize_by_alias=True
+    )
+
+
+class CashFlowWalletResponse(BaseModel):
+    days: int
+    inflow: Decimal = Decimal("0")
+    outflow: Decimal = Decimal("0")
+    net: Decimal = Decimal("0")
+    balance: Decimal = Decimal("0")
+    daily: list[CashFlowWalletRow] = []
+    by_payment_mode: dict[str, Decimal] = {}
     notes: list[str] = []
