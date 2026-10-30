@@ -11,6 +11,7 @@ from src.services.shared.service_factory import build_service
 from src.services.event_bus.dedupe import install_service_ledger
 from src.services.pos.api import router as pos_router
 from src.services.pos.outbox import OutboxRelay
+from src.services.pos import events  # noqa: F401 - @bus.on registrations
 
 TAGS = [
     {"name": "orders", "description": "Order creation, listing, status, cancellation"},
