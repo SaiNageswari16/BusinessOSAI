@@ -118,7 +118,10 @@ async def create_process(db: AsyncSession, tenant_id: uuid.UUID,
             loss_pct=line.loss_pct,
         ))
     await db.flush()
-    return process
+    # Re-read the graph eagerly: the response model serialises process.lines,
+    # and a lazy load during that serialisation is the MissingGreenlet trap
+    # (the same reason load_process eager-loads).
+    return await load_process(db, tenant_id, process.id)
 
 
 async def update_process(db: AsyncSession, tenant_id: uuid.UUID,

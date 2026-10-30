@@ -76,6 +76,18 @@ def _ev(topic, tenant_id=None, outlet_id=None, data=None):
                  data=data or {}, source_service="delivery")
 
 
+async def _refresh_relations(db: AsyncSession, delivery: Delivery) -> None:
+    """Force the boy/zone relationships to re-issue their SELECTs.
+
+    A plain re-fetch is not enough: the session runs with
+    expire_on_commit=False, so an attribute already loaded (even as None,
+    before the boy was attached in this same request) survives the second
+    select — selectinload only fills *expired* attributes. Without this the
+    assign/create responses show a boy_id with boy_name still null.
+    """
+    await db.refresh(delivery, attribute_names=["boy", "zone"])
+
+
 def _outbox(db: AsyncSession, event: Event) -> None:
     """Write the event to the outbox inside the current transaction.
 
@@ -399,6 +411,7 @@ async def create_delivery(payload: DeliveryCreate, identity: CurrentIdentity, db
     # Re-fetch with boy/zone eager-loaded so the response serialises without a
     # lazy load (a fresh row's relationships are not in the session yet).
     fresh = await svc.load_delivery(db, identity.tenant_id, delivery.id)
+    await _refresh_relations(db, fresh)
     return _to_response(fresh)
 
 
@@ -422,6 +435,15 @@ async def assign_delivery(delivery_id: uuid.UUID, payload: DeliveryCreate,
     except svc.DeliveryError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
 
+    # The frontend dispatch dialog sends the zone alongside the boy; drop it
+    # into the row when provided (validate it is our tenant's zone first).
+    if payload.zone_id is not None:
+        zone = await svc.load_zone(db, identity.tenant_id, payload.zone_id)
+        if zone is None:
+            raise HTTPException(status_code=404, detail="Delivery zone not found")
+        delivery.zone_id = zone.id
+        await db.flush()
+
     event = _ev(
         "delivery.assigned", identity.tenant_id, outlet_id=delivery.outlet_id,
         data={
@@ -434,8 +456,11 @@ async def assign_delivery(delivery_id: uuid.UUID, payload: DeliveryCreate,
     _outbox(db, event)
     await db.commit()
     await bus.publish(event, local=True)
-    # Re-fetch so the boy relationship reflects the boy we just attached.
+    # Re-fetch so the boy/zone reflect what we just attached; with
+    # expire_on_commit=False the re-fetch alone leaves the stale (None)
+    # relationship in the identity map, so force it to re-issue its SELECT.
     fresh = await svc.load_delivery(db, identity.tenant_id, delivery_id)
+    await _refresh_relations(db, fresh)
     return _to_response(fresh)
 
 

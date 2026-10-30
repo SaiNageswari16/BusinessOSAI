@@ -272,7 +272,9 @@ async def _on_grn_posted(event: Event) -> None:
     data = event.data or {}
     tenant = _tenant(event)
     grn_id = _coerce_uuid(data.get("grn_id"))
-    outlet = _coerce_uuid(data.get("outlet_id"))
+    # The GRN event envelope carries the outlet; the payload does not, so
+    # prefer it and only fall back to the payload.
+    outlet = _coerce_uuid(event.outlet_id) or _coerce_uuid(data.get("outlet_id"))
     if tenant is None or grn_id is None or outlet is None:
         return
 

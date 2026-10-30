@@ -325,8 +325,13 @@ async def ledger_reconciles(
 async def load_wallet(
     db: AsyncSession, tenant_id: uuid.UUID, wallet_id: uuid.UUID
 ) -> CustomerWallet | None:
+    """Eager-load the ledger, same contract as ``load_account`` — a lazy
+    ``wallet.transactions`` access would raise MissingGreenlet on
+    serialisation."""
     return await db.scalar(
-        select(CustomerWallet).where(
+        select(CustomerWallet)
+        .options(selectinload(CustomerWallet.transactions))
+        .where(
             CustomerWallet.id == wallet_id,
             CustomerWallet.tenant_id == tenant_id,
         )

@@ -233,6 +233,10 @@ async def send_campaign(db: AsyncSession, tenant_id: uuid.UUID, campaign_id: uui
     for row in rows:
         row.status = RecipientStatus.SENT
         row.sent_at = row.sent_at or datetime.utcnow()
+    # Sessions run with autoflush=False: the roll-up count below must see the
+    # status changes just made, so flush them before querying — otherwise the
+    # count is computed against the pre-update rows and stays 0.
+    await db.flush()
     # Roll up the final count: everyone who is not opted out or failed.
     sent_count = int(await db.scalar(
         select(func.count(CampaignRecipient.id)).where(
