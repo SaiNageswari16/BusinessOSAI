@@ -37,6 +37,8 @@ import {
   Copy,
   Check,
   ExternalLink,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -58,6 +60,29 @@ export function LowStockAlerts() {
   });
   const [waConnected, setWaConnected] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Full Screen Mode
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+      setIsFullscreen(true);
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+      setIsFullscreen(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
   const [activeFilter, setActiveFilter] = useState<"all" | "stockout" | "low_stock">("all");
 
   // View Mode: Cards vs Table (persisted in localStorage)
@@ -342,7 +367,7 @@ export function LowStockAlerts() {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className={cn("space-y-5 w-full pb-12 px-1 sm:px-2 transition-all", isFullscreen && "p-4 sm:p-6 bg-background min-h-screen overflow-y-auto")}>
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 p-6 rounded-2xl text-white shadow-xl">
         <div>
@@ -363,6 +388,17 @@ export function LowStockAlerts() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={toggleFullscreen}
+            className="bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs font-semibold cursor-pointer"
+            title={isFullscreen ? "Exit Full Screen" : "Full Screen View"}
+          >
+            {isFullscreen ? <Minimize2 className="size-3.5 mr-1.5" /> : <Maximize2 className="size-3.5 mr-1.5" />}
+            {isFullscreen ? t("Exit Full Screen", "Exit Full Screen") : t("Full Screen", "Full Screen")}
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -894,7 +930,7 @@ export function LowStockAlerts() {
                             {isStockout ? <PackageX className="size-4" /> : <PackageOpen className="size-4" />}
                           </div>
                           <div className="min-w-0">
-                            <span className="font-bold text-sm text-foreground block truncate max-w-[280px]">
+                            <span className="font-bold text-sm text-foreground block truncate max-w-[360px] lg:max-w-[550px] xl:max-w-[700px]">
                               {item.name}
                             </span>
                             <div className="flex items-center gap-1.5 mt-0.5">
