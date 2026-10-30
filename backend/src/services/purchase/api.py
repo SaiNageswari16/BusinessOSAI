@@ -32,7 +32,6 @@ from src.services.purchase.service import _member, _money
 from src.services.purchase.models import (
     GoodsReceiptNote,
     GRNStatus,
-    PaymentStatus,
     VendorItem,
     POStatus,
     PRStatus,
@@ -552,7 +551,9 @@ async def convert_request(pr_id: uuid.UUID, vendor_id: uuid.UUID,
                                 notes=pr.notes)
     await svc.set_pr_status(db, identity.tenant_id, pr, PRStatus.CONVERTED,
                             notes=f"converted to {po.po_number}")
-    return po
+    # Eager-load the lines so the response serializes without a lazy DB hop
+    # mid-response (MissingGreenlet in async SQLAlchemy).
+    return await svc.load_order(db, identity.tenant_id, po.id)
 
 
 # ─── Purchase orders ────────────────────────────────────────────────────────
@@ -680,7 +681,12 @@ async def list_grns(identity: CurrentIdentity, db: DbDep,
                     status_filter: str | None = None,
                     limit: int = Query(default=100, le=500)):
     identity.require("view:purchase")
-    stmt = select(GoodsReceiptNote).where(
+    # Eager-load lines: the response model serialises grn.lines, and a lazy
+    # load during that serialisation is the MissingGreenlet 500 the single
+    # GET route already guards against.
+    stmt = select(GoodsReceiptNote).options(
+        selectinload(GoodsReceiptNote.lines)
+    ).where(
         GoodsReceiptNote.tenant_id == identity.tenant_id)
     if status_filter:
         stmt = stmt.where(GoodsReceiptNote.status == status_filter)
@@ -707,7 +713,9 @@ async def create_grn(payload: GRNCreate, identity: CurrentIdentity, db: DbDep):
         received_by=identity.user_id, received_date=payload.received_date,
         notes=payload.notes,
     )
-    return grn
+    # Eager-load the lines so the response serializes without a lazy DB hop
+    # mid-response (MissingGreenlet in async SQLAlchemy).
+    return await svc.load_grn(db, identity.tenant_id, grn.id)
 
 
 @router.post("/grns/{grn_id}/qc", response_model=GRNResponse, tags=["purchase"],
