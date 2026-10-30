@@ -8539,6 +8539,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   <option value="Card">Credit/Debit Card</option>
                   <option value="Cheque">Cheque / Demand Draft</option>
                   <option value="NetBanking">Net Banking</option>
+                  <option value="Cheque">Cheque</option>
                   {!isWalkInCustomer && <option value="Wallet">Wallet (B2B / Store Credit)</option>}
                   <option value="Split">Split Payment (Multi-Method Custom)</option>
                   {!isWalkInCustomer && <option value="Credit">Credit (Pay Later)</option>}

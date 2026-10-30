@@ -341,6 +341,9 @@ export function CustomerPartyReportsSuite({
   const [parties, setParties] = useState<PartyRecord[]>([]);
   const [rawInvoices, setRawInvoices] = useState<any[]>([]);
   const [rawPayments, setRawPayments] = useState<any[]>([]);
+  const [rawBills, setRawBills] = useState<any[]>([]);
+  const [rawVendorPayments, setRawVendorPayments] = useState<any[]>([]);
+  const [rawDebitNotes, setRawDebitNotes] = useState<any[]>([]);
   const [productsList, setProductsList] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -352,8 +355,8 @@ export function CustomerPartyReportsSuite({
         // 0. Clean up any ghost OPN- invoices from localStorage caches
         syncLocalStorageCustomerInvoices();
 
-        // 1. Fetch live CRM customers, suppliers, vendor bills, live products, POS and live SQL Invoices
-        const [crmRes, invRes, posRes, sqlInvoicesRes, suppliersRes, billsRes, paymentsRes] = await Promise.allSettled([
+        // 1. Fetch live CRM customers, suppliers, vendor bills, live products, POS and live SQL Invoices & Payments
+        const [crmRes, invRes, posRes, sqlInvoicesRes, suppliersRes, billsRes, paymentsRes, vendorPaymentsRes, debitNotesRes] = await Promise.allSettled([
           crmCustomersApi.list(1, 1000),
           inventoryApi.getProducts({ page_size: 1000 }),
           posApi.getProducts({ limit: 1000 }),
@@ -361,6 +364,8 @@ export function CustomerPartyReportsSuite({
           inventoryApi.getSuppliers(),
           inventoryApi.getVendorBills(),
           invoicesApi.listPayments({ page_size: 1000 }),
+          inventoryApi.getVendorPayments().catch(() => []),
+          inventoryApi.getVendorDebitNotes().catch(() => []),
         ]);
 
         let dbCustomers: any[] = [];
@@ -379,6 +384,21 @@ export function CustomerPartyReportsSuite({
         if (billsRes.status === "fulfilled" && billsRes.value) {
           const bVal: any = billsRes.value;
           dbBills = Array.isArray(bVal) ? bVal : bVal.items || bVal.data || [];
+          setRawBills(dbBills);
+        }
+
+        let dbVendorPayments: any[] = [];
+        if (vendorPaymentsRes && vendorPaymentsRes.status === "fulfilled" && vendorPaymentsRes.value) {
+          const vpVal: any = vendorPaymentsRes.value;
+          dbVendorPayments = Array.isArray(vpVal) ? vpVal : vpVal.items || vpVal.data || [];
+          setRawVendorPayments(dbVendorPayments);
+        }
+
+        let dbDebitNotes: any[] = [];
+        if (debitNotesRes && debitNotesRes.status === "fulfilled" && debitNotesRes.value) {
+          const dnVal: any = debitNotesRes.value;
+          dbDebitNotes = Array.isArray(dnVal) ? dnVal : dnVal.items || dnVal.data || [];
+          setRawDebitNotes(dbDebitNotes);
         }
 
         // 2. Fetch live Products from database
@@ -549,6 +569,8 @@ export function CustomerPartyReportsSuite({
               allPayments.push({
                 id: p.id,
                 voucher_number: p.payment_number || p.reference_number || (p.id ? `PAY-${String(p.id).slice(0, 6).toUpperCase()}` : "PAY"),
+                payment_number: p.payment_number || p.reference_number || (p.id ? `PAY-${String(p.id).slice(0, 6).toUpperCase()}` : "PAY"),
+                reference_number: p.reference_number || p.payment_number,
                 payment_date: p.payment_date || p.created_at || new Date().toISOString(),
                 amount: Number(p.amount || 0),
                 party_name: p.party_name || p.customer_name || "",
@@ -557,6 +579,7 @@ export function CustomerPartyReportsSuite({
                 payment_method: p.payment_method || "Cash",
                 invoice_number: p.invoice_number,
                 notes: p.notes || "Invoice Settlement",
+                covered_invoices: p.covered_invoices || [],
               });
             }
           });
@@ -579,14 +602,17 @@ export function CustomerPartyReportsSuite({
                         allPayments.push({
                           id: v.id || vKey,
                           voucher_number: v.voucher_number || vKey,
+                          payment_number: v.voucher_number || vKey,
+                          reference_number: v.voucher_number,
                           payment_date: v.payment_date || v.created_at || new Date().toISOString(),
-                          amount: Number(v.payment_amount || v.total_allocated || 0),
+                          amount: Number(v.payment_amount || v.total_allocated || v.amount || 0),
                           party_name: v.party_name || "",
                           party_id: v.party_id || "",
                           party_phone: v.party_phone || "",
                           payment_method: v.payment_mode || "Cash",
                           notes: v.notes || "Payment In Settlement",
                           covered_invoices: v.covered_invoices || [],
+                          invoice_number: v.covered_invoices?.[0]?.invoice_number || v.invoice_number || "",
                         });
                       }
                     }
@@ -596,6 +622,7 @@ export function CustomerPartyReportsSuite({
             }
           }
         } catch (e) {}
+
         setRawPayments(allPayments);
 
         // 4. Construct live real parties directory from CRM, Suppliers + Invoice database
@@ -979,9 +1006,209 @@ export function CustomerPartyReportsSuite({
     }
 
     const opBal = activeParty.openingBalance || 0;
+
+    // ── IF ACTIVE PARTY IS A SUPPLIER / VENDOR, PROCESS PURCHASE BILLS & PAYMENTS OUT ──
+    if (activeParty.type === "Supplier") {
+      let runningBalance = opBal;
+      const sName = (activeParty.name || "").toLowerCase().trim();
+      const sPhone = (activeParty.phone || "").replace(/\D/g, "");
+      const sId = activeParty.id ? String(activeParty.id) : "";
+
+      const matchedBills = rawBills.filter((b: any) => {
+        const rawStatus = String(b.status || "").toLowerCase();
+        if (rawStatus === "cancelled" || rawStatus === "voided") return false;
+        const bName = (b.supplier_name || b.vendor_name || b.supplier?.name || "").toLowerCase().trim();
+        const bPhone = (b.supplier_phone || b.phone || "").replace(/\D/g, "");
+        const bId = b.supplier_id ? String(b.supplier_id) : "";
+        const mName = bName && (bName === sName || bName.includes(sName) || sName.includes(bName));
+        const mId = bId && (bId === sId || sId.includes(bId));
+        const mPhone = sPhone && sPhone.length >= 10 && bPhone && bPhone.endsWith(sPhone.slice(-10));
+        return (mName || mId || mPhone) && isDateInFilter(b.bill_date || b.created_at);
+      });
+
+      const matchedBillIds = new Set<string>();
+      const matchedBillNumbers = new Set<string>();
+      matchedBills.forEach((b: any) => {
+        if (b.id) matchedBillIds.add(String(b.id));
+        const num = String(b.bill_number || "").trim().toUpperCase();
+        if (num) matchedBillNumbers.add(num);
+      });
+
+      const matchedPayments = rawVendorPayments.filter((p: any) => {
+        const pName = (p.supplier_name || p.vendor_name || "").toLowerCase().trim();
+        const pBillId = p.vendor_bill_id ? String(p.vendor_bill_id) : "";
+        const pBillNo = String(p.bill_number || "").trim().toUpperCase();
+        const mDirect = (pBillId && matchedBillIds.has(pBillId)) || (pBillNo && matchedBillNumbers.has(pBillNo));
+        const mName = pName && (pName === sName || pName.includes(sName) || sName.includes(pName));
+        return (mDirect || mName) && isDateInFilter(p.payment_date || p.created_at);
+      });
+
+      const matchedDebits = rawDebitNotes.filter((dn: any) => {
+        const dnName = (dn.supplier_name || dn.supplier?.name || "").toLowerCase().trim();
+        const dnId = dn.supplier_id ? String(dn.supplier_id) : "";
+        return (dnName === sName || dnName.includes(sName) || sName.includes(dnName) || dnId === sId) && isDateInFilter(dn.created_at || dn.date);
+      });
+
+      const events: any[] = [];
+      let totPur = 0;
+      let totPaid = 0;
+      let overdueAmt = 0;
+
+      const paymentsAllocatedPerBill = new Map<string, number>();
+      const processedPaymentIds = new Set<string>();
+
+      matchedPayments.forEach((p: any, idx: number) => {
+        const pId = String(p.id || p.reference_number || `pay_${idx}`);
+        if (processedPaymentIds.has(pId)) return;
+        processedPaymentIds.add(pId);
+        const amt = Number(p.amount_paid || p.amount || 0);
+        if (amt <= 0) return;
+        const pDate = p.payment_date || p.created_at;
+        const refNo = p.reference_number || `TXN-${String(p.id || idx + 1000).slice(0, 8).toUpperCase()}`;
+        const billRef = p.bill_number ? ` (#${p.bill_number})` : "";
+        const mode = p.payment_method || "Bank Transfer";
+        if (p.bill_number) {
+          const key = String(p.bill_number).trim().toUpperCase();
+          paymentsAllocatedPerBill.set(key, (paymentsAllocatedPerBill.get(key) || 0) + amt);
+        }
+        totPaid += amt;
+        events.push({
+          timestamp: parseSafeDateTimestamp(pDate) || Date.now(),
+          date: formatDisplayDate(pDate),
+          rawDate: pDate,
+          voucher: `Payment Out #${refNo}${billRef}`,
+          srNo: refNo,
+          paymentMode: mode,
+          debit: amt,
+          credit: 0,
+          balance: 0,
+          dueDate: "—",
+          type: "payment",
+        });
+      });
+
+      matchedBills.forEach((b: any, idx: number) => {
+        const bDate = b.bill_date || b.created_at;
+        const bNo = b.bill_number || `BILL-${1000 + idx}`;
+        const total = Number(b.total_amount || b.amount || 0);
+        const paidOnBill = Number(b.paid_amount || b.amount_paid || 0);
+        const mode = b.payment_mode || (paidOnBill >= total ? "Settled" : "Credit Terms");
+        const dueDate = b.due_date ? formatDisplayDate(b.due_date) : "Immediate";
+        totPur += total;
+
+        if (b.due_date) {
+          const dueTs = parseSafeDateTimestamp(b.due_date);
+          if (dueTs && dueTs < Date.now() && total > paidOnBill) {
+            overdueAmt += (total - paidOnBill);
+          }
+        }
+
+        events.push({
+          timestamp: parseSafeDateTimestamp(bDate) || 0,
+          date: formatDisplayDate(bDate),
+          rawDate: bDate,
+          voucher: b.po_number ? `Purchase Invoice #${bNo} (#${b.po_number})` : `Purchase Invoice #${bNo}`,
+          srNo: b.po_number || `PO-${101 + idx}`,
+          paymentMode: mode,
+          credit: total,
+          debit: 0,
+          balance: 0,
+          dueDate: dueDate,
+          type: "invoice",
+        });
+
+        const billKey = String(bNo).trim().toUpperCase();
+        const alreadyAllocated = paymentsAllocatedPerBill.get(billKey) || 0;
+        const unallocatedPaid = Math.max(0, paidOnBill - alreadyAllocated);
+        if (unallocatedPaid > 0.05) {
+          totPaid += unallocatedPaid;
+          events.push({
+            timestamp: (parseSafeDateTimestamp(bDate) || 0) + 1,
+            date: formatDisplayDate(bDate),
+            rawDate: bDate,
+            voucher: `Payment Out #${bNo} (Bill Settlement)`,
+            srNo: `SETTLE-${201 + idx}`,
+            paymentMode: mode,
+            debit: unallocatedPaid,
+            credit: 0,
+            balance: 0,
+            dueDate: "—",
+            type: "payment",
+          });
+        }
+      });
+
+      matchedDebits.forEach((dn: any, idx: number) => {
+        const dnDate = dn.created_at || dn.date;
+        const dnNo = dn.note_number || dn.reference_number || `DN-${1000 + idx}`;
+        const amt = Number(dn.amount || 0);
+        if (amt <= 0) return;
+        events.push({
+          timestamp: parseSafeDateTimestamp(dnDate) || 0,
+          date: formatDisplayDate(dnDate),
+          rawDate: dnDate,
+          voucher: `Vendor Debit Note #${dnNo}`,
+          srNo: dnNo,
+          paymentMode: dn.notes ? `Adjustment (${dn.notes})` : "Purchase Return",
+          debit: amt,
+          credit: 0,
+          balance: 0,
+          dueDate: "—",
+          type: "credit_note",
+        });
+      });
+
+      events.sort((a, b) => {
+        if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+        if (a.type === "invoice" && b.type === "payment") return -1;
+        if (a.type === "payment" && b.type === "invoice") return 1;
+        return 0;
+      });
+
+      const sRows: any[] = [];
+      sRows.push({
+        date: "—",
+        voucher: "Opening Balance",
+        srNo: "—",
+        paymentMode: "—",
+        credit: opBal > 0 ? opBal : 0,
+        debit: opBal < 0 ? Math.abs(opBal) : 0,
+        balance: runningBalance,
+        dueDate: "—",
+        isSummaryRow: true,
+      });
+
+      events.forEach((ev) => {
+        if (ev.credit > 0) runningBalance += ev.credit;
+        if (ev.debit > 0) runningBalance -= ev.debit;
+        ev.balance = runningBalance;
+        sRows.push(ev);
+      });
+
+      const totalPayable = runningBalance > 0 ? Math.round(runningBalance * 100) / 100 : 0;
+      sRows.push({
+        date: "—",
+        voucher: "Closing Balance",
+        srNo: "—",
+        paymentMode: "—",
+        credit: totalPayable > 0 ? totalPayable : 0,
+        debit: runningBalance < 0 ? Math.abs(runningBalance) : 0,
+        balance: runningBalance,
+        dueDate: "—",
+        isSummaryRow: true,
+      });
+
+      return {
+        rows: sRows,
+        totalReceivable: totalPayable,
+        overdue: overdueAmt,
+        totalSales: Math.round(totPur * 100) / 100,
+        totalReceived: Math.round(totPaid * 100) / 100,
+      };
+    }
     let runningBalance = opBal;
 
-    const pName = activeParty.name.toLowerCase().trim();
+    const pName = (activeParty.name || "").toLowerCase().trim();
     const pCleanPhone = (activeParty.phone || "").replace(/\D/g, "");
     const pId = activeParty.id ? String(activeParty.id) : "";
 
@@ -989,227 +1216,123 @@ export function CustomerPartyReportsSuite({
       .filter((inv: any) => {
         const isOpn = String(inv.invoice_number || "").toUpperCase().startsWith("OPN-") || inv.is_opening_balance || inv.invoice_type === "opening_balance";
         if (isOpn) return false;
-        const name = (inv.party_name || inv.customer_name || inv.customer?.name || "").toLowerCase().trim();
+        const name = (inv.party_name || inv.customer_name || inv.customer?.name || inv.billing_to || "").toLowerCase().trim();
         const invPhone = (inv.customer_phone || inv.party_phone || inv.customer?.phone || inv.phone || "").replace(/\D/g, "");
-        const matchesName = name === pName || (name && pName && (name.includes(pName) || pName.includes(name)));
+        const matchesName = name && (name === pName || name.includes(pName) || pName.includes(name));
         const matchesId = inv.customer_id && String(inv.customer_id) === pId;
         const matchesPhone = pCleanPhone && pCleanPhone.length >= 10 && invPhone && invPhone.endsWith(pCleanPhone.slice(-10));
-        return matchesName || matchesId || matchesPhone;
+        return (matchesName || matchesId || matchesPhone) && isDateInFilter(inv.created_at || inv.date || inv.invoice_date);
       });
 
-    const invoiceNumbersSet = new Set<string>();
+    const matchedInvoiceNumbers = new Set<string>();
+    const matchedInvoiceIds = new Set<string>();
     matchedInvoices.forEach((inv: any) => {
-      const invNum = String(inv.invoice_number || inv.invoice_no || inv.id || "").toLowerCase().trim();
-      if (invNum) invoiceNumbersSet.add(invNum);
+      const num = String(inv.invoice_number || inv.invoice_no || inv.id || "").trim().toUpperCase();
+      if (num) matchedInvoiceNumbers.add(num);
+      if (inv.id) matchedInvoiceIds.add(String(inv.id).trim());
     });
 
-    const matchedPayments = rawPayments.filter((pmt: any) => {
-      const pmtName = (pmt.party_name || "").toLowerCase().trim();
-      const pmtPhone = (pmt.party_phone || "").replace(/\D/g, "");
-      const matchesName = pmtName && (pmtName === pName || pmtName.includes(pName) || pName.includes(pmtName));
-      const matchesId = pmt.party_id && String(pmt.party_id) === pId;
-      const matchesPhone = pCleanPhone && pCleanPhone.length >= 10 && pmtPhone && pmtPhone.endsWith(pCleanPhone.slice(-10));
-      const matchesInv = pmt.invoice_number && invoiceNumbersSet.has(String(pmt.invoice_number).toLowerCase().trim());
-      const matchesCovered = Array.isArray(pmt.covered_invoices) && pmt.covered_invoices.some((cov: any) =>
-        invoiceNumbersSet.has(String(cov.invoice_number || cov.invoice_id || "").toLowerCase().trim())
-      );
-      return matchesName || matchesId || matchesPhone || matchesInv || matchesCovered;
+    // Match explicit payments (from invoicesApi.listPayments or local settlement vouchers)
+    const matchedPayments = rawPayments.filter((p: any) => {
+      const pPartyName = (p.party_name || p.customer_name || "").toLowerCase().trim();
+      const pPhone = (p.party_phone || p.phone || "").replace(/\D/g, "");
+      const matchesName = pPartyName && (pPartyName === pName || pPartyName.includes(pName) || pName.includes(pPartyName));
+      const matchesId = p.party_id && (String(p.party_id) === pId || String(p.customer_id) === pId);
+      const matchesPhone = pCleanPhone && pCleanPhone.length >= 10 && pPhone && pPhone.endsWith(pCleanPhone.slice(-10));
+
+      const pInvNo = String(p.invoice_number || "").trim().toUpperCase();
+      const pInvId = String(p.invoice_id || "").trim();
+      const matchesDirectInvoice = (pInvNo && matchedInvoiceNumbers.has(pInvNo)) || (pInvId && matchedInvoiceIds.has(pInvId));
+
+      const covered = Array.isArray(p.covered_invoices) ? p.covered_invoices : [];
+      const matchesCovered = covered.some((c: any) => {
+        const cNo = String(c.invoice_number || c.realId || c.invoice_id || "").trim().toUpperCase();
+        return cNo && matchedInvoiceNumbers.has(cNo);
+      });
+
+      const isMatch = matchesName || matchesId || matchesPhone || matchesDirectInvoice || matchesCovered;
+      if (!isMatch) return false;
+
+      const pDate = p.payment_date || p.created_at || p.date;
+      return isDateInFilter(pDate);
     });
 
-    const settledInvoicesInPayments = new Set<string>();
-    matchedPayments.forEach((p: any) => {
-      if (p.invoice_number) settledInvoicesInPayments.add(String(p.invoice_number).toLowerCase().trim());
+    interface LedgerTimelineEvent {
+      timestamp: number;
+      date: string;
+      rawDate: string;
+      voucher: string;
+      srNo: string;
+      paymentMode: string;
+      debit: number;
+      credit: number;
+      balance: number;
+      dueDate: string;
+      type: "invoice" | "credit_note" | "payment";
+      invoiceNumber?: string;
+    }
+
+    const events: LedgerTimelineEvent[] = [];
+    let totSales = 0;
+    let totReceived = 0;
+
+    // Track explicit payment allocations per invoice to avoid double-counting upfront payments
+    const paymentsAllocatedPerInvoice = new Map<string, number>();
+    const processedPaymentIds = new Set<string>();
+
+    // 1. Process explicit matched payments
+    matchedPayments.forEach((p: any, idx: number) => {
+      const pId = String(p.id || p.payment_number || p.voucher_number || p.reference_number || `pay_${idx}`);
+      if (processedPaymentIds.has(pId)) return;
+      processedPaymentIds.add(pId);
+
+      const amt = Number(p.amount || p.payment_amount || p.credit_amount || 0);
+      if (amt <= 0) return;
+
+      const pDate = p.payment_date || p.created_at || p.date;
+      const vNo = p.payment_number || p.voucher_number || p.reference_number || (p.id ? `PAY-${String(p.id).slice(0, 6).toUpperCase()}` : `PAY-${1000 + idx}`);
+      const invRef = p.invoice_number ? `#${p.invoice_number}` : "";
+      const mode = p.payment_method || p.payment_mode || "Cash";
+
+      // Track allocation against invoice if present
+      if (p.invoice_number) {
+        const key = String(p.invoice_number).trim().toUpperCase();
+        paymentsAllocatedPerInvoice.set(key, (paymentsAllocatedPerInvoice.get(key) || 0) + amt);
+      }
       if (Array.isArray(p.covered_invoices)) {
         p.covered_invoices.forEach((cov: any) => {
-          if (cov.invoice_number) settledInvoicesInPayments.add(String(cov.invoice_number).toLowerCase().trim());
+          if (cov.invoice_number && cov.amount_allocated) {
+            const key = String(cov.invoice_number).trim().toUpperCase();
+            paymentsAllocatedPerInvoice.set(key, (paymentsAllocatedPerInvoice.get(key) || 0) + Number(cov.amount_allocated || 0));
+          }
         });
       }
-    });
 
-    const txEvents: any[] = [];
+      totReceived += amt;
 
-    matchedInvoices.forEach((inv: any, idx: number) => {
-      const invDateStr = inv.created_at || inv.invoice_date || inv.date;
-      if (!isDateInFilter(invDateStr)) return;
-
-      const invDate = formatDisplayDate(invDateStr);
-      const invNo = inv.invoice_number || inv.invoice_no || `INV-${1000 + idx}`;
-      const ts = parseSafeDateTimestamp(invDateStr) || 0;
-      const total = Number(inv.total_amount || inv.grand_total || 0);
-      const mode = inv.payment_mode || inv.mode || "Credit / Due";
-      const dueDate = inv.due_date ? formatDisplayDate(inv.due_date) : "Immediate";
-
-      const isCreditNote = Boolean(
-        inv.is_credit_note ||
-        inv.is_sales_return ||
-        inv.document_type === "CREDIT_NOTE" ||
-        inv.invoice_type === "credit_note" ||
-        String(inv.invoice_number || "").toUpperCase().startsWith("CN")
-      );
-
-      if (isCreditNote) {
-        txEvents.push({
-          timestamp: ts,
-          date: invDate,
-          voucher: `Sales Return / Credit Note #${invNo}`,
-          srNo: `CN-${101 + idx}`,
-          paymentMode: mode,
-          credit: total,
-          debit: 0,
-          dueDate: "—",
-        });
-      } else {
-        txEvents.push({
-          timestamp: ts,
-          date: invDate,
-          voucher: `Sales Invoice #${invNo}`,
-          srNo: `SR-${101 + idx}`,
-          paymentMode: mode,
-          credit: 0,
-          debit: total,
-          dueDate: dueDate,
-        });
-
-        const received = Number(inv.received_amount || inv.amount_received || 0);
-        const invClean = String(invNo).toLowerCase().trim();
-        if (received > 0.01 && !settledInvoicesInPayments.has(invClean)) {
-          txEvents.push({
-            timestamp: ts + 1,
-            date: invDate,
-            voucher: `Payment Receipt #${invNo}`,
-            srNo: `RCT-${201 + idx}`,
-            paymentMode: mode === "Credit / Due" ? "Cash" : mode,
-            credit: received,
-            debit: 0,
-            dueDate: "—",
-          });
-        }
-      }
-    });
-
-    matchedPayments.forEach((p: any, idx: number) => {
-      const pDateStr = p.payment_date || p.created_at;
-      if (!isDateInFilter(pDateStr)) return;
-
-      const pDate = formatDisplayDate(pDateStr);
-      const ts = parseSafeDateTimestamp(pDateStr) || 0;
-      const amt = Number(p.amount || 0);
-      if (amt <= 0.01) return;
-
-      const vNo = p.voucher_number || `PAY-${1000 + idx}`;
-      const note = p.notes || (p.invoice_number ? `Settlement for Invoice #${p.invoice_number}` : "Payment In Settlement");
-
-      txEvents.push({
-        timestamp: ts + 2,
-        date: pDate,
-        voucher: `Payment In #${vNo}`,
+      events.push({
+        timestamp: parseSafeDateTimestamp(pDate) || Date.now(),
+        date: formatDisplayDate(pDate),
+        rawDate: pDate,
+        voucher: invRef ? `Payment In #${vNo} (${invRef})` : `Payment In #${vNo}`,
         srNo: vNo,
-        paymentMode: p.payment_method || "Cash",
-        credit: amt,
+        paymentMode: mode,
         debit: 0,
-        dueDate: note,
+        credit: amt,
+        balance: 0,
+        dueDate: "—",
+        type: "payment",
+        invoiceNumber: p.invoice_number,
       });
     });
 
-    txEvents.sort((a, b) => a.timestamp - b.timestamp);
-
-    const rows: any[] = [];
-
-    // Opening Balance
-    rows.push({
-      date: "—",
-      voucher: "Opening Balance",
-      srNo: "—",
-      paymentMode: "—",
-      credit: 0,
-      debit: opBal,
-      balance: runningBalance,
-      dueDate: "—",
-      isSummaryRow: true,
-    });
-
-    let totSales = 0;
-    let totReceived = 0;
-
-    txEvents.forEach((ev: any) => {
-      totSales += ev.debit;
-      totReceived += ev.credit;
-      runningBalance = runningBalance + ev.debit - ev.credit;
-      rows.push({
-        ...ev,
-        balance: Math.round(runningBalance * 100) / 100,
-      });
-    });
-
-    // Closing Balance
-    rows.push({
-      date: "—",
-      voucher: "Closing Balance",
-      srNo: "—",
-      paymentMode: "—",
-      credit: 0,
-      debit: runningBalance > 0 ? runningBalance : 0,
-      balance: Math.round(runningBalance * 100) / 100,
-      dueDate: "—",
-      isSummaryRow: true,
-    });
-
-    const totalReceivable = runningBalance > 0 ? Math.round(runningBalance * 100) / 100 : 0;
-    const overdueAmount = activeParty.overdue30Plus !== undefined ? Math.min(activeParty.overdue30Plus, totalReceivable) : totalReceivable;
-
-    return {
-      rows,
-      totalReceivable,
-      overdue: overdueAmount,
-      totalSales: Math.round(totSales * 100) / 100,
-      totalReceived: Math.round(totReceived * 100) / 100,
-    };
-  }, [activeParty, rawInvoices, rawPayments, dateFilter, customStartDate, customEndDate]);
-
-  const _oldUnused = () => {
-    const pCleanPhone = (activeParty.phone || "").replace(/\D/g, "");
-    const matchedInvoices = rawInvoices
-      .filter((inv: any) => {
-        const isOpn = String(inv.invoice_number || "").toUpperCase().startsWith("OPN-") || inv.is_opening_balance || inv.invoice_type === "opening_balance";
-        if (isOpn) return false;
-        const name = (inv.party_name || inv.customer_name || inv.customer?.name || "").toLowerCase();
-        const invPhone = (inv.customer_phone || inv.party_phone || inv.customer?.phone || inv.phone || "").replace(/\D/g, "");
-        const matchesName = name === pName;
-        const matchesId = inv.customer_id && String(inv.customer_id) === String(activeParty.id);
-        const matchesPhone = pCleanPhone && pCleanPhone.length >= 10 && invPhone && invPhone.endsWith(pCleanPhone.slice(-10));
-        return (matchesName || matchesId || matchesPhone) && isDateInFilter(inv.created_at || inv.date);
-      })
-      .sort((a: any, b: any) => {
-        const ta = parseSafeDateTimestamp(a.created_at || a.date) || 0;
-        const tb = parseSafeDateTimestamp(b.created_at || b.date) || 0;
-        return ta - tb;
-      });
-
-    const rows: any[] = [];
-
-    // Opening Balance
-    rows.push({
-      date: "—",
-      voucher: "Opening Balance",
-      srNo: "—",
-      paymentMode: "—",
-      credit: 0,
-      debit: opBal,
-      balance: runningBalance,
-      dueDate: "—",
-      isSummaryRow: true,
-    });
-
-    let totSales = 0;
-    let totReceived = 0;
-
+    // 2. Process invoices
     matchedInvoices.forEach((inv: any, idx: number) => {
-      const invDate = formatDisplayDate(inv.created_at || inv.date);
+      const invDate = inv.created_at || inv.date || inv.invoice_date;
       const invNo = inv.invoice_number || inv.invoice_no || `INV-${1000 + idx}`;
       const total = Number(inv.total_amount || inv.grand_total || 0);
-      const received = Number(inv.received_amount || inv.paid_amount || (inv.status === "paid" ? total : 0));
       const mode = inv.payment_mode || inv.mode || "Cash / UPI";
-      const dueDate = inv.due_date ? formatDisplayDate(inv.due_date) : "Immediate";
+      const dueDate = inv.due_date ? formatDisplayDate(inv.due_date) : (inv.created_at ? formatDisplayDate(inv.created_at) : "Immediate");
 
       const isCreditNote = Boolean(
         inv.is_credit_note ||
@@ -1221,75 +1344,126 @@ export function CustomerPartyReportsSuite({
 
       if (isCreditNote) {
         // Credit note / sales return reduces balance (Credit entry)
-        runningBalance -= total;
-        rows.push({
-          date: invDate,
+        events.push({
+          timestamp: parseSafeDateTimestamp(invDate) || 0,
+          date: formatDisplayDate(invDate),
+          rawDate: invDate,
           voucher: `Sales Return / Credit Note #${invNo}`,
-          srNo: `CN-${101 + idx}`,
+          srNo: inv.order_number || `CN-${101 + idx}`,
           paymentMode: mode,
           credit: total,
           debit: 0,
-          balance: runningBalance,
+          balance: 0,
           dueDate: "—",
+          type: "credit_note",
         });
       } else {
         totSales += total;
-        totReceived += received;
 
         // Debit entry: Invoiced
-        runningBalance += total;
-        rows.push({
-          date: invDate,
+        events.push({
+          timestamp: parseSafeDateTimestamp(invDate) || 0,
+          date: formatDisplayDate(invDate),
+          rawDate: invDate,
           voucher: `Sales Invoice #${invNo}`,
-          srNo: `SR-${101 + idx}`,
+          srNo: inv.order_number || `SR-${101 + idx}`,
           paymentMode: mode,
           credit: 0,
           debit: total,
-          balance: runningBalance,
+          balance: 0,
           dueDate: dueDate,
+          type: "invoice",
+          invoiceNumber: invNo,
         });
 
-        // Credit entry: Payment Received
-        if (received > 0) {
-          runningBalance -= received;
-          rows.push({
-            date: invDate,
+        // Check if there was an upfront payment on the invoice not already covered by explicit payments
+        const invNumKey = String(invNo).trim().toUpperCase();
+        const alreadyAllocated = paymentsAllocatedPerInvoice.get(invNumKey) || 0;
+        const totalPaidOnInvoice = Number(
+          inv.amount_paid || inv.amount_received || inv.received_amount || inv.paid_amount || (inv.status === "paid" ? total : 0)
+        );
+
+        const unallocatedPaid = Math.max(0, totalPaidOnInvoice - alreadyAllocated);
+        if (unallocatedPaid > 0.05) {
+          totReceived += unallocatedPaid;
+          events.push({
+            timestamp: (parseSafeDateTimestamp(invDate) || 0) + 1,
+            date: formatDisplayDate(invDate),
+            rawDate: invDate,
             voucher: `Payment Receipt #${invNo}`,
             srNo: `RCT-${201 + idx}`,
             paymentMode: mode,
-            credit: received,
+            credit: unallocatedPaid,
             debit: 0,
-            balance: runningBalance,
+            balance: 0,
             dueDate: "—",
+            type: "payment",
+            invoiceNumber: invNo,
           });
         }
       }
     });
 
-    // Closing Balance
+    // 3. Sort events chronologically: oldest to newest
+    // For identical timestamps: Invoice (Debit) comes before Payment (Credit)
+    events.sort((a, b) => {
+      if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+      if (a.type === "invoice" && b.type === "payment") return -1;
+      if (a.type === "payment" && b.type === "invoice") return 1;
+      return 0;
+    });
+
+    // 4. Calculate chronological running balance
+    const rows: any[] = [];
+
+    // Opening Balance Row
+    rows.push({
+      date: "—",
+      voucher: "Opening Balance",
+      srNo: "—",
+      paymentMode: "—",
+      credit: 0,
+      debit: opBal,
+      balance: runningBalance,
+      dueDate: "—",
+      isSummaryRow: true,
+    });
+
+    events.forEach((ev) => {
+      if (ev.debit > 0) {
+        runningBalance += ev.debit;
+      }
+      if (ev.credit > 0) {
+        runningBalance -= ev.credit;
+      }
+      ev.balance = runningBalance;
+      rows.push(ev);
+    });
+
+    // Closing Balance Row
+    const totalReceivable = runningBalance > 0 ? Math.round(runningBalance * 100) / 100 : 0;
     rows.push({
       date: "—",
       voucher: "Closing Balance",
       srNo: "—",
       paymentMode: "—",
       credit: 0,
-      debit: runningBalance > 0 ? runningBalance : 0,
+      debit: totalReceivable,
       balance: runningBalance,
       dueDate: "—",
       isSummaryRow: true,
     });
 
-    const totalReceivable = runningBalance > 0 ? runningBalance : 0;
-    const overdueAmount = activeParty.overdue30Plus || totalReceivable;
+    const overdueAmount = activeParty.overdue30Plus !== undefined ? Math.min(activeParty.overdue30Plus, totalReceivable) : totalReceivable;
 
     return {
       rows,
       totalReceivable,
       overdue: overdueAmount,
-      totalSales: totSales || activeParty.totalInvoiced || totalReceivable,
-      totalReceived: totReceived || activeParty.totalPaid || 0,
+      totalSales: Math.round(totSales * 100) / 100,
+      totalReceived: Math.round(totReceived * 100) / 100,
     };
-  };
+  }, [activeParty, rawInvoices, rawPayments, rawBills, rawVendorPayments, rawDebitNotes, dateFilter, customStartDate, customEndDate]);
 
   // ─────────────────────────────────────────────────────────────
   // 2. PARTY WISE OUTSTANDING COMPUTATION
@@ -1982,7 +2156,7 @@ export function CustomerPartyReportsSuite({
                   <div className="size-6 rounded-full border border-slate-200 flex items-center justify-center text-slate-500 font-semibold text-xs">
                     ₹
                   </div>
-                  <span className="text-xs font-medium text-slate-600">Total Receivable Amount</span>
+                  <span className="text-xs font-medium text-slate-600">{activeParty?.type === "Supplier" ? "Total Payable Amount" : "Total Receivable Amount"}</span>
                 </div>
                 <div className="text-lg font-bold text-slate-900 mt-2 font-mono">
                   {ledgerData.totalReceivable > 0 ? formatCurrency(ledgerData.totalReceivable) : "₹ 0"}
@@ -2006,7 +2180,7 @@ export function CustomerPartyReportsSuite({
                   <div className="size-6 rounded-full border border-blue-200 bg-blue-50/50 flex items-center justify-center text-blue-600 text-xs">
                     <TrendingUp className="size-3.5" />
                   </div>
-                  <span className="text-xs font-medium text-blue-600">Total Sales Amount</span>
+                  <span className="text-xs font-medium text-blue-600">{activeParty?.type === "Supplier" ? "Total Purchase Amount" : "Total Sales Amount"}</span>
                 </div>
                 <div className="text-lg font-bold text-slate-900 mt-2 font-mono">
                   {ledgerData.totalSales > 0 ? formatCurrency(ledgerData.totalSales) : "₹ 0"}
@@ -2018,7 +2192,7 @@ export function CustomerPartyReportsSuite({
                   <div className="size-6 rounded-full border border-emerald-200 bg-emerald-50/50 flex items-center justify-center text-emerald-600 text-xs">
                     <CheckCircle2 className="size-3.5" />
                   </div>
-                  <span className="text-xs font-medium text-emerald-600">Total Received Amount</span>
+                  <span className="text-xs font-medium text-emerald-600">{activeParty?.type === "Supplier" ? "Total Paid Amount" : "Total Received Amount"}</span>
                 </div>
                 <div className="text-lg font-bold text-slate-900 mt-2 font-mono">
                   {ledgerData.totalReceived > 0 ? formatCurrency(ledgerData.totalReceived) : "₹ 0"}

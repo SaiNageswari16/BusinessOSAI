@@ -416,9 +416,9 @@ async def generate_inventory_alert_signals(
             "dead_capital_amount": total_dead_capital,
             "expiring_batches_count": len(expiring_batches),
         },
-        "stockout_items": stockout_items[:20],
-        "low_stock_items": low_stock_items[:20],
-        "dead_stock_items": dead_stock_items[:20],
+        "stockout_items": stockout_items[:200],
+        "low_stock_items": low_stock_items[:200],
+        "dead_stock_items": dead_stock_items[:200],
         "expiring_batches": expiring_batches,
     }
 
