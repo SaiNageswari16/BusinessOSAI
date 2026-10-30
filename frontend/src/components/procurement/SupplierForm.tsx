@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { inventoryApi } from "@/lib/api-client";
 import { toast } from "sonner";
+import { lookupIfsc } from "@/lib/ifsc-lookup";
 import { useCurrency } from "@/hooks/use-currency";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
@@ -726,7 +727,19 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
                   type="text"
                   placeholder="HDFC0001234"
                   value={ifscCode}
-                  onChange={(e) => setIfscCode(e.target.value)}
+                  onChange={async (e) => {
+                    const val = e.target.value.toUpperCase().slice(0, 11);
+                    setIfscCode(val);
+                    if (val.length === 11) {
+                      try {
+                        const details = await lookupIfsc(val);
+                        if (details?.bank) {
+                          setBankName(details.bank);
+                          toast.success(`Bank details auto-filled: ${details.bank}${details.branch ? ` (${details.branch})` : ""}`);
+                        }
+                      } catch {}
+                    }
+                  }}
                   className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-mono font-bold text-slate-800 outline-none"
                 />
               </div>

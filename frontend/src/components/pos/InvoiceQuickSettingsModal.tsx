@@ -56,6 +56,7 @@ import {
 import { companiesApi, numberSeriesApi, taxApi, printTemplatesApi, type TaxCode, type Company, type GstRegistration } from "@/lib/api-client";
 import { INDIAN_STATES } from "@/data/indian-states";
 import { lookupGstinDetails } from "@/lib/gst-helper";
+import { lookupIfsc } from "@/lib/ifsc-lookup";
 import { WordInvoiceStudioModal } from "./WordInvoiceStudioModal";
 import { safeSetItem, sanitizeForStorage } from "@/lib/safe-storage";
 
@@ -2605,7 +2606,23 @@ export function InvoiceQuickSettingsModal({
                       <input
                         type="text"
                         value={gstForm.bank_ifsc}
-                        onChange={(e) => setGstForm((prev) => ({ ...prev, bank_ifsc: e.target.value.toUpperCase() }))}
+                        onChange={async (e) => {
+                          const val = e.target.value.toUpperCase().slice(0, 11);
+                          setGstForm((prev) => ({ ...prev, bank_ifsc: val }));
+                          if (val.length === 11) {
+                            try {
+                              const details = await lookupIfsc(val);
+                              if (details?.bank) {
+                                setGstForm((prev) => ({
+                                  ...prev,
+                                  bank_name: details.bank,
+                                  bank_branch: details.branch || prev.bank_branch,
+                                }));
+                                toast.success(`Bank details auto-filled: ${details.bank}${details.branch ? ` (${details.branch})` : ""}`);
+                              }
+                            } catch {}
+                          }
+                        }}
                         placeholder="e.g. HDFC0001234"
                         className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-indigo-500 focus:bg-white"
                       />

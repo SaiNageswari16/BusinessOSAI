@@ -693,7 +693,13 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
           <div style="border-top: 1px dotted #000; padding-top: 3px; margin-top: 3px; font-size: 10px; font-weight: bold;">
             <div class="flex-between">
               <span>PAID VIA:</span>
-              <span>${inv.payment_mode || 'CASH / UPI'} (COMPLETED)</span>
+              <span>${inv.payment_mode || inv.payment_method || 'CASH'} (COMPLETED)</span>
+            </div>
+            ${inv.split_payments && typeof inv.split_payments === 'object' && Object.keys(inv.split_payments).length > 1 ? `
+              <div style="font-size: 8.5px; padding-left: 6px; border-left: 2px solid #000; margin: 2px 0;">
+                ${Object.entries(inv.split_payments).map(([m, a]) => `<div class="flex-between"><span style="text-transform: uppercase;">• ${m}:</span><span>₹${Number(a).toFixed(2)}</span></div>`).join('')}
+              </div>
+            ` : ''}
             </div>
             <div class="flex-between">
               <span>AMOUNT RECEIVED:</span>

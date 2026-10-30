@@ -87,7 +87,7 @@ import { InvoiceQuickSettingsModal, InvoiceSettings, loadStoredInvoiceSettings, 
 import { WordInvoiceStudioModal } from "./WordInvoiceStudioModal";
 import { computeGstBreakdown, checkIsInterstate, extractGstState } from "@/lib/gst-utils";
 import { lookupGstinDetails } from "@/lib/gst-helper";
-import { syncLocalStorageCustomerInvoices } from "@/lib/safe-storage";
+import { syncLocalStorageCustomerInvoices, safeSetItem } from "@/lib/safe-storage";
 import { useHardwareBarcodeScanner } from "../../hooks/useHardwareBarcodeScanner";
 import { useI18n } from "@/contexts/i18n-context";
 import { CustomerLedgerModal } from "../crm/CustomerLedgerModal";
@@ -869,7 +869,56 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   }, [tenant?.id, editingInvoice, activeEditingInvoice]);
   const [amountReceived, setAmountReceived] = useState<number | "">("");
   const [paymentMode, setPaymentMode] = useState("Cash");
+  const [chequeDetails, setChequeDetails] = useState<{ chequeNumber: string; bankName: string; chequeDate: string }>({
+    chequeNumber: "",
+    bankName: "",
+    chequeDate: new Date().toISOString().split("T")[0],
+  });
+  const [splitPayments, setSplitPayments] = useState<{ id: string; method: string; amount: number | ""; reference?: string }[]>([
+    { id: "split-1", method: "Cash", amount: "" },
+    { id: "split-2", method: "UPI", amount: "" },
+  ]);
   const [splitCash, setSplitCash] = useState<string>("");
+
+  const handleAddSplitRow = () => {
+    const existingMethods = splitPayments.map((s) => s.method);
+    const candidateMethods = ["Cheque", "Card", "NetBanking", "UPI", "Cash", "Razorpay"];
+    const nextMethod = candidateMethods.find((m) => !existingMethods.includes(m)) || "Cheque";
+    const currentTotal = splitPayments.reduce((acc, s) => acc + (Number(s.amount) || 0), 0);
+    const rem = Math.max(0, grandTotal - currentTotal);
+    setSplitPayments((prev) => [
+      ...prev,
+      {
+        id: `split-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        method: nextMethod,
+        amount: rem > 0 ? Number(rem.toFixed(2)) : "",
+        reference: "",
+      },
+    ]);
+  };
+
+  const handleRemoveSplitRow = (id: string) => {
+    if (splitPayments.length <= 2) {
+      toast.info("Split payment requires at least 2 methods.");
+      return;
+    }
+    setSplitPayments((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const handleUpdateSplitRow = (id: string, field: "method" | "amount" | "reference", value: any) => {
+    setSplitPayments((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        return { ...s, [field]: value };
+      })
+    );
+  };
+
+  const handleAutoFillRemaining = (id: string) => {
+    const otherSum = splitPayments.reduce((acc, s) => (s.id === id ? acc : acc + (Number(s.amount) || 0)), 0);
+    const rem = Math.max(0, grandTotal - otherSum);
+    handleUpdateSplitRow(id, "amount", rem > 0 ? Number(rem.toFixed(2)) : 0);
+  };
   const [splitOnline, setSplitOnline] = useState<string>("");
   const [isRazorpayModalOpen, setIsRazorpayModalOpen] = useState(false);
   const [isPineLabsModalOpen, setIsPineLabsModalOpen] = useState(false);
@@ -4304,7 +4353,26 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         .map(c => ({ name: c.name || 'Additional Charge', amount: Number(c.amount) })),
       round_off: autoRoundOff ? roundOff : undefined,
       grand_total: grandTotal,
-      payment_method: walkInPreview ? (paymentMode === "Credit" || paymentMode === "Wallet" ? "Cash" : paymentMode) : paymentMode,
+      payment_method: (() => {
+        const activeSplitDetails = splitPayments.filter((row) => Number(row.amount) > 0);
+        const splitSummaryDisplay = activeSplitDetails.length > 0
+          ? `Split (${activeSplitDetails.map((s) => `${s.method}: ₹${Number(s.amount).toFixed(2)}${s.reference ? ` [${s.reference}]` : ''}`).join(', ')})`
+          : "Split";
+        const chequeSummaryDisplay = chequeDetails.chequeNumber
+          ? `Cheque (#${chequeDetails.chequeNumber}${chequeDetails.bankName ? ` - ${chequeDetails.bankName}` : ''})`
+          : "Cheque";
+        const resolved = paymentMode === "Split" ? splitSummaryDisplay : paymentMode === "Cheque" ? chequeSummaryDisplay : paymentMode;
+        return walkInPreview ? (paymentMode === "Credit" || paymentMode === "Wallet" ? "Cash" : resolved) : resolved;
+      })(),
+      split_payments: (() => {
+        if (paymentMode !== "Split") return undefined;
+        const p: Record<string, number> = {};
+        splitPayments.forEach((s) => {
+          const v = Number(s.amount) || 0;
+          if (v > 0) p[s.method.toLowerCase()] = (p[s.method.toLowerCase()] || 0) + v;
+        });
+        return p;
+      })(),
       payment_status: walkInPreview ? 'PAID' : (paymentMode === "Credit" ? 'UNPAID' : (amountReceived === "" || Number(amountReceived) >= grandTotal ? 'PAID' : 'PARTIAL')),
       amount_received: walkInPreview ? grandTotal : (paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0),
       paid_amount: walkInPreview ? grandTotal : (paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0),
@@ -4383,7 +4451,37 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         sgst_amount: gstType === 'cgst_sgst' ? combinedTax / 2 : 0,
         igst_amount: gstType === 'igst' ? combinedTax : 0,
         grand_total: grandTotal,
-        payment_method: walkInThermal ? (paymentMode === "Credit" || paymentMode === "Wallet" ? "Cash" : paymentMode) : paymentMode,
+        payment_method: (() => {
+          const activeSplitDetails = splitPayments.filter((row) => Number(row.amount) > 0);
+          const splitSummaryDisplay = activeSplitDetails.length > 0
+            ? `Split (${activeSplitDetails.map((s) => `${s.method}: ₹${Number(s.amount).toFixed(2)}${s.reference ? ` [${s.reference}]` : ''}`).join(', ')})`
+            : "Split";
+          const chequeSummaryDisplay = chequeDetails.chequeNumber
+            ? `Cheque (#${chequeDetails.chequeNumber}${chequeDetails.bankName ? ` - ${chequeDetails.bankName}` : ''})`
+            : "Cheque";
+          const resolved = paymentMode === "Split" ? splitSummaryDisplay : paymentMode === "Cheque" ? chequeSummaryDisplay : paymentMode;
+          return walkInThermal ? (paymentMode === "Credit" || paymentMode === "Wallet" ? "Cash" : resolved) : resolved;
+        })(),
+        payment_mode: (() => {
+          const activeSplitDetails = splitPayments.filter((row) => Number(row.amount) > 0);
+          const splitSummaryDisplay = activeSplitDetails.length > 0
+            ? `Split (${activeSplitDetails.map((s) => `${s.method}: ₹${Number(s.amount).toFixed(2)}${s.reference ? ` [${s.reference}]` : ''}`).join(', ')})`
+            : "Split";
+          const chequeSummaryDisplay = chequeDetails.chequeNumber
+            ? `Cheque (#${chequeDetails.chequeNumber}${chequeDetails.bankName ? ` - ${chequeDetails.bankName}` : ''})`
+            : "Cheque";
+          const resolved = paymentMode === "Split" ? splitSummaryDisplay : paymentMode === "Cheque" ? chequeSummaryDisplay : paymentMode;
+          return walkInThermal ? (paymentMode === "Credit" || paymentMode === "Wallet" ? "Cash" : resolved) : resolved;
+        })(),
+        split_payments: (() => {
+          if (paymentMode !== "Split") return undefined;
+          const p: Record<string, number> = {};
+          splitPayments.forEach((s) => {
+            const v = Number(s.amount) || 0;
+            if (v > 0) p[s.method.toLowerCase()] = (p[s.method.toLowerCase()] || 0) + v;
+          });
+          return p;
+        })(),
         payment_status: walkInThermal ? 'PAID' : (paymentMode === "Credit" ? 'UNPAID' : (Number(amountReceived) >= grandTotal ? 'PAID' : 'PARTIAL')),
         amount_received: walkInThermal ? grandTotal : (paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0),
         paid_amount: walkInThermal ? grandTotal : (paymentMode !== "Credit" ? (amountReceived === "" ? grandTotal : Number(amountReceived)) : 0),
@@ -4594,7 +4692,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         return;
       }
       if (paymentMode === "Split") {
-        const splitPaid = (Number(splitCash) || 0) + (Number(splitOnline) || 0);
+        const splitPaid = splitPayments.reduce((acc, row) => acc + (Number(row.amount) || 0), 0);
         if (splitPaid < grandTotal - 0.01) {
           toast.error("Walk-in customers require full payment. Split amounts must equal the bill total.");
           return;
@@ -4658,9 +4756,36 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const actualAmountPaid = isWalkIn ? grandTotal : (isCredit ? 0 : (numericAmountReceived > 0 ? numericAmountReceived : 0));
 
       const splitPaymentsPayload: Record<string, number> = {};
+      const splitDetailsList: { method: string; amount: number; reference?: string }[] = [];
       if (paymentMode === "Split") {
-        if (Number(splitCash) > 0) splitPaymentsPayload["cash"] = Number(splitCash);
-        if (Number(splitOnline) > 0) splitPaymentsPayload["upi"] = Number(splitOnline);
+        splitPayments.forEach((row) => {
+          const val = Number(row.amount) || 0;
+          if (val > 0) {
+            const key = row.method.toLowerCase();
+            splitPaymentsPayload[key] = (splitPaymentsPayload[key] || 0) + val;
+            splitDetailsList.push({
+              method: row.method,
+              amount: val,
+              reference: row.reference?.trim() || undefined,
+            });
+          }
+        });
+      }
+      const splitFinalDisplay = splitDetailsList.length > 0
+        ? `Split (${splitDetailsList.map((s) => `${s.method}: ₹${s.amount.toFixed(2)}${s.reference ? ` [${s.reference}]` : ''}`).join(', ')})`
+        : "Split";
+      const chequeFinalDisplay = chequeDetails.chequeNumber
+        ? `Cheque (#${chequeDetails.chequeNumber}${chequeDetails.bankName ? ` - ${chequeDetails.bankName}` : ''})`
+        : "Cheque";
+      const finalResolvedMethod = paymentMode === "Split"
+        ? splitFinalDisplay
+        : paymentMode === "Cheque"
+        ? chequeFinalDisplay
+        : paymentMode;
+      const totalSplitSum = splitDetailsList.reduce((acc, s) => acc + s.amount, 0);
+      if (paymentMode === "Split") {
+
+
       }
 
       let gatewayPaymentNote = "";
@@ -4747,9 +4872,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         due_date: dueDate,
         payment_terms: isWalkIn ? paymentMode : (isCredit ? "Credit / Due" : paymentMode),
         payment_status: (invoiceType === "PROFORMA" || (invoiceType as string) === "QUOTATION") ? "Pending" : calculatedPaymentStatus,
-        payment_method: isWalkIn ? (paymentMode === "Credit" ? "Cash" : paymentMode) : (isCredit ? "Credit" : (paymentMode === "Split" ? "split" : paymentMode)),
-        amount_paid: isWalkIn ? grandTotal : (paymentMode === "Split" ? (Number(splitCash) || 0) + (Number(splitOnline) || 0) : actualAmountPaid),
-        amount_received: isWalkIn ? grandTotal : (paymentMode === "Split" ? (Number(splitCash) || 0) + (Number(splitOnline) || 0) : actualAmountPaid),
+        payment_method: isWalkIn ? (paymentMode === "Credit" ? "Cash" : finalResolvedMethod) : (isCredit ? "Credit" : finalResolvedMethod),
+        amount_paid: isWalkIn ? grandTotal : (paymentMode === "Split" ? totalSplitSum : actualAmountPaid),
+        amount_received: isWalkIn ? grandTotal : (paymentMode === "Split" ? totalSplitSum : actualAmountPaid),
         split_payments: paymentMode === "Split" ? splitPaymentsPayload : null,
         notes: finalNotes || undefined,
         terms: termsAndConditions || undefined,
@@ -4953,7 +5078,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const cleaned = list.filter((r: any) => r.invoice_number !== invoiceNumber && r.invoice_number !== backendInvoiceNumber);
         list = [{ ...newInvoiceRecord, tenant_id: currentTenantId, company_id: currentCompanyId, workspace_id: currentCompanyId }, ...cleaned];
       }
-      localStorage.setItem(posStorageKey, JSON.stringify(list));
+      try {
+        const cappedList = Array.isArray(list) ? list.slice(0, 50) : list;
+        safeSetItem(posStorageKey, JSON.stringify(cappedList));
+      } catch (e) {
+        console.warn("Could not save to local storage cache:", e);
+      }
 
       // If settling an existing unpaid/partial invoice
       if (settlingInvoice) {
@@ -5365,7 +5495,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       } else {
         list.unshift({ ...newInvoiceRecord, tenant_id: currentTenantId });
       }
-      localStorage.setItem(posStorageKey, JSON.stringify(list));
+      try {
+        const cappedList = Array.isArray(list) ? list.slice(0, 50) : list;
+        safeSetItem(posStorageKey, JSON.stringify(cappedList));
+      } catch (e) {
+        console.warn("Could not save to local storage cache:", e);
+      }
       window.dispatchEvent(new Event("pos_invoices_updated"));
 
       if (status === "Converted") {
@@ -5902,7 +6037,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   /* Inline Walk-in Customer Field */
                   <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-3 space-y-2 transition-all">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+                      <div>
                         <div className="size-7 rounded-lg bg-amber-500 text-white font-black text-xs flex items-center justify-center shadow-2xs">
                           🚶
                         </div>
@@ -8383,6 +8518,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       setAmountReceived(grandTotal);
                     } else if (mode === "Razorpay") {
                       setIsRazorpayModalOpen(true);
+                    } else if (mode === "Split") {
+                      if (splitPayments.length < 2 || splitPayments.every((s) => !s.amount)) {
+                        const half = Number((grandTotal / 2).toFixed(2));
+                        setSplitPayments([
+                          { id: "split-1", method: "Cash", amount: half },
+                          { id: "split-2", method: "UPI", amount: Number((grandTotal - half).toFixed(2)) },
+                        ]);
+                      }
                     } else if (mode === "PineLabs") {
                       setIsPineLabsModalOpen(true);
                     }
@@ -8394,15 +8537,256 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   <option value="Razorpay">⚡ Razorpay (Dynamic QR / Checkout / SMS)</option>
                   <option value="PineLabs">💳 Pine Labs EDC (Handheld POS Terminal)</option>
                   <option value="Card">Credit/Debit Card</option>
+                  <option value="Cheque">Cheque / Demand Draft</option>
                   <option value="NetBanking">Net Banking</option>
                   {!isWalkInCustomer && <option value="Wallet">Wallet (B2B / Store Credit)</option>}
-                  <option value="Split">Split Bills (Cash + Online)</option>
+                  <option value="Split">Split Payment (Multi-Method Custom)</option>
                   {!isWalkInCustomer && <option value="Credit">Credit (Pay Later)</option>}
                 </select>
               </div>
 
+              {/* SPLIT & PAYMENT MODE HANDLERS */}
               {paymentMode === "Split" ? (
-                <div className="flex items-center gap-2">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-semibold text-slate-500 block">Split Total</label>
+                    {(() => {
+                      const allocated = splitPayments.reduce((acc, s) => acc + (Number(s.amount) || 0), 0);
+                      const diff = grandTotal - allocated;
+                      const isBalanced = Math.abs(diff) < 0.01;
+                      return (
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                            isBalanced
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : diff > 0
+                                ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                : "bg-red-50 text-red-700 border border-red-200"
+                          }`}
+                        >
+                          {isBalanced ? "✓ Balanced" : diff > 0 ? `₹${diff.toFixed(2)} Left` : `₹${Math.abs(diff).toFixed(2)} Excess`}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  <div className="h-9 bg-slate-50 border border-slate-200 rounded-xl px-2.5 flex items-center justify-between text-xs font-bold text-slate-800">
+                    <span>₹{splitPayments.reduce((acc, s) => acc + (Number(s.amount) || 0), 0).toFixed(2)}</span>
+                    <span className="text-[10px] text-slate-400 font-medium">of ₹{grandTotal.toFixed(2)}</span>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-semibold text-slate-500 block">Amount Received</label>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isWalkInCustomer || amountReceived === "" || Number(amountReceived) >= grandTotal
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : Number(amountReceived) > 0
+                          ? "bg-amber-50 text-amber-700 border border-amber-200"
+                          : "bg-purple-50 text-purple-700 border border-purple-200"
+                      }`}>
+                      {isWalkInCustomer || amountReceived === "" || Number(amountReceived) >= grandTotal ? "Full Paid" : Number(amountReceived) > 0 ? "Partial" : "Pay Later"}
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    placeholder="e.g. 1000"
+                    value={isWalkInCustomer ? grandTotal : amountReceived}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => {
+                      if (isWalkInCustomer) {
+                        setAmountReceived(grandTotal);
+                        return;
+                      }
+                      setAmountReceived(e.target.value ? Number(e.target.value) : "");
+                    }}
+                    className="w-full h-9 bg-slate-50 border border-slate-200 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Cheque Details Card */}
+            {paymentMode === "Cheque" && (
+              <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-2 shadow-xs">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-950">
+                  <span>📝</span>
+                  <span>Cheque / Demand Draft Details</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-500 block mb-0.5">Cheque / DD No. *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 004521"
+                      value={chequeDetails.chequeNumber}
+                      onChange={(e) => setChequeDetails((prev) => ({ ...prev, chequeNumber: e.target.value }))}
+                      className="w-full h-8 bg-white border border-amber-200 rounded-lg px-2 text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-500 block mb-0.5">Issuing Bank Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. HDFC Bank, SBI"
+                      value={chequeDetails.bankName}
+                      onChange={(e) => setChequeDetails((prev) => ({ ...prev, bankName: e.target.value }))}
+                      className="w-full h-8 bg-white border border-amber-200 rounded-lg px-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-500 block mb-0.5">Cheque Date</label>
+                    <input
+                      type="date"
+                      value={chequeDetails.chequeDate}
+                      onChange={(e) => setChequeDetails((prev) => ({ ...prev, chequeDate: e.target.value }))}
+                      className="w-full h-8 bg-white border border-amber-200 rounded-lg px-2 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Dynamic Custom Split Payment Builder */}
+            {paymentMode === "Split" && (
+              <div className="p-3 bg-slate-50/80 border border-indigo-200/90 rounded-2xl space-y-2.5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-indigo-950 flex items-center gap-1">
+                      <Layers className="size-3.5 text-indigo-600" />
+                      Dynamic Split Payment ({splitPayments.length} Methods)
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddSplitRow}
+                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-200 transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    + Add Payment Method
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {splitPayments.map((row, idx) => {
+                    const otherSum = splitPayments.reduce((acc, s) => (s.id === row.id ? acc : acc + (Number(s.amount) || 0)), 0);
+                    const diff = grandTotal - otherSum;
+                    return (
+                      <div key={row.id} className="bg-white border border-slate-200/90 rounded-xl p-2.5 space-y-2 shadow-xs">
+                        <div className="grid grid-cols-12 gap-2 items-center">
+                          {/* Method Dropdown */}
+                          <div className="col-span-4">
+                            <label className="text-[10px] font-semibold text-slate-400 block mb-0.5">Method {idx + 1}</label>
+                            <select
+                              value={row.method}
+                              onChange={(e) => handleUpdateSplitRow(row.id, "method", e.target.value)}
+                              className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2 text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                            >
+                              <option value="Cash">Cash</option>
+                              <option value="UPI">UPI / QR</option>
+                              <option value="Card">Card</option>
+                              <option value="Cheque">Cheque / Demand Draft</option>
+                              <option value="NetBanking">Net Banking</option>
+                              <option value="Razorpay">Razorpay</option>
+                              <option value="PineLabs">Pine Labs EDC</option>
+                              {!isWalkInCustomer && <option value="Wallet">Wallet</option>}
+                            </select>
+                          </div>
+
+                          {/* Amount */}
+                          <div className="col-span-4">
+                            <div className="flex items-center justify-between mb-0.5">
+                              <label className="text-[10px] font-semibold text-slate-400 block">Amount (₹)</label>
+                              {diff > 0 && Number(row.amount) !== diff && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAutoFillRemaining(row.id)}
+                                  className="text-[9px] font-bold text-indigo-600 hover:underline cursor-pointer"
+                                  title="Auto-fill remaining balance"
+                                >
+                                  Fill Remainder
+                                </button>
+                              )}
+                            </div>
+                            <input
+                              type="number"
+                              placeholder="0.00"
+                              value={row.amount}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => handleUpdateSplitRow(row.id, "amount", e.target.value === "" ? "" : Number(e.target.value))}
+                              className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2 text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                          </div>
+
+                          {/* Reference / Note */}
+                          <div className={splitPayments.length > 2 ? "col-span-3" : "col-span-4"}>
+                            <label className="text-[10px] font-semibold text-slate-400 block mb-0.5">
+                              {row.method === "Cheque" ? "Cheque No / Bank" : row.method === "UPI" || row.method === "Card" ? "Txn ID / Auth" : "Ref / Notes"}
+                            </label>
+                            <input
+                              type="text"
+                              placeholder={row.method === "Cheque" ? "e.g. 004123 - HDFC" : "Optional reference"}
+                              value={row.reference || ""}
+                              onChange={(e) => handleUpdateSplitRow(row.id, "reference", e.target.value)}
+                              className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2 text-xs text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                          </div>
+
+                          {/* Remove button if > 2 */}
+                          {splitPayments.length > 2 && (
+                            <div className="col-span-1 flex items-end justify-center pt-3">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveSplitRow(row.id)}
+                                className="size-7 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition-colors cursor-pointer"
+                                title="Remove method"
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Quick Split Distribution Bar */}
+                <div className="flex items-center justify-between pt-1 border-t border-slate-200/80 text-[11px]">
+                  <div className="flex items-center gap-1.5 font-semibold text-slate-600">
+                    <span>Total Allocated:</span>
+                    <span className="font-bold text-slate-900">
+                      ₹{splitPayments.reduce((acc, s) => acc + (Number(s.amount) || 0), 0).toFixed(2)}
+                    </span>
+                    <span className="text-slate-400">/</span>
+                    <span className="font-bold text-slate-700">₹{grandTotal.toFixed(2)}</span>
+                  </div>
+
+                  {Math.abs(splitPayments.reduce((acc, s) => acc + (Number(s.amount) || 0), 0) - grandTotal) > 0.01 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const count = splitPayments.length;
+                        if (count > 0) {
+                          const base = Number((grandTotal / count).toFixed(2));
+                          const remainder = Number((grandTotal - base * (count - 1)).toFixed(2));
+                          setSplitPayments((prev) =>
+                            prev.map((s, idx) => ({
+                              ...s,
+                              amount: idx === count - 1 ? remainder : base,
+                            }))
+                          );
+                        }
+                      }}
+                      className="text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
+                    >
+                      Distribute Evenly
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {false && ( <div className="hidden">
+              {paymentMode === "Split" ? (
+                <div>
                   <div className="flex-1">
                     <label className="text-[11px] font-semibold text-slate-500 block mb-1">Cash</label>
                     <input
@@ -8470,6 +8854,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 </div>
               )}
             </div>
+
+            )}
 
             {/* Instant Live Payment Gateways Action Bar */}
             <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-2.5 space-y-2">
@@ -8655,7 +9041,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div>
                     <label className="cursor-pointer text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-lg inline-flex items-center gap-1">
                       <Upload className="size-3" /> Upload Photo
                       <input
@@ -9032,7 +9418,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                     {newPartyAddresses[activeAddrIndex] && (
                       <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2.5">
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
+                          <div>
                             <span className="text-xs font-bold text-slate-700">Location Tag:</span>
                             <div className="flex gap-1">
                               {(["Home", "Office", "Warehouse", "Branch", "Other"] as const).map((t) => (
@@ -9161,7 +9547,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 <div className="text-xs text-slate-400">
                   Total {newPartyAddresses.length} address location(s) configured.
                 </div>
-                <div className="flex items-center gap-2">
+                <div>
                   <button
                     type="button"
                     onClick={() => setIsAddPartyOpen(false)}
@@ -9274,7 +9660,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                     {(customerSummary?.unpaid_invoices || []).length} pending unpaid bill(s)
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div>
                   {activeCustomerObj && activeCustomerObj.id !== "walk-in" && (
                     <button
                       type="button"
@@ -10159,7 +10545,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                       className="pt-2.5 first:pt-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl hover:bg-amber-50/50 border border-transparent hover:border-amber-200 transition-all"
                     >
                       <div className="space-y-1">
-                        <div className="flex items-center gap-2">
+                        <div>
                           <span className="font-black text-slate-900 text-sm">{u.invoice_number}</span>
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-200">
                             Unpaid

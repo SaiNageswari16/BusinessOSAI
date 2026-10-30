@@ -62,6 +62,7 @@ import { ThermalReceiptPreviewModal } from "./ThermalReceiptPreviewModal";
 import { useWhatsAppStatus } from "@/hooks/use-whatsapp-status";
 import { EWayBillModal } from "./EWayBillModal";
 import { StandardVoucherModal, StandardVoucherData } from "./StandardVoucherModal";
+import { safeSetItem } from "@/lib/safe-storage";
 import { PaginationControl } from "@/components/ui/PaginationControl";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
@@ -235,7 +236,7 @@ export function PosInvoicesHistory() {
           if (!raw) return;
           const list = JSON.parse(raw);
           const filtered = list.filter((r: any) => !(r.id === deleteTarget.id || r.invoice_number === deleteTarget.invoice_number));
-          localStorage.setItem(k, JSON.stringify(filtered));
+          safeSetItem(k, JSON.stringify(filtered));
         });
       } catch {}
       toast.success(`Invoice ${deleteTarget.invoice_number} deleted permanently.`);
@@ -563,7 +564,7 @@ export function PosInvoicesHistory() {
 
       setInvoices(updatedInvoices);
       try {
-        localStorage.setItem(storageKey, JSON.stringify(updatedInvoices));
+        safeSetItem(storageKey, JSON.stringify(updatedInvoices));
         window.dispatchEvent(new Event("pos_invoices_updated"));
       } catch (e) {}
 
@@ -1345,7 +1346,7 @@ export function PosInvoicesHistory() {
             }
           : inv
       );
-      localStorage.setItem(storageKey, JSON.stringify(updated));
+      safeSetItem(storageKey, JSON.stringify(updated));
       return updated;
     });
   };

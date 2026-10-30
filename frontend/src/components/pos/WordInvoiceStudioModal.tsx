@@ -747,6 +747,25 @@ export function WordInvoiceStudioModal({
           showDueDate: true,
           showTime: true,
         },
+        fields: {
+          ...((initialTemplate as any)?.fields || {}),
+          showItemIndex: config.columns?.find((c) => c.fieldKey === "sno")?.enabled ?? true,
+          showHSN: config.columns?.find((c) => c.fieldKey === "hsn")?.enabled ?? true,
+          showBatchNumber: config.columns?.find((c) => c.fieldKey === "batch")?.enabled ?? true,
+          showExpMfgDates: config.columns?.find((c) => c.fieldKey === "expiry_date" || c.fieldKey === "exp")?.enabled ?? true,
+          showItemDescription: config.columns?.find((c) => c.fieldKey === "description")?.enabled ?? true,
+          showMRP: config.columns?.find((c) => c.fieldKey === "mrp")?.enabled ?? true,
+          showSecondaryUnit: config.columns?.find((c) => c.fieldKey === "uom")?.enabled ?? true,
+          showItemRate: config.columns?.find((c) => c.fieldKey === "unit_price" || c.fieldKey === "selling_price")?.enabled ?? true,
+          showDiscountCol: config.columns?.find((c) => c.fieldKey === "discount")?.enabled ?? true,
+          showGstRateCol: config.columns?.find((c) => c.fieldKey === "tax_rate")?.enabled ?? true,
+          showItemQty: config.columns?.find((c) => c.fieldKey === "quantity")?.enabled ?? true,
+          showItemAmount: config.columns?.find((c) => c.fieldKey === "total_amount")?.enabled ?? true,
+          showBankDetails: config.showBankDetails,
+          showQR: config.showPaymentQr,
+          showTerms: Boolean(config.termsText),
+          showSignature: config.signatureConfig.showSignature,
+        },
       };
 
       const updatedList = existingList.some((t: any) => t.id === transformedTemplate.id)
