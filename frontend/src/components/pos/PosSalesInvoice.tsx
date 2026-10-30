@@ -8395,6 +8395,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                   <option value="PineLabs">💳 Pine Labs EDC (Handheld POS Terminal)</option>
                   <option value="Card">Credit/Debit Card</option>
                   <option value="NetBanking">Net Banking</option>
+                  <option value="Cheque">Cheque</option>
                   {!isWalkInCustomer && <option value="Wallet">Wallet (B2B / Store Credit)</option>}
                   <option value="Split">Split Bills (Cash + Online)</option>
                   {!isWalkInCustomer && <option value="Credit">Credit (Pay Later)</option>}

@@ -63,6 +63,8 @@ export function PosPaymentIn() {
   const [paymentAmount, setPaymentAmount] = useState<number | "">("");
   const [paymentDate, setPaymentDate] = useState(getTodayDateString());
   const [paymentMode, setPaymentMode] = useState("Cash");
+  const [chequeNumber, setChequeNumber] = useState("");
+  const [chequeBank, setChequeBank] = useState("");
   const [paymentNumber, setPaymentNumber] = useState(`PAY-${Math.floor(1000 + Math.random() * 9000)}`);
   const [paymentDiscount, setPaymentDiscount] = useState<number | "">("");
   const [paymentNotes, setPaymentNotes] = useState("");
@@ -726,6 +728,14 @@ export function PosPaymentIn() {
     try {
       const numAmount = Number(paymentAmount);
       
+      const chequeDetails = paymentMode === "Cheque" && (chequeNumber.trim() || chequeBank.trim())
+        ? [chequeNumber.trim() ? `Cheque #${chequeNumber.trim()}` : null, chequeBank.trim() ? `Bank: ${chequeBank.trim()}` : null].filter(Boolean).join(", ")
+        : "";
+      const combinedNotes = [paymentNotes?.trim(), chequeDetails].filter(Boolean).join(" | ");
+      const effectiveRef = paymentMode === "Cheque" && chequeNumber.trim()
+        ? `${paymentNumber} [${chequeNumber.trim()}]`
+        : paymentNumber;
+
       // Case 1: Wallet Debit / Cash Payout
       if (paymentPurpose === 'wallet_debit' && selectedParty.type === 'customer') {
         if (numAmount > walletBalance) {
@@ -736,7 +746,7 @@ export function PosPaymentIn() {
         await crmWalletApi.debit(
           selectedParty.id,
           numAmount,
-          paymentNotes || `Customer Wallet Debit / Withdrawal (${paymentMode})`,
+          combinedNotes || paymentNotes || `Customer Wallet Debit / Withdrawal (${paymentMode})`,
           paymentNumber
         );
         toast.success(`Successfully debited ${formatCurrency(numAmount)} from ${selectedParty.name}'s wallet!`);
@@ -745,7 +755,7 @@ export function PosPaymentIn() {
         await crmWalletApi.credit(
           selectedParty.id,
           numAmount,
-          paymentNotes || `POS Advance Wallet Deposit (${paymentMode})`,
+          combinedNotes || paymentNotes || `POS Advance Wallet Deposit (${paymentMode})`,
           paymentNumber
         );
         toast.success(`Successfully added ${formatCurrency(numAmount)} to ${selectedParty.name}'s wallet!`);
@@ -761,8 +771,8 @@ export function PosPaymentIn() {
               payment_amount: numAmount,
               payment_date: paymentDate,
               payment_method: paymentMode,
-              reference_number: paymentNumber,
-              notes: paymentNotes || `Voucher #${paymentNumber} settlement`,
+              reference_number: effectiveRef,
+              notes: combinedNotes || paymentNotes || `Voucher #${paymentNumber} settlement`,
               allocations: allocations
                 .filter(inv => inv.allocated > 0)
                 .map(inv => ({
@@ -780,8 +790,8 @@ export function PosPaymentIn() {
                   amount: inv.allocated,
                   payment_date: paymentDate,
                   payment_method: paymentMode.toLowerCase(),
-                  reference_number: paymentNumber,
-                  notes: `Voucher #${paymentNumber} settlement (${inv.allocated >= inv.pending ? 'Full' : 'Partial'} payment)`,
+                  reference_number: effectiveRef,
+                  notes: combinedNotes ? `${combinedNotes} (${inv.allocated >= inv.pending ? 'Full' : 'Partial'} payment)` : `Voucher #${paymentNumber} settlement (${inv.allocated >= inv.pending ? 'Full' : 'Partial'} payment)`,
                 });
                 totalApplied += inv.allocated;
               }
@@ -803,7 +813,7 @@ export function PosPaymentIn() {
                 vendor_bill_id: inv.realId,
                 amount_paid: inv.allocated,
                 payment_method: paymentMode,
-                reference_number: paymentNumber
+                reference_number: effectiveRef
               });
               totalApplied += inv.allocated;
             }
@@ -877,7 +887,7 @@ export function PosPaymentIn() {
         payment_amount: numAmount,
         payment_mode: paymentMode,
         payment_purpose: paymentPurpose,
-        notes: paymentNotes,
+        notes: combinedNotes || paymentNotes,
         previous_total_dues: prevTotalDues,
         total_allocated: totalAllocated,
         remaining_advance: remainingAdvance,
@@ -913,6 +923,9 @@ export function PosPaymentIn() {
       setPendingInvoices([]);
       setPaymentAmount("");
       setPaymentNotes("");
+      setPaymentMode("Cash");
+      setChequeNumber("");
+      setChequeBank("");
       setSearchQuery("");
       setPaymentNumber(`PAY-${Math.floor(1000 + Math.random() * 9000)}`);
       setIsRecordingPayment(false);
@@ -960,7 +973,17 @@ export function PosPaymentIn() {
       );
     }
     if (modeFilter !== "All") {
-      filtered = filtered.filter(p => p.payment_method?.toLowerCase() === modeFilter.toLowerCase());
+      filtered = filtered.filter(p => {
+        const pMode = (p.payment_method || "").toLowerCase();
+        const fMode = modeFilter.toLowerCase();
+        if (fMode === "cheque") return pMode.includes("cheque") || pMode.includes("chq");
+        if (fMode === "bank transfer") return pMode.includes("bank") || pMode.includes("transfer") || pMode.includes("neft") || pMode.includes("rtgs");
+        if (fMode === "card") return pMode.includes("card");
+        if (fMode === "upi") return pMode.includes("upi");
+        if (fMode === "wallet") return pMode.includes("wallet");
+        if (fMode === "cash") return pMode.includes("cash");
+        return pMode === fMode;
+      });
     }
     const now = new Date();
     filtered = filtered.filter(p => {
@@ -1260,7 +1283,7 @@ export function PosPaymentIn() {
               </button>
               {isModeDropdownOpen && (
                 <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-10 py-1">
-                  {["All", "Cash", "UPI", "Card", "Wallet", "Bank Transfer"].map(opt => (
+                  {["All", "Cash", "UPI", "Card", "Cheque", "Wallet", "Bank Transfer"].map(opt => (
                     <button 
                       key={opt}
                       onClick={() => { setModeFilter(opt); setIsModeDropdownOpen(false); }}
@@ -1378,7 +1401,17 @@ export function PosPaymentIn() {
                           )}
                         </td>
                         <td className="py-3.5 px-4 text-center">
-                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                            (p.payment_method || "").toLowerCase().includes("cheque")
+                              ? "bg-amber-100 text-amber-800 border border-amber-200"
+                              : (p.payment_method || "").toLowerCase().includes("upi")
+                              ? "bg-blue-100 text-blue-800"
+                              : (p.payment_method || "").toLowerCase().includes("bank")
+                              ? "bg-purple-100 text-purple-800"
+                              : (p.payment_method || "").toLowerCase().includes("card")
+                              ? "bg-sky-100 text-sky-800"
+                              : "bg-slate-100 text-slate-700"
+                          }`}>
                             {p.payment_method || "Cash"}
                           </span>
                         </td>
@@ -1603,6 +1636,7 @@ export function PosPaymentIn() {
                 <option value="UPI">UPI / QR</option>
                 <option value="Card">Debit / Credit Card</option>
                 <option value="Bank">Bank Transfer</option>
+                <option value="Cheque">Cheque</option>
               </select>
             </div>
 
@@ -1615,6 +1649,37 @@ export function PosPaymentIn() {
                 className="w-full"
               />
             </div>
+
+            {/* Cheque Specific Details */}
+            {paymentMode === "Cheque" && (
+              <div className="col-span-2 bg-amber-50/70 border border-amber-200 rounded-xl p-3 space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
+                  <span>📄 Cheque Details (Optional)</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">Cheque Number / Ref</label>
+                    <input
+                      type="text"
+                      value={chequeNumber}
+                      onChange={(e) => setChequeNumber(e.target.value)}
+                      placeholder="e.g. CHQ-004521"
+                      className="w-full border border-slate-300 bg-white rounded-lg h-9 px-2.5 text-xs font-bold text-slate-900 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">Bank Name / Branch</label>
+                    <input
+                      type="text"
+                      value={chequeBank}
+                      onChange={(e) => setChequeBank(e.target.value)}
+                      placeholder="e.g. HDFC Bank, SBI"
+                      className="w-full border border-slate-300 bg-white rounded-lg h-9 px-2.5 text-xs font-bold text-slate-900 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Unpaid Invoices & Allocation Table */}
