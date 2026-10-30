@@ -372,7 +372,7 @@ export function buildGstr1Sections(invoices: any[] = []) {
 
   // 4. Table 7: B2C Small (Unregistered, Intra-State or Interstate <= 2.5 Lakhs)
   const b2csRaw = salesInvoices.filter(
-    (inv) => !b2bInvNoSet.has(String(inv.invNo || "").toLowerCase()) && (!inv.isInterstate || inv.total <= 250000)
+      (inv) => !isB2BRecord(inv) && !b2bInvNoSet.has(String(inv.invNo || "").toLowerCase()) && !inv.partyGstin && (!inv.isInterstate || inv.total <= 250000)
   );
 
   // Group B2CS by POS & Tax Rate
