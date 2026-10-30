@@ -368,18 +368,21 @@ export function LowStockAlerts() {
 
   return (
     <div className={cn("space-y-5 w-full pb-12 px-1 sm:px-2 transition-all", isFullscreen && "p-4 sm:p-6 bg-background min-h-screen overflow-y-auto")}>
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 p-6 rounded-2xl text-white shadow-xl">
+      {/* Header (clean, standard design matching application pages) */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-1">
         <div>
-          <div className="flex items-center gap-3 mb-1">
-            <div className="p-2 bg-rose-500/20 rounded-xl border border-rose-500/40 text-rose-400">
-              <AlertTriangle className="size-6 animate-pulse" />
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 bg-rose-500/10 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-900/40 text-rose-600 dark:text-rose-400">
+              <AlertTriangle className="size-5 animate-pulse" />
             </div>
-            <h2 className="text-2xl font-bold tracking-tight">
+            <h2 className="text-xl font-bold tracking-tight text-foreground">
               {t("Low Stock & Reorder Alert Center", "Low Stock & Reorder Alert Center")}
             </h2>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/50 dark:text-rose-400 border border-rose-200 dark:border-rose-900/50">
+              Live Monitoring
+            </span>
           </div>
-          <p className="text-slate-300 text-sm">
+          <p className="text-xs text-muted-foreground mt-0.5">
             {t(
               "Real-time replenishment monitoring with automated In-App Push and WhatsApp alerts to store managers.",
               "Real-time replenishment monitoring with automated In-App Push and WhatsApp alerts to store managers."
@@ -387,16 +390,16 @@ export function LowStockAlerts() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             size="sm"
             onClick={toggleFullscreen}
-            className="bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs font-semibold cursor-pointer"
+            className="h-8 text-xs font-semibold border-border hover:bg-muted text-foreground cursor-pointer flex items-center gap-1.5"
             title={isFullscreen ? "Exit Full Screen" : "Full Screen View"}
           >
-            {isFullscreen ? <Minimize2 className="size-3.5 mr-1.5" /> : <Maximize2 className="size-3.5 mr-1.5" />}
-            {isFullscreen ? t("Exit Full Screen", "Exit Full Screen") : t("Full Screen", "Full Screen")}
+            {isFullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+            <span>{isFullscreen ? t("Exit Full Screen", "Exit Full Screen") : t("Full Screen", "Full Screen")}</span>
           </Button>
 
           <Button
@@ -404,188 +407,173 @@ export function LowStockAlerts() {
             size="sm"
             onClick={loadAlertData}
             disabled={loading}
-            className="bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs font-semibold cursor-pointer"
+            className="h-8 text-xs font-semibold border-border hover:bg-muted text-foreground cursor-pointer flex items-center gap-1.5"
           >
-            <RefreshCw className={`size-3.5 mr-1.5 ${loading ? "animate-spin" : ""}`} />
-            {t("Refresh", "Refresh")}
+            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+            <span>{t("Refresh", "Refresh")}</span>
           </Button>
 
           <Button
             variant="outline"
             size="sm"
             onClick={() => setShowConfigModal(true)}
-            className="bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border-indigo-500/40 text-xs font-semibold cursor-pointer"
+            className="h-8 text-xs font-semibold border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100/70 cursor-pointer flex items-center gap-1.5"
           >
-            <Sliders className="size-3.5 mr-1.5" />
-            {t("Alert Settings & WhatsApp", "Alert Settings & WhatsApp")}
+            <Sliders className="size-3.5" />
+            <span>{t("Alert Settings & WhatsApp", "Alert Settings & WhatsApp")}</span>
           </Button>
 
           <Button
             size="sm"
             onClick={handleSendDigestNow}
             disabled={sendingDigest}
-            className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg text-xs font-semibold cursor-pointer"
+            className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs cursor-pointer flex items-center gap-1.5"
           >
-            <Send className={`size-3.5 mr-1.5 ${sendingDigest ? "animate-spin" : ""}`} />
-            {t("Broadcast WhatsApp Digest", "Broadcast WhatsApp Digest")}
+            <Send className={`size-3.5 ${sendingDigest ? "animate-spin" : ""}`} />
+            <span>{t("Broadcast WhatsApp Digest", "Broadcast WhatsApp Digest")}</span>
           </Button>
         </div>
       </div>
 
-      {/* KPI Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-        <Card className="p-4 bg-gradient-to-br from-rose-500/10 via-rose-500/5 to-transparent border-rose-200 dark:border-rose-900/40">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-semibold text-rose-600 dark:text-rose-400 uppercase tracking-wider">
-                {t("Critical Stockouts", "Critical Stockouts")}
-              </p>
-              <h3 className="text-3xl font-black text-rose-700 dark:text-rose-300 mt-1">
-                {data?.summary?.stockout_count ?? 0}
-              </h3>
-            </div>
-            <div className="p-2.5 bg-rose-500/20 text-rose-600 rounded-xl">
-              <PackageX className="size-5" />
+      {/* Compact KPI Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3">
+        {/* Critical Stockouts */}
+        <div className="p-3 bg-card border border-rose-200/80 dark:border-rose-900/40 rounded-xl shadow-2xs hover:shadow-xs transition-shadow">
+          <div className="flex items-center justify-between gap-1.5">
+            <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider truncate">
+              {t("Critical Stockouts", "Critical Stockouts")}
+            </span>
+            <div className="size-6 rounded-lg bg-rose-500/15 text-rose-600 flex items-center justify-center shrink-0">
+              <PackageX className="size-3.5" />
             </div>
           </div>
-          <p className="text-xs text-rose-600/80 mt-2 flex items-center gap-1">
-            <span className="font-bold">0 units remaining</span> — requires instant supplier PO
-          </p>
-        </Card>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-xl font-black text-rose-700 dark:text-rose-400 font-mono">
+              {data?.summary?.stockout_count ?? 0}
+            </span>
+            <span className="text-[10px] font-semibold text-rose-600/80 truncate">
+              0 units remaining
+            </span>
+          </div>
+        </div>
 
-        <Card className="p-4 bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border-amber-200 dark:border-amber-900/40">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-                {t("Low Stock (Below Reorder)", "Low Stock (Below Reorder)")}
-              </p>
-              <h3 className="text-3xl font-black text-amber-700 dark:text-amber-300 mt-1">
-                {data?.summary?.low_stock_count ?? 0}
-              </h3>
-            </div>
-            <div className="p-2.5 bg-amber-500/20 text-amber-600 rounded-xl">
-              <PackageOpen className="size-5" />
+        {/* Low Stock (Below Reorder) */}
+        <div className="p-3 bg-card border border-amber-200/80 dark:border-amber-900/40 rounded-xl shadow-2xs hover:shadow-xs transition-shadow">
+          <div className="flex items-center justify-between gap-1.5">
+            <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider truncate">
+              {t("Low Stock (Reorder)", "Low Stock (Reorder)")}
+            </span>
+            <div className="size-6 rounded-lg bg-amber-500/15 text-amber-600 flex items-center justify-center shrink-0">
+              <PackageOpen className="size-3.5" />
             </div>
           </div>
-          <p className="text-xs text-amber-600/80 mt-2">
-            Items near minimum safe threshold
-          </p>
-        </Card>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-xl font-black text-amber-700 dark:text-amber-400 font-mono">
+              {data?.summary?.low_stock_count ?? 0}
+            </span>
+            <span className="text-[10px] font-semibold text-amber-600/80 truncate">
+              Near threshold
+            </span>
+          </div>
+        </div>
 
-        <Card className="p-4 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent border-emerald-200 dark:border-emerald-900/40">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
-                {t("WhatsApp Alert Dispatch", "WhatsApp Alert Dispatch")}
-              </p>
-              <div className="flex items-center gap-2 mt-1">
-                <span className={`inline-block size-2.5 rounded-full ${config.low_stock_whatsapp && config.manager_whatsapp ? "bg-emerald-500 animate-ping" : "bg-slate-400"}`} />
-                <h3 className="text-xl font-bold text-emerald-800 dark:text-emerald-200">
-                  {config.low_stock_whatsapp && config.manager_whatsapp ? "Active" : "Unconfigured"}
-                </h3>
-              </div>
-            </div>
-            <div className="p-2.5 bg-emerald-500/20 text-emerald-600 rounded-xl">
-              <MessageSquare className="size-5" />
+        {/* WhatsApp Dispatch */}
+        <div className="p-3 bg-card border border-emerald-200/80 dark:border-emerald-900/40 rounded-xl shadow-2xs hover:shadow-xs transition-shadow">
+          <div className="flex items-center justify-between gap-1.5">
+            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider truncate">
+              {t("WhatsApp Alert Dispatch", "WhatsApp Alert Dispatch")}
+            </span>
+            <div className="size-6 rounded-lg bg-emerald-500/15 text-emerald-600 flex items-center justify-center shrink-0">
+              <MessageSquare className="size-3.5" />
             </div>
           </div>
-          <p className="text-xs text-emerald-600/80 mt-2 truncate">
-            {config.manager_whatsapp ? `Target: ${config.manager_whatsapp}` : "Set number in settings"}
-          </p>
-        </Card>
+          <div className="mt-1 flex items-center gap-1.5">
+            <span className={`size-2 rounded-full shrink-0 ${config.low_stock_whatsapp && config.manager_whatsapp ? "bg-emerald-500 animate-ping" : "bg-slate-400"}`} />
+            <span className="text-sm font-bold text-emerald-800 dark:text-emerald-200">
+              {config.low_stock_whatsapp && config.manager_whatsapp ? "Active" : "Unconfigured"}
+            </span>
+          </div>
+        </div>
 
-        <Card className="p-4 bg-gradient-to-br from-indigo-500/10 via-indigo-500/5 to-transparent border-indigo-200 dark:border-indigo-900/40">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                {t("Total Monitored SKUs", "Total Monitored SKUs")}
-              </p>
-              <h3 className="text-3xl font-black text-indigo-700 dark:text-indigo-300 mt-1">
-                {data?.summary?.total_products ?? 0}
-              </h3>
-            </div>
-            <div className="p-2.5 bg-indigo-500/20 text-indigo-600 rounded-xl">
-              <ShieldCheck className="size-5" />
+        {/* Total Monitored SKUs */}
+        <div className="p-3 bg-card border border-indigo-200/80 dark:border-indigo-900/40 rounded-xl shadow-2xs hover:shadow-xs transition-shadow">
+          <div className="flex items-center justify-between gap-1.5">
+            <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider truncate">
+              {t("Total Monitored SKUs", "Total Monitored SKUs")}
+            </span>
+            <div className="size-6 rounded-lg bg-indigo-500/15 text-indigo-600 flex items-center justify-center shrink-0">
+              <ShieldCheck className="size-3.5" />
             </div>
           </div>
-          <p className="text-xs text-indigo-600/80 mt-2">
-            Auto-checked on every POS sale & transfer
-          </p>
-        </Card>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-xl font-black text-indigo-700 dark:text-indigo-400 font-mono">
+              {data?.summary?.total_products ?? 0}
+            </span>
+            <span className="text-[10px] font-semibold text-indigo-600/80 truncate">
+              Real-time audit
+            </span>
+          </div>
+        </div>
 
         {/* Total Alerts Dispatched Card */}
-        <Card className="p-4 bg-gradient-to-br from-violet-500/10 via-purple-500/5 to-transparent border-violet-200 dark:border-violet-900/40 flex flex-col justify-between">
-          <div>
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-xs font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-wider">
-                  {t("Alerts Dispatched", "Alerts Dispatched")}
-                </p>
-                <div className="flex items-baseline gap-2 mt-1">
-                  <h3 className="text-3xl font-black text-violet-700 dark:text-violet-300">
-                    {historyLoading ? "..." : (historyData?.summary?.total ?? 0)}
-                  </h3>
-                  <span className="text-[11px] font-semibold text-violet-600/80">
-                    {historyPeriod === "today" ? "today" : historyPeriod === "7d" ? "7d" : historyPeriod === "30d" ? "30d" : "all"}
-                  </span>
-                </div>
-              </div>
-              <div className="p-2.5 bg-violet-500/20 text-violet-600 rounded-xl">
-                <Radio className="size-5" />
-              </div>
+        <div className="p-3 bg-card border border-violet-200/80 dark:border-violet-900/40 rounded-xl shadow-2xs hover:shadow-xs transition-shadow col-span-2 sm:col-span-1 flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-1.5">
+            <span className="text-[11px] font-bold text-violet-600 dark:text-violet-400 uppercase tracking-wider truncate">
+              {t("Alerts Dispatched", "Alerts Dispatched")}
+            </span>
+            <div className="size-6 rounded-lg bg-violet-500/15 text-violet-600 flex items-center justify-center shrink-0">
+              <Radio className="size-3.5" />
             </div>
-
-            {/* Micro Filter segmented pills */}
-            <div className="flex items-center gap-1 mt-2.5 pt-2 border-t border-violet-100 dark:border-violet-900/30">
+          </div>
+          <div className="mt-1 flex items-center justify-between gap-1">
+            <div className="flex items-baseline gap-1">
+              <span className="text-xl font-black text-violet-700 dark:text-violet-400 font-mono">
+                {historyLoading ? "..." : (historyData?.summary?.total ?? 0)}
+              </span>
+              <span className="text-[10px] text-violet-600/80">({historyPeriod})</span>
+            </div>
+            <div className="flex items-center gap-0.5">
               {(["today", "7d", "30d", "all"] as const).map((p) => (
                 <button
                   key={p}
                   onClick={() => setHistoryPeriod(p)}
-                  className={`text-[10px] px-1.5 py-0.5 rounded font-bold transition-all cursor-pointer ${
+                  className={`text-[9px] px-1 py-0.5 rounded font-bold transition-all cursor-pointer ${
                     historyPeriod === p
-                      ? "bg-violet-600 text-white shadow-xs"
+                      ? "bg-violet-600 text-white shadow-2xs"
                       : "bg-violet-500/10 text-violet-700 dark:text-violet-300 hover:bg-violet-500/20"
                   }`}
                 >
-                  {p === "today" ? "Today" : p === "7d" ? "7D" : p === "30d" ? "30D" : "All"}
+                  {p === "today" ? "1D" : p === "7d" ? "7D" : p === "30d" ? "30D" : "All"}
                 </button>
               ))}
             </div>
           </div>
-
-          {/* Breakdown & View Log Link */}
-          <div className="flex items-center justify-between text-xs mt-2 pt-1 border-t border-violet-100 dark:border-violet-900/20">
-            <span className="flex items-center gap-1.5 text-[11px]">
-              <span className="text-emerald-600 dark:text-emerald-400 font-bold">
-                📱 {historyData?.summary?.whatsapp ?? 0}
-              </span>
-              <span>•</span>
-              <span className="text-blue-600 dark:text-blue-400 font-bold">
-                🔔 {historyData?.summary?.in_app ?? 0}
-              </span>
+          <div className="flex items-center justify-between text-[10px] mt-1 pt-1 border-t border-violet-100 dark:border-violet-900/20">
+            <span className="text-muted-foreground truncate">
+              📱 {historyData?.summary?.whatsapp ?? 0} • 🔔 {historyData?.summary?.in_app ?? 0}
             </span>
             <button
               onClick={() => setShowHistoryModal(true)}
-              className="text-[11px] font-bold text-violet-600 hover:text-violet-700 dark:text-violet-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+              className="text-[10px] font-bold text-violet-600 hover:underline shrink-0 cursor-pointer"
             >
-              {t("Log", "Log")} →
+              Log →
             </button>
           </div>
-        </Card>
+        </div>
       </div>
 
-      {/* AI Recommendation Banner */}
-      <div className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950/40 dark:to-slate-900 border border-indigo-100 dark:border-indigo-800/40 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs">
-        <div className="flex items-start gap-3.5">
-          <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-md">
-            <Sparkles className="size-5" />
+      {/* AI Replenishment Banner (clean & proportional) */}
+      <div className="bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-800/40 rounded-xl p-3 sm:p-3.5 flex items-center justify-between gap-3 shadow-2xs">
+        <div className="flex items-center gap-3">
+          <div className="size-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+            <Sparkles className="size-4" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-indigo-950 dark:text-indigo-200">
+            <h3 className="text-xs font-bold text-indigo-950 dark:text-indigo-200">
               {t("Automated Low-Stock Replenishment Engine", "Automated Low-Stock Replenishment Engine")}
             </h3>
-            <p className="text-sm text-indigo-800/80 dark:text-indigo-300/80 mt-1">
-              Whenever cashiers ring up sales or inventory items transfer between warehouses, our real-time trigger analyzes stock balances against each item's reorder point. If breached, instant In-App system notifications and WhatsApp alerts are dispatched to your procurement manager.
+            <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1 sm:line-clamp-none">
+              Whenever cashiers ring up sales or inventory items transfer, stock balances are audited against reorder thresholds to dispatch In-App & WhatsApp alerts.
             </p>
           </div>
         </div>
@@ -930,7 +918,7 @@ export function LowStockAlerts() {
                             {isStockout ? <PackageX className="size-4" /> : <PackageOpen className="size-4" />}
                           </div>
                           <div className="min-w-0">
-                            <span className="font-bold text-sm text-foreground block truncate max-w-[360px] lg:max-w-[550px] xl:max-w-[700px]">
+                            <span className="font-bold text-xs text-foreground block truncate max-w-[360px] lg:max-w-[550px] xl:max-w-[700px]">
                               {item.name}
                             </span>
                             <div className="flex items-center gap-1.5 mt-0.5">
@@ -1125,7 +1113,7 @@ export function LowStockAlerts() {
                   </span>
                 </div>
 
-                <h3 className="font-bold text-lg text-foreground leading-snug line-clamp-1 mb-0.5">
+                <h3 className="font-bold text-sm text-foreground leading-snug line-clamp-1 mb-0.5">
                   {item.name}
                 </h3>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono mb-4">
