@@ -114,7 +114,8 @@ export function normalizeGstInvoice(inv: any) {
   const rawDate = inv.invoice_date || inv.date || inv.created_at || new Date().toISOString().slice(0, 10);
   const invDate = formatDate(rawDate);
   const partyName = inv.customer_name || inv.party_name || inv.customer?.name || (inv.is_pos || String(invNo).startsWith("REC") ? "Walk-in Guest" : "Walk-in Guest");
-  const partyGstin = (inv.customer_gstin || inv.party_gstin || inv.gstin || "").toUpperCase().trim();
+  const rawPartyGst = String(inv.customer_gstin || inv.party_gstin || inv.gstin || inv.customer?.gst_number || inv.customer?.gstin || inv.customer?.tax_number || inv.customer_tax_number || inv.tax_number || inv.billing_gstin || inv.buyer_gstin || "").toUpperCase().trim();
+  const partyGstin = (rawPartyGst && rawPartyGst !== "URP" && rawPartyGst !== "—" && rawPartyGst !== "-" && rawPartyGst !== "N/A" && rawPartyGst !== "UNDEFINED") ? rawPartyGst : "";
 
   const stateInfo = resolveStateDetails(inv.place_of_supply || inv.pos, partyGstin);
   const isInterstate = inv.is_interstate ?? (partyGstin && !partyGstin.startsWith("37") && !partyGstin.startsWith("36"));
@@ -353,16 +354,25 @@ export function buildGstr1Sections(invoices: any[] = []) {
   });
 
   // 2. Table 4: B2B Invoices (Registered Customers with GSTIN)
-  const b2bList = salesInvoices.filter((inv) => Boolean(inv.partyGstin));
+  const isB2BRecord = (inv: any) => {
+    if (inv.partyGstin && inv.partyGstin.length >= 10) return true;
+    const invNum = String(inv.invNo || "").toUpperCase();
+    const invType = String(inv.raw?.invoice_type || inv.invoice_type || "").toLowerCase();
+    const docType = String(inv.raw?.doc_type || inv.doc_type || inv.raw?.document_type || "").toLowerCase();
+    const custType = String(inv.raw?.customer_type || inv.customer_type || "").toLowerCase();
+    return invNum.startsWith("B2B-") || invNum.startsWith("B2B") || invType === "b2b" || invType === "b2b_invoice" || docType === "b2b" || custType === "b2b" || inv.raw?.is_b2b === true;
+  };
+  const b2bList = salesInvoices.filter((inv) => isB2BRecord(inv));
+  const b2bInvNoSet = new Set(b2bList.map((inv) => String(inv.invNo || "").toLowerCase()));
 
   // 3. Table 5: B2C Large (Unregistered + Interstate + Total > 2.5 Lakhs)
   const b2clList = salesInvoices.filter(
-    (inv) => !inv.partyGstin && inv.isInterstate && inv.total > 250000
+    (inv) => !b2bInvNoSet.has(String(inv.invNo || "").toLowerCase()) && !inv.partyGstin && inv.isInterstate && inv.total > 250000
   );
 
   // 4. Table 7: B2C Small (Unregistered, Intra-State or Interstate <= 2.5 Lakhs)
   const b2csRaw = salesInvoices.filter(
-    (inv) => !inv.partyGstin && (!inv.isInterstate || inv.total <= 250000)
+    (inv) => !b2bInvNoSet.has(String(inv.invNo || "").toLowerCase()) && (!inv.isInterstate || inv.total <= 250000)
   );
 
   // Group B2CS by POS & Tax Rate
@@ -431,7 +441,8 @@ export function buildGstr1Sections(invoices: any[] = []) {
     invList.forEach((inv) => {
       if (inv.items.length > 0) {
         inv.items.forEach((it: any, idx: number) => {
-          const hsn = String(it.hsn_code || it.hsn || "84713010").trim();
+          const rawHsn = String(it.hsn_code || it.hsn || "").trim();
+          const hsn = (rawHsn && rawHsn !== "—" && rawHsn !== "-" && rawHsn !== "undefined") ? rawHsn : "210690";
           const desc = it.name || it.product_name || `Item ${idx + 1}`;
           const uqc = String(it.uqc || it.unit || it.selected_uom || "NOS").toUpperCase();
           const qty = Number(it.quantity || it.qty || 1);
@@ -477,7 +488,7 @@ export function buildGstr1Sections(invoices: any[] = []) {
 
           const isInter = inv.isInterstate;
 
-          const key = `${hsn}_${itemTaxRate}`;
+          const key = `${hsn}_${desc}_${itemTaxRate}`;
           const cur = hMap.get(key) || {
             hsn,
             desc,
@@ -503,7 +514,7 @@ export function buildGstr1Sections(invoices: any[] = []) {
           hMap.set(key, cur);
         });
       } else {
-        const hsn = "84713010";
+        const hsn = "210690";
         const desc = "General Supplies & Outward Products";
         const uqc = "NOS";
         const key = `${hsn}_${inv.rate}`;
@@ -544,7 +555,7 @@ export function buildGstr1Sections(invoices: any[] = []) {
   };
 
   const hsnB2bList = buildHsnSummary(b2bList);
-  const hsnB2cList = buildHsnSummary(salesInvoices.filter((i) => !i.partyGstin));
+  const hsnB2cList = buildHsnSummary(salesInvoices.filter((i) => !b2bInvNoSet.has(String(i.invNo || "").toLowerCase())));
   const hsnList = [...hsnB2bList, ...hsnB2cList];
 
   const expList = normInvs.filter((inv) => inv.isExport);
@@ -633,13 +644,13 @@ export function buildGstr1Sections(invoices: any[] = []) {
   }
 
   const totals = {
-    totalTaxable: normInvs.reduce((s, i) => s + i.taxable, 0),
-    totalCgst: normInvs.reduce((s, i) => s + i.cgst, 0),
-    totalSgst: normInvs.reduce((s, i) => s + i.sgst, 0),
-    totalIgst: normInvs.reduce((s, i) => s + i.igst, 0),
-    totalCess: normInvs.reduce((s, i) => s + i.cess, 0),
-    totalValue: normInvs.reduce((s, i) => s + i.total, 0),
-    totalTax: normInvs.reduce((s, i) => s + i.tax, 0),
+    totalTaxable: Number((salesInvoices.reduce((s, i) => s + i.taxable, 0) + debitNotes.reduce((s, i) => s + i.taxable, 0) - creditNotes.reduce((s, i) => s + i.taxable, 0)).toFixed(2)),
+    totalCgst: Number((salesInvoices.reduce((s, i) => s + i.cgst, 0) + debitNotes.reduce((s, i) => s + i.cgst, 0) - creditNotes.reduce((s, i) => s + i.cgst, 0)).toFixed(2)),
+    totalSgst: Number((salesInvoices.reduce((s, i) => s + i.sgst, 0) + debitNotes.reduce((s, i) => s + i.sgst, 0) - creditNotes.reduce((s, i) => s + i.sgst, 0)).toFixed(2)),
+    totalIgst: Number((salesInvoices.reduce((s, i) => s + i.igst, 0) + debitNotes.reduce((s, i) => s + i.igst, 0) - creditNotes.reduce((s, i) => s + i.igst, 0)).toFixed(2)),
+    totalCess: Number((salesInvoices.reduce((s, i) => s + i.cess, 0) + debitNotes.reduce((s, i) => s + i.cess, 0) - creditNotes.reduce((s, i) => s + i.cess, 0)).toFixed(2)),
+    totalValue: Number((salesInvoices.reduce((s, i) => s + i.total, 0) + debitNotes.reduce((s, i) => s + i.total, 0) - creditNotes.reduce((s, i) => s + i.total, 0)).toFixed(2)),
+    totalTax: Number((salesInvoices.reduce((s, i) => s + i.tax, 0) + debitNotes.reduce((s, i) => s + i.tax, 0) - creditNotes.reduce((s, i) => s + i.tax, 0)).toFixed(2)),
     totalInvoices: outwardInvoices.length,
     standardInvoicesCount: standardInvoices.length,
     posBillsCount: posBills.length,

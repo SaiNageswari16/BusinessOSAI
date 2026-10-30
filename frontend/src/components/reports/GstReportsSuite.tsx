@@ -356,7 +356,7 @@ export function GstReportsSuite({
           product_name: l.product?.name || l.product_name || l.name || "Item",
           quantity: Number(l.quantity) || 1,
           unit_price: Number(l.unit_price) || (rawTotal / Math.max(1, (posBill.items || []).length)),
-          hsn_code: l.hsn_code || l.hsn || "84713010",
+          hsn_code: l.hsn_code || l.hsn || "210690",
           tax_rate: Number(l.tax_rate) || 18,
         }));
 
@@ -366,7 +366,7 @@ export function GstReportsSuite({
           product_name: "POS Retail Merchandise",
           quantity: 1,
           unit_price: Number(rawSubtotal.toFixed(2)),
-          hsn_code: "84713010",
+          hsn_code: "210690",
           tax_rate: 18,
         }];
 
@@ -450,7 +450,7 @@ export function GstReportsSuite({
                 product_name: l.product?.name || l.product_name || l.name || "Item",
                 quantity: Number(l.quantity) || 1,
                 unit_price: Number(l.unit_price) || (rawTotal / Math.max(1, (posBill.items || []).length)),
-                hsn_code: l.hsn_code || l.hsn || "84713010",
+                hsn_code: l.hsn_code || l.hsn || "210690",
                 tax_rate: Number(l.tax_rate) || 18,
               }));
 
@@ -460,7 +460,7 @@ export function GstReportsSuite({
                 product_name: "POS Retail Merchandise",
                 quantity: 1,
                 unit_price: Number(rawSubtotal.toFixed(2)),
-                hsn_code: "84713010",
+                hsn_code: "210690",
                 tax_rate: 18,
               }];
 
@@ -1601,11 +1601,11 @@ function renderReportContent(
         const partyGst = inv.customer_gstin || "";
         const isInter = inv.is_interstate || (partyGst.length === 15 && !partyGst.startsWith("37") && !partyGst.startsWith("36"));
         const items = Array.isArray(inv.items) && inv.items.length > 0 ? inv.items : [
-          { name: inv.item_name || "General Goods", hsn: inv.hsn || "84713010", quantity: 1, price: inv.taxable_amount || 1000, tax_rate: 18 }
+          { name: inv.item_name || "General Goods", hsn: inv.hsn || "210690", quantity: 1, price: inv.taxable_amount || 1000, tax_rate: 18 }
         ];
 
         items.forEach((it: any) => {
-          const hsn = it.hsn || it.hsn_code || "84713010";
+          const hsn = it.hsn || it.hsn_code || "210690";
           const name = it.name || it.item_name || "Industrial Component";
           const qty = it.quantity || it.qty || 1;
           const price = it.price || it.unit_price || 0;
@@ -1743,8 +1743,10 @@ function renderReportContent(
     // ── 9. B2B Sales Report ──
     case "b2b_sales": {
       const b2bInvoices = data.invoices.filter((inv) => {
-        const gstin = inv.customer_gstin || inv.customer?.gstin;
-        return gstin && gstin.length === 15;
+        const num = String(inv.invoice_number || inv.invoice_no || inv.id || "").toUpperCase();
+        const isExplicit = num.startsWith("B2B") || String(inv.invoice_type || "").toLowerCase() === "b2b";
+        const gstin = inv.customer_gstin || inv.party_gstin || inv.customer?.gstin || inv.customer?.gst_number;
+        return isExplicit || Boolean(gstin && gstin.length >= 10);
       });
 
       return (
@@ -1812,7 +1814,9 @@ function renderReportContent(
     // ── 10. B2C Sales Report ──
     case "b2c_sales": {
       const b2cInvoices = data.invoices.filter((inv) => {
-        const gstin = inv.customer_gstin || inv.customer?.gstin;
+        const num = String(inv.invoice_number || inv.invoice_no || inv.id || "").toUpperCase();
+        const isExplicit = num.startsWith("B2B") || String(inv.invoice_type || "").toLowerCase() === "b2b";
+        const gstin = inv.customer_gstin || inv.party_gstin || inv.customer?.gstin || inv.customer?.gst_number;
         return !gstin || gstin.length !== 15;
       });
 
@@ -2331,16 +2335,24 @@ function renderGstr1Dashboard(
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-muted/30 border border-border/50 rounded-xl p-4">
-            <span className="text-xs font-bold text-muted-foreground uppercase">Table 4: B2B Invoices</span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-muted-foreground uppercase">Table 4: B2B Invoices</span>
+              <span className="text-[10px] font-semibold text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Taxable</span>
+            </div>
             <div className="text-xl font-bold text-foreground mt-1">{formatCurrency(b2bTaxable)}</div>
             <div className="text-xs text-blue-600 font-semibold mt-1">
               CGST: {formatCurrency(b2bCgst)} | SGST: {formatCurrency(b2bSgst)} | IGST: {formatCurrency(b2bIgst)}
             </div>
           </div>
           <div className="bg-muted/30 border border-border/50 rounded-xl p-4">
-            <span className="text-xs font-bold text-muted-foreground uppercase">Table 7: B2C Small</span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-muted-foreground uppercase">Table 7: B2C Small</span>
+              <span className="text-[10px] font-semibold text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Taxable</span>
+            </div>
             <div className="text-xl font-bold text-foreground mt-1">{formatCurrency(b2csTaxable)}</div>
-            <div className="text-xs text-emerald-600 font-semibold mt-1">Retail & Consumer Sales</div>
+            <div className="text-xs text-emerald-600 font-semibold mt-1">
+              Gross Value: {formatCurrency(b2csTaxable + b2csTotalTax)} | Tax: {formatCurrency(b2csTotalTax)}
+            </div>
           </div>
           <div className="bg-muted/30 border border-border/50 rounded-xl p-4">
             <span className="text-xs font-bold text-muted-foreground uppercase">Table 6A: Exports</span>
@@ -2468,7 +2480,7 @@ function renderGstr1Dashboard(
                     <tr key={idx} className="hover:bg-muted/30">
                       <td className="px-4 py-3 font-bold text-primary">{i.invNo}</td>
                       <td className="px-4 py-3 text-muted-foreground">{i.invDate}</td>
-                      <td className="px-4 py-3 font-mono font-bold text-indigo-700">{i.partyGstin}</td>
+                      <td className="px-4 py-3 font-mono font-bold text-indigo-700">{i.partyGstin || <span className="text-amber-600 font-semibold text-[11px]">URP (Pending GSTIN)</span>}</td>
                       <td className="px-4 py-3 font-semibold">{i.partyName}</td>
                       <td className="px-4 py-3 text-center">{i.pos}</td>
                       <td className="px-4 py-3 text-right font-semibold">{formatCurrency(i.taxable)}</td>

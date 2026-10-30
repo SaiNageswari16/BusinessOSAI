@@ -2013,7 +2013,8 @@ function PosTerminalInner() {
       }));
 
       const payload = {
-        subtotal: subtotal,
+        subtotal: taxableAmount > 0 ? taxableAmount : subtotal,
+        gross_subtotal: subtotal,
         taxable_value: taxableAmount,
         tax_amount: tax,
         discount_amount: totalDiscount,
@@ -2148,7 +2149,8 @@ function PosTerminalInner() {
             mrp: item.mrp,
           };
         }).concat(freePrintLines as any[]),
-        subtotal: subtotal,
+        subtotal: taxableAmount > 0 ? taxableAmount : subtotal,
+        gross_subtotal: subtotal,
         discount_amount: totalDiscount,
         tax_amount: tax,
         grand_total: total,
@@ -2200,7 +2202,9 @@ function PosTerminalInner() {
           created_at: new Date().toISOString(),
           payment_mode: billData.payment_method,
           payment_status: isCreditOnly ? "Unpaid" : (isPartial ? "Partially Paid" : "Paid"),
-          subtotal: subtotal,
+          subtotal: taxableAmount > 0 ? taxableAmount : subtotal,
+          taxable_value: taxableAmount,
+          gross_subtotal: subtotal,
           total_tax: tax,
           discount_amount: totalDiscount,
           grand_total: total,
@@ -2410,7 +2414,8 @@ function PosTerminalInner() {
       const resolvedCart = await resolveCartProvisionalItems(cart);
 
       const payload = {
-        subtotal: subtotal,
+        subtotal: taxableAmount > 0 ? taxableAmount : subtotal,
+        gross_subtotal: subtotal,
         tax_amount: tax,
         discount_amount: totalDiscount,
         total_amount: total,

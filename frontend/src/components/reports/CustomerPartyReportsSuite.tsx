@@ -127,6 +127,7 @@ interface PartyRecord {
   creditLimit?: number;
   totalInvoiced?: number;
   totalPaid?: number;
+  totalCreditNotes?: number;
   dueTomorrow?: number;
   upcomingDue?: number;
   overdue1_15?: number;
@@ -339,6 +340,7 @@ export function CustomerPartyReportsSuite({
 
   const [parties, setParties] = useState<PartyRecord[]>([]);
   const [rawInvoices, setRawInvoices] = useState<any[]>([]);
+  const [rawPayments, setRawPayments] = useState<any[]>([]);
   const [productsList, setProductsList] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -351,13 +353,14 @@ export function CustomerPartyReportsSuite({
         syncLocalStorageCustomerInvoices();
 
         // 1. Fetch live CRM customers, suppliers, vendor bills, live products, POS and live SQL Invoices
-        const [crmRes, invRes, posRes, sqlInvoicesRes, suppliersRes, billsRes] = await Promise.allSettled([
+        const [crmRes, invRes, posRes, sqlInvoicesRes, suppliersRes, billsRes, paymentsRes] = await Promise.allSettled([
           crmCustomersApi.list(1, 1000),
           inventoryApi.getProducts({ page_size: 1000 }),
           posApi.getProducts({ limit: 1000 }),
           invoicesApi.listInvoices({ page_size: 1000 }),
           inventoryApi.getSuppliers(),
           inventoryApi.getVendorBills(),
+          invoicesApi.listPayments({ page_size: 1000 }),
         ]);
 
         let dbCustomers: any[] = [];
@@ -400,6 +403,50 @@ export function CustomerPartyReportsSuite({
             const numKey = String(inv.invoice_number || inv.receipt_number || inv.id || "").trim().toUpperCase();
             const isOpn = numKey.startsWith("OPN-") || inv.is_opening_balance || inv.invoice_type === "opening_balance";
             if (isOpn) return;
+          const isCreditNote = Boolean(
+            inv.is_credit_note ||
+            inv.is_sales_return ||
+            inv.document_type === "CREDIT_NOTE" ||
+            inv.invoice_type === "credit_note" ||
+            String(inv.invoice_number || "").toUpperCase().startsWith("CN-") ||
+            String(inv.invoice_number || "").toUpperCase().startsWith("CN")
+          );
+
+          if (isCreditNote && typeof partyMap !== "undefined" && typeof targetKey !== "undefined") {
+            if (partyMap.has(targetKey)) {
+              const p = partyMap.get(targetKey)!;
+              if (!p.hasAccumulatedInvoices) {
+                p.closingBalance = p.openingBalance;
+                p.hasAccumulatedInvoices = true;
+              }
+              p.closingBalance = Math.max(0, p.closingBalance - total);
+              p.totalCreditNotes = (p.totalCreditNotes || 0) + total;
+              p.overdue30Plus = Math.max(0, (p.overdue30Plus || 0) - total);
+              if (rawPhone && (!p.phone || p.phone === "—")) p.phone = rawPhone;
+              if (gstin && !p.gstin) p.gstin = gstin;
+            } else {
+              partyMap.set(targetKey, {
+                id: `p_${targetKey.replace(/[^a-z0-9]/g, "_")}`,
+                name: rawName,
+                category: inv.customer_type || "Retail",
+                phone: rawPhone || "—",
+                gstin: gstin || "URP",
+                closingBalance: 0,
+                openingBalance: 0,
+                type: "Customer",
+                totalInvoiced: 0,
+                totalPaid: 0,
+                totalCreditNotes: total,
+                dueTomorrow: 0,
+                upcomingDue: 0,
+                overdue1_15: 0,
+                overdue16_30: 0,
+                overdue30Plus: 0,
+                hasAccumulatedInvoices: true,
+              });
+            }
+            return;
+          }
             if (numKey) {
               allInvoicesMap.set(numKey, {
                 ...inv,
@@ -425,6 +472,50 @@ export function CustomerPartyReportsSuite({
                       const numKey = String(inv.invoice_number || inv.receipt_number || inv.id || "").trim().toUpperCase();
                       const isOpn = numKey.startsWith("OPN-") || inv.is_opening_balance || inv.invoice_type === "opening_balance";
                       if (isOpn) return;
+          const isCreditNote = Boolean(
+            inv.is_credit_note ||
+            inv.is_sales_return ||
+            inv.document_type === "CREDIT_NOTE" ||
+            inv.invoice_type === "credit_note" ||
+            String(inv.invoice_number || "").toUpperCase().startsWith("CN-") ||
+            String(inv.invoice_number || "").toUpperCase().startsWith("CN")
+          );
+
+          if (isCreditNote && typeof partyMap !== "undefined" && typeof targetKey !== "undefined") {
+            if (partyMap.has(targetKey)) {
+              const p = partyMap.get(targetKey)!;
+              if (!p.hasAccumulatedInvoices) {
+                p.closingBalance = p.openingBalance;
+                p.hasAccumulatedInvoices = true;
+              }
+              p.closingBalance = Math.max(0, p.closingBalance - total);
+              p.totalCreditNotes = (p.totalCreditNotes || 0) + total;
+              p.overdue30Plus = Math.max(0, (p.overdue30Plus || 0) - total);
+              if (rawPhone && (!p.phone || p.phone === "—")) p.phone = rawPhone;
+              if (gstin && !p.gstin) p.gstin = gstin;
+            } else {
+              partyMap.set(targetKey, {
+                id: `p_${targetKey.replace(/[^a-z0-9]/g, "_")}`,
+                name: rawName,
+                category: inv.customer_type || "Retail",
+                phone: rawPhone || "—",
+                gstin: gstin || "URP",
+                closingBalance: 0,
+                openingBalance: 0,
+                type: "Customer",
+                totalInvoiced: 0,
+                totalPaid: 0,
+                totalCreditNotes: total,
+                dueTomorrow: 0,
+                upcomingDue: 0,
+                overdue1_15: 0,
+                overdue16_30: 0,
+                overdue30Plus: 0,
+                hasAccumulatedInvoices: true,
+              });
+            }
+            return;
+          }
                       if (numKey && !allInvoicesMap.has(numKey)) {
                         allInvoicesMap.set(numKey, {
                           ...inv,
@@ -443,6 +534,69 @@ export function CustomerPartyReportsSuite({
 
         const combinedInvoices = Array.from(allInvoicesMap.values());
         setRawInvoices(combinedInvoices);
+
+        // 3b. Fetch and aggregate all payments from backend & localStorage settlement vouchers
+        const allPayments: any[] = [];
+        const seenPaymentKeys = new Set<string>();
+
+        if (paymentsRes.status === "fulfilled" && paymentsRes.value) {
+          const pVal: any = paymentsRes.value;
+          const pList = Array.isArray(pVal) ? pVal : pVal.items || pVal.data || [];
+          pList.forEach((p: any) => {
+            const key = String(p.id || p.payment_number || p.reference_number || `${p.invoice_number}_${p.amount}`);
+            if (!seenPaymentKeys.has(key)) {
+              seenPaymentKeys.add(key);
+              allPayments.push({
+                id: p.id,
+                voucher_number: p.payment_number || p.reference_number || (p.id ? `PAY-${String(p.id).slice(0, 6).toUpperCase()}` : "PAY"),
+                payment_date: p.payment_date || p.created_at || new Date().toISOString(),
+                amount: Number(p.amount || 0),
+                party_name: p.party_name || p.customer_name || "",
+                party_id: p.party_id || p.customer_id || "",
+                party_phone: p.party_phone || p.customer_phone || "",
+                payment_method: p.payment_method || "Cash",
+                invoice_number: p.invoice_number,
+                notes: p.notes || "Invoice Settlement",
+              });
+            }
+          });
+        }
+
+        try {
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && (k.startsWith("bos_settlement_voucher") || k.startsWith("bos_settlement_vouchers"))) {
+              const item = localStorage.getItem(k);
+              if (item) {
+                try {
+                  const parsed = JSON.parse(item);
+                  const vList = Array.isArray(parsed) ? parsed : [parsed];
+                  vList.forEach((v: any) => {
+                    if (v && (v.voucher_number || v.id)) {
+                      const vKey = String(v.voucher_number || v.id);
+                      if (!seenPaymentKeys.has(vKey)) {
+                        seenPaymentKeys.add(vKey);
+                        allPayments.push({
+                          id: v.id || vKey,
+                          voucher_number: v.voucher_number || vKey,
+                          payment_date: v.payment_date || v.created_at || new Date().toISOString(),
+                          amount: Number(v.payment_amount || v.total_allocated || 0),
+                          party_name: v.party_name || "",
+                          party_id: v.party_id || "",
+                          party_phone: v.party_phone || "",
+                          payment_method: v.payment_mode || "Cash",
+                          notes: v.notes || "Payment In Settlement",
+                          covered_invoices: v.covered_invoices || [],
+                        });
+                      }
+                    }
+                  });
+                } catch (e) {}
+              }
+            }
+          }
+        } catch (e) {}
+        setRawPayments(allPayments);
 
         // 4. Construct live real parties directory from CRM, Suppliers + Invoice database
         const partyMap = new Map<string, PartyRecord>();
@@ -528,6 +682,50 @@ export function CustomerPartyReportsSuite({
           // Check if opening pseudo-invoice
           const isOpn = String(inv.invoice_number || "").toUpperCase().startsWith("OPN-") || inv.is_opening_balance || inv.invoice_type === "opening_balance";
           if (isOpn) return;
+          const isCreditNote = Boolean(
+            inv.is_credit_note ||
+            inv.is_sales_return ||
+            inv.document_type === "CREDIT_NOTE" ||
+            inv.invoice_type === "credit_note" ||
+            String(inv.invoice_number || "").toUpperCase().startsWith("CN-") ||
+            String(inv.invoice_number || "").toUpperCase().startsWith("CN")
+          );
+
+          if (isCreditNote && typeof partyMap !== "undefined" && typeof targetKey !== "undefined") {
+            if (partyMap.has(targetKey)) {
+              const p = partyMap.get(targetKey)!;
+              if (!p.hasAccumulatedInvoices) {
+                p.closingBalance = p.openingBalance;
+                p.hasAccumulatedInvoices = true;
+              }
+              p.closingBalance = Math.max(0, p.closingBalance - total);
+              p.totalCreditNotes = (p.totalCreditNotes || 0) + total;
+              p.overdue30Plus = Math.max(0, (p.overdue30Plus || 0) - total);
+              if (rawPhone && (!p.phone || p.phone === "—")) p.phone = rawPhone;
+              if (gstin && !p.gstin) p.gstin = gstin;
+            } else {
+              partyMap.set(targetKey, {
+                id: `p_${targetKey.replace(/[^a-z0-9]/g, "_")}`,
+                name: rawName,
+                category: inv.customer_type || "Retail",
+                phone: rawPhone || "—",
+                gstin: gstin || "URP",
+                closingBalance: 0,
+                openingBalance: 0,
+                type: "Customer",
+                totalInvoiced: 0,
+                totalPaid: 0,
+                totalCreditNotes: total,
+                dueTomorrow: 0,
+                upcomingDue: 0,
+                overdue1_15: 0,
+                overdue16_30: 0,
+                overdue30Plus: 0,
+                hasAccumulatedInvoices: true,
+              });
+            }
+            return;
+          }
 
           const isPaid = rawStatus === "paid" || (Number(inv.amount_received || inv.amount_paid || 0) >= total - 0.05 && total > 0);
           const balance = isPaid ? 0 : Number(inv.balance ?? inv.balance_due ?? inv.pending_amount ?? (total - Number(inv.amount_received || inv.amount_paid || 0)));
@@ -588,6 +786,33 @@ export function CustomerPartyReportsSuite({
               p.closingBalance = explicitBal;
               p.overdue30Plus = explicitBal;
             }
+          }
+        });
+
+        // Apply Payment In settlements to party balances
+        allPayments.forEach((pmt: any) => {
+          const amt = Number(pmt.amount || 0);
+          if (amt <= 0.01) return;
+          const rawName = (pmt.party_name || "").trim();
+          const cleanPhone = _cleanPhone(pmt.party_phone || "");
+          const cleanName = _cleanName(rawName);
+
+          let targetKey = "";
+          if (pmt.party_id && custIdToKey.has(String(pmt.party_id))) {
+            targetKey = custIdToKey.get(String(pmt.party_id))!;
+          } else if (rawName && partyMap.has(rawName.toLowerCase())) {
+            targetKey = rawName.toLowerCase();
+          } else if (cleanPhone && custPhoneToKey.has(cleanPhone)) {
+            targetKey = custPhoneToKey.get(cleanPhone)!;
+          } else if (cleanName && custCleanNameToKey.has(cleanName)) {
+            targetKey = custCleanNameToKey.get(cleanName)!;
+          }
+
+          if (targetKey && partyMap.has(targetKey)) {
+            const p = partyMap.get(targetKey)!;
+            p.totalPaid = (p.totalPaid || 0) + amt;
+            p.closingBalance = Math.max(0, p.closingBalance - amt);
+            p.overdue30Plus = Math.max(0, (p.overdue30Plus || 0) - amt);
           }
         });
 
@@ -682,6 +907,12 @@ export function CustomerPartyReportsSuite({
       }
     }
     fetchRealDatabaseData();
+    window.addEventListener("pos_invoices_updated", fetchRealDatabaseData);
+    window.addEventListener("storage", fetchRealDatabaseData);
+    return () => {
+      window.removeEventListener("pos_invoices_updated", fetchRealDatabaseData);
+      window.removeEventListener("storage", fetchRealDatabaseData);
+    };
   }, [currentTenantId, currentCompanyId]);
 
   // Selected party object
@@ -750,7 +981,192 @@ export function CustomerPartyReportsSuite({
     const opBal = activeParty.openingBalance || 0;
     let runningBalance = opBal;
 
-    const pName = activeParty.name.toLowerCase();
+    const pName = activeParty.name.toLowerCase().trim();
+    const pCleanPhone = (activeParty.phone || "").replace(/\D/g, "");
+    const pId = activeParty.id ? String(activeParty.id) : "";
+
+    const matchedInvoices = rawInvoices
+      .filter((inv: any) => {
+        const isOpn = String(inv.invoice_number || "").toUpperCase().startsWith("OPN-") || inv.is_opening_balance || inv.invoice_type === "opening_balance";
+        if (isOpn) return false;
+        const name = (inv.party_name || inv.customer_name || inv.customer?.name || "").toLowerCase().trim();
+        const invPhone = (inv.customer_phone || inv.party_phone || inv.customer?.phone || inv.phone || "").replace(/\D/g, "");
+        const matchesName = name === pName || (name && pName && (name.includes(pName) || pName.includes(name)));
+        const matchesId = inv.customer_id && String(inv.customer_id) === pId;
+        const matchesPhone = pCleanPhone && pCleanPhone.length >= 10 && invPhone && invPhone.endsWith(pCleanPhone.slice(-10));
+        return matchesName || matchesId || matchesPhone;
+      });
+
+    const invoiceNumbersSet = new Set<string>();
+    matchedInvoices.forEach((inv: any) => {
+      const invNum = String(inv.invoice_number || inv.invoice_no || inv.id || "").toLowerCase().trim();
+      if (invNum) invoiceNumbersSet.add(invNum);
+    });
+
+    const matchedPayments = rawPayments.filter((pmt: any) => {
+      const pmtName = (pmt.party_name || "").toLowerCase().trim();
+      const pmtPhone = (pmt.party_phone || "").replace(/\D/g, "");
+      const matchesName = pmtName && (pmtName === pName || pmtName.includes(pName) || pName.includes(pmtName));
+      const matchesId = pmt.party_id && String(pmt.party_id) === pId;
+      const matchesPhone = pCleanPhone && pCleanPhone.length >= 10 && pmtPhone && pmtPhone.endsWith(pCleanPhone.slice(-10));
+      const matchesInv = pmt.invoice_number && invoiceNumbersSet.has(String(pmt.invoice_number).toLowerCase().trim());
+      const matchesCovered = Array.isArray(pmt.covered_invoices) && pmt.covered_invoices.some((cov: any) =>
+        invoiceNumbersSet.has(String(cov.invoice_number || cov.invoice_id || "").toLowerCase().trim())
+      );
+      return matchesName || matchesId || matchesPhone || matchesInv || matchesCovered;
+    });
+
+    const settledInvoicesInPayments = new Set<string>();
+    matchedPayments.forEach((p: any) => {
+      if (p.invoice_number) settledInvoicesInPayments.add(String(p.invoice_number).toLowerCase().trim());
+      if (Array.isArray(p.covered_invoices)) {
+        p.covered_invoices.forEach((cov: any) => {
+          if (cov.invoice_number) settledInvoicesInPayments.add(String(cov.invoice_number).toLowerCase().trim());
+        });
+      }
+    });
+
+    const txEvents: any[] = [];
+
+    matchedInvoices.forEach((inv: any, idx: number) => {
+      const invDateStr = inv.created_at || inv.invoice_date || inv.date;
+      if (!isDateInFilter(invDateStr)) return;
+
+      const invDate = formatDisplayDate(invDateStr);
+      const invNo = inv.invoice_number || inv.invoice_no || `INV-${1000 + idx}`;
+      const ts = parseSafeDateTimestamp(invDateStr) || 0;
+      const total = Number(inv.total_amount || inv.grand_total || 0);
+      const mode = inv.payment_mode || inv.mode || "Credit / Due";
+      const dueDate = inv.due_date ? formatDisplayDate(inv.due_date) : "Immediate";
+
+      const isCreditNote = Boolean(
+        inv.is_credit_note ||
+        inv.is_sales_return ||
+        inv.document_type === "CREDIT_NOTE" ||
+        inv.invoice_type === "credit_note" ||
+        String(inv.invoice_number || "").toUpperCase().startsWith("CN")
+      );
+
+      if (isCreditNote) {
+        txEvents.push({
+          timestamp: ts,
+          date: invDate,
+          voucher: `Sales Return / Credit Note #${invNo}`,
+          srNo: `CN-${101 + idx}`,
+          paymentMode: mode,
+          credit: total,
+          debit: 0,
+          dueDate: "—",
+        });
+      } else {
+        txEvents.push({
+          timestamp: ts,
+          date: invDate,
+          voucher: `Sales Invoice #${invNo}`,
+          srNo: `SR-${101 + idx}`,
+          paymentMode: mode,
+          credit: 0,
+          debit: total,
+          dueDate: dueDate,
+        });
+
+        const received = Number(inv.received_amount || inv.amount_received || 0);
+        const invClean = String(invNo).toLowerCase().trim();
+        if (received > 0.01 && !settledInvoicesInPayments.has(invClean)) {
+          txEvents.push({
+            timestamp: ts + 1,
+            date: invDate,
+            voucher: `Payment Receipt #${invNo}`,
+            srNo: `RCT-${201 + idx}`,
+            paymentMode: mode === "Credit / Due" ? "Cash" : mode,
+            credit: received,
+            debit: 0,
+            dueDate: "—",
+          });
+        }
+      }
+    });
+
+    matchedPayments.forEach((p: any, idx: number) => {
+      const pDateStr = p.payment_date || p.created_at;
+      if (!isDateInFilter(pDateStr)) return;
+
+      const pDate = formatDisplayDate(pDateStr);
+      const ts = parseSafeDateTimestamp(pDateStr) || 0;
+      const amt = Number(p.amount || 0);
+      if (amt <= 0.01) return;
+
+      const vNo = p.voucher_number || `PAY-${1000 + idx}`;
+      const note = p.notes || (p.invoice_number ? `Settlement for Invoice #${p.invoice_number}` : "Payment In Settlement");
+
+      txEvents.push({
+        timestamp: ts + 2,
+        date: pDate,
+        voucher: `Payment In #${vNo}`,
+        srNo: vNo,
+        paymentMode: p.payment_method || "Cash",
+        credit: amt,
+        debit: 0,
+        dueDate: note,
+      });
+    });
+
+    txEvents.sort((a, b) => a.timestamp - b.timestamp);
+
+    const rows: any[] = [];
+
+    // Opening Balance
+    rows.push({
+      date: "—",
+      voucher: "Opening Balance",
+      srNo: "—",
+      paymentMode: "—",
+      credit: 0,
+      debit: opBal,
+      balance: runningBalance,
+      dueDate: "—",
+      isSummaryRow: true,
+    });
+
+    let totSales = 0;
+    let totReceived = 0;
+
+    txEvents.forEach((ev: any) => {
+      totSales += ev.debit;
+      totReceived += ev.credit;
+      runningBalance = runningBalance + ev.debit - ev.credit;
+      rows.push({
+        ...ev,
+        balance: Math.round(runningBalance * 100) / 100,
+      });
+    });
+
+    // Closing Balance
+    rows.push({
+      date: "—",
+      voucher: "Closing Balance",
+      srNo: "—",
+      paymentMode: "—",
+      credit: 0,
+      debit: runningBalance > 0 ? runningBalance : 0,
+      balance: Math.round(runningBalance * 100) / 100,
+      dueDate: "—",
+      isSummaryRow: true,
+    });
+
+    const totalReceivable = runningBalance > 0 ? Math.round(runningBalance * 100) / 100 : 0;
+    const overdueAmount = activeParty.overdue30Plus !== undefined ? Math.min(activeParty.overdue30Plus, totalReceivable) : totalReceivable;
+
+    return {
+      rows,
+      totalReceivable,
+      overdue: overdueAmount,
+      totalSales: Math.round(totSales * 100) / 100,
+      totalReceived: Math.round(totReceived * 100) / 100,
+    };
+  }, [activeParty, rawInvoices, rawPayments, dateFilter, customStartDate, customEndDate]);
+
+  const _oldUnused = () => {
     const pCleanPhone = (activeParty.phone || "").replace(/\D/g, "");
     const matchedInvoices = rawInvoices
       .filter((inv: any) => {
@@ -799,7 +1215,8 @@ export function CustomerPartyReportsSuite({
         inv.is_credit_note ||
         inv.is_sales_return ||
         inv.document_type === "CREDIT_NOTE" ||
-        String(inv.invoice_number || "").startsWith("CN")
+        inv.invoice_type === "credit_note" ||
+        String(inv.invoice_number || "").toUpperCase().startsWith("CN")
       );
 
       if (isCreditNote) {
@@ -872,7 +1289,7 @@ export function CustomerPartyReportsSuite({
       totalSales: totSales || activeParty.totalInvoiced || totalReceivable,
       totalReceived: totReceived || activeParty.totalPaid || 0,
     };
-  }, [activeParty, rawInvoices, dateFilter, customStartDate, customEndDate]);
+  };
 
   // ─────────────────────────────────────────────────────────────
   // 2. PARTY WISE OUTSTANDING COMPUTATION
@@ -914,6 +1331,21 @@ export function CustomerPartyReportsSuite({
       pData.totalInvoiced += total;
       pData.totalPaid += paid;
       pData.overdue30Plus += balance;
+    });
+
+    // Apply payment settlements within this date filter to periodMap
+    rawPayments.forEach((pmt: any) => {
+      const pDateStr = pmt.payment_date || pmt.created_at;
+      if (!isDateInFilter(pDateStr)) return;
+      const amt = Number(pmt.amount || 0);
+      if (amt <= 0.01) return;
+      const name = (pmt.party_name || "").trim().toLowerCase();
+      if (name && periodMap.has(name)) {
+        const pData = periodMap.get(name)!;
+        pData.totalPaid += amt;
+        pData.closingBalance = Math.max(0, pData.closingBalance - amt);
+        pData.overdue30Plus = Math.max(0, pData.overdue30Plus - amt);
+      }
     });
 
     const filteredParties: PartyRecord[] = [];
@@ -963,7 +1395,7 @@ export function CustomerPartyReportsSuite({
     });
 
     return filteredParties;
-  }, [parties, rawInvoices, dateFilter, customStartDate, customEndDate]);
+  }, [parties, rawInvoices, rawPayments, dateFilter, customStartDate, customEndDate]);
 
   const outstandingList = useMemo(() => {
     let list = effectiveParties;

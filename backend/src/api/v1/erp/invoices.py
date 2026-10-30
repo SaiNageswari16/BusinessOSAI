@@ -266,7 +266,7 @@ def _enrich_invoice_tax_details(invoices: list[Invoice]):
             calc_sgst += l_sgst
             calc_igst += l_igst
 
-        if not (has_tax and subtotal_differs):
+        if not (has_tax and subtotal_differs) or (float(inv.subtotal or 0) >= float(inv.total_amount or 0) - 1.0 and calc_subtotal > 0):
             inv.subtotal = round(calc_subtotal, 2)
             inv.cgst_amount = round(calc_cgst, 2)
             inv.sgst_amount = round(calc_sgst, 2)
@@ -968,7 +968,11 @@ async def create_invoice(
             totals["cgst_amount"] = round(float(payload.tax_amount) / 2.0, 2)
             totals["sgst_amount"] = round(float(payload.tax_amount) / 2.0, 2)
     if getattr(payload, "subtotal", None) is not None and float(payload.subtotal) > 0:
-        totals["subtotal"] = round(float(payload.subtotal), 2)
+        tot_tax_val = float(totals.get("cgst_amount", 0) + totals.get("sgst_amount", 0) + totals.get("igst_amount", 0))
+        if float(payload.subtotal) >= float(totals.get("total_amount", 0)) - 1.0 and tot_tax_val > 0:
+            totals["subtotal"] = max(0.0, round(float(totals["total_amount"]) - tot_tax_val, 2))
+        else:
+            totals["subtotal"] = round(float(payload.subtotal), 2)
     if getattr(payload, "round_off", None) is not None:
         totals["round_off"] = round(float(payload.round_off), 2)
 
