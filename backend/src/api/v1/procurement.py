@@ -8,7 +8,7 @@ import requests
 from typing import Annotated, List
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
-from sqlalchemy import select, update, delete, func, or_, and_
+from sqlalchemy import select, update, delete, func, or_, and_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import logging
@@ -2030,36 +2030,48 @@ async def create_purchase_return(
     dn_number = payload.debit_note_number or f"DN-{payload.return_number.replace('PRN-', '')}"
     
     if resolved_supp_id and final_amount > 0:
-        existing_dn = await db.scalar(
-            select(VendorDebitNote).where(
-                VendorDebitNote.tenant_id == ctx.tenant_id,
-                VendorDebitNote.note_number == dn_number
-            )
-        )
-        if not existing_dn:
-            dn = VendorDebitNote(
-                tenant_id=ctx.tenant_id,
-                company_id=ctx.active_company_id,
-                note_number=dn_number,
-                supplier_id=resolved_supp_id,
-                amount=final_amount,
-                status="Issued"
-            )
-            db.add(dn)
+        try:
+            async with db.begin_nested():
+                # Self-healing migration in case DB table columns are missing in legacy schema
+                try:
+                    await db.execute(text("ALTER TABLE erp_vendor_debit_notes ADD COLUMN IF NOT EXISTS reference_number VARCHAR(100)"))
+                    await db.execute(text("ALTER TABLE erp_vendor_debit_notes ADD COLUMN IF NOT EXISTS vendor_bill_id UUID"))
+                    await db.execute(text("ALTER TABLE erp_vendor_debit_notes ADD COLUMN IF NOT EXISTS notes TEXT"))
+                except Exception:
+                    pass
 
-        # If returning against a specific Vendor Bill, update its paid_amount & status
-        if payload.vendor_bill_id:
-            bill = await db.get(VendorBill, payload.vendor_bill_id)
-            if bill:
-                cur_paid = float(bill.paid_amount or 0.0)
-                tot_amt = float(bill.total_amount or 0.0)
-                new_paid = min(tot_amt, cur_paid + final_amount)
-                bill.paid_amount = new_paid
-                if new_paid >= tot_amt - 0.05:
-                    bill.status = "Paid"
-                else:
-                    bill.status = "Partially Paid"
-        
+                existing_dn = await db.scalar(
+                    select(VendorDebitNote).where(
+                        VendorDebitNote.tenant_id == ctx.tenant_id,
+                        VendorDebitNote.note_number == dn_number
+                    )
+                )
+                if not existing_dn:
+                    dn = VendorDebitNote(
+                        tenant_id=ctx.tenant_id,
+                        company_id=ctx.active_company_id,
+                        note_number=dn_number,
+                        supplier_id=resolved_supp_id,
+                        amount=final_amount,
+                        status="Issued",
+                        reference_number=payload.return_number,
+                        vendor_bill_id=payload.vendor_bill_id,
+                        notes=f"Auto-generated from Purchase Return #{payload.return_number}"
+                    )
+                    db.add(dn)
+
+                # If returning against a specific Vendor Bill, update its paid_amount & status
+                if payload.vendor_bill_id:
+                    bill = await db.get(VendorBill, payload.vendor_bill_id)
+                    if bill:
+                        cur_paid = float(bill.paid_amount or 0.0)
+                        tot_amt = float(bill.total_amount or 0.0)
+                        new_paid = min(tot_amt, cur_paid + final_amount)
+                        bill.paid_amount = new_paid
+                        bill.status = "Paid" if new_paid >= tot_amt - 0.05 else "Partially Paid"
+        except Exception as dn_err:
+            logger.warning(f"Could not record VendorDebitNote for PRN {payload.return_number}: {dn_err}")
+
     await db.commit()
     await db.refresh(ret)
     

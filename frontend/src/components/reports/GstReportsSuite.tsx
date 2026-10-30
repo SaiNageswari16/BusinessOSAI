@@ -239,11 +239,11 @@ export function GstReportsSuite({
                 });
                 localStorage.setItem(k, JSON.stringify(cleaned));
               }
-            } catch (e) {}
+            } catch (e) { }
           }
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     async function loadLiveInvoices() {
       try {
@@ -1817,6 +1817,7 @@ function renderReportContent(
         const num = String(inv.invoice_number || inv.invoice_no || inv.id || "").toUpperCase();
         const isExplicit = num.startsWith("B2B") || String(inv.invoice_type || "").toLowerCase() === "b2b";
         const gstin = inv.customer_gstin || inv.party_gstin || inv.customer?.gstin || inv.customer?.gst_number;
+        if (isExplicit) return false;
         return !gstin || gstin.length !== 15;
       });
 
@@ -2322,8 +2323,8 @@ function renderGstr1Dashboard(
             key={st.id}
             onClick={() => setActiveSubTab(st.id)}
             className={`px-3 py-1 text-xs font-bold rounded-lg whitespace-nowrap transition-all cursor-pointer ${activeSubTab === st.id
-                ? "bg-primary text-primary-foreground shadow-xs"
-                : "text-muted-foreground hover:text-foreground bg-muted/50 hover:bg-muted"
+              ? "bg-primary text-primary-foreground shadow-xs"
+              : "text-muted-foreground hover:text-foreground bg-muted/50 hover:bg-muted"
               }`}
           >
             {st.label}
