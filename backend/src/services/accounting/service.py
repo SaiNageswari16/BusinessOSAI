@@ -96,6 +96,7 @@ DEFAULT_ACCOUNTS = [
     ("4000", "Food & Beverage Sales", AccountType.REVENUE),
     ("4010", "Service Charge Revenue", AccountType.REVENUE),
     ("4020", "Delivery & Packaging Revenue", AccountType.REVENUE),
+    ("4030", "Tip Revenue", AccountType.REVENUE),
     ("5000", "Cost of Goods Sold", AccountType.EXPENSE),
     ("5010", "Wastage Expense", AccountType.EXPENSE),
     ("5020", "Salary & Wages", AccountType.EXPENSE),

@@ -122,7 +122,7 @@ _register(ServiceDescriptor(
                "table_session.opened", "table_session.closed"),
     subscribes=("menu.item.updated", "menu.item.deactivated",
                 "table.status.changed", "customer.updated",
-                "kot.served", "bill.paid", "delivery.delivered",
+                "kot.fired", "kot.served", "bill.paid", "delivery.delivered",
                 "table_session.closed"),
     kind="plugin",
     module_key="pos",

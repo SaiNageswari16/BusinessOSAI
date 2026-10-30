@@ -176,7 +176,10 @@ async def _on_bill_paid(event: Event) -> None:
     if tenant is None or not data.get("bill_id"):
         return
     bill_id = _coerce_uuid(data.get("bill_id"))
-    outlet = _coerce_uuid(data.get("outlet_id"))
+    # The outlet rides the event envelope; a data-level copy is a
+    # fallback only — never the source of truth, so a missing one here
+    # must not silently skip the deduction.
+    outlet = _coerce_uuid(event.outlet_id) or _coerce_uuid(data.get("outlet_id"))
     if bill_id is None or outlet is None:
         return
 

@@ -445,7 +445,11 @@ class PosError(Exception):
 
 def _require_transition(order: Order, to: OrderStatus, allowed: set[OrderStatus]) -> None:
     current = status_value(order.status)
-    if current not in allowed:
+    # ``allowed`` is the set of TARGETS reachable from the order's current
+    # state — so the guard asks "is `to` reachable", not "is the current
+    # state legal". (This was inverted: `current not in allowed`, which made
+    # every legal transition raise and every illegal one pass.)
+    if to not in allowed:
         raise PosError(f"Cannot move an order from {current} to {to.value}")
 
 

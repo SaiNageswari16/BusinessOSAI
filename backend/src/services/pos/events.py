@@ -176,6 +176,42 @@ async def _close_session_for_order(
 # ─── Consumers ────────────────────────────────────────────────────────────────
 
 
+@bus.on("kot.fired")
+async def _on_kot_fired(event: Event) -> None:
+    """The kitchen took the order — move it into the kitchen on the floor side.
+
+    Without this the order sat at PLACED forever: the KOT fired and cooked,
+    but nothing advanced the POS order's status, so a later kot.served or
+    bill.paid found the state machine refusing the jump (SERVED and SETTLED
+    are only reachable from IN_KITCHEN / SERVED, never straight from PLACED).
+    kot.fired is the moment the food physically entered the kitchen, so this
+    is where the order follows it. Idempotent: once in the kitchen the order
+    is no longer PLACED and the transition is not re-allowed.
+    """
+    data = event.data or {}
+    tenant = _tenant(event)
+    order_id = _coerce_uuid(data.get("order_id"))
+    if tenant is None or order_id is None:
+        return
+    db = _handler_db()
+    try:
+        order = await _load_order(db, tenant, order_id)
+        if order is None:
+            logger.info(
+                "pos: kot.fired for order %s unknown to tenant %s; ignoring",
+                order_id, tenant,
+            )
+            return
+        await _advance_order(db, tenant, order, OrderStatus.IN_KITCHEN)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        logger.exception("pos: kot.fired handler failed for order %s", order_id)
+        raise
+    finally:
+        await db.close()
+
+
 @bus.on("kot.served")
 async def _on_kot_served(event: Event) -> None:
     """Kitchen confirms the food was served — advance the order to SERVED.

@@ -49,6 +49,9 @@ _ACCT = {
     "sgst": "2020",
     "igst": "2030",
     "sales": "4000",
+    "service": "4010",
+    "packaging": "4020",
+    "tip": "4030",
     "cogs": "5000",
     "wastage": "5010",
 }
@@ -213,7 +216,14 @@ async def _on_bill_paid(event: Event) -> None:
 
     Dr 1000 Cash (cash legs) / 1010 Bank (everything else) — or Dr 1020 AR
     when the bill is a credit sale —
-    Cr 4000 Sales (pre-tax, incl. service charge) + 2010/2020/2030 tax split.
+    Cr 4000 Sales (food) + 4010 service charge + 4020 packaging +
+    4030 tip + 2010/2020/2030 tax split.
+
+    Every collected rupee must land in some revenue or payable account, or
+    the entry is unbalanced and _post refuses it — which is how a single
+    tipped bill silently breaks the whole auto-accounting chain. The bill
+    collects subtotal + service + packaging + tip + tax (+ round-off), so
+    each is credited to its own account; zero lines are dropped by _post.
     """
     data = event.data or {}
     tenant = _tenant(event)
@@ -221,9 +231,14 @@ async def _on_bill_paid(event: Event) -> None:
         return
     outlet = _coerce_uuid(event.outlet_id) or _coerce_uuid(data.get("outlet_id"))
 
-    base = _f(data.get("subtotal")) + _f(data.get("service_charge"))
     credits = [
-        (_ACCT["sales"], base),
+        # Round-off (the paise the bill rounds up/down by) is booked into
+        # food sales — without it, a ₹0.48 round-up leaves the entry 0.48
+        # short of the collected amount and _post refuses the whole entry.
+        (_ACCT["sales"], _f(data.get("subtotal")) + _f(data.get("round_off"))),
+        (_ACCT["service"], _f(data.get("service_charge"))),
+        (_ACCT["packaging"], _f(data.get("packaging_charge"))),
+        (_ACCT["tip"], _f(data.get("tip"))),
         (_ACCT["cgst"], _f(data.get("cgst_total"))),
         (_ACCT["sgst"], _f(data.get("sgst_total"))),
         (_ACCT["igst"], _f(data.get("igst_total") or data.get("cess_total"))),
