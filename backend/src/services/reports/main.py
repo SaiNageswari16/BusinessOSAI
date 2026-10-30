@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from src.services.reports import models  # noqa: F401 - must come first
 from src.services.reports.api import router
+from src.services.reports import events  # noqa: F401 - @bus.on registrations (side effect)
 from src.services.event_bus.dedupe import install_service_ledger
 from src.services.shared.registry import get_descriptor
 from src.services.shared.service_factory import build_service
@@ -17,6 +18,11 @@ TAGS = [
     {"name": "sales", "description": "Aggregated sales reports across dates"},
     {"name": "hourly", "description": "Hourly sales distribution and peak hour analytics"},
     {"name": "items", "description": "Menu item sales velocity and margins"},
+    {"name": "stock", "description": "Valued current stock from stock movements"},
+    {"name": "gst", "description": "CGST/SGST/IGST split from settled bills"},
+    {"name": "purchase", "description": "GRN and vendor-bill purchase totals"},
+    {"name": "pnl", "description": "Revenue vs. cost of goods sold"},
+    {"name": "reports", "description": "Saved report definitions and runs"},
 ]
 
 

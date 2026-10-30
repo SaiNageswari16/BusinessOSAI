@@ -13,7 +13,7 @@ import uuid
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,9 +22,16 @@ from src.services.reports import service
 from src.services.reports.models import KitchenPerformanceSummary
 from src.services.reports.schemas import (
     DashboardSummaryResponse,
+    GstReport,
     HourlySalesReport,
     ItemSalesReport,
+    OpsReport,
+    PnlReport,
+    PurchaseReport,
+    ReportDefinitionCreate,
+    ReportDefinitionResponse,
     SalesSummaryReport,
+    StockReport,
 )
 from src.services.shared.identity import CurrentIdentity
 
@@ -224,3 +231,128 @@ async def project_bill_paid(
     identity.can_access_outlet(outlet_id)
     await service.record_bill_paid_event(db, identity.tenant_id, outlet_id, payload)
     return {"status": "projected"}
+
+
+# ─── Stock / GST / purchase / P&L / custom reports ───────────────────────────
+#
+# All of these read reports' own projections and are empty-safe: a tenant or
+# outlet with no matching data gets zero-filled rows, never a 500.
+
+@router.get("/stock/current", response_model=StockReport, tags=["stock"])
+async def current_stock(
+    identity: CurrentIdentity,
+    db: DbDep,
+    outlet_id: uuid.UUID | None = None,
+):
+    """Valued current stock per item, projected from stock movements."""
+    identity.require("view:reports")
+    if outlet_id:
+        identity.can_access_outlet(outlet_id)
+    return await service.get_current_stock(db, identity.tenant_id, outlet_id)
+
+
+@router.get("/gst", response_model=GstReport, tags=["gst"])
+async def gst_report(
+    identity: CurrentIdentity,
+    db: DbDep,
+    date_from: date = Query(...),
+    date_to: date = Query(default_factory=date.today),
+    outlet_id: uuid.UUID | None = None,
+):
+    """The CGST / SGST / IGST split for the range, from settled bills."""
+    identity.require("view:reports")
+    if outlet_id:
+        identity.can_access_outlet(outlet_id)
+    return await service.get_gst(db, identity.tenant_id, date_from, date_to, outlet_id)
+
+
+@router.get("/purchase", response_model=PurchaseReport, tags=["purchase"])
+async def purchase_report(
+    identity: CurrentIdentity,
+    db: DbDep,
+    date_from: date = Query(...),
+    date_to: date = Query(default_factory=date.today),
+    outlet_id: uuid.UUID | None = None,
+):
+    """GRN received value beside vendor-bill owed value for the range."""
+    identity.require("view:reports")
+    if outlet_id:
+        identity.can_access_outlet(outlet_id)
+    return await service.get_purchase(db, identity.tenant_id, date_from, date_to, outlet_id)
+
+
+@router.get("/pnl", response_model=PnlReport, tags=["pnl"])
+async def pnl_report(
+    identity: CurrentIdentity,
+    db: DbDep,
+    date_from: date = Query(...),
+    date_to: date = Query(default_factory=date.today),
+    outlet_id: uuid.UUID | None = None,
+):
+    """Revenue vs. cost of goods sold for the range."""
+    identity.require("view:reports")
+    if outlet_id:
+        identity.can_access_outlet(outlet_id)
+    return await service.get_pnl(db, identity.tenant_id, date_from, date_to, outlet_id)
+
+
+@router.get("/ops", response_model=OpsReport, tags=["ops"])
+async def ops_report(
+    identity: CurrentIdentity,
+    db: DbDep,
+    date_from: date = Query(...),
+    date_to: date = Query(default_factory=date.today),
+    outlet_id: uuid.UUID | None = None,
+):
+    """Operational facts for the range: money out, deliveries, production, campaigns."""
+    identity.require("view:reports")
+    if outlet_id:
+        identity.can_access_outlet(outlet_id)
+    return await service.get_ops_report(db, identity.tenant_id, date_from, date_to, outlet_id)
+
+
+@router.get("/custom", response_model=list[ReportDefinitionResponse], tags=["reports"])
+async def list_custom_reports(identity: CurrentIdentity, db: DbDep):
+    """This tenant's saved report definitions, newest first."""
+    identity.require("view:reports")
+    rows = await service.list_report_definitions(db, identity.tenant_id)
+    return [ReportDefinitionResponse.model_validate(r) for r in rows]
+
+
+@router.post("/custom", response_model=ReportDefinitionResponse,
+             status_code=201, tags=["reports"])
+async def save_custom_report(
+    payload: ReportDefinitionCreate,
+    identity: CurrentIdentity,
+    db: DbDep,
+):
+    """Save a report definition to run (or export) later."""
+    identity.require("view:reports")
+    row = await service.create_report_definition(
+        db, identity.tenant_id,
+        name=payload.name,
+        module=payload.module,
+        metric=payload.metric,
+        filters=payload.filters,
+        created_by=identity.user_id,
+    )
+    return row
+
+
+@router.get("/custom/{definition_id}/run", tags=["reports"],
+            summary="Render a saved report definition against the projections")
+async def run_custom_report(
+    definition_id: uuid.UUID,
+    identity: CurrentIdentity,
+    db: DbDep,
+):
+    """Run one saved definition. An unknown metric type returns a structured
+    ``unsupported`` result with empty rows, not an error — a saved report is
+    readable even when its metric is ahead of the runner."""
+    identity.require("view:reports")
+    definition = await service.load_report_definition(
+        db, identity.tenant_id, definition_id,
+    )
+    if definition is None:
+        raise HTTPException(status_code=404, detail="Report definition not found")
+    return await service.run_report_definition(db, identity.tenant_id, definition)
