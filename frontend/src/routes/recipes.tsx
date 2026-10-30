@@ -41,6 +41,7 @@ import {
   inventoryService,
   type StockTransferResult,
 } from "@/services/inventoryService";
+import { initRestaurantStore } from "@/services/orderService";
 import { getActiveOutlet } from "@/lib/auth-tokens";
 import { money } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -434,6 +435,7 @@ function Recipes() {
           },
         ]);
         patchLine(line.key, { inventory_item_id: iid, name });
+        void initRestaurantStore();
         toast.success(`“${name}” created in inventory and mapped to this line`);
       }
       setCreatingKey(null);
@@ -513,6 +515,7 @@ function Recipes() {
       if (studio.kind === "catalog" && studio.item_id) {
         // Upsert onto the existing catalog item.
         await menuService.createRecipe(studio.item_id, payload);
+        void initRestaurantStore();
         toast.success(`${studio.name} saved to the live menu`);
       } else {
         // Global/AI recipe: create the menu item, then its BOM.
@@ -526,6 +529,7 @@ function Recipes() {
         });
         await menuService.createRecipe(item.id, payload);
         setStudio((s) => (s ? { ...s, kind: "catalog", item_id: item.id } : s));
+        void initRestaurantStore();
         toast.success(`${studio.name} created on the menu with its BOM`);
       }
     } catch {

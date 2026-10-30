@@ -1,11 +1,12 @@
 /**
  * Organization Service Client (Native Fetch).
  *
- * Microservice: organization (:8102) via API Gateway (:8000)
+ * Microservice: organization (:8101) via API Gateway (:8000)
  * Mount: /api/v1/organization
  */
 
 import { apiClient } from "../lib/api-client";
+import { getActiveOutlet } from "../lib/auth-tokens";
 
 export interface Tenant {
   id: string;
@@ -110,7 +111,7 @@ export const organizationService = {
     is_active?: boolean;
   }): Promise<{ id: string; name: string; section_type: string; capacity: number }> {
     return apiClient.post<{ id: string; name: string; section_type: string; capacity: number }>("/api/v1/organization/sections", {
-      outlet_id: data.outlet_id || "11111111-2222-3333-4444-555555555555",
+      outlet_id: data.outlet_id || getActiveOutlet() || "11111111-2222-3333-4444-555555555555",
       name: data.name,
       section_type: data.section_type || "ac_hall",
       capacity: data.capacity || 40,
@@ -138,7 +139,10 @@ export const organizationService = {
   },
 
   async createTable(data: CreateTablePayload): Promise<RestaurantTable> {
-    return apiClient.post<RestaurantTable>("/api/v1/organization/tables", data);
+    return apiClient.post<RestaurantTable>("/api/v1/organization/tables", {
+      ...data,
+      outlet_id: data.outlet_id || getActiveOutlet() || "11111111-2222-3333-4444-555555555555",
+    });
   },
 
   async updateTable(tableId: string, data: UpdateTablePayload): Promise<RestaurantTable> {

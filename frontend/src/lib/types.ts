@@ -38,6 +38,10 @@ export interface OrderLine {
 
 export interface Order {
   id: string;
+  backendId?: string;
+  backendKotId?: string;
+  backendBillId?: string;
+  billNumber?: string;
   type: OrderType;
   status: OrderStatus;
   table?: string;

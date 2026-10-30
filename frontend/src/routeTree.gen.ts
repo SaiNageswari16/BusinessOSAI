@@ -13,17 +13,20 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AiRouteImport } from './routes/ai'
 import { Route as CrmRouteImport } from './routes/crm'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as DeliveryRouteImport } from './routes/delivery'
 import { Route as GymRouteImport } from './routes/gym'
 import { Route as HotelRouteImport } from './routes/hotel'
 import { Route as HrmsRouteImport } from './routes/hrms'
 import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as KitchenRouteImport } from './routes/kitchen'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as MarketingRouteImport } from './routes/marketing'
 import { Route as MenuRouteImport } from './routes/menu'
 import { Route as OperationsRouteImport } from './routes/operations'
 import { Route as OrdersRouteImport } from './routes/orders'
 import { Route as PlatformRouteImport } from './routes/platform'
 import { Route as PosRouteImport } from './routes/pos'
+import { Route as ProductionRouteImport } from './routes/production'
 import { Route as RecipesRouteImport } from './routes/recipes'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as ReservationsRouteImport } from './routes/reservations'
@@ -60,6 +63,11 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DeliveryRoute = DeliveryRouteImport.update({
+  id: '/delivery',
+  path: '/delivery',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GymRoute = GymRouteImport.update({
   id: '/gym',
   path: '/gym',
@@ -90,6 +98,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MarketingRoute = MarketingRouteImport.update({
+  id: '/marketing',
+  path: '/marketing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MenuRoute = MenuRouteImport.update({
   id: '/menu',
   path: '/menu',
@@ -113,6 +126,11 @@ const PlatformRoute = PlatformRouteImport.update({
 const PosRoute = PosRouteImport.update({
   id: '/pos',
   path: '/pos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProductionRoute = ProductionRouteImport.update({
+  id: '/production',
+  path: '/production',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RecipesRoute = RecipesRouteImport.update({
@@ -196,17 +214,20 @@ export interface FileRoutesByFullPath {
   '/ai': typeof AiRoute
   '/crm': typeof CrmRoute
   '/dashboard': typeof DashboardRoute
+  '/delivery': typeof DeliveryRoute
   '/gym': typeof GymRoute
   '/hotel': typeof HotelRoute
   '/hrms': typeof HrmsRoute
   '/inventory': typeof InventoryRoute
   '/kitchen': typeof KitchenRoute
   '/login': typeof LoginRoute
+  '/marketing': typeof MarketingRoute
   '/menu': typeof MenuRoute
   '/operations': typeof OperationsRoute
   '/orders': typeof OrdersRoute
   '/platform': typeof PlatformRouteWithChildren
   '/pos': typeof PosRoute
+  '/production': typeof ProductionRoute
   '/recipes': typeof RecipesRoute
   '/reports': typeof ReportsRoute
   '/reservations': typeof ReservationsRoute
@@ -228,16 +249,19 @@ export interface FileRoutesByTo {
   '/ai': typeof AiRoute
   '/crm': typeof CrmRoute
   '/dashboard': typeof DashboardRoute
+  '/delivery': typeof DeliveryRoute
   '/gym': typeof GymRoute
   '/hotel': typeof HotelRoute
   '/hrms': typeof HrmsRoute
   '/inventory': typeof InventoryRoute
   '/kitchen': typeof KitchenRoute
   '/login': typeof LoginRoute
+  '/marketing': typeof MarketingRoute
   '/menu': typeof MenuRoute
   '/operations': typeof OperationsRoute
   '/orders': typeof OrdersRoute
   '/pos': typeof PosRoute
+  '/production': typeof ProductionRoute
   '/recipes': typeof RecipesRoute
   '/reports': typeof ReportsRoute
   '/reservations': typeof ReservationsRoute
@@ -260,17 +284,20 @@ export interface FileRoutesById {
   '/ai': typeof AiRoute
   '/crm': typeof CrmRoute
   '/dashboard': typeof DashboardRoute
+  '/delivery': typeof DeliveryRoute
   '/gym': typeof GymRoute
   '/hotel': typeof HotelRoute
   '/hrms': typeof HrmsRoute
   '/inventory': typeof InventoryRoute
   '/kitchen': typeof KitchenRoute
   '/login': typeof LoginRoute
+  '/marketing': typeof MarketingRoute
   '/menu': typeof MenuRoute
   '/operations': typeof OperationsRoute
   '/orders': typeof OrdersRoute
   '/platform': typeof PlatformRouteWithChildren
   '/pos': typeof PosRoute
+  '/production': typeof ProductionRoute
   '/recipes': typeof RecipesRoute
   '/reports': typeof ReportsRoute
   '/reservations': typeof ReservationsRoute
@@ -294,17 +321,20 @@ export interface FileRouteTypes {
     | '/ai'
     | '/crm'
     | '/dashboard'
+    | '/delivery'
     | '/gym'
     | '/hotel'
     | '/hrms'
     | '/inventory'
     | '/kitchen'
     | '/login'
+    | '/marketing'
     | '/menu'
     | '/operations'
     | '/orders'
     | '/platform'
     | '/pos'
+    | '/production'
     | '/recipes'
     | '/reports'
     | '/reservations'
@@ -326,16 +356,19 @@ export interface FileRouteTypes {
     | '/ai'
     | '/crm'
     | '/dashboard'
+    | '/delivery'
     | '/gym'
     | '/hotel'
     | '/hrms'
     | '/inventory'
     | '/kitchen'
     | '/login'
+    | '/marketing'
     | '/menu'
     | '/operations'
     | '/orders'
     | '/pos'
+    | '/production'
     | '/recipes'
     | '/reports'
     | '/reservations'
@@ -357,17 +390,20 @@ export interface FileRouteTypes {
     | '/ai'
     | '/crm'
     | '/dashboard'
+    | '/delivery'
     | '/gym'
     | '/hotel'
     | '/hrms'
     | '/inventory'
     | '/kitchen'
     | '/login'
+    | '/marketing'
     | '/menu'
     | '/operations'
     | '/orders'
     | '/platform'
     | '/pos'
+    | '/production'
     | '/recipes'
     | '/reports'
     | '/reservations'
@@ -390,17 +426,20 @@ export interface RootRouteChildren {
   AiRoute: typeof AiRoute
   CrmRoute: typeof CrmRoute
   DashboardRoute: typeof DashboardRoute
+  DeliveryRoute: typeof DeliveryRoute
   GymRoute: typeof GymRoute
   HotelRoute: typeof HotelRoute
   HrmsRoute: typeof HrmsRoute
   InventoryRoute: typeof InventoryRoute
   KitchenRoute: typeof KitchenRoute
   LoginRoute: typeof LoginRoute
+  MarketingRoute: typeof MarketingRoute
   MenuRoute: typeof MenuRoute
   OperationsRoute: typeof OperationsRoute
   OrdersRoute: typeof OrdersRoute
   PlatformRoute: typeof PlatformRouteWithChildren
   PosRoute: typeof PosRoute
+  ProductionRoute: typeof ProductionRoute
   RecipesRoute: typeof RecipesRoute
   ReportsRoute: typeof ReportsRoute
   ReservationsRoute: typeof ReservationsRoute
@@ -440,6 +479,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/delivery': {
+      id: '/delivery'
+      path: '/delivery'
+      fullPath: '/delivery'
+      preLoaderRoute: typeof DeliveryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/gym': {
@@ -484,6 +530,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/marketing': {
+      id: '/marketing'
+      path: '/marketing'
+      fullPath: '/marketing'
+      preLoaderRoute: typeof MarketingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/menu': {
       id: '/menu'
       path: '/menu'
@@ -517,6 +570,13 @@ declare module '@tanstack/react-router' {
       path: '/pos'
       fullPath: '/pos'
       preLoaderRoute: typeof PosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/production': {
+      id: '/production'
+      path: '/production'
+      fullPath: '/production'
+      preLoaderRoute: typeof ProductionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/recipes': {
@@ -654,17 +714,20 @@ const rootRouteChildren: RootRouteChildren = {
   AiRoute: AiRoute,
   CrmRoute: CrmRoute,
   DashboardRoute: DashboardRoute,
+  DeliveryRoute: DeliveryRoute,
   GymRoute: GymRoute,
   HotelRoute: HotelRoute,
   HrmsRoute: HrmsRoute,
   InventoryRoute: InventoryRoute,
   KitchenRoute: KitchenRoute,
   LoginRoute: LoginRoute,
+  MarketingRoute: MarketingRoute,
   MenuRoute: MenuRoute,
   OperationsRoute: OperationsRoute,
   OrdersRoute: OrdersRoute,
   PlatformRoute: PlatformRouteWithChildren,
   PosRoute: PosRoute,
+  ProductionRoute: ProductionRoute,
   RecipesRoute: RecipesRoute,
   ReportsRoute: ReportsRoute,
   ReservationsRoute: ReservationsRoute,

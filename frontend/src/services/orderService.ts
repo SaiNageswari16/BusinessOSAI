@@ -12,9 +12,27 @@ export { organizationService } from "./organizationService";
 export { menuService } from "./menuService";
 export { posService } from "./posService";
 export { inventoryService } from "./inventoryService";
+export { billingService } from "./billingService";
+export { kitchenService } from "./kitchenService";
+export {
+  receiptTemplateService,
+  useReceiptTemplate,
+  useOrgReceiptTemplates,
+  updateReceiptTemplate,
+  resetReceiptTemplate,
+  saveReceiptTemplateToBackend,
+  syncReceiptTemplatesFromBackend,
+  activateOrgReceiptTemplate,
+  deleteOrgReceiptTemplate,
+  DEFAULT_RECEIPT_TEMPLATE,
+  type ReceiptTemplate,
+  type SavedOrgReceiptTemplate,
+} from "./receiptTemplateService";
 
 // In-Memory Store & React State Facades
 export {
+  initRestaurantStore,
+  resolveActiveOutletId,
   useOrders,
   useTables,
   useReservations,

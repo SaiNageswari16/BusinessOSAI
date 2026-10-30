@@ -68,6 +68,29 @@ export interface TenantRosterItem {
   is_managed: boolean;
 }
 
+export interface PlanCard {
+  code: string;
+  name: string;
+  price_monthly: number;
+  currency: string;
+  /** e.g. {"max_outlets": N, "max_users": N, "modules": [module keys]}. */
+  limits: Record<string, unknown>;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface TenantPlan {
+  tenant_id: string;
+  plan_code: string;
+  status: string;
+  price_monthly?: number | null;
+  currency?: string | null;
+  limits: Record<string, unknown>;
+  module_entitlements: string[];
+  trial_ends_at?: string | null;
+  renews_at?: string | null;
+}
+
 export interface AuditEntry {
   id: string;
   admin_id: string | null;
@@ -235,6 +258,35 @@ export const platformService = {
 
   async getTenantModules(tenantId: string): Promise<TenantModuleState[]> {
     return apiClient.get<TenantModuleState[]>(`/api/v1/platform/tenants/${tenantId}/modules`, { isPlatform: true });
+  },
+
+  // ── SaaS plan tiers (subscription cards + tenant plan assignment) ──
+  async getPlans(): Promise<PlanCard[]> {
+    return apiClient.get<PlanCard[]>("/api/v1/platform/plans", { isPlatform: true });
+  },
+
+  async getTenantPlan(tenantId: string): Promise<TenantPlan> {
+    return apiClient.get<TenantPlan>(
+      `/api/v1/platform/tenants/${tenantId}/plan`,
+      { isPlatform: true }
+    );
+  },
+
+  /**
+   * Switch a tenant to another plan tier. Applies the plan's module
+   * entitlements to the tenant's module rows (state-only) and writes the
+   * active plan row in the same transaction.
+   */
+  async switchTenantPlan(
+    tenantId: string,
+    planCode: string,
+    status: "ACTIVE" | "TRIAL" = "ACTIVE"
+  ): Promise<TenantPlan> {
+    return apiClient.post<TenantPlan>(
+      `/api/v1/platform/tenants/${tenantId}/plan`,
+      { plan_code: planCode, status },
+      { isPlatform: true }
+    );
   },
 
   async activateTenantModule(tenantId: string, pluginId: string, config: Record<string, unknown> = {}): Promise<TenantModuleState> {

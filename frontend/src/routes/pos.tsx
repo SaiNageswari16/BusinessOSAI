@@ -1,7 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
-  CheckCircle2,
   Clock,
   Leaf,
   Minus,
@@ -11,7 +10,6 @@ import {
   Search,
   Send,
   Sliders,
-  Sparkles,
   SplitSquareHorizontal,
   Star,
   Trash2,
@@ -44,6 +42,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { modifiersForCategory } from "@/data/menu";
 import {
   createOrder,
+  resolveActiveOutletId,
   useCustomers,
   useMenu,
   useSettings,
@@ -58,6 +57,10 @@ import { ReceiptDialog } from "@/components/common/ReceiptDialog";
 import { ReceiptCustomizerModal } from "@/components/common/ReceiptCustomizerModal";
 import { customerService, type Customer } from "@/services/customerService";
 import { billingService } from "@/services/billingService";
+import {
+  AdvanceOrdersDialog,
+  KotLookupDialog,
+} from "@/components/common/pos-advance";
 
 export const Route = createFileRoute("/pos")({
   validateSearch: (search: Record<string, unknown>): { table?: string } => ({
@@ -80,7 +83,7 @@ function Pos() {
   const search = Route.useSearch();
   const tables = useTables();
   const menuItems = useMenu();
-  const fallbackCustomers = useCustomers();
+  useCustomers();
   const settings = useSettings();
 
   const [cat, setCat] = useState<string>("All");
@@ -93,6 +96,10 @@ function Pos() {
   const [picking, setPicking] = useState<MenuItem | null>(null);
   const [payOpen, setPayOpen] = useState(false);
   const [held, setHeld] = useState<OrderLine[][]>([]);
+
+  // ── Advance Orders + KOT-by-number (backend KDS) state ──
+  const [advanceOpen, setAdvanceOpen] = useState(false);
+  const [kotLookupOpen, setKotLookupOpen] = useState(false);
 
   // ── Real Customer & Loyalty State ──
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -134,7 +141,7 @@ function Pos() {
 
   useEffect(() => {
     if (custModalOpen) {
-      searchDbCustomers(custSearchQuery);
+      void searchDbCustomers(custSearchQuery);
     }
   }, [custModalOpen, custSearchQuery]);
 
@@ -234,7 +241,7 @@ function Pos() {
         phone: cleanPhone,
         email: newCustEmail.trim() || undefined,
         gstin: newCustGstin.trim().toUpperCase() || undefined,
-        outlet_id: "11111111-2222-3333-4444-555555555555",
+        outlet_id: resolveActiveOutletId(),
       });
       setSelectedCustomer(created);
       setCustomer(created.name);
@@ -259,22 +266,16 @@ function Pos() {
       return;
     }
     const activeCustName = selectedCustomer ? selectedCustomer.name : customer;
+    const outletUuid = resolveActiveOutletId();
 
-    const o = createOrder({
-      type,
-      table: type === "Dine-in" ? table : undefined,
-      customer: activeCustName,
-      lines,
-      paid,
-      paymentMethod: method,
-    });
+    let settledBillId: string | undefined;
+    let settledBillNo: string | undefined;
 
     if (paid) {
       try {
-        // Record live bill into PostgreSQL via billing microservice
+        // Record live bill into PostgreSQL via billing microservice scoped per organization/outlet
         const billPayload = {
-          outlet_id: "11111111-2222-3333-4444-555555555555",
-          order_number: o.id,
+          outlet_id: outletUuid,
           customer_id: selectedCustomer?.id,
           customer_name: activeCustName,
           customer_phone: selectedCustomer?.phone,
@@ -291,13 +292,29 @@ function Pos() {
           service_charge_pct: type === "Dine-in" ? 5 : 0,
         };
         const createdBill = await billingService.createBill(billPayload);
-        await billingService.settleBill(createdBill.id, {
+        const settledBill = await billingService.settleBill(createdBill.id, {
           payments: [{ method: method.toLowerCase() as any, amount: bill.total }],
         });
+        settledBillId = settledBill.id;
+        settledBillNo = settledBill.bill_number;
       } catch (e) {
         console.warn("Billing service background sync note:", e);
       }
+    }
 
+    const o = createOrder({
+      type,
+      table: type === "Dine-in" ? table : undefined,
+      customer: activeCustName,
+      phone: selectedCustomer?.phone,
+      lines,
+      paid,
+      paymentMethod: method,
+      backendBillId: settledBillId,
+      billNumber: settledBillNo,
+    });
+
+    if (paid) {
       toast.success(`${o.id} settled via ${method} · ${money(bill.total)}`, {
         description: selectedCustomer
           ? `Awarded +${loyaltyPointsToEarn} loyalty points to ${selectedCustomer.name}`
@@ -350,7 +367,7 @@ function Pos() {
           <div className="leading-tight">
             <div className="text-[13px] font-semibold text-foreground">{settings.name}</div>
             <div className="text-[10px] text-muted-foreground">
-              Register #1 · Cashier: Ananya R. · UPTIME LIVE
+              {settings.register} · Branch: {settings.currentBranch} · UPTIME LIVE
             </div>
           </div>
         </div>
@@ -362,6 +379,33 @@ function Pos() {
           className="h-7 gap-1.5 rounded-lg border-indigo-200 bg-indigo-50/50 text-[11px] font-medium text-indigo-700 hover:bg-indigo-50"
         >
           <Sliders className="size-3.5" /> Receipt Template
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setAdvanceOpen(true)}
+          className="h-7 gap-1.5 rounded-lg text-[11px] font-medium"
+        >
+          <Clock className="size-3.5" /> Advance Orders
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setKotLookupOpen(true)}
+          className="h-7 gap-1.5 rounded-lg text-[11px] font-medium"
+        >
+          <Search className="size-3.5" /> KOT Lookup
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate({ to: "/settings" })}
+          className="h-7 text-[11px] text-muted-foreground hover:text-foreground"
+        >
+          Org Receipt Settings →
         </Button>
 
         <div className="relative ml-auto w-full sm:w-72">
@@ -915,8 +959,13 @@ function Pos() {
       <ReceiptCustomizerModal
         open={receiptCustomizerOpen}
         onOpenChange={setReceiptCustomizerOpen}
-        orgSlug="spice9"
       />
+
+      {/* Advance Orders (scheduled) */}
+      <AdvanceOrdersDialog open={advanceOpen} onOpenChange={setAdvanceOpen} />
+
+      {/* KOT lookup by order number */}
+      <KotLookupDialog open={kotLookupOpen} onOpenChange={setKotLookupOpen} />
     </div>
   );
 }
@@ -984,7 +1033,8 @@ function ModifierDialog({
         </DialogHeader>
         <div className="space-y-4">
           {groups.map((g) => {
-            const cur = sel[g.id] ?? (g.type === "single" ? [g.options[0].id] : []);
+            const firstOptId = g.options[0]?.id;
+            const cur = sel[g.id] ?? (g.type === "single" && firstOptId ? [firstOptId] : []);
             return (
               <div key={g.id}>
                 <div className="eyebrow mb-2">

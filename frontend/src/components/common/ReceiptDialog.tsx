@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle2, Printer, QrCode, ReceiptText, Sliders } from "lucide-react";
+import { Download, FileText, Printer, QrCode, ReceiptText, Sliders } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,11 +11,12 @@ import { Button } from "@/components/ui/button";
 import { money } from "@/lib/format";
 import type { Order, PaymentMethod } from "@/lib/types";
 import {
-  ReceiptTemplate,
   receiptTemplateService,
+  useReceiptTemplate,
 } from "@/services/receiptTemplateService";
 import { ReceiptCustomizerModal } from "./ReceiptCustomizerModal";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface BillSummary {
   subtotal: number;
@@ -30,7 +31,9 @@ interface ReceiptDialogProps {
   bill: BillSummary | null;
   paymentMethod?: PaymentMethod;
   open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onOpenChange?: (open: boolean) => void;
+  onClose?: () => void;
+  onCustomize?: () => void;
   orgSlug?: string;
   customerPhone?: string;
   loyaltyPointsEarned?: number;
@@ -43,17 +46,25 @@ export function ReceiptDialog({
   paymentMethod = "UPI",
   open,
   onOpenChange,
-  orgSlug = "spice9",
+  onClose,
+  onCustomize,
+  orgSlug,
   customerPhone,
   loyaltyPointsEarned,
   loyaltyBalance,
 }: ReceiptDialogProps) {
-  const [template, setTemplate] = useState<ReceiptTemplate>(() =>
-    receiptTemplateService.getActiveTemplate(orgSlug)
-  );
+  const activeTemplate = useReceiptTemplate();
   const [customizerOpen, setCustomizerOpen] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   if (!order || !bill) return null;
+
+  const template = activeTemplate;
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    onOpenChange?.(nextOpen);
+    if (!nextOpen) onClose?.();
+  };
 
   const dateFormatted = new Date(order.createdAt).toLocaleDateString("en-IN", {
     day: "2-digit",
@@ -81,9 +92,44 @@ export function ReceiptDialog({
     window.print();
   };
 
+  const handleBackendPdf = async () => {
+    if (!order.backendBillId) {
+      window.print();
+      return;
+    }
+    try {
+      setPdfBusy(true);
+      await receiptTemplateService.openBackendThermalPdf(order.backendBillId, template.paperWidth);
+    } catch (e: any) {
+      toast.error("Could not generate backend PDF, opening browser print instead.");
+      window.print();
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
+  const handleBackendEscPos = async () => {
+    if (!order.backendBillId) {
+      toast.info("ESC/POS raw stream requires a settled backend bill ID.");
+      return;
+    }
+    try {
+      await receiptTemplateService.downloadBackendEscPos(
+        order.backendBillId,
+        order.billNumber || order.id,
+        template.paperWidth
+      );
+      toast.success(`Downloaded ${template.paperWidth} ESC/POS stream`);
+    } catch {
+      toast.error("Failed to download ESC/POS bytes");
+    }
+  };
+
+  const tokenDigits = order.id.replace(/\D/g, "").slice(-3) || "101";
+
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-md max-h-[92vh] flex flex-col p-0 overflow-hidden">
           <DialogHeader className="p-4 border-b bg-slate-50 flex flex-row items-center justify-between">
             <DialogTitle className="flex items-center gap-2 text-sm font-bold text-slate-900">
@@ -94,7 +140,10 @@ export function ReceiptDialog({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setCustomizerOpen(true)}
+              onClick={() => {
+                if (onCustomize) onCustomize();
+                else setCustomizerOpen(true);
+              }}
               className="h-7 text-xs gap-1 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
             >
               <Sliders className="size-3" /> Customize Format
@@ -112,19 +161,34 @@ export function ReceiptDialog({
             >
               {/* Header Branding */}
               <div className="border-b border-dashed border-slate-400 pb-2.5 text-center space-y-0.5">
+                {template.showLogo && (
+                  <div className="mx-auto mb-1 grid size-8 place-items-center rounded border border-slate-900 text-xs font-extrabold">
+                    {(template.orgName || "R").slice(0, 2).toUpperCase()}
+                  </div>
+                )}
                 <div className="font-extrabold text-sm tracking-tight uppercase leading-snug">
                   {template.orgName}
                 </div>
                 {template.tagline && (
                   <div className="text-[10px] text-slate-600 font-medium">{template.tagline}</div>
                 )}
-                <div className="text-[10px] text-slate-700">{template.branchName}</div>
-                <div className="text-[9px] text-slate-500 leading-tight">{template.address}</div>
-                <div className="text-[10px] text-slate-700 font-semibold">Ph: {template.phone}</div>
-                <div className="pt-0.5 text-[9px] text-slate-600 flex justify-center gap-2">
-                  <span>GSTIN: {template.gstin}</span>
-                </div>
-                <div className="text-[9px] text-slate-600">FSSAI: {template.fssai}</div>
+                {template.branchName && (
+                  <div className="text-[10px] text-slate-700">{template.branchName}</div>
+                )}
+                {template.showAddress !== false && template.address && (
+                  <div className="text-[9px] text-slate-500 leading-tight">{template.address}</div>
+                )}
+                {template.showPhone !== false && template.phone && (
+                  <div className="text-[10px] text-slate-700 font-semibold">Ph: {template.phone}</div>
+                )}
+                {template.showGstin !== false && template.gstin && (
+                  <div className="pt-0.5 text-[9px] text-slate-600 flex justify-center gap-2">
+                    <span>GSTIN: {template.gstin}</span>
+                  </div>
+                )}
+                {template.showFssai !== false && template.fssai && (
+                  <div className="text-[9px] text-slate-600">FSSAI: {template.fssai}</div>
+                )}
                 {template.showHeaderGreeting && (
                   <div className="mt-1.5 py-0.5 bg-slate-900 text-white font-bold text-[9px] uppercase tracking-wider">
                     {template.headerGreetingText || "ORIGINAL TAX INVOICE"}
@@ -132,11 +196,19 @@ export function ReceiptDialog({
                 )}
               </div>
 
+              {/* Token Number Box */}
+              {template.showTokenNo && (
+                <div className="my-1.5 border border-slate-900 py-1 text-center">
+                  <div className="text-[8px] uppercase tracking-widest text-slate-500">Token No</div>
+                  <div className="text-base font-extrabold leading-tight">#{tokenDigits}</div>
+                </div>
+              )}
+
               {/* Bill Details */}
               <div className="grid grid-cols-2 gap-x-1 gap-y-0.5 border-b border-dashed border-slate-400 py-2 text-[10px]">
                 <div>
                   <span className="text-slate-500">Invoice: </span>
-                  <span className="font-bold">{order.id}</span>
+                  <span className="font-bold">{order.billNumber || order.id}</span>
                 </div>
                 <div className="text-right">
                   <span className="text-slate-500">Date: </span>
@@ -148,12 +220,17 @@ export function ReceiptDialog({
                 </div>
                 <div className="text-right">
                   {template.showTable && (
-                    <span>Table: <strong className="font-bold">{order.table ?? "Counter"}</strong></span>
+                    <span>
+                      Table: <strong className="font-bold">{order.table ?? "Counter"}</strong>
+                    </span>
                   )}
                 </div>
                 {template.showCustomerInfo && (
                   <div className="col-span-2 pt-1 border-t border-dotted border-slate-300">
-                    <div>Customer: <strong className="font-bold">{order.customer || "Walk-in Guest"}</strong></div>
+                    <div>
+                      Customer:{" "}
+                      <strong className="font-bold">{order.customer || "Walk-in Guest"}</strong>
+                    </div>
                     {(customerPhone || order.phone) && (
                       <div>Phone: {customerPhone || order.phone}</div>
                     )}
@@ -161,7 +238,7 @@ export function ReceiptDialog({
                 )}
                 {template.showWaiter && (
                   <div className="col-span-2 text-[9px] text-slate-500">
-                    Captain: {order.waiter || "Suresh M."}
+                    Captain: {order.waiter || "Ananya"}
                   </div>
                 )}
               </div>
@@ -181,11 +258,18 @@ export function ReceiptDialog({
                         <span className="w-6 font-bold">{l.qty}</span>
                         <span className="flex-1 px-1 font-semibold text-slate-900">{l.name}</span>
                         <span className="w-12 text-right tabular text-slate-600">{l.unitPrice}</span>
-                        <span className="w-14 text-right font-bold tabular">{l.qty * l.unitPrice}</span>
+                        <span className="w-14 text-right font-bold tabular">
+                          {l.qty * l.unitPrice}
+                        </span>
                       </div>
-                      {template.showItemNotes && l.modifiers && l.modifiers.length > 0 && (
+                      {template.showItemModifiers !== false && l.modifiers && l.modifiers.length > 0 && (
                         <div className="text-[9px] text-slate-500 pl-6 italic">
-                          {l.modifiers.join(", ")}
+                          + {l.modifiers.join(", ")}
+                        </div>
+                      )}
+                      {template.showItemNotes && l.note && (
+                        <div className="text-[9px] text-slate-500 pl-6 italic">
+                          Note: {l.note}
                         </div>
                       )}
                     </li>
@@ -199,7 +283,7 @@ export function ReceiptDialog({
                   <span>Subtotal</span>
                   <span className="tabular">{money(bill.subtotal)}</span>
                 </div>
-                {bill.discount > 0 && (
+                {bill.discount > 0 && template.showDiscountLine !== false && (
                   <div className="flex justify-between text-emerald-700 font-medium">
                     <span>Discount</span>
                     <span className="tabular">− {money(bill.discount)}</span>
@@ -245,8 +329,14 @@ export function ReceiptDialog({
               {template.showLoyaltyPoints && (
                 <div className="my-1.5 rounded border border-dashed border-indigo-300 bg-indigo-50/70 p-1.5 text-center text-[9px] text-indigo-950">
                   <div className="font-bold">⭐ CUSTOMER LOYALTY SUMMARY ⭐</div>
-                  <div>Points Earned on this Bill: <strong className="font-bold">+{earnedPts} Pts</strong></div>
-                  <div>Total Loyalty Balance: <strong className="font-bold">{currentBalance} Pts</strong> (₹{currentBalance} value)</div>
+                  <div>
+                    Points Earned on this Bill:{" "}
+                    <strong className="font-bold">+{earnedPts} Pts</strong>
+                  </div>
+                  <div>
+                    Total Loyalty Balance:{" "}
+                    <strong className="font-bold">{currentBalance} Pts</strong> (₹{currentBalance} value)
+                  </div>
                 </div>
               )}
 
@@ -256,7 +346,9 @@ export function ReceiptDialog({
                   <div className="size-16 border border-slate-900 mx-auto grid place-items-center bg-white p-1">
                     <QrCode className="size-14 text-slate-900" />
                   </div>
-                  <div className="mt-1 text-[8px] font-bold text-slate-600">SCAN TO PAY / REVIEW</div>
+                  <div className="mt-1 text-[8px] font-bold text-slate-600">
+                    {template.qrNote || "SCAN TO PAY / REVIEW"}
+                  </div>
                   <div className="text-[8px] text-slate-400 font-mono">{template.upiId}</div>
                 </div>
               )}
@@ -264,6 +356,7 @@ export function ReceiptDialog({
               {/* Footer */}
               <div className="pt-2 text-center text-[9px] text-slate-500 space-y-0.5">
                 <div className="font-semibold text-slate-800">{template.footerMessage}</div>
+                {template.footerSubNote && <div>{template.footerSubNote}</div>}
                 {template.wifiDetails && <div>{template.wifiDetails}</div>}
                 {template.termsNotice && (
                   <div className="text-[8px] text-slate-400 pt-0.5">{template.termsNotice}</div>
@@ -272,17 +365,44 @@ export function ReceiptDialog({
             </div>
           </div>
 
-          <DialogFooter className="p-3 border-t bg-slate-50 flex items-center justify-between sm:justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handlePrint}
-              className="gap-1.5 bg-slate-900 text-white hover:bg-slate-800 font-semibold shadow-xs"
-            >
-              <Printer className="size-3.5" /> Print Thermal Slip (ESC/POS)
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
+          <DialogFooter className="p-3 border-t bg-slate-50 flex flex-wrap items-center justify-between gap-2 sm:justify-between">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handlePrint}
+                className="gap-1.5 bg-slate-900 text-white hover:bg-slate-800 font-semibold shadow-xs"
+              >
+                <Printer className="size-3.5" /> Print Slip
+              </Button>
+              {order.backendBillId && (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={pdfBusy}
+                    onClick={handleBackendPdf}
+                    className="gap-1 text-xs"
+                    title="Open server-rendered fpdf2 Thermal PDF"
+                  >
+                    <FileText className="size-3.5" /> Thermal PDF
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleBackendEscPos}
+                    className="gap-1 text-xs"
+                    title="Download raw ESC/POS byte stream for 9100 thermal printer"
+                  >
+                    <Download className="size-3.5" /> ESC/POS
+                  </Button>
+                </>
+              )}
+            </div>
+            <Button size="sm" variant="ghost" onClick={() => handleOpenChange(false)}>
               Done
             </Button>
           </DialogFooter>
@@ -321,7 +441,6 @@ export function ReceiptDialog({
         open={customizerOpen}
         onOpenChange={setCustomizerOpen}
         orgSlug={orgSlug}
-        onTemplateUpdated={(t) => setTemplate(t)}
       />
     </>
   );

@@ -1,30 +1,21 @@
 /**
- * In-memory unified restaurant store.
- * Coordinates orders, tables, reservations, menu, inventory, suppliers,
- * purchase orders, customers, staff, payments, settings and real-time AI insights.
+ * In-memory unified restaurant store synchronized with PostgreSQL microservices.
+ * Coordinates orders, tables, reservations, menu, recipes, inventory, suppliers,
+ * purchase orders, customers, staff, payments, settings and real-time AI insights
+ * scoped per Organization (`tenant_id`) and Outlet (`outlet_id`).
  *
- * All state mutations notify subscribers via React's useSyncExternalStore.
- * Changes propagate reactively across all routes.
+ * All state mutations notify subscribers via React's useSyncExternalStore
+ * and persist asynchronously to their owning backend microservice.
  */
 import { useSyncExternalStore } from "react";
 import {
-  restaurant as seedRestaurant,
-  tables as seedTables,
-  orders as seedOrders,
-  reservations as seedReservations,
-} from "@/data/operations";
-import {
   customers as seedCustomers,
-  inventory as seedInventory,
   staff as seedStaff,
-  aiInsights as seedInsights,
 } from "@/data/business";
-import { menuItems as seedMenuItems, modifierGroups as seedModifierGroups } from "@/data/menu";
 import type {
   Customer,
   InventoryItem,
   MenuItem,
-  ModifierGroup,
   Order,
   OrderLine,
   OrderStatus,
@@ -45,6 +36,75 @@ import { organizationService } from "./organizationService";
 import { menuService } from "./menuService";
 import { posService } from "./posService";
 import { kitchenService } from "./kitchenService";
+import { billingService } from "./billingService";
+import { updateReceiptTemplate } from "./receiptTemplateService";
+import { getActiveOutlet, getActiveTenant, setActiveOutlet } from "@/lib/auth-tokens";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidUuid(val?: string | null): val is string {
+  return Boolean(val && UUID_RE.test(val));
+}
+
+let activeOutletUuid: string = getActiveOutlet() || "11111111-2222-3333-4444-555555555555";
+let activeStationUuid: string | null = null;
+const outletsMap = new Map<string, { id: string; name: string; address?: string; phone?: string }>();
+const sectionsMap = new Map<string, string>(); // sectionName.toLowerCase() -> sectionUuid
+
+/**
+ * Resolve active outlet UUID dynamically for the logged-in organization/branch.
+ */
+export function resolveActiveOutletId(): string {
+  const fromToken = getActiveOutlet();
+  if (isValidUuid(fromToken)) {
+    activeOutletUuid = fromToken;
+    return fromToken;
+  }
+  if (typeof localStorage !== "undefined") {
+    try {
+      const brRaw = localStorage.getItem("bos-branch");
+      if (brRaw) {
+        const parsed = JSON.parse(brRaw);
+        if (isValidUuid(parsed?.id)) {
+          activeOutletUuid = parsed.id;
+          return parsed.id;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return activeOutletUuid;
+}
+
+/**
+ * Resolve PostgreSQL table UUID from either a display code ("T1") or UUID.
+ */
+export function resolveTableUuid(tableIdOrCode?: string | null): string | undefined {
+  if (!tableIdOrCode) return undefined;
+  if (isValidUuid(tableIdOrCode)) return tableIdOrCode;
+  const match = tables.find(
+    (t) =>
+      t.id === tableIdOrCode ||
+      t.code === tableIdOrCode ||
+      t.name === tableIdOrCode ||
+      t.backendId === tableIdOrCode
+  );
+  return isValidUuid(match?.backendId) ? match!.backendId : undefined;
+}
+
+/**
+ * Resolve display table code ("T1") from a PostgreSQL table UUID or code.
+ */
+export function resolveTableCode(tableUuidOrCode?: string | null): string | undefined {
+  if (!tableUuidOrCode) return undefined;
+  const match = tables.find(
+    (t) =>
+      t.backendId === tableUuidOrCode ||
+      t.id === tableUuidOrCode ||
+      t.code === tableUuidOrCode
+  );
+  return match ? match.id : tableUuidOrCode;
+}
 
 // ==========================================
 // 1. STATE INITIALIZATION (Zero Mock Fallbacks)
@@ -78,6 +138,23 @@ const toFrontendStatus = (s: string): RestaurantTable["status"] => {
   }
 };
 
+const toBackendTableStatus = (s: RestaurantTable["status"]): string => {
+  switch (s) {
+    case "Available":
+      return "available";
+    case "Occupied":
+      return "occupied";
+    case "Billing":
+      return "billed";
+    case "Reserved":
+      return "reserved";
+    case "Cleaning":
+      return "cleaning";
+    default:
+      return "available";
+  }
+};
+
 let settings: RestaurantSettings = {
   name: "Sunrise Restaurant & Bar",
   tagline: "Authentic Flavours & Modern Hospitality",
@@ -99,36 +176,118 @@ let settings: RestaurantSettings = {
 
 /**
  * Fetch and synchronize live PostgreSQL records across all microservices
+ * scoped to the active Organization (`tenant_id`) and Outlet (`outlet_id`).
  */
 export async function initRestaurantStore() {
   try {
-    const [fetchedTables, fetchedSections, fetchedMenu, fetchedOrders, fetchedInv, fetchedRes] = await Promise.all([
+    const [
+      fetchedOutlets,
+      fetchedTables,
+      fetchedSections,
+      fetchedMenu,
+      fetchedOrders,
+      fetchedInv,
+      fetchedRes,
+      fetchedStations,
+      fetchedKots,
+      fetchedBills,
+    ] = await Promise.all([
+      organizationService.getOutlets().catch(() => []),
       organizationService.getTables().catch(() => []),
       organizationService.getSections().catch(() => []),
       menuService.getItems().catch(() => []),
       posService.getOrders({ limit: 50 }).catch(() => []),
       inventoryService.getItems().catch(() => []),
       posService.getReservations().catch(() => []),
+      kitchenService.getStations().catch(() => []),
+      kitchenService.getKOTs().catch(() => []),
+      billingService.getBills(undefined, 50).catch(() => []),
     ]);
 
-    const secMap = new Map<string, string>();
-    fetchedSections.forEach((s: any) => secMap.set(s.id, s.name));
-
-    if (fetchedTables.length > 0) {
-      tables = (fetchedTables as any[]).map((t) => ({
-        id: t.code || t.name || t.id,
-        name: t.name || `Table ${t.code}`,
-        code: t.code,
-        area: (t.section_id && secMap.get(t.section_id)) || "Main Hall",
-        seats: Number(t.seats || t.capacity || 4),
-        shape: t.shape || "round",
-        status: toFrontendStatus(t.status),
-        posX: t.position_x !== null && t.position_x !== undefined ? Number(t.position_x) : 50,
-        posY: t.position_y !== null && t.position_y !== undefined ? Number(t.position_y) : 50,
-        waiter: "Ravi",
-      }));
+    // 1. Resolve Outlets & Organization Settings
+    if (Array.isArray(fetchedOutlets) && fetchedOutlets.length > 0) {
+      outletsMap.clear();
+      fetchedOutlets.forEach((o: any) => {
+        outletsMap.set(o.name, { id: o.id, name: o.name, address: o.address, phone: o.phone });
+      });
+      const currentTokenOutlet = getActiveOutlet();
+      const matchedOutlet =
+        fetchedOutlets.find((o: any) => o.id === currentTokenOutlet) || fetchedOutlets[0];
+      if (matchedOutlet?.id) {
+        activeOutletUuid = matchedOutlet.id;
+        if (!currentTokenOutlet) {
+          setActiveOutlet(matchedOutlet.id);
+        }
+        settings = {
+          ...settings,
+          currentBranch: matchedOutlet.name || settings.currentBranch,
+          branches: fetchedOutlets.map((o: any) => o.name),
+          phone: matchedOutlet.phone || settings.phone,
+          address: matchedOutlet.address || settings.address,
+        };
+      }
     }
 
+    // Check active company metadata from tenant context if available
+    if (typeof localStorage !== "undefined") {
+      try {
+        const tid = getActiveTenant();
+        const gstRaw =
+          (tid && localStorage.getItem(`bos_active_billing_gst_details_${tid}`)) ||
+          localStorage.getItem("bos_active_billing_gst_details");
+        if (gstRaw) {
+          const gst = JSON.parse(gstRaw);
+          if (gst?.trade_name || gst?.legal_name) {
+            settings = {
+              ...settings,
+              name: gst.trade_name || gst.legal_name || settings.name,
+              gstin: gst.gstin || settings.gstin,
+              phone: gst.phone || settings.phone,
+              email: gst.email || settings.email,
+              address: gst.address || settings.address,
+            };
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // 2. Resolve Kitchen Stations
+    if (Array.isArray(fetchedStations) && fetchedStations.length > 0 && fetchedStations[0]) {
+      activeStationUuid = fetchedStations[0].id;
+    }
+
+    // 3. Resolve Floor Sections & Tables (preserving both display `id` and PostgreSQL `backendId`)
+    const secIdToName = new Map<string, string>();
+    sectionsMap.clear();
+    fetchedSections.forEach((s: any) => {
+      secIdToName.set(s.id, s.name);
+      sectionsMap.set(String(s.name).toLowerCase(), s.id);
+    });
+
+    const tableUuidToCode = new Map<string, string>();
+    if (fetchedTables.length > 0) {
+      tables = (fetchedTables as any[]).map((t) => {
+        const displayCode = t.code || t.name || t.id;
+        if (t.id) tableUuidToCode.set(String(t.id), displayCode);
+        return {
+          id: displayCode,
+          backendId: t.id,
+          name: t.name || `Table ${displayCode}`,
+          code: t.code || displayCode,
+          area: (t.section_id && secIdToName.get(t.section_id)) || "Main Hall",
+          seats: Number(t.seats || t.capacity || 4),
+          shape: t.shape || "round",
+          status: toFrontendStatus(t.status),
+          posX: t.position_x !== null && t.position_x !== undefined ? Number(t.position_x) : 50,
+          posY: t.position_y !== null && t.position_y !== undefined ? Number(t.position_y) : 50,
+          waiter: "Ravi",
+        };
+      });
+    }
+
+    // 4. Resolve Menu Items
     if (fetchedMenu.length > 0) {
       menuItems = fetchedMenu.map((m: any) => ({
         id: m.id,
@@ -136,44 +295,116 @@ export async function initRestaurantStore() {
         description: m.description || "Freshly cooked specialty dish",
         category: m.category_name || "Main Course",
         price: Number(m.base_price || 0),
-        prepMins: 15,
-        veg: m.item_type === "veg",
-        available: m.is_available,
+        prepMins: Number(m.prep_time_minutes || 15),
+        veg: m.is_veg !== undefined ? Boolean(m.is_veg) : m.item_type === "veg",
+        available: m.is_available ?? true,
         station: "Main",
         costPct: 30,
       }));
     }
 
-    if (fetchedOrders.length > 0) {
-      orders = fetchedOrders.map((o: any) => ({
-        id: o.order_number || o.id,
-        type: o.order_type === "dine_in" ? "Dine-in" : o.order_type === "takeaway" ? "Takeaway" : "Delivery",
-        status: o.status === "placed" ? "New" : o.status === "preparing" ? "Preparing" : o.status === "ready" ? "Ready" : o.status === "served" ? "Served" : o.status === "settled" ? "Completed" : "Cancelled",
-        table: o.table_id,
-        customer: o.customer_name || "Guest",
-        phone: o.customer_phone,
-        lines: (o.lines || o.items || []).map((l: any) => ({
-          id: l.id || crypto.randomUUID(),
-          itemId: l.menu_item_id || l.id,
-          name: l.item_name || l.name,
-          qty: l.qty || l.quantity || 1,
-          unitPrice: Number(l.unit_price || 0),
-          modifiers: [],
-          station: "Main",
-        })),
-        createdAt: new Date(o.created_at || Date.now()).getTime(),
-        waiter: "Ravi",
-        paid: o.status === "settled",
-      }));
+    // 5. Index KOTs and Bills by order_id / order_number for cross-linking
+    const kotByOrderKey = new Map<string, string>();
+    if (Array.isArray(fetchedKots)) {
+      fetchedKots.forEach((k: any) => {
+        if (k.order_id) kotByOrderKey.set(String(k.order_id), String(k.id));
+        if (k.order_number) kotByOrderKey.set(String(k.order_number), String(k.id));
+      });
     }
 
+    const billByOrderKey = new Map<string, { id: string; bill_number: string; status: string }>();
+    if (Array.isArray(fetchedBills)) {
+      fetchedBills.forEach((b: any) => {
+        if (b.order_id) billByOrderKey.set(String(b.order_id), b);
+        if (b.order_number) billByOrderKey.set(String(b.order_number), b);
+      });
+    }
+
+    // 6. Resolve Orders and cross-link with Tables, KOTs, and Bills
+    if (fetchedOrders.length > 0) {
+      orders = fetchedOrders.map((o: any) => {
+        const displayId = o.order_number || o.id;
+        const resolvedTableCode = o.table_id
+          ? tableUuidToCode.get(String(o.table_id)) || resolveTableCode(String(o.table_id))
+          : undefined;
+        const linkedKotId = kotByOrderKey.get(String(o.id)) || kotByOrderKey.get(String(displayId));
+        const linkedBill = billByOrderKey.get(String(o.id)) || billByOrderKey.get(String(displayId));
+        const isSettled = o.status === "settled" || linkedBill?.status === "settled";
+        return {
+          id: displayId,
+          backendId: o.id,
+          backendKotId: linkedKotId,
+          backendBillId: linkedBill?.id,
+          billNumber: linkedBill?.bill_number,
+          type:
+            o.order_type === "dine_in"
+              ? "Dine-in"
+              : o.order_type === "takeaway"
+                ? "Takeaway"
+                : "Delivery",
+          status:
+            o.status === "placed"
+              ? "New"
+              : o.status === "preparing"
+                ? "Preparing"
+                : o.status === "ready"
+                  ? "Ready"
+                  : o.status === "served"
+                    ? "Served"
+                    : o.status === "settled"
+                      ? "Completed"
+                      : "Cancelled",
+          table: resolvedTableCode,
+          customer: o.customer_name || "Guest",
+          phone: o.customer_phone,
+          lines: (o.lines || o.items || []).map((l: any) => ({
+            id: l.id || crypto.randomUUID(),
+            itemId: l.menu_item_id || l.id,
+            name: l.item_name || l.name,
+            qty: Number(l.qty || l.quantity || 1),
+            unitPrice: Number(l.unit_price || 0),
+            modifiers: [],
+            note: l.notes,
+            station: "Main",
+          })),
+          createdAt: new Date(o.created_at || Date.now()).getTime(),
+          waiter: "Ravi",
+          paid: isSettled,
+        };
+      });
+
+      // Ensure active Dine-in orders reflect on their floor table's orderId
+      const activeByTable = new Map<string, Order>();
+      for (const ord of orders) {
+        if (ord.table && !ord.paid && ord.status !== "Cancelled" && ord.status !== "Completed") {
+          if (!activeByTable.has(ord.table)) activeByTable.set(ord.table, ord);
+        }
+      }
+      if (activeByTable.size > 0) {
+        tables = tables.map((t) => {
+          const activeOrd = activeByTable.get(t.id);
+          if (activeOrd) {
+            return {
+              ...t,
+              status: activeOrd.status === "Served" ? "Billing" : "Occupied",
+              orderId: activeOrd.id,
+              customerName: activeOrd.customer,
+              customerPhone: activeOrd.phone,
+            };
+          }
+          return t;
+        });
+      }
+    }
+
+    // 7. Resolve Inventory
     if (fetchedInv.length > 0) {
       inventory = fetchedInv.map((i: any) => ({
         id: i.id,
         name: i.name,
         category: i.category_name || "Provisions",
-        unit: "kg",
-        stock: Number(i.total_global_on_hand || i.qty_on_hand || 50),
+        unit: i.unit_of_measure || "kg",
+        stock: Number(i.total_global_on_hand ?? i.qty_on_hand ?? 50),
         par: Number(i.reorder_level || 20),
         costPerUnit: Number(i.standard_cost || 100),
         supplier: "Global Commissary",
@@ -181,6 +412,7 @@ export async function initRestaurantStore() {
       }));
     }
 
+    // 8. Resolve Reservations (mapping table UUID -> display table code)
     if (fetchedRes.length > 0) {
       reservations = fetchedRes.map((r: any) => ({
         id: r.id,
@@ -189,10 +421,55 @@ export async function initRestaurantStore() {
         guests: r.covers,
         time: new Date(r.reserved_from).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         date: new Date(r.reserved_from).toISOString().slice(0, 10),
-        table: r.table_id || "none",
+        table: (r.table_id && (tableUuidToCode.get(String(r.table_id)) || resolveTableCode(String(r.table_id)))) || "none",
         status: r.status === "confirmed" ? "Confirmed" : r.status === "seated" ? "Seated" : "Pending",
         occasion: r.occasion,
       }));
+    }
+
+    // 9. Asynchronously sync active Recipes (BOM) for fetched menu items
+    if (menuItems.length > 0) {
+      const invById = new Map<string, InventoryItem>();
+      inventory.forEach((inv) => invById.set(inv.id, inv));
+      void Promise.allSettled(
+        menuItems.slice(0, 40).map((m) =>
+          menuService.listRecipes(m.id).then((resList) => ({ menuItem: m, resList }))
+        )
+      ).then((results) => {
+        const liveRecipes: Recipe[] = [];
+        for (const r of results) {
+          if (r.status === "fulfilled" && Array.isArray(r.value.resList) && r.value.resList.length > 0) {
+            const activeRec: any = r.value.resList.find((x: any) => x.is_active) || r.value.resList[0];
+            const lines: any[] = activeRec?.lines || [];
+            if (lines.length > 0) {
+              const ingredients = lines.map((ln: any) => {
+                const invItem = invById.get(String(ln.inventory_item_id));
+                return {
+                  inventoryId: String(ln.inventory_item_id),
+                  name: invItem?.name || ln.ingredient_name || "Ingredient",
+                  qty: Number(ln.qty_per_unit || ln.qty || 0.1),
+                  unit: ln.uom || invItem?.unit || "kg",
+                };
+              });
+              const totalCost = ingredients.reduce((sum, ing) => {
+                const invItem = invById.get(ing.inventoryId);
+                return sum + ing.qty * (invItem?.costPerUnit || 100);
+              }, 0);
+              liveRecipes.push({
+                itemId: r.value.menuItem.id,
+                itemName: r.value.menuItem.name,
+                ingredients,
+                cost: Math.round(totalCost),
+                prepInstructions: activeRec.notes || `Standard BOM recipe for ${r.value.menuItem.name}`,
+              });
+            }
+          }
+        }
+        if (liveRecipes.length > 0) {
+          recipes = liveRecipes;
+          emit();
+        }
+      });
     }
 
     emit();
@@ -201,9 +478,15 @@ export async function initRestaurantStore() {
   }
 }
 
-// Auto-trigger sync on load in browser
+// Auto-trigger sync on load and when organization/tenant/branch switches
 if (typeof window !== "undefined") {
-  initRestaurantStore();
+  void initRestaurantStore();
+  const handleOrgOrBranchChange = () => {
+    void initRestaurantStore();
+  };
+  window.addEventListener("bos-tenant-changed", handleOrgOrBranchChange);
+  window.addEventListener("bos-company-changed", handleOrgOrBranchChange);
+  window.addEventListener("bos-auth-changed", handleOrgOrBranchChange);
 }
 
 // Initial Suppliers
@@ -282,8 +565,8 @@ const suppliers: Supplier[] = [
   },
 ];
 
-// Initial Recipes linking menu items to inventory items
-const recipes: Recipe[] = [
+// Initial Recipes linking menu items to inventory items (overwritten by live BOM recipes on sync)
+let recipes: Recipe[] = [
   {
     itemId: "M10", // Chicken Biryani
     itemName: "Chicken Biryani",
@@ -644,11 +927,13 @@ export const subscribeToStore = subscribe;
 // 3. ACTIONS & WORKFLOW INTEGRATIONS
 // ==========================================
 
-// Helper: Deplete inventory based on ordered items & recipes
-function deductRecipeIngredients(lines: OrderLine[]) {
+// Helper: Deplete inventory based on ordered items & recipes (BOM)
+function deductRecipeIngredients(lines: OrderLine[], orderRefId?: string) {
   const deductions: Record<string, number> = {};
   for (const line of lines) {
-    const rec = recipes.find((r) => r.itemId === line.itemId);
+    const rec = recipes.find(
+      (r) => r.itemId === line.itemId || r.itemName.toLowerCase() === line.name.toLowerCase()
+    );
     if (rec) {
       for (const ing of rec.ingredients) {
         deductions[ing.inventoryId] = (deductions[ing.inventoryId] ?? 0) + ing.qty * line.qty;
@@ -672,16 +957,19 @@ function deductRecipeIngredients(lines: OrderLine[]) {
       return inv;
     });
 
-    // Asynchronously consume stock from the backend Restaurant Kitchen Sub-Inventory
+    // Asynchronously consume stock from the backend Restaurant Kitchen Sub-Inventory per org/outlet
+    const outletUuid = resolveActiveOutletId();
     for (const [invId, qty] of Object.entries(deductions)) {
+      if (!isValidUuid(invId)) continue;
       inventoryService
         .consumeStock({
-          outlet_id: "00000000-0000-0000-0000-000000000000",
+          outlet_id: outletUuid,
           inventory_item_id: invId,
           module: "restaurant",
           qty,
           reference_type: "pos_dish_prep",
-          notes: "Kitchen order dish recipe consumption",
+          reference_id: isValidUuid(orderRefId) ? orderRefId : undefined,
+          notes: "Kitchen order dish recipe BOM consumption",
         })
         .catch(() => {
           // Non-blocking in frontend store
@@ -699,9 +987,14 @@ export function createOrder(input: {
   lines: OrderLine[];
   paid: boolean;
   paymentMethod?: PaymentMethod;
+  backendBillId?: string;
+  billNumber?: string;
 }): Order {
+  const localId = `ORD-${orderSeq++}`;
   const order: Order = {
-    id: `ORD-${orderSeq++}`,
+    id: localId,
+    backendBillId: input.backendBillId,
+    billNumber: input.billNumber,
     status: input.paid ? "Completed" : "New",
     createdAt: Date.now(),
     waiter: input.type === "Dine-in" ? "Ananya" : "Counter",
@@ -726,12 +1019,14 @@ export function createOrder(input: {
             guests: t.guests ?? (input.type === "Dine-in" ? 2 : 1),
             seatedMins: 0,
             waiter: "Ananya",
+            customerName: input.customer,
+            customerPhone: input.phone,
           }
         : t,
     );
   }
 
-  // 2. Inventory ingredient deductions
+  // 2. Inventory ingredient deductions (BOM)
   deductRecipeIngredients(input.lines);
 
   // 3. Customer loyalty points and visits
@@ -772,46 +1067,90 @@ export function createOrder(input: {
     });
   }
 
-  // 5. Persist directly to PostgreSQL via POS microservice
-  posService
-    .createOrder({
-      outlet_id: "11111111-2222-3333-4444-555555555555",
-      order_type: (input.type === "Dine-in" ? "dine_in" : input.type === "Takeaway" ? "takeaway" : "delivery") as any,
-      table_id: input.table,
-      covers: input.type === "Dine-in" ? 2 : 1,
-      customer_name: input.customer,
-      customer_phone: input.phone,
-      lines: input.lines.map((l) => ({
-        menu_item_id: l.itemId,
-        quantity: l.qty,
-        notes: l.note,
-      })),
-    })
-    .catch((err) => {
-      console.error("Failed to persist order to PostgreSQL POS database:", err);
-    });
+  // 5. Persist directly to PostgreSQL via POS, Organization, and Kitchen microservices
+  const outletUuid = resolveActiveOutletId();
+  const tableUuid = resolveTableUuid(input.table);
+  const validLines = input.lines
+    .filter((l) => isValidUuid(l.itemId))
+    .map((l) => ({
+      menu_item_id: l.itemId,
+      quantity: l.qty,
+      notes: l.note,
+    }));
 
-  if (input.table) {
-    organizationService.setTableStatus(input.table, input.paid ? "cleaning" : "occupied").catch(console.error);
+  if (validLines.length > 0) {
+    posService
+      .createOrder({
+        outlet_id: outletUuid,
+        order_type: (input.type === "Dine-in"
+          ? "dine_in"
+          : input.type === "Takeaway"
+            ? "takeaway"
+            : "delivery") as any,
+        table_id: tableUuid,
+        covers: input.type === "Dine-in" ? 2 : 1,
+        customer_name: input.customer,
+        customer_phone: input.phone,
+        lines: validLines,
+      })
+      .then((createdPosOrder) => {
+        if (createdPosOrder?.id) {
+          orders = orders.map((o) =>
+            o.id === localId
+              ? {
+                  ...o,
+                  backendId: createdPosOrder.id,
+                }
+              : o
+          );
+          if (input.paid) {
+            posService.settleOrder(createdPosOrder.id).catch(() => {});
+          }
+          emit();
+        }
+      })
+      .catch((err) => {
+        console.warn("Could not persist order to PostgreSQL POS database:", err);
+      });
   }
 
-  // 6. Create KOT in kitchen database
-  kitchenService
-    .createKOT({
-      outlet_id: "11111111-2222-3333-4444-555555555555",
-      table_name: input.table,
-      station_id: "bbbbbbbb-1111-0000-0000-000000000001",
-      covers: input.type === "Dine-in" ? 2 : 1,
-      order_type: input.type === "Dine-in" ? "dine_in" : "takeaway",
-      items: input.lines.map((l) => ({
-        name: l.name,
-        qty: l.qty,
-        notes: l.note,
-      })),
-    })
-    .catch((err) => {
-      console.error("Failed to create KOT in kitchen database:", err);
-    });
+  if (tableUuid) {
+    organizationService
+      .setTableStatus(tableUuid, input.paid ? "cleaning" : "occupied")
+      .catch((err) => console.warn("Could not update table status in PostgreSQL:", err));
+  }
+
+  // 6. Create KOT in kitchen database if a valid station exists (or resolve station first)
+  const ensureAndFireKot = async () => {
+    try {
+      if (!activeStationUuid) {
+        const stList = await kitchenService.getStations(outletUuid);
+        if (Array.isArray(stList) && stList.length > 0 && stList[0]) {
+          activeStationUuid = stList[0].id;
+        }
+      }
+      if (!activeStationUuid) return;
+      const createdKot = await kitchenService.createKOT({
+        outlet_id: outletUuid,
+        table_name: input.table,
+        station_id: activeStationUuid,
+        covers: input.type === "Dine-in" ? 2 : 1,
+        order_type: input.type === "Dine-in" ? "dine_in" : "takeaway",
+        items: input.lines.map((l) => ({
+          name: l.name,
+          qty: l.qty,
+          notes: l.note,
+        })),
+      });
+      if (createdKot?.id) {
+        orders = orders.map((o) => (o.id === localId ? { ...o, backendKotId: createdKot.id } : o));
+        emit();
+      }
+    } catch (err) {
+      console.warn("Could not create KOT in kitchen database:", err);
+    }
+  };
+  void ensureAndFireKot();
 
   emit();
   return order;
@@ -819,14 +1158,62 @@ export function createOrder(input: {
 
 // PATCH /orders/{id}/status
 export function setOrderStatus(id: string, status: OrderStatus) {
-  const o = orders.find((x) => x.id === id);
-  orders = orders.map((ord) => (ord.id === id ? { ...ord, status } : ord));
+  const o = orders.find((x) => x.id === id || x.backendId === id);
+  orders = orders.map((ord) => (ord.id === id || ord.backendId === id ? { ...ord, status } : ord));
 
-  // If order status is served and it is dine-in, table can transition to Billing
+  // If order status is served and it is dine-in, table transitions to Billing
   if (status === "Served" && o?.table) {
     tables = tables.map((t) =>
       t.id === o.table && t.status === "Occupied" ? { ...t, status: "Billing" } : t,
     );
+    const tableUuid = resolveTableUuid(o.table);
+    if (tableUuid) {
+      organizationService.setTableStatus(tableUuid, "billed").catch(() => {});
+    }
+  }
+
+  // If order is cancelled on a dine-in table, release the table to Available
+  if (status === "Cancelled" && o?.table) {
+    tables = tables.map((t) =>
+      t.id === o.table
+        ? {
+            ...t,
+            status: "Available",
+            orderId: undefined,
+            guests: undefined,
+            seatedMins: undefined,
+          }
+        : t
+    );
+    const tableUuid = resolveTableUuid(o.table);
+    if (tableUuid) {
+      organizationService.setTableStatus(tableUuid, "available").catch(() => {});
+    }
+  }
+
+  // Sync status transition to POS & Kitchen KDS microservices in PostgreSQL
+  if (o?.backendId && isValidUuid(o.backendId)) {
+    if (status === "Cancelled") {
+      posService.cancelOrder(o.backendId, "Cancelled from Orders/KDS").catch(() => {});
+    } else if (status === "Preparing") {
+      posService.updateOrderStatus(o.backendId, "preparing").catch(() => {});
+    } else if (status === "Ready") {
+      posService.updateOrderStatus(o.backendId, "ready").catch(() => {});
+    } else if (status === "Served") {
+      posService.updateOrderStatus(o.backendId, "served").catch(() => {});
+    } else if (status === "Completed") {
+      posService.settleOrder(o.backendId).catch(() => {});
+    }
+  }
+
+  if (o?.backendKotId && isValidUuid(o.backendKotId)) {
+    if (status === "Preparing") {
+      kitchenService.markAcknowledged(o.backendKotId).catch(() => {});
+    } else if (status === "Ready") {
+      kitchenService.markReady(o.backendKotId).catch(() => {});
+    } else if (status === "Served") {
+      kitchenService.markServed(o.backendKotId).catch(() => {});
+    }
   }
 
   emit();
@@ -834,16 +1221,35 @@ export function setOrderStatus(id: string, status: OrderStatus) {
 
 // POST /orders/{id}/settle
 export function settleOrder(id: string, paymentMethod: PaymentMethod = "Cash") {
-  const o = orders.find((x) => x.id === id);
+  const o = orders.find((x) => x.id === id || x.backendId === id);
   if (!o) return;
 
-  orders = orders.map((x) => (x.id === id ? { ...x, paid: true, status: "Completed" } : x));
+  orders = orders.map((x) =>
+    x.id === id || x.backendId === id ? { ...x, paid: true, status: "Completed" } : x
+  );
 
-  // Release table to Cleaning
+  // Release table to Cleaning in memory + PostgreSQL
   if (o.table) {
     tables = tables.map((t) =>
-      t.id === o.table ? { id: t.id, area: t.area, seats: t.seats, status: "Cleaning" } : t,
+      t.id === o.table
+        ? {
+            id: t.id,
+            backendId: t.backendId,
+            name: t.name,
+            code: t.code,
+            area: t.area,
+            seats: t.seats,
+            shape: t.shape,
+            posX: t.posX,
+            posY: t.posY,
+            status: "Cleaning",
+          }
+        : t,
     );
+    const tableUuid = resolveTableUuid(o.table);
+    if (tableUuid) {
+      organizationService.setTableStatus(tableUuid, "cleaning").catch(() => {});
+    }
   }
 
   // Record payment
@@ -874,6 +1280,55 @@ export function settleOrder(id: string, paymentMethod: PaymentMethod = "Cash") {
           }
         : c,
     );
+  }
+
+  // Persist settlement to POS & Billing microservices in PostgreSQL
+  if (o.backendId && isValidUuid(o.backendId)) {
+    posService.settleOrder(o.backendId).catch(() => {});
+  }
+
+  if (!o.backendBillId) {
+    const outletUuid = resolveActiveOutletId();
+    const validBillItems = o.lines
+      .filter((l) => isValidUuid(l.itemId))
+      .map((l) => ({
+        menu_item_id: l.itemId,
+        name: l.name,
+        qty: l.qty,
+        unit_price: l.unitPrice,
+      }));
+    if (validBillItems.length > 0) {
+      billingService
+        .createBill({
+          outlet_id: outletUuid,
+          order_id: isValidUuid(o.backendId) ? o.backendId : undefined,
+          order_number: o.id,
+          customer_name: o.customer,
+          customer_phone: o.phone,
+          covers: 2,
+          items: validBillItems,
+          service_charge_pct: o.type === "Dine-in" ? settings.serviceCharge * 100 : 0,
+        })
+        .then(async (bill) => {
+          const methodLower = paymentMethod.toLowerCase() as "cash" | "card" | "upi" | "wallet";
+          const settled = await billingService.settleBill(bill.id, {
+            payments: [{ method: methodLower, amount: bill.grand_total }],
+          });
+          orders = orders.map((ord) =>
+            ord.id === o.id
+              ? {
+                  ...ord,
+                  backendBillId: settled.id,
+                  billNumber: settled.bill_number,
+                }
+              : ord
+          );
+          emit();
+        })
+        .catch((err) => {
+          console.warn("Could not persist bill settlement to billing microservice:", err);
+        });
+    }
   }
 
   emit();
@@ -908,16 +1363,34 @@ export function recordPayment(input: {
 
 // PATCH /tables/{id}
 export function setTableStatus(id: string, status: RestaurantTable["status"]) {
+  const tableUuid = resolveTableUuid(id);
   tables = tables.map((t) => {
-    if (t.id === id) {
+    if (t.id === id || t.backendId === id) {
       if (status === "Available" || status === "Cleaning") {
-        return { id: t.id, area: t.area, seats: t.seats, status };
+        return {
+          id: t.id,
+          backendId: t.backendId,
+          name: t.name,
+          code: t.code,
+          area: t.area,
+          seats: t.seats,
+          shape: t.shape,
+          posX: t.posX,
+          posY: t.posY,
+          status,
+        };
       }
       return { ...t, status };
     }
     return t;
   });
   emit();
+
+  if (tableUuid) {
+    organizationService.setTableStatus(tableUuid, toBackendTableStatus(status)).catch((e) => {
+      console.warn("Could not sync table status to backend:", e);
+    });
+  }
 }
 
 // Table seating helper (Petpooja workflow)
@@ -928,8 +1401,9 @@ export function seatTable(
   waiter: string = "Ananya",
   customerPhone?: string,
 ) {
+  const tableUuid = resolveTableUuid(tableId);
   tables = tables.map((t) =>
-    t.id === tableId
+    t.id === tableId || t.backendId === tableId
       ? {
           ...t,
           status: "Occupied",
@@ -942,6 +1416,10 @@ export function seatTable(
       : t,
   );
   emit();
+
+  if (tableUuid) {
+    organizationService.setTableStatus(tableUuid, "occupied").catch(() => {});
+  }
 }
 
 // Reserve table helper (Petpooja workflow)
@@ -952,8 +1430,9 @@ export function reserveTable(
   timeStr: string = "07:30 PM",
   customerPhone?: string,
 ) {
+  const tableUuid = resolveTableUuid(tableId);
   tables = tables.map((t) =>
-    t.id === tableId
+    t.id === tableId || t.backendId === tableId
       ? {
           ...t,
           status: "Reserved",
@@ -964,6 +1443,11 @@ export function reserveTable(
       : t,
   );
   emit();
+
+  if (tableUuid) {
+    organizationService.setTableStatus(tableUuid, "reserved").catch(() => {});
+  }
+  void timeStr;
 }
 
 // Add new custom table (Floor Plan Designer)
@@ -971,6 +1455,7 @@ export function addTable(newTable: Partial<RestaurantTable>): RestaurantTable {
   const tableNumber = newTable.id || `T${tables.length + 1}`;
   const t: RestaurantTable = {
     id: tableNumber,
+    code: tableNumber,
     name: newTable.name || `Table ${tableNumber}`,
     area: newTable.area || "Main Hall",
     seats: newTable.seats || 4,
@@ -983,29 +1468,77 @@ export function addTable(newTable: Partial<RestaurantTable>): RestaurantTable {
   };
   tables = [...tables, t];
   emit();
+
+  const outletUuid = resolveActiveOutletId();
+  const sectionUuid = sectionsMap.get((t.area || "Main Hall").toLowerCase());
+  organizationService
+    .createTable({
+      outlet_id: outletUuid,
+      section_id: sectionUuid,
+      name: t.name || tableNumber,
+      code: tableNumber,
+      capacity: t.seats,
+      seats: t.seats,
+      shape: t.shape,
+      position_x: t.posX,
+      position_y: t.posY,
+    })
+    .then((created) => {
+      if (created?.id) {
+        tables = tables.map((tbl) =>
+          tbl.id === tableNumber ? { ...tbl, backendId: created.id } : tbl
+        );
+        emit();
+      }
+    })
+    .catch((e) => console.warn("Could not persist new table to PostgreSQL:", e));
+
   return t;
 }
 
 // Update table configuration / physical layout
 export function updateTable(tableId: string, updates: Partial<RestaurantTable>) {
-  tables = tables.map((t) => (t.id === tableId ? { ...t, ...updates } : t));
+  const tableUuid = resolveTableUuid(tableId);
+  tables = tables.map((t) => (t.id === tableId || t.backendId === tableId ? { ...t, ...updates } : t));
   emit();
+
+  if (tableUuid) {
+    organizationService
+      .updateTable(tableUuid, {
+        name: updates.name,
+        capacity: updates.seats,
+        seats: updates.seats,
+        shape: updates.shape,
+        position_x: updates.posX,
+        position_y: updates.posY,
+        status: updates.status ? (toBackendTableStatus(updates.status) as any) : undefined,
+      })
+      .catch((e) => console.warn("Could not persist table update to PostgreSQL:", e));
+  }
 }
 
 // Delete table
 export function deleteTable(tableId: string) {
-  tables = tables.filter((t) => t.id !== tableId);
+  const tableUuid = resolveTableUuid(tableId);
+  tables = tables.filter((t) => t.id !== tableId && t.backendId !== tableId);
   emit();
+
+  if (tableUuid) {
+    organizationService
+      .deleteTable(tableUuid)
+      .catch((e) => console.warn("Could not delete table in PostgreSQL:", e));
+  }
 }
 
 // Transfer table (Petpooja shift/merge)
 export function transferTable(fromTableId: string, toTableId: string) {
-  const source = tables.find((t) => t.id === fromTableId);
-  if (!source) return;
+  const source = tables.find((t) => t.id === fromTableId || t.backendId === fromTableId);
+  const dest = tables.find((t) => t.id === toTableId || t.backendId === toTableId);
+  if (!source || !dest) return;
 
   // Move order and seating to destination table
   tables = tables.map((t) => {
-    if (t.id === toTableId) {
+    if (t.id === dest.id) {
       return {
         ...t,
         status: source.status,
@@ -1017,10 +1550,12 @@ export function transferTable(fromTableId: string, toTableId: string) {
         customerPhone: source.customerPhone,
       };
     }
-    if (t.id === fromTableId) {
+    if (t.id === source.id) {
       return {
         id: t.id,
+        backendId: t.backendId,
         name: t.name,
+        code: t.code,
         area: t.area,
         seats: t.seats,
         shape: t.shape,
@@ -1034,10 +1569,19 @@ export function transferTable(fromTableId: string, toTableId: string) {
 
   // Also update order's table reference
   if (source.orderId) {
-    orders = orders.map((o) => (o.id === source.orderId ? { ...o, table: toTableId } : o));
+    orders = orders.map((o) => (o.id === source.orderId ? { ...o, table: dest.id } : o));
   }
 
   emit();
+
+  const srcUuid = resolveTableUuid(fromTableId);
+  const dstUuid = resolveTableUuid(toTableId);
+  if (srcUuid) {
+    organizationService.setTableStatus(srcUuid, "cleaning").catch(() => {});
+  }
+  if (dstUuid) {
+    organizationService.setTableStatus(dstUuid, toBackendTableStatus(source.status)).catch(() => {});
+  }
 }
 
 // ==========================================
@@ -1053,38 +1597,47 @@ export async function toggleMenuItemAvailability(id: string, available?: boolean
   );
   emit();
 
-  try {
-    await menuService.updateItem(id, { is_available: targetAvailable });
-  } catch (e) {
-    console.warn("Could not sync item availability to menu backend:", e);
+  if (isValidUuid(id)) {
+    try {
+      await menuService.updateItem(id, { is_available: targetAvailable });
+    } catch (e) {
+      console.warn("Could not sync item availability to menu backend:", e);
+    }
   }
 }
 
 export async function addMenuItem(item: Omit<MenuItem, "id">): Promise<MenuItem> {
+  const tempId = `M${menuItems.length + 1}`;
   const newItem: MenuItem = {
     ...item,
-    id: `M${menuItems.length + 1}`,
+    id: tempId,
   };
   menuItems = [...menuItems, newItem];
   emit();
 
   try {
     const cats = await menuService.getCategories();
-    const backendCategory = cats.find(
+    let backendCategory = cats.find(
       (c) => c.name.toLowerCase() === item.category.toLowerCase()
     );
+    if (!backendCategory && cats.length > 0) {
+      backendCategory = cats[0];
+    }
     if (backendCategory) {
-      await menuService.createItem({
+      const created = await menuService.createItem({
         category_id: backendCategory.id,
         name: item.name,
         code: `M${menuItems.length}`,
+        description: item.description,
         base_price: item.price,
-        // The menu service's create payload models the coarse category
-        // (dish/beverage/retail/service); veg/non-veg is tracked on the
-        // menu item's own flags, not the create payload.
         item_type: "dish",
         is_available: item.available ?? true,
       });
+      if (created?.id) {
+        menuItems = menuItems.map((m) => (m.id === tempId ? { ...m, id: created.id } : m));
+        emit();
+        return { ...newItem, id: created.id };
+      }
     }
   } catch (e) {
     console.warn("Could not sync added menu item to backend:", e);
@@ -1096,11 +1649,28 @@ export async function addMenuItem(item: Omit<MenuItem, "id">): Promise<MenuItem>
 export function updateMenuItem(id: string, updates: Partial<MenuItem>) {
   menuItems = menuItems.map((m) => (m.id === id ? { ...m, ...updates } : m));
   emit();
+
+  if (isValidUuid(id)) {
+    menuService
+      .updateItem(id, {
+        name: updates.name,
+        description: updates.description,
+        base_price: updates.price,
+        is_available: updates.available,
+      })
+      .catch((e) => console.warn("Could not sync menu item update to backend:", e));
+  }
 }
 
 export function deleteMenuItem(id: string) {
   menuItems = menuItems.filter((m) => m.id !== id);
   emit();
+
+  if (isValidUuid(id)) {
+    menuService
+      .deleteItem(id)
+      .catch((e) => console.warn("Could not delete menu item on backend:", e));
+  }
 }
 
 // ==========================================
@@ -1119,14 +1689,16 @@ export async function adjustStock(id: string, delta: number) {
   });
   emit();
 
-  try {
-    await inventoryService.adjustStock({
-      item_id: id,
-      qty_delta: delta,
-      reason: delta > 0 ? "manual_restock" : "waste_adjustment",
-    });
-  } catch (e) {
-    console.warn("Could not sync stock adjustment to backend:", e);
+  if (isValidUuid(id)) {
+    try {
+      await inventoryService.adjustStock({
+        item_id: id,
+        qty_delta: delta,
+        reason: delta > 0 ? "manual_restock" : "waste_adjustment",
+      });
+    } catch (e) {
+      console.warn("Could not sync stock adjustment to backend:", e);
+    }
   }
 }
 
@@ -1168,7 +1740,7 @@ export function receivePurchaseOrder(poId: string) {
 
   // Add stock to inventory
   for (const item of po.items) {
-    adjustStock(item.inventoryId, item.qty);
+    void adjustStock(item.inventoryId, item.qty);
   }
 
   purchaseOrders = purchaseOrders.map((p) =>
@@ -1245,11 +1817,14 @@ export function createReservation(res: Omit<Reservation, "id" | "status">): Rese
   reservations = [...reservations, newRes];
 
   // If table is assigned, mark table as Reserved
-  if (res.table) {
+  if (res.table && res.table !== "none") {
     tables = tables.map((t) => (t.id === res.table ? { ...t, status: "Reserved" } : t));
-    organizationService.setTableStatus(res.table, "reserved").catch((e) => {
-      console.warn("Could not sync reservation table status to backend:", e);
-    });
+    const tableUuid = resolveTableUuid(res.table);
+    if (tableUuid) {
+      organizationService.setTableStatus(tableUuid, "reserved").catch((e) => {
+        console.warn("Could not sync reservation table status to backend:", e);
+      });
+    }
   }
 
   emit();
@@ -1260,13 +1835,16 @@ export function updateReservationStatus(id: string, status: Reservation["status"
   const r = reservations.find((x) => x.id === id);
   reservations = reservations.map((x) => (x.id === id ? { ...x, status } : x));
 
-  if (status === "Cancelled" && r?.table) {
+  if (status === "Cancelled" && r?.table && r.table !== "none") {
     tables = tables.map((t) =>
       t.id === r.table && t.status === "Reserved" ? { ...t, status: "Available" } : t,
     );
-    organizationService.setTableStatus(r.table, "available").catch((e) => {
-      console.warn("Could not sync cancelled table status to backend:", e);
-    });
+    const tableUuid = resolveTableUuid(r.table);
+    if (tableUuid) {
+      organizationService.setTableStatus(tableUuid, "available").catch((e) => {
+        console.warn("Could not sync cancelled table status to backend:", e);
+      });
+    }
   }
 
   emit();
@@ -1281,21 +1859,26 @@ export function seatReservation(id: string, targetTable?: string) {
     x.id === id ? { ...x, status: "Seated", table: tableToSeat } : x,
   );
 
-  if (tableToSeat) {
+  if (tableToSeat && tableToSeat !== "none") {
     tables = tables.map((t) =>
       t.id === tableToSeat
         ? {
             ...t,
             status: "Occupied",
             guests: r.guests,
+            customerName: r.name,
+            customerPhone: r.phone,
             seatedMins: 0,
             waiter: "Ananya",
           }
         : t,
     );
-    organizationService.setTableStatus(tableToSeat, "occupied").catch((e) => {
-      console.warn("Could not sync seated table status to backend:", e);
-    });
+    const tableUuid = resolveTableUuid(tableToSeat);
+    if (tableUuid) {
+      organizationService.setTableStatus(tableUuid, "occupied").catch((e) => {
+        console.warn("Could not sync seated table status to backend:", e);
+      });
+    }
   }
 
   emit();
@@ -1347,16 +1930,57 @@ export function addStaffMember(newStaff: Omit<StaffMember, "id">): StaffMember {
 }
 
 // ==========================================
-// 9. SETTINGS SERVICE
+// 9. SETTINGS SERVICE (Persisted Per Org & Outlet)
 // ==========================================
 
 export function updateSettings(updates: Partial<RestaurantSettings>) {
   settings = { ...settings, ...updates };
   emit();
+
+  // Keep the organization's receipt template header defaults aligned
+  updateReceiptTemplate(
+    {
+      brandName: settings.name,
+      orgName: settings.name,
+      subtitle: settings.tagline,
+      tagline: settings.tagline,
+      branchName: settings.currentBranch,
+      address: settings.address,
+      phone: settings.phone,
+      email: settings.email,
+      gstin: settings.gstin,
+      fssai: settings.fssai,
+    },
+    { persistBackend: true }
+  );
+
+  // Persist outlet details to PostgreSQL organization service
+  const outletUuid = resolveActiveOutletId();
+  if (isValidUuid(outletUuid)) {
+    organizationService
+      .updateOutlet(outletUuid, {
+        name: settings.currentBranch || settings.name,
+        phone: settings.phone,
+        address: settings.address,
+      })
+      .catch((e) => console.warn("Could not persist outlet settings to backend:", e));
+  }
 }
 
 export function switchBranch(branch: string) {
   settings = { ...settings, currentBranch: branch };
+  const branchInfo = outletsMap.get(branch);
+  if (branchInfo?.id && isValidUuid(branchInfo.id)) {
+    activeOutletUuid = branchInfo.id;
+    setActiveOutlet(branchInfo.id);
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(
+        "bos-branch",
+        JSON.stringify({ id: branchInfo.id, name: branchInfo.name, code: branchInfo.name })
+      );
+    }
+    void initRestaurantStore();
+  }
   emit();
 }
 

@@ -133,4 +133,44 @@ export const posService = {
   async updateReservation(reservationId: string, data: any): Promise<any> {
     return apiClient.patch<any>(`/api/v1/pos/reservations/${reservationId}`, data);
   },
+
+  // ── Scheduled (advance) orders ────────────────────────────────────────────
+  // A scheduled order is a "advance" order: placed now, kitchen fires /
+  // table opens at `scheduled_for`. The due view is what the terminal
+  // checks on shift start; activate now turns it live immediately.
+
+  /** Scheduled orders due on or before `now` (defaults to server now). */
+  async getDueScheduledOrders(options: {
+    outletId?: string;
+    limit?: number;
+  } = {}): Promise<any[]> {
+    return apiClient.get<any[]>("/api/v1/pos/orders/scheduled/due", {
+      params: {
+        outlet_id: options.outletId,
+        limit: options.limit || 50,
+      },
+    });
+  },
+
+  /**
+   * Schedule an order. Payload is the usual create-order shape plus
+   * `scheduled_for` (ISO-8601). Field names beyond scheduled_for are
+   * optional here — the backend contract is still settling.
+   */
+  async scheduleOrder(data: {
+    outlet_id: string;
+    order_type?: string;
+    scheduled_for: string;
+    customer_name?: string;
+    customer_phone?: string;
+    lines?: { menu_item_id?: string; name?: string; quantity?: number; notes?: string }[];
+    notes?: string;
+  }): Promise<any> {
+    return apiClient.post<any>("/api/v1/pos/orders/scheduled", data);
+  },
+
+  /** Activate a scheduled order now (fires to kitchen / opens the table). */
+  async activateScheduledOrder(orderId: string): Promise<any> {
+    return apiClient.post<any>(`/api/v1/pos/orders/${orderId}/activate`, {});
+  },
 };

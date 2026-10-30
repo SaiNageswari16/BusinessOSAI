@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Check,
   Eye,
@@ -27,15 +27,18 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DEFAULT_RECEIPT_TEMPLATE,
+  normalizeReceiptTemplate,
   ReceiptTemplate,
   receiptTemplateService,
+  useReceiptTemplate,
 } from "@/services/receiptTemplateService";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 interface ReceiptCustomizerModalProps {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onOpenChange?: (open: boolean) => void;
+  onClose?: () => void;
   orgSlug?: string;
   onTemplateUpdated?: (template: ReceiptTemplate) => void;
 }
@@ -43,34 +46,48 @@ interface ReceiptCustomizerModalProps {
 export function ReceiptCustomizerModal({
   open,
   onOpenChange,
-  orgSlug = "spice9",
+  onClose,
+  orgSlug,
   onTemplateUpdated,
 }: ReceiptCustomizerModalProps) {
+  const activeOrgTemplate = useReceiptTemplate();
   const [template, setTemplate] = useState<ReceiptTemplate>(() =>
     receiptTemplateService.getActiveTemplate(orgSlug)
   );
   const [activeTab, setActiveTab] = useState<"header" | "content" | "taxes" | "footer">("header");
 
+  useEffect(() => {
+    if (open) {
+      setTemplate(activeOrgTemplate);
+    }
+  }, [open, activeOrgTemplate]);
+
+  const handleClose = (nextOpen: boolean) => {
+    onOpenChange?.(nextOpen);
+    if (!nextOpen) onClose?.();
+  };
+
   const updateField = <K extends keyof ReceiptTemplate>(key: K, value: ReceiptTemplate[K]) => {
-    setTemplate((prev) => ({ ...prev, [key]: value }));
+    setTemplate((prev) => normalizeReceiptTemplate({ ...prev, [key]: value }, prev));
   };
 
   const handleSave = () => {
-    receiptTemplateService.saveActiveTemplate(template, orgSlug);
-    toast.success("Receipt Template Saved Successfully!", {
-      description: `Active print format for organization "${template.orgName}" updated to ${template.paperWidth}.`,
+    const normalized = normalizeReceiptTemplate(template, template);
+    receiptTemplateService.saveActiveTemplate(normalized, orgSlug);
+    toast.success("Receipt Template Saved Per Organization!", {
+      description: `Active thermal print format (${normalized.paperWidth}) saved to PostgreSQL for "${normalized.orgName}".`,
     });
-    onTemplateUpdated?.(template);
-    onOpenChange(false);
+    onTemplateUpdated?.(normalized);
+    handleClose(false);
   };
 
   const handleReset = () => {
     setTemplate(DEFAULT_RECEIPT_TEMPLATE);
-    toast.info("Reset to Petpooja & MyBillBook standard preset");
+    toast.info("Reset to standard thermal receipt preset");
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-4xl max-h-[92vh] flex flex-col p-0 overflow-hidden">
         <DialogHeader className="p-5 border-b bg-slate-50/80">
           <div className="flex items-center justify-between pr-6">
@@ -581,7 +598,7 @@ export function ReceiptCustomizerModal({
             <RotateCcw className="size-3.5" /> Reset to Standard Petpooja Format
           </Button>
           <div className="flex gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" size="sm" onClick={() => handleClose(false)}>
               Cancel
             </Button>
             <Button type="button" size="sm" onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 font-semibold">

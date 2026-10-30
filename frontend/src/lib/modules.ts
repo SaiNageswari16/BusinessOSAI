@@ -24,6 +24,9 @@ export const ALL_NAV_ITEMS: NavItemDef[] = [
   { to: "/menu", label: "Menu", moduleKey: "restaurant", requiredPermission: "menu:items:view" },
   { to: "/recipes", label: "Recipes", moduleKey: "restaurant", requiredPermission: "menu:items:view" },
   { to: "/reservations", label: "Reservations", moduleKey: "restaurant", requiredPermission: "pos:tables:manage" },
+  { to: "/delivery", label: "Delivery", moduleKey: "delivery" },
+  { to: "/production", label: "Production", moduleKey: "production" },
+  { to: "/marketing", label: "Marketing", moduleKey: "marketing" },
 
   // ── Shared Add-ons / Verticals ────────────────────────────────────────────
   { to: "/inventory", label: "Inventory", moduleKey: "inventory", requiredPermission: "inventory:stock:view" },
@@ -57,7 +60,17 @@ export function ribbonGateKeys(moduleKey: string): string[] {
 }
 
 export function resolveTenantNavigation(
-  enabledModules: string[] = ["restaurant", "pos", "inventory", "crm", "staff", "reports"],
+  enabledModules: string[] = [
+    "restaurant",
+    "pos",
+    "inventory",
+    "crm",
+    "staff",
+    "reports",
+    "delivery",
+    "production",
+    "marketing",
+  ],
   hasPermission: (perm: string) => boolean = () => true,
   // Module keys the caller's tenant has suspended/archived in the platform
   // service (from GET /platform/tenants/me/modules, "active" entries excluded).

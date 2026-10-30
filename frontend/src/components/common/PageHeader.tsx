@@ -66,12 +66,14 @@ export function KpiCard({
 
 export function Panel({
   title,
+  subtitle,
   action,
   children,
   className,
   bodyClass,
 }: {
   title?: ReactNode;
+  subtitle?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -81,7 +83,10 @@ export function Panel({
     <section className={cn("panel flex flex-col", className)}>
       {title && (
         <header className="flex items-center justify-between border-b px-4 py-3">
-          <h2 className="text-sm font-semibold">{title}</h2>
+          <div>
+            <h2 className="text-sm font-semibold">{title}</h2>
+            {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+          </div>
           {action}
         </header>
       )}
