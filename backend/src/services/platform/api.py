@@ -19,6 +19,7 @@ from src.services.platform.models import (
     PlatformAdminRole,
     PlatformAuditEntry,
     PluginManifest,
+    SaaSPlan,
     TenantModuleState,
     _utcnow,
 )
@@ -34,7 +35,13 @@ from src.services.platform.schemas import (
     ModuleLifecycleRequest,
     PermissionCreateRequest,
     PermissionItem,
+    PlanCard,
+    PlanCreateRequest,
+    PlanUpdateRequest,
     PlatformAdminResponse,
+    TenantPlanRenewedResponse,
+    TenantPlanRequest,
+    TenantPlanResponse,
     PlatformLoginRequest,
     PlatformTokenResponse,
     PluginManifestResponse,
@@ -371,6 +378,165 @@ async def archive_tenant_module(
         }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+# ─── SaaS Plan Tiers (subscription cards + tenant plan assignment) ─────────
+
+@router.get("/plans", response_model=list[PlanCard], tags=["plans"])
+async def list_plans(
+    admin: Annotated[PlatformAdmin, Depends(require_platform_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    """The active subscription cards, cheapest first."""
+    plans = await PlatformService.list_active_plans(session)
+    return [
+        {
+            "code": p.code,
+            "name": p.name,
+            "price_monthly": p.price_monthly,
+            "currency": p.currency,
+            "limits": p.limits,
+            "is_active": p.is_active,
+            "created_at": p.created_at,
+        }
+        for p in plans
+    ]
+
+
+@router.post("/plans", response_model=PlanCard, status_code=201, tags=["plans"])
+async def create_plan(
+    req: PlanCreateRequest,
+    admin: Annotated[PlatformAdmin, Depends(require_role("super_admin", "billing_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    """Add a subscription tier. Existing tenants keep their plan; new
+    tenants can be assigned the tier through the assignment route."""
+    try:
+        plan = await PlatformService.create_plan(
+            session, admin.email,
+            code=req.code, name=req.name,
+            price_monthly=req.price_monthly,
+            currency=req.currency, limits=req.limits,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        code = 409 if "already exists" in detail else 400
+        raise HTTPException(status_code=code, detail=detail)
+    return {
+        "code": plan.code, "name": plan.name,
+        "price_monthly": plan.price_monthly, "currency": plan.currency,
+        "limits": plan.limits, "is_active": plan.is_active,
+        "created_at": plan.created_at,
+    }
+
+
+@router.patch("/plans/{code}", response_model=PlanCard, tags=["plans"])
+async def update_plan(
+    code: str,
+    req: PlanUpdateRequest,
+    admin: Annotated[PlatformAdmin, Depends(require_role("super_admin", "billing_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    """Edit a tier card (price, limits, active). Module entitlements apply
+    at assignment time, not here — changing a card's module list does not
+    itself touch any tenant; the next assignment does."""
+    try:
+        plan = await PlatformService.update_plan(
+            session, admin.email, code, req.model_dump(exclude_unset=True)
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        code_ = 404 if "not found" in detail else 400
+        raise HTTPException(status_code=code_, detail=detail)
+    return {
+        "code": plan.code, "name": plan.name,
+        "price_monthly": plan.price_monthly, "currency": plan.currency,
+        "limits": plan.limits, "is_active": plan.is_active,
+        "created_at": plan.created_at,
+    }
+
+
+@router.get("/tenants/{tenant_id}/plan", response_model=TenantPlanResponse, tags=["plans"])
+async def get_tenant_plan(
+    tenant_id: uuid.UUID,
+    admin: Annotated[PlatformAdmin, Depends(require_platform_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    """The tenant's active plan card, its limits, and the module
+    entitlements actually in force. 404 when the tenant is not on a plan."""
+    result = await PlatformService.get_tenant_plan(session, tenant_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Tenant has no active plan")
+    return {
+        "tenant_id": result["tenant_id"],
+        "plan_code": result["plan_code"],
+        "status": result["status"],
+        "price_monthly": result["price_monthly"],
+        "currency": result["currency"],
+        "limits": result["limits"],
+        "module_entitlements": result["module_entitlements"],
+        "trial_ends_at": result["trial_ends_at"],
+        "renews_at": result["renews_at"],
+    }
+
+
+@router.post("/tenants/{tenant_id}/plan", response_model=TenantPlanResponse, tags=["plans"])
+async def assign_tenant_plan(
+    tenant_id: uuid.UUID,
+    req: TenantPlanRequest,
+    admin: Annotated[PlatformAdmin, Depends(require_role("super_admin", "billing_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    """Assign / re-assign a tenant's plan: apply the plan's module
+    entitlements to the tenant's TenantModuleState rows (enabling the listed
+    modules and suspending the rest, state-only), write the active
+    TenantPlan row, and emit ``platform.tenant.plan.changed`` — all so the
+    outbox event and the row land in the same transaction.
+
+    ``status=TRIAL`` with a blank renews_at is the trial path; ``ACTIVE``
+    is a paid subscription. The route returns the resolved plan card."""
+    try:
+        plan = await PlatformService.assign_tenant_plan(
+            session, tenant_id, admin.id, admin.email,
+            req.plan_code, req.status,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        code = 404 if "does not exist" in detail else 400
+        raise HTTPException(status_code=code, detail=detail)
+
+    card = await session.scalar(select(SaaSPlan).where(SaaSPlan.code == plan.plan_code))
+    limits = dict(card.limits or {}) if card else {}
+    return {
+        "tenant_id": tenant_id,
+        "plan_code": plan.plan_code,
+        "status": PlatformService._status_value(plan.status),
+        "price_monthly": card.price_monthly if card else None,
+        "currency": card.currency if card else None,
+        "limits": limits,
+        "module_entitlements": sorted((limits.get("modules") or [])),
+        "trial_ends_at": plan.trial_ends_at,
+        "renews_at": plan.renews_at,
+    }
+
+
+@router.post("/tenants/{tenant_id}/plan/renew", response_model=TenantPlanRenewedResponse, tags=["plans"])
+async def renew_tenant_plan(
+    tenant_id: uuid.UUID,
+    admin: Annotated[PlatformAdmin, Depends(require_role("super_admin", "billing_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    """Roll the tenant's current plan ``renews_at`` forward by a month."""
+    try:
+        plan = await PlatformService.renew_tenant_plan(session, tenant_id, admin.email)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {
+        "tenant_id": tenant_id,
+        "plan_code": plan.plan_code,
+        "status": PlatformService._status_value(plan.status),
+        "renews_at": plan.renews_at,
+    }
 
 
 # ─── Module gate check (consumed by the API gateway) ────────────────────────

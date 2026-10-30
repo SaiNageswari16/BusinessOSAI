@@ -3,9 +3,69 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel, EmailStr, Field
+
+
+# ─── SaaS Plan Schemas ───────────────────────────────────────────────────────
+
+class PlanCard(BaseModel):
+    """One subscription card (FREE / STARTER / PRO)."""
+    code: str
+    name: str
+    price_monthly: Decimal
+    currency: str
+    limits: dict[str, Any]
+    is_active: bool
+    created_at: datetime
+
+
+class PlanCreateRequest(BaseModel):
+    code: str = Field(..., min_length=1, max_length=50, pattern=r"^[a-z0-9_-]+$")
+    name: str = Field(..., min_length=1, max_length=100)
+    price_monthly: Decimal = Field(default=Decimal("0"), ge=0)
+    currency: str = Field(default="INR", max_length=10)
+    # {"max_outlets": N, "max_users": N, "modules": [module keys]}
+    limits: dict[str, Any] = Field(default_factory=dict)
+
+
+class PlanUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    price_monthly: Decimal | None = Field(default=None, ge=0)
+    currency: str | None = Field(default=None, max_length=10)
+    limits: dict[str, Any] | None = None
+    is_active: bool | None = None
+
+
+class TenantPlanRequest(BaseModel):
+    """Assign / re-assign a tenant's plan.
+
+    ``status`` is the plan lifecycle: TRIAL (with trial_ends_at implied) or
+    ACTIVE. The plan's module entitlements are applied to the tenant's
+    TenantModuleState rows in the same operation."""
+    plan_code: str
+    status: str = Field("ACTIVE", pattern=r"^(ACTIVE|TRIAL|PAUSED|CANCELLED)$")
+
+
+class TenantPlanResponse(BaseModel):
+    tenant_id: uuid.UUID
+    plan_code: str
+    status: str
+    price_monthly: Decimal | None = None
+    currency: str | None = None
+    limits: dict[str, Any] = Field(default_factory=dict)
+    module_entitlements: list[str] = Field(default_factory=list)
+    trial_ends_at: datetime | None = None
+    renews_at: datetime | None = None
+
+
+class TenantPlanRenewedResponse(BaseModel):
+    tenant_id: uuid.UUID
+    plan_code: str
+    status: str
+    renews_at: datetime
 
 
 # ─── Auth Schemas ────────────────────────────────────────────────────────────

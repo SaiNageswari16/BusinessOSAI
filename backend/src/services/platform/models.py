@@ -9,8 +9,19 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -101,6 +112,65 @@ class TenantModuleState(ServiceBase, TimestampMixin):
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SaaSPlanStatus(str, enum.Enum):
+    ACTIVE = "ACTIVE"
+    TRIAL = "TRIAL"
+    PAUSED = "PAUSED"
+    CANCELLED = "CANCELLED"
+
+
+class SaaSPlan(ServiceBase, TimestampMixin):
+    """A subscription tier (FREE / STARTER / PRO ...): price + what it
+    entitles the tenant to.
+
+    ``limits`` is JSON: ``{"max_outlets": 1, "max_users": 5,
+    "modules": ["pos", "kitchen", "menu", ...]}``. The ``modules`` list is
+    authoritative for entitlement — assigning a plan writes exactly those
+    module keys into the tenant's TenantModuleState rows (enabling the
+    listed, suspending the rest, state-only, never touching shadow data).
+    """
+    __tablename__ = "saas_plans"
+
+    code: Mapped[str] = mapped_column(String(50), primary_key=True)  # "free", "starter", "pro"
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    price_monthly: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
+    currency: Mapped[str] = mapped_column(String(10), default="INR", nullable=False)
+    limits: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class TenantPlan(ServiceBase, TimestampMixin):
+    """A tenant's subscription assignment — append-mostly history.
+
+    Re-assigning the plan (or changing its status: TRIAL -> ACTIVE on first
+    renewal, PAUSED on churn) writes a NEW row; the tenant's current plan is
+    the most recent non-cancelled row. A partial unique index enforces at
+    most one ACTIVE-or-TRIAL row per tenant at a time, so "which plan is the
+    tenant on" is always answerable without ambiguity while the full history
+    survives for billing audit.
+    """
+    __tablename__ = "tenant_plans"
+    __table_args__ = (
+        Index(
+            "uq_tenant_plan_current",
+            "tenant_id",
+            unique=True,
+            postgresql_where=text(
+                "status in ('ACTIVE', 'TRIAL')"
+            ),
+        ),
+        Index("ix_tenant_plans_tenant", "tenant_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    # Bare UUID: the tenant lives in the auth service — no cross-DB FK.
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    plan_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[SaaSPlanStatus] = mapped_column(String(20), default=SaaSPlanStatus.ACTIVE, nullable=False)
+    trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    renews_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class PermissionCatalogue(ServiceBase, TimestampMixin):

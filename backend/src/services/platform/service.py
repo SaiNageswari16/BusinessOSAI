@@ -6,6 +6,7 @@ import logging
 import time
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -13,6 +14,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.services.platform.models import (
+    SaaSPlan,
+    SaaSPlanStatus,
     AccessPolicy,
     ModuleLifecycleState,
     PermissionCatalogue,
@@ -21,6 +24,7 @@ from src.services.platform.models import (
     PlatformAuditEntry,
     PluginManifest,
     TenantModuleState,
+    TenantPlan,
     _utcnow,
 )
 from src.services.shared.registry import all_services, base_url
@@ -237,6 +241,57 @@ DEFAULT_PERMISSIONS = [
 ]
 
 
+# ─── DEFAULT SAAS PLANS (subscription tiers) ────────────────────────────────
+# The module keys are the gateway's module_key — the service's registry name —
+# so a plan's entitlements land in TenantModuleState rows the gate already
+# keys on. The limits JSON on each plan is authoritative: assigning the plan
+# enables exactly these modules and suspends the rest (state-only; shadow
+# data survives, see the suspension house rule).
+
+DEFAULT_SAAS_PLANS = [
+    {
+        "code": "free",
+        "name": "Free",
+        "price_monthly": "0.00",
+        "currency": "INR",
+        "limits": {
+            "max_outlets": 1,
+            "max_users": 5,
+            "modules": ["menu", "pos", "kitchen", "billing", "organization"],
+        },
+    },
+    {
+        "code": "starter",
+        "name": "Starter",
+        "price_monthly": "499.00",
+        "currency": "INR",
+        "limits": {
+            "max_outlets": 3,
+            "max_users": 15,
+            "modules": [
+                "menu", "pos", "kitchen", "billing", "organization",
+                "inventory", "staff", "customers", "loyalty",
+            ],
+        },
+    },
+    {
+        "code": "pro",
+        "name": "Pro",
+        "price_monthly": "1999.00",
+        "currency": "INR",
+        "limits": {
+            "max_outlets": 25,
+            "max_users": 100,
+            "modules": [
+                "menu", "pos", "kitchen", "billing", "organization",
+                "inventory", "purchase", "staff", "customers", "loyalty",
+                "accounting", "reports", "marketing",
+            ],
+        },
+    },
+]
+
+
 # ─── SERVICE IMPLEMENTATION ──────────────────────────────────────────────────
 
 class PlatformService:
@@ -285,6 +340,9 @@ class PlatformService:
                     is_system=True,
                 )
                 session.add(item)
+
+        # 3. Default SaaS plan cards (FREE / STARTER / PRO)
+        await PlatformService.seed_default_plans(session)
 
         await session.commit()
 
@@ -599,6 +657,308 @@ class PlatformService:
         await session.commit()
         await bus.publish(event, local=True)
         return state_row
+
+    # ─── SaaS Plan Tiers (subscription cards) ──────────────────────────────
+
+    @staticmethod
+    async def seed_default_plans(session: AsyncSession) -> None:
+        """Seed the FREE / STARTER / PRO plan cards (idempotent, safe on boot)."""
+        for p in DEFAULT_SAAS_PLANS:
+            existing = await session.execute(
+                select(SaaSPlan).where(SaaSPlan.code == p["code"])
+            )
+            if existing.scalar_one_or_none() is None:
+                plan = SaaSPlan(
+                    code=p["code"],
+                    name=p["name"],
+                    price_monthly=Decimal(p["price_monthly"]),
+                    currency=p.get("currency", "INR"),
+                    limits=p["limits"],
+                    is_active=True,
+                )
+                session.add(plan)
+        # The caller commits — seed_defaults adds plans in the same
+        # transaction as its plugin/permission seeding.
+
+    @staticmethod
+    async def list_active_plans(session: AsyncSession) -> list[SaaSPlan]:
+        """The plan cards, cheapest first — what the subscription screen shows."""
+        res = await session.execute(
+            select(SaaSPlan)
+            .where(SaaSPlan.is_active.is_(True))
+            .order_by(SaaSPlan.price_monthly.asc())
+        )
+        return list(res.scalars().all())
+
+    @staticmethod
+    async def create_plan(
+        session: AsyncSession,
+        admin_email: str,
+        *,
+        code: str,
+        name: str,
+        price_monthly: Decimal,
+        currency: str,
+        limits: dict,
+    ) -> SaaSPlan:
+        existing = await session.scalar(select(SaaSPlan).where(SaaSPlan.code == code))
+        if existing:
+            raise ValueError(f"Plan '{code}' already exists")
+        plan = SaaSPlan(
+            code=code,
+            name=name,
+            price_monthly=price_monthly,
+            currency=currency,
+            limits=limits,
+            is_active=True,
+        )
+        session.add(plan)
+        session.add(PlatformAuditEntry(
+            admin_email=admin_email,
+            action="plan.created",
+            target_type="saas_plan",
+            target_id=code,
+            details={"name": name, "price_monthly": str(price_monthly), "limits": limits},
+        ))
+        await session.commit()
+        return plan
+
+    @staticmethod
+    async def update_plan(
+        session: AsyncSession, admin_email: str, code: str, data: dict
+    ) -> SaaSPlan:
+        plan = await session.scalar(select(SaaSPlan).where(SaaSPlan.code == code))
+        if plan is None:
+            raise ValueError(f"Plan '{code}' not found")
+        for field in ("name", "price_monthly", "currency", "limits", "is_active"):
+            if field in data and data[field] is not None:
+                setattr(plan, field, data[field])
+        session.add(PlatformAuditEntry(
+            admin_email=admin_email,
+            action="plan.updated",
+            target_type="saas_plan",
+            target_id=code,
+            details=data,
+        ))
+        await session.commit()
+        return plan
+
+    @staticmethod
+    def _status_value(value: object) -> str:
+        """Safe status read: a value just assigned in Python is the enum
+        member, but the same column loaded back from Postgres is a plain
+        str. ``.value`` is member-specific and raises on a loaded row, so
+        take the attribute when it is a member, else the string itself."""
+        return getattr(value, "value", value)
+
+    @staticmethod
+    async def get_tenant_plan(
+        session: AsyncSession, tenant_id: uuid.UUID
+    ) -> dict | None:
+        """The tenant's current plan card, its limits, and the module
+        entitlements actually in force (the live TenantModuleState rows).
+
+        Returns None when the tenant has no active or trial plan — the tenant
+        is running on defaults, not a subscription, and the UI should say so
+        rather than invent a plan."""
+        plan = await session.scalar(
+            select(TenantPlan)
+            .where(
+                TenantPlan.tenant_id == tenant_id,
+                TenantPlan.status.in_([SaaSPlanStatus.ACTIVE, SaaSPlanStatus.TRIAL]),
+            )
+            .order_by(TenantPlan.created_at.desc())
+            .limit(1)
+        )
+        if plan is None:
+            return None
+        card = await session.scalar(select(SaaSPlan).where(SaaSPlan.code == plan.plan_code))
+        limits = dict(card.limits or {}) if card else {}
+        active_rows = await session.execute(
+            select(TenantModuleState).where(
+                TenantModuleState.tenant_id == tenant_id,
+                TenantModuleState.state == ModuleLifecycleState.ACTIVE,
+            )
+        )
+        module_entitlements = sorted(m.plugin_id for m in active_rows.scalars().all())
+        return {
+            "tenant_id": tenant_id,
+            "plan_code": plan.plan_code,
+            "status": PlatformService._status_value(plan.status),
+            "trial_ends_at": plan.trial_ends_at,
+            "renews_at": plan.renews_at,
+            "price_monthly": float(card.price_monthly) if card else None,
+            "currency": card.currency if card else None,
+            "limits": limits,
+            "module_entitlements": module_entitlements,
+        }
+
+    @staticmethod
+    async def _apply_module_entitlements(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        admin_id: uuid.UUID | None,
+        admin_email: str,
+        modules: list[str],
+    ) -> None:
+        """Enable exactly ``modules`` for the tenant and suspend the ones that
+        are active but not in the list.
+
+        This reuses the module activation/suspension machinery (state-only:
+        it flips TenantModuleState and emits its own outbox events — shadow
+        data survives, per the suspension house rule). Each activate/suspend
+        commits its own transaction, so a failed module never wedges the plan
+        assignment itself; the plan row is written after, independently."""
+        active_rows = await session.execute(
+            select(TenantModuleState).where(
+                TenantModuleState.tenant_id == tenant_id,
+                TenantModuleState.state == ModuleLifecycleState.ACTIVE,
+            )
+        )
+        active_keys = {m.plugin_id for m in active_rows.scalars().all()}
+        wanted = set(modules)
+
+        for key in sorted(active_keys - wanted):
+            try:
+                await PlatformService.suspend_module(
+                    session, tenant_id, key, admin_id, admin_email
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Plan entitlement: could not suspend '%s' for tenant %s: %s",
+                    key, tenant_id, exc,
+                )
+        for key in sorted(wanted):
+            try:
+                await PlatformService.activate_module(
+                    session, tenant_id, key, admin_id, admin_email
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Plan entitlement: could not activate '%s' for tenant %s: %s",
+                    key, tenant_id, exc,
+                )
+
+    @staticmethod
+    async def assign_tenant_plan(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        admin_id: uuid.UUID | None,
+        admin_email: str,
+        plan_code: str,
+        status: str,
+    ) -> TenantPlan:
+        """Assign a plan to a tenant: apply its module entitlements, write
+        the active TenantPlan row, and emit the ``platform.tenant.plan.changed``
+        outbox event in the same transaction as the row write.
+
+        The TenantPlan row and its outbox row commit together (the outbox is
+        written before commit), so a crash between the two cannot lose the
+        event. Module entitlements are applied first via the existing
+        activate/suspend machinery, which commits its own transactions; a
+        plan that lists no modules or an empty tenant just has nothing to
+        suspend and every entitlement activation is a no-op.
+        """
+        card = await session.scalar(select(SaaSPlan).where(SaaSPlan.code == plan_code))
+        if card is None:
+            raise ValueError(f"Plan '{plan_code}' does not exist")
+        modules = list((card.limits or {}).get("modules") or [])
+
+        await PlatformService._apply_module_entitlements(
+            session, tenant_id, admin_id, admin_email, modules
+        )
+
+        # A tenant is on exactly one ACTIVE-or-TRIAL plan at a time, enforced
+        # by the partial unique index uq_tenant_plan_current. That index is
+        # only in scope for ACTIVE/TRIAL rows, so we must retire any other
+        # plan's active row *before* promoting this one — and flush between
+        # the two so Postgres never sees two active rows for the tenant.
+        # Flushing first avoids the "new row inserted as ACTIVE while the old
+        # row is still committed-ACTIVE" race that would raise an Integrity
+        # error at commit.
+        others = await session.execute(
+            select(TenantPlan).where(
+                TenantPlan.tenant_id == tenant_id,
+                TenantPlan.plan_code != plan_code,
+                TenantPlan.status.in_([SaaSPlanStatus.ACTIVE, SaaSPlanStatus.TRIAL]),
+            )
+        )
+        for old in others.scalars().all():
+            old.status = SaaSPlanStatus.CANCELLED
+        await session.flush()
+
+        # One row per (tenant, plan_code); upsert it.
+        row = await session.scalar(
+            select(TenantPlan).where(
+                TenantPlan.tenant_id == tenant_id,
+                TenantPlan.plan_code == plan_code,
+            )
+        )
+        now = _utcnow()
+        if row is None:
+            row = TenantPlan(tenant_id=tenant_id, plan_code=plan_code)
+            session.add(row)
+        row.status = SaaSPlanStatus(status)
+        row.renews_at = now
+        await session.flush()
+
+        event = Event(
+            type="platform.tenant.plan.changed",
+            tenant_id=tenant_id,
+            data={
+                "tenant_id": str(tenant_id),
+                "plan_code": plan_code,
+                "status": status,
+            },
+            source_service="platform",
+        )
+        await record_event(
+            session,
+            type=event.type,
+            data=event.data,
+            tenant_id=tenant_id,
+            event_id=event.event_id,
+        )
+        session.add(PlatformAuditEntry(
+            admin_id=admin_id,
+            admin_email=admin_email,
+            action="tenant.plan.assigned",
+            target_type="tenant_plan",
+            target_id=f"{tenant_id}:{plan_code}",
+            details={"status": status, "modules": modules},
+        ))
+        await session.commit()
+        await bus.publish(event, local=True)
+        return row
+
+    @staticmethod
+    async def renew_tenant_plan(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        admin_email: str,
+    ) -> TenantPlan:
+        """Roll the tenant's current plan ``renews_at`` forward by a month."""
+        from datetime import timedelta
+
+        plan = await session.scalar(
+            select(TenantPlan).where(
+                TenantPlan.tenant_id == tenant_id,
+                TenantPlan.status.in_([SaaSPlanStatus.ACTIVE, SaaSPlanStatus.TRIAL]),
+            )
+        )
+        if plan is None:
+            raise ValueError(f"Tenant {tenant_id} has no active plan to renew")
+        anchor = plan.renews_at if (plan.renews_at and plan.renews_at > _utcnow()) else _utcnow()
+        plan.renews_at = anchor + timedelta(days=30)
+        session.add(PlatformAuditEntry(
+            admin_email=admin_email,
+            action="tenant.plan.renewed",
+            target_type="tenant_plan",
+            target_id=str(plan.id),
+            details={"renews_at": str(plan.renews_at)},
+        ))
+        await session.commit()
+        return plan
 
     @staticmethod
     async def list_permissions(
