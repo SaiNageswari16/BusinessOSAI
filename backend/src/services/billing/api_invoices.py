@@ -1187,7 +1187,7 @@ async def print_receipt(bill_id: str, identity: CurrentIdentity, db: DbDep,
         template = _template_json(row)
 
     if escpos:
-        data = receipt_pdf.escpos_receipt_bytes(payload, paper=size)
+        data = receipt_pdf.escpos_receipt_bytes(payload, paper=size, template=template)
         return Response(
             content=data,
             media_type="application/octet-stream",

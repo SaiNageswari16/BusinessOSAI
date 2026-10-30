@@ -406,11 +406,34 @@ async def settle_bill(bill_id: uuid.UUID, payload: SettleRequest,
         source_service="billing",
     )
     _outbox(db, event)
+
+    # A credit sale's bill.paid books Dr AR / Cr sales — the cash that
+    # actually arrived in this settlement is a separate fact: Dr cash /
+    # Cr AR, which is exactly what accounting's payment.received handler
+    # posts (cash legs only; card collections are already bank money).
+    pay_event = None
+    if bill.is_credit_sale and cash_amount > 0:
+        pay_event = Event(
+            type="payment.received",
+            tenant_id=identity.tenant_id,
+            outlet_id=bill.outlet_id,
+            data={
+                "bill_id": str(bill.id),
+                "bill_number": bill.bill_number,
+                "cash_amount": round(cash_amount, 2),
+                "is_credit_sale": True,
+            },
+            source_service="billing",
+        )
+        _outbox(db, pay_event)
+
     await db.commit()
 
     # Immediate local dispatch for in-process handlers (real-time KOT, etc.)
     # The relay picks up the outbox row for cross-service delivery.
     await bus.publish(event, local=True)
+    if pay_event is not None:
+        await bus.publish(pay_event, local=True)
     return bill
 
 

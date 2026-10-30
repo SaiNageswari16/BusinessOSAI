@@ -175,22 +175,7 @@ def _fmt_money(value) -> str:
         v = Decimal(str(value or 0)).quantize(Decimal("0.01"))
     except Exception:
         v = Decimal("0.00")
-    s = str(v)
-    if "." in s:
-        whole, frac = s.split(".", 1)
-    else:
-        whole, frac = s, "00"
-    neg = whole.startswith("-")
-    digits = whole.lstrip("-") or "0"
-    grouped = re.sub(r"(?<=\d)(?=\d{3})(", "\\", digits)
-    grouped = re.sub(r"(?<=\d)(?=\d\d\d)$", "", grouped)
-    grouped = ""
-    while len(digits) > 3:
-        grouped = "," + grouped[-3:] if grouped else digits[-3:]
-        digits = digits[:-3]
-    grouped = (digits + grouped).lstrip(",") or "0"
-    sign = "-" if neg and float(str(v)) < 0 else ""
-    return f"{sign}{grouped}.{frac[:2]}"
+    return f"{v:,.2f}"
 
 
 def _now_str(payload: dict) -> tuple[str, str]:
@@ -308,19 +293,41 @@ def _normalize_template(template: dict | None) -> dict:
     level. Merge both so either input renders."""
     t = dict(template or {})
     fields = dict(t.get("fields") or {})
-    for k in (
-        "showLogo", "showStoreName", "showBranchName", "showStoreAddress",
-        "showStoreContact", "showTaxId", "showInvoiceNumber", "showInvoiceDate",
-        "showPaymentMethod", "showCustomerDetails", "showCustomerPhone",
-        "showCustomerGstin", "showItemDiscount", "showItemTax",
-        "showSubtotal", "showOverallQty", "showTotalDiscount", "showTaxBreakdown",
-        "showRoundOff", "showGrandTotal", "showReceivedAndBalance",
-        "showAmountInWords", "showLoyaltyPoints", "showPaymentMode",
-        "showPaidInFullStamp", "showQrCode", "showDeclaration", "showFooterNote",
-        "showTermsAndConditions", "showDeclaration",
-    ):
-        if k in fields:
-            t.setdefault(k, fields[k])
+    for k, v in fields.items():
+        t.setdefault(k, v)
+
+    # Bridge RestaurantOS ReceiptTemplate keys -> thermal renderer keys
+    if "brandName" in t and not t.get("storeName"):
+        t["storeName"] = t["brandName"]
+    if "subtitle" in t and not t.get("branchName"):
+        t["branchName"] = t["subtitle"]
+    if ("addressLine1" in t or "addressLine2" in t) and not t.get("address") and not t.get("storeAddress"):
+        addr_parts = [str(t.get("addressLine1") or "").strip(), str(t.get("addressLine2") or "").strip()]
+        t["address"] = ", ".join(p for p in addr_parts if p)
+    if "paperWidth" in t and not t.get("paperSize"):
+        t["paperSize"] = t["paperWidth"]
+    if "qrUpiId" in t and not t.get("upiId"):
+        t["upiId"] = t["qrUpiId"]
+    if "termsLine" in t and not t.get("termsText"):
+        t["termsText"] = t["termsLine"]
+    if "footerNote" in t and not t.get("footerText"):
+        t["footerText"] = t["footerNote"]
+
+    # Boolean toggle aliases between RestaurantOS ReceiptTemplate & BusinessOSAI PrintTemplate
+    toggle_aliases = (
+        ("showBrandLogo", "showLogo"),
+        ("showAddress", "showStoreAddress"),
+        ("showPhone", "showStoreContact"),
+        ("showGstin", "showTaxId"),
+        ("showCustomer", "showCustomerDetails"),
+        ("showCgstSgstSplit", "showTaxBreakdown"),
+        ("showRounding", "showRoundOff"),
+        ("showPaymentMethod", "showPaymentMode"),
+    )
+    for src_key, dst_key in toggle_aliases:
+        if src_key in t and dst_key not in t:
+            t[dst_key] = bool(t[src_key])
+
     t.setdefault("paperSize", "80mm")
     return t
 
@@ -329,14 +336,15 @@ def _store_block(template: dict, payload: dict) -> dict:
     """Store identity for the header. Template wins; payload (from an
     invoice row) is the fallback for fields the template left blank."""
     return {
-        "store_name": _safe(template.get("storeName") or payload.get("store_name") or "Store", 60),
-        "branch_name": _safe(template.get("branchName") or payload.get("branch_name") or "", 50),
+        "store_name": _safe(template.get("storeName") or template.get("brandName") or payload.get("store_name") or "Store", 60),
+        "branch_name": _safe(template.get("branchName") or template.get("subtitle") or payload.get("branch_name") or "", 50),
         "tagline": _safe(template.get("headerTagline") or template.get("tagline") or "", 60),
         "address": _safe(template.get("address") or template.get("storeAddress")
                          or payload.get("store_address") or "", 150),
         "phone": _safe(template.get("phone") or template.get("storePhone") or "", 30),
         "email": _safe(template.get("email") or "", 50),
         "gstin": _safe(template.get("gstin") or payload.get("store_gstin") or "", 20),
+        "fssai": _safe(template.get("fssai") or payload.get("store_fssai") or "", 24),
         "pan": _safe(template.get("pan") or "", 10),
         "cin": _safe(template.get("cin") or "", 30),
         "logo": template.get("logoUrl") or template.get("logo_url"),
@@ -404,8 +412,9 @@ def render_thermal_receipt(payload: dict, template: dict | None = None,
     if show("showStoreAddress") and store["address"]:
         centered(store["address"], 6.5, gap=2.5)
     contact = "  |  ".join(x for x in (
-        f"PH: {store['phone']}" if show("showStoreContact", False) and store["phone"] else "",
+        f"PH: {store['phone']}" if show("showStoreContact", True) and store["phone"] else "",
         f"GSTIN: {store['gstin']}" if show("showTaxId") and store["gstin"] else "",
+        f"FSSAI: {store['fssai']}" if show("showFssai", True) and store.get("fssai") else "",
     ) if x)
     if contact:
         centered(contact, 6.5, "B")
@@ -512,8 +521,11 @@ def render_thermal_receipt(payload: dict, template: dict | None = None,
             trow("CESS:", f"{rsym} {_fmt_money(cess)}")
         trow("TOTAL TAX:", f"{rsym} {_fmt_money(_f(payload.get('tax_total')))}", bold=True)
     sc = _f(payload.get("service_charge"))
-    if sc > 0:
+    if sc > 0 and show("showServiceCharge", True):
         trow("SERVICE CHARGE:", f"{rsym} {_fmt_money(sc)}")
+    pkg = _f(payload.get("packaging_charge"))
+    if pkg > 0 and show("showPackaging", True):
+        trow("PACKAGING:", f"{rsym} {_fmt_money(pkg)}")
     tip = _f(payload.get("tip"))
     if tip > 0:
         trow("TIP:", f"{rsym} {_fmt_money(tip)}")
@@ -536,16 +548,20 @@ def render_thermal_receipt(payload: dict, template: dict | None = None,
         if balance > 0.005:
             trow("BALANCE DUE:", f"{rsym} {_fmt_money(balance)}", bold=True)
 
-    # 7. UPI QR for the outstanding balance
-    if show("showQrCode") and balance > 0.005:
-        vpa = str(t.get("upiId") or t.get("upi_vpa") or "").strip()
+    # 7. UPI QR (renders for outstanding balance or grand total when enabled)
+    qr_amount = balance if balance > 0.005 else total
+    if show("showQrCode") and qr_amount > 0.005:
+        vpa = str(t.get("upiId") or t.get("qrUpiId") or t.get("upi_vpa") or "").strip()
+        payee = str(t.get("qrPayeeName") or store["store_name"] or "Store").strip()
         if vpa:
-            png = _qr_png(_upi_uri(vpa, store["store_name"], balance, inv_no))
+            png = _qr_png(_upi_uri(vpa, payee, qr_amount, inv_no))
             if png:
                 divider()
-                pdf.image(png, x=(page_w - 24) / 2, w=24, h=24, kind="PNG")
+                pdf.image(io.BytesIO(png), x=(page_w - 24) / 2, w=24, h=24)
                 pdf.ln(1.0)
                 centered(f"UPI: {vpa}", 6.5, "B")
+                if t.get("qrNote"):
+                    centered(_safe(t.get("qrNote"), 60), 6.0)
 
     # 8. Terms / footer
     terms = _safe(t.get("termsText") or t.get("termsAndConditionsText")
@@ -704,7 +720,7 @@ def render_invoice_a4(payload: dict, template: dict | None = None) -> bytes:
         if png:
             pdf.set_font(font, "B", 8)
             pdf.cell(60, 5, "E-Invoice QR (IRN):", align="L", new_x="LMARGIN", new_y="NEXT")
-            pdf.image(png, x=pdf.l_margin, y=pdf.get_y(), w=25, h=25, kind="PNG")
+            pdf.image(io.BytesIO(png), x=pdf.l_margin, y=pdf.get_y(), w=25, h=25)
             pdf.ln(28)
         else:
             pdf.set_font(font, "", 8)
@@ -807,14 +823,17 @@ def _escpos_qr_upi(vpa: str, payee: str, amount: float, txn_ref: str) -> bytes:
     return bytes(out)
 
 
-def escpos_receipt_bytes(payload: dict, paper: str = "80mm") -> bytes:
+def escpos_receipt_bytes(payload: dict, paper: str = "80mm",
+                         template: dict | None = None) -> bytes:
     """A full receipt as raw ESC/POS bytes. ``payload`` is the same shape as
     the thermal PDF (receipt_from_bill output); ``paper`` picks the column
     width — 80mm rolls hold 48 chars at font A, 58mm hold 32."""
-    width = 32 if "58" in str(paper or "80mm").lower() else 48
+    t = _normalize_template(template)
+    paper_eff = str(t.get("paperSize") or paper or "80mm").lower()
+    width = 32 if "58" in paper_eff else 48
+    store = _store_block(t, payload)
 
-    t = _normalize_template(None)
-    store_name = _safe(payload.get("store_name") or "STORE", 40)
+    store_name = _safe(store["store_name"] or payload.get("store_name") or "STORE", 40)
     inv_no = str(payload.get("invoice_number") or payload.get("bill_number") or "RCP-0000")
     date_str, time_str = _now_str(payload)
     total = _f(payload.get("grand_total"))
@@ -830,12 +849,16 @@ def escpos_receipt_bytes(payload: dict, paper: str = "80mm") -> bytes:
     out += _escpos_center_on()
     out += _escpos_font("L")
     out += _escpos_center(store_name.upper(), width)
-    if payload.get("store_address"):
+    addr = store["address"] or payload.get("store_address")
+    if addr:
         out += _escpos_font("S")
-        for chunk in str(payload["store_address"]).upper().split("\n"):
+        for chunk in str(addr).upper().split("\n"):
             out += _escpos_center(chunk, width)
-    if payload.get("gstin"):
-        out += _escpos_center(f"GSTIN: {payload['gstin']}", width)
+    gstin = store["gstin"] or payload.get("gstin")
+    if gstin:
+        out += _escpos_center(f"GSTIN: {gstin}", width)
+    if store.get("fssai"):
+        out += _escpos_center(f"FSSAI: {store['fssai']}", width)
     out += _escpos_font("S")
     out += _escpos_rule(width)
     out += _escpos_font("L")
@@ -886,12 +909,14 @@ def escpos_receipt_bytes(payload: dict, paper: str = "80mm") -> bytes:
     if balance > 0.005:
         out += _escpos_left("BALANCE DUE:", int(width * 0.58))
         out += _escpos_right(f"{rsym} {_fmt_money(balance)}\n", int(width * 0.42))
-    vpa = str(payload.get("upi_vpa") or "").strip()
-    if vpa and balance > 0.005:
-        out += _escpos_qr_upi(vpa, store_name, balance, inv_no)
+    vpa = str(t.get("upiId") or t.get("qrUpiId") or payload.get("upi_vpa") or "").strip()
+    qr_amt = balance if balance > 0.005 else total
+    if vpa and qr_amt > 0.005:
+        out += _escpos_qr_upi(vpa, store_name, qr_amt, inv_no)
         out += b"\n\n"
     out += _escpos_rule(width)
-    out += _escpos_center("Thank you! Visit again.", width)
+    footer_msg = _safe(t.get("footerText") or t.get("footerNote") or "Thank you! Visit again.", width)
+    out += _escpos_center(footer_msg, width)
     out += b"\n\n\n"
     out += GS + b"V0" + bytes([4])       # feed 4 lines
     out += ESC + b"@"                    # reset so the next job starts clean
