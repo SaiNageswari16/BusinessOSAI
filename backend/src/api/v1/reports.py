@@ -2626,14 +2626,28 @@ async def generate_custom_report(
 
 
     elif report_id in ["purchase_summary", "purchase_invoice", "purchase_return", "purchase_debit_note", "purchase_supplierwise", "purchase_itemwise", "purchase_gst"]:
-        po_stmt = select(PurchaseOrder).options(selectinload(PurchaseOrder.supplier)).where(PurchaseOrder.tenant_id == ctx.tenant_id).order_by(PurchaseOrder.created_at.desc()).limit(250)
+        po_stmt = select(PurchaseOrder).options(
+            selectinload(PurchaseOrder.supplier),
+            selectinload(PurchaseOrder.items),
+        ).where(PurchaseOrder.tenant_id == ctx.tenant_id)
+
+        if ctx.active_company_id:
+            po_stmt = po_stmt.where(or_(PurchaseOrder.company_id == ctx.active_company_id, PurchaseOrder.company_id == None))
+        if start_dt:
+            po_stmt = po_stmt.where(PurchaseOrder.created_at >= start_dt)
+        if end_dt:
+            po_stmt = po_stmt.where(PurchaseOrder.created_at <= end_dt)
         if search:
-            po_stmt = po_stmt.where(PurchaseOrder.po_number.ilike(f"%{search}%"))
+            po_stmt = po_stmt.where(or_(
+                PurchaseOrder.po_number.ilike(f"%{search}%"),
+                PurchaseOrder.supplier.has(Supplier.name.ilike(f"%{search}%")),
+            ))
+        po_stmt = po_stmt.order_by(PurchaseOrder.created_at.desc()).limit(500)
         po_list = (await db.execute(po_stmt)).scalars().all()
         total_po_val = sum(float(po.total_amount or 0) for po in po_list)
 
         if report_id == "purchase_summary":
-            # ── Fixed Purchase Summary Tab: True Procurement Overview ───────────
+            # ── Real Procurement & Purchase Summary (Dynamic Month-by-Month, Slabs & Orders) ───────────
             result["title"] = "Procurement & Purchase Summary"
             result["tableColumns"] = [
                 {"header": "Month / Period", "key": "period"},
@@ -2644,28 +2658,223 @@ async def generate_custom_report(
                 {"header": "Input Tax Credit (₹)", "key": "itc_tax"},
                 {"header": "Gross Procurement (₹)", "key": "gross_total"},
             ]
-            summary_months = []
-            for i in range(6):
-                m_dt = now - timedelta(days=i * 30)
-                m_name = m_dt.strftime("%B %Y")
-                m_pos = max(1, (len(po_list) // 6) + (i % 2))
-                m_val = (total_po_val / 6) if total_po_val > 0 else (45000.0 + i * 8000)
-                m_tax = m_val * 0.18
-                m_taxable = m_val - m_tax
-                summary_months.append({
-                    "period": m_name,
-                    "total_pos": f"{m_pos} Orders",
-                    "completed_pos": f"{max(1, m_pos - 1)} Closed",
-                    "pending_pos": "1 Pending" if i == 0 else "0 Pending",
-                    "taxable": f"₹{m_taxable:,.2f}",
-                    "itc_tax": f"₹{m_tax:,.2f}",
-                    "gross_total": f"₹{m_val:,.2f}",
+
+            # Product lookup map
+            prod_res = await db.execute(select(Product.id, Product.name, Product.sku, Product.hsn_code).where(Product.tenant_id == ctx.tenant_id))
+            prod_map = {str(p[0]): {"name": p[1], "sku": p[2], "hsn": p[3]} for p in prod_res.all()}
+
+            # Slabs aggregation dictionary
+            slabs_dict = {
+                "0%": {"slab": "0% (Nil / Exempt ITC)", "invoices": 0, "taxable": 0.0, "cgst": 0.0, "sgst": 0.0, "igst": 0.0, "tax": 0.0, "total": 0.0},
+                "5%": {"slab": "5% GST (ITC)", "invoices": 0, "taxable": 0.0, "cgst": 0.0, "sgst": 0.0, "igst": 0.0, "tax": 0.0, "total": 0.0},
+                "12%": {"slab": "12% GST (ITC)", "invoices": 0, "taxable": 0.0, "cgst": 0.0, "sgst": 0.0, "igst": 0.0, "tax": 0.0, "total": 0.0},
+                "18%": {"slab": "18% GST (ITC)", "invoices": 0, "taxable": 0.0, "cgst": 0.0, "sgst": 0.0, "igst": 0.0, "tax": 0.0, "total": 0.0},
+                "28%": {"slab": "28% GST (ITC)", "invoices": 0, "taxable": 0.0, "cgst": 0.0, "sgst": 0.0, "igst": 0.0, "tax": 0.0, "total": 0.0},
+            }
+
+            periods_map: Dict[str, Dict[str, Any]] = {}
+            table_rows = []
+            tot_proc_taxable = 0.0
+            tot_proc_cgst = 0.0
+            tot_proc_sgst = 0.0
+            tot_proc_igst = 0.0
+            tot_proc_tax = 0.0
+            tot_proc_gross = 0.0
+
+            for po in po_list:
+                po_tot = float(po.total_amount or 0.0)
+                st = str(getattr(po, "status", "") or "Completed").title()
+                is_completed = st.lower() in ["completed", "received", "billed", "closed", "fully received"]
+
+                # Extract line items or compute from PO total
+                po_items = []
+                po_taxable = 0.0
+                po_tax = 0.0
+                rates = []
+
+                for it in getattr(po, "items", []):
+                    qty = float(it.quantity or 1.0)
+                    price = float(it.unit_price or 0.0)
+                    rate = float(it.tax_percent if it.tax_percent is not None else 18.0)
+                    line_sub = round(qty * price, 2)
+                    line_tax = round(line_sub * (rate / 100.0), 2)
+                    line_tot = round(line_sub + line_tax, 2)
+                    p_info = prod_map.get(str(it.product_id), {})
+
+                    po_items.append({
+                        "product_id": str(it.product_id),
+                        "name": p_info.get("name") or f"Item #{str(it.product_id)[:6]}",
+                        "sku": p_info.get("sku") or "SKU",
+                        "hsn_code": p_info.get("hsn") or "8471",
+                        "qty": qty,
+                        "price": f"₹{price:,.2f}",
+                        "tax": f"₹{line_tax:,.2f}",
+                        "tax_rate": f"{int(rate)}%",
+                        "total": f"₹{line_tot:,.2f}",
+                        "raw_price": price,
+                        "raw_tax": line_tax,
+                        "raw_total": line_tot,
+                    })
+                    po_taxable += line_sub
+                    po_tax += line_tax
+                    rates.append(int(round(rate)))
+
+                if not po_items:
+                    if po_tot > 0:
+                        po_taxable = round(po_tot / 1.18, 2)
+                        po_tax = round(po_tot - po_taxable, 2)
+                    else:
+                        po_taxable = 0.0
+                        po_tax = 0.0
+                    rates = [18]
+                elif po_tot <= 0 and (po_taxable + po_tax) > 0:
+                    po_tot = round(po_taxable + po_tax, 2)
+
+                # Determine tax rate label
+                if rates:
+                    rate_label = f"{max(set(rates), key=rates.count)}%"
+                else:
+                    rate_label = "18%"
+
+                cgst = round(po_tax / 2.0, 2)
+                sgst = round(po_tax - cgst, 2)
+                igst = 0.0
+
+                tot_proc_taxable += po_taxable
+                tot_proc_cgst += cgst
+                tot_proc_sgst += sgst
+                tot_proc_igst += igst
+                tot_proc_tax += po_tax
+                tot_proc_gross += po_tot
+
+                # Monthly Period aggregation
+                dt = po.order_date or po.created_at or now
+                m_key = dt.strftime("%Y-%m")
+                m_name = dt.strftime("%B %Y")
+                if m_key not in periods_map:
+                    periods_map[m_key] = {
+                        "period": m_name,
+                        "count": 0,
+                        "completed": 0,
+                        "pending": 0,
+                        "taxable": 0.0,
+                        "itc_tax": 0.0,
+                        "gross_total": 0.0,
+                    }
+                periods_map[m_key]["count"] += 1
+                if is_completed:
+                    periods_map[m_key]["completed"] += 1
+                else:
+                    periods_map[m_key]["pending"] += 1
+                periods_map[m_key]["taxable"] += po_taxable
+                periods_map[m_key]["itc_tax"] += po_tax
+                periods_map[m_key]["gross_total"] += po_tot
+
+                # Tax slab aggregation
+                slab_key = rate_label if rate_label in slabs_dict else ("18%" if po_tax > 0 else "0%")
+                slabs_dict[slab_key]["invoices"] += 1
+                slabs_dict[slab_key]["taxable"] += po_taxable
+                slabs_dict[slab_key]["cgst"] += cgst
+                slabs_dict[slab_key]["sgst"] += sgst
+                slabs_dict[slab_key]["igst"] += igst
+                slabs_dict[slab_key]["tax"] += po_tax
+                slabs_dict[slab_key]["total"] += po_tot
+
+                s_name = po.supplier.name if getattr(po, "supplier", None) else "Supplier / Vendor"
+                s_phone = getattr(po.supplier, "phone", "") or "—"
+                s_gstin = getattr(po.supplier, "gst_number", "") or getattr(po.supplier, "gstin", "") or "—"
+
+                table_rows.append({
+                    "id": str(po.id),
+                    "date": dt.strftime("%d/%m/%Y"),
+                    "raw_date": dt.isoformat(),
+                    "invoice_no": po.po_number or f"PO-{str(po.id)[:8].upper()}",
+                    "customer": s_name,
+                    "supplier": s_name,
+                    "customer_phone": s_phone,
+                    "supplier_phone": s_phone,
+                    "customer_gstin": s_gstin,
+                    "supplier_gstin": s_gstin,
+                    "source": "Purchase Order",
+                    "payment_mode": "Credit / Net-30",
+                    "taxable_amount": f"₹{po_taxable:,.2f}",
+                    "raw_taxable": po_taxable,
+                    "tax_rate": rate_label,
+                    "cgst": f"₹{cgst:,.2f}",
+                    "raw_cgst": cgst,
+                    "sgst": f"₹{sgst:,.2f}",
+                    "raw_sgst": sgst,
+                    "igst": f"₹{igst:,.2f}",
+                    "raw_igst": igst,
+                    "total_tax": f"₹{po_tax:,.2f}",
+                    "raw_tax": po_tax,
+                    "discount": "₹0.00",
+                    "raw_discount": 0.0,
+                    "total_amount": f"₹{po_tot:,.2f}",
+                    "raw_total": po_tot,
+                    "status": st,
+                    "items": po_items,
                 })
+
+            # Format sorted monthly periods rows
+            summary_months = []
+            for k in sorted(periods_map.keys(), reverse=True):
+                pm = periods_map[k]
+                summary_months.append({
+                    "period": pm["period"],
+                    "total_pos": f"{pm['count']} Orders",
+                    "completed_pos": f"{pm['completed']} Closed",
+                    "pending_pos": f"{pm['pending']} Pending",
+                    "taxable": f"₹{pm['taxable']:,.2f}",
+                    "itc_tax": f"₹{pm['itc_tax']:,.2f}",
+                    "gross_total": f"₹{pm['gross_total']:,.2f}",
+                    "raw_taxable": pm["taxable"],
+                    "raw_tax": pm["itc_tax"],
+                    "raw_total": pm["gross_total"],
+                    "count": pm["count"],
+                })
+
+            # Format Tax Slabs Summary
+            tax_slabs_rows = [
+                {
+                    "slab": v["slab"],
+                    "invoices_count": f"{v['invoices']:,} Bills",
+                    "taxable": f"₹{v['taxable']:,.2f}",
+                    "cgst": f"₹{v['cgst']:,.2f}",
+                    "sgst": f"₹{v['sgst']:,.2f}",
+                    "igst": f"₹{v['igst']:,.2f}",
+                    "total_tax": f"₹{v['tax']:,.2f}",
+                    "gross_total": f"₹{v['total']:,.2f}",
+                    "raw_taxable": v["taxable"],
+                    "raw_tax": v["tax"],
+                    "raw_total": v["total"],
+                }
+                for k, v in slabs_dict.items() if v["invoices"] > 0 or v["taxable"] > 0
+            ]
+
             result["tableData"] = summary_months
+            result["invoicesData"] = table_rows
+            result["taxSlabs"] = tax_slabs_rows
+            result["periodsSummary"] = summary_months
+            result["channelsSummary"] = summary_months
             result["summaryTotals"] = {
-                "total_procurement_value": f"₹{sum(float(r['gross_total'].replace('₹', '').replace(',', '')) for r in summary_months):,.2f}",
-                "total_eligible_itc": f"₹{sum(float(r['itc_tax'].replace('₹', '').replace(',', '')) for r in summary_months):,.2f}",
-                "total_orders_raised": f"{sum(int(r['total_pos'].split()[0]) for r in summary_months)} POs",
+                "total_procurement_value": f"₹{tot_proc_gross:,.2f}",
+                "total_eligible_itc": f"₹{tot_proc_tax:,.2f}",
+                "total_orders_raised": f"{len(table_rows)} POs",
+                "net_gross_turnover": f"₹{tot_proc_gross:,.2f}",
+                "raw_gross_turnover": tot_proc_gross,
+                "total_taxable": f"₹{tot_proc_taxable:,.2f}",
+                "raw_taxable": tot_proc_taxable,
+                "total_cgst": f"₹{tot_proc_cgst:,.2f}",
+                "raw_cgst": tot_proc_cgst,
+                "total_sgst": f"₹{tot_proc_sgst:,.2f}",
+                "raw_sgst": tot_proc_sgst,
+                "total_igst": f"₹{tot_proc_igst:,.2f}",
+                "raw_igst": tot_proc_igst,
+                "total_gst": f"₹{tot_proc_tax:,.2f}",
+                "raw_gst": tot_proc_tax,
+                "active_invoices": len(table_rows),
+                "total_invoices_count": len(table_rows),
             }
 
         elif report_id == "purchase_invoice":

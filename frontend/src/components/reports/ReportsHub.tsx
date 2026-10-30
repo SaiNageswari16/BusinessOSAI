@@ -67,6 +67,7 @@ import { EmployeeSalesReportSuite } from "./EmployeeSalesReportSuite";
 import { PaymentModeSalesReportSuite } from "./PaymentModeSalesReportSuite";
 import { VendorOutstandingSuite } from "./VendorOutstandingSuite";
 import { SalesSummaryReportSuite } from "./SalesSummaryReportSuite";
+import { PurchaseSummaryReportSuite } from "./PurchaseSummaryReportSuite";
 import { PurchaseStatementSuite } from "./PurchaseStatementSuite";
 
 // ── Types & Metadata ──────────────────────────────────────────────────────────
@@ -401,14 +402,14 @@ export function ReportsHub() {
 
   // Fetch when report selection or filters change
   useEffect(() => {
-    if (activeReport && !GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id) && !PAYMENT_MODE_SUITE_IDS.has(activeReport.id) && activeReport.id !== "purchase_statement" && activeReport.id !== "vendor_outstanding" && activeReport.id !== "sales_summary") {
+    if (activeReport && !GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id) && !PAYMENT_MODE_SUITE_IDS.has(activeReport.id) && activeReport.id !== "purchase_statement" && activeReport.id !== "vendor_outstanding" && activeReport.id !== "sales_summary" && activeReport.id !== "purchase_summary") {
       loadReport(activeReport);
     }
   }, [activeReport, dateRange, customStartDate, customEndDate, builderEntity, builderGroupBy]);
 
   // Debounce search query so customer name search dynamically updates the live report
   useEffect(() => {
-    if (activeReport && !GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id) && !PAYMENT_MODE_SUITE_IDS.has(activeReport.id) && activeReport.id !== "purchase_statement" && activeReport.id !== "vendor_outstanding" && activeReport.id !== "sales_summary") {
+    if (activeReport && !GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id) && !PAYMENT_MODE_SUITE_IDS.has(activeReport.id) && activeReport.id !== "purchase_statement" && activeReport.id !== "vendor_outstanding" && activeReport.id !== "sales_summary" && activeReport.id !== "purchase_summary") {
       const timer = setTimeout(() => {
         loadReport(activeReport);
       }, 320);
@@ -909,6 +910,7 @@ export function ReportsHub() {
   const isPurchaseStatementReport = Boolean(activeReport && (activeReport.id === "purchase_statement" || activeReport.id === "supplier_statement"));
   const isVendorOutstandingReport = Boolean(activeReport && activeReport.id === "vendor_outstanding");
   const isSalesSummaryReport = Boolean(activeReport && activeReport.id === "sales_summary");
+  const isPurchaseSummaryReport = Boolean(activeReport && activeReport.id === "purchase_summary");
 
   return (
     <div className="flex flex-1 h-full w-full bg-slate-50 overflow-hidden font-sans">
@@ -1113,6 +1115,10 @@ export function ReportsHub() {
       ) : isSalesSummaryReport ? (
         <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
           <SalesSummaryReportSuite onBack={() => setActiveReport(null)} />
+        </main>
+      ) : isPurchaseSummaryReport ? (
+        <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+          <PurchaseSummaryReportSuite onBack={() => setActiveReport(null)} />
         </main>
       ) : (
         <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">

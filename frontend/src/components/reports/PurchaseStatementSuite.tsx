@@ -1069,3 +1069,4 @@ export function PurchaseStatementSuite({ onBack, initialSupplierName }: Purchase
     </div>
   );
 }
+
