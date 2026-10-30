@@ -263,7 +263,9 @@ def main() -> int:
          str(r.get("status")).lower() == "free", r.get("status"))
 
     # ── 12. BOM deduction in inventory ───────────────────────────────────────
-    time.sleep(3)
+    # The deduction lands through outbox relay + redis + consumer loop, so
+    # give the chain a beat past the settle — 3s has flaked on cold starts.
+    time.sleep(6)
     s, r = http("GET", "inventory", "/movements", None, tok, query="limit=500")
     movs = r if isinstance(r, list) else (r.get("items") or r.get("movements") or [])
     bill_moved = any(
