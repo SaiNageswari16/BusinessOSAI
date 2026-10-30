@@ -183,34 +183,55 @@ async def _on_bill_paid(event: Event) -> None:
     if bill_id is None or outlet is None:
         return
 
-    # The payload carries the dishes sold. Each has a menu_item_id and a qty;
-    # inventory needs recipes, which it fetches from the menu service over
-    # HTTP — recipes are not in this database and must not be foreign-keyed.
-    lines: list[RecipeLineSnapshot] = []
+    # The payload carries the dishes sold. Each has a menu_item_id and a
+    # sold quantity; inventory needs recipes, which it fetches from the menu
+    # service over HTTP — recipes are not in this database and must not be
+    # foreign-keyed.
+    #
+    # Required amount mirrors the costing service's arithmetic, so the stock
+    # ledger and the P&L agree: per-portion usage scaled to the portions
+    # sold, divided by the recipe's yield (a batch that makes N servings),
+    # plus its wastage rate. Doing any of those wrong silently moves the
+    # wrong amount of ingredients — e.g. selling two portions and only
+    # deducting one portion's worth.
+    groups: list[tuple[list[RecipeLineSnapshot], int]] = []
     for sold in data.get("lines") or []:
         menu_item_id = _coerce_uuid(sold.get("menu_item_id"))
         qty = int(sold.get("qty") or 1)
         recipe = await _recipe_for(menu_item_id) if menu_item_id else None
         if not recipe:
             continue
-        for rline in recipe:
+        yield_qty = float(recipe.get("yield_qty") or 1) or 1.0
+        lines: list[RecipeLineSnapshot] = []
+        for rline in recipe["lines"]:
             ingredient = _coerce_uuid(rline.get("inventory_item_id"))
-            if ingredient is None:
+            per_portion = float(rline.get("qty_per_portion") or 0)
+            if ingredient is None or per_portion <= 0:
                 continue
+            wastage = float(rline.get("wastage_pct") or 0)
+            effective = per_portion / yield_qty * (1.0 + wastage / 100.0)
             lines.append(RecipeLineSnapshot(
                 inventory_item_id=ingredient,
-                qty_per_portion=float(rline.get("qty_per_portion") or 0),
+                qty_per_portion=effective,
             ))
+        if lines:
+            groups.append((lines, qty))
 
-    if not lines:
+    if not groups:
         return
 
     db = _handler_db()
     try:
-        results = await svc.deduct_recipe(
-            db, tenant, outlet, lines,
-            reference_type="bill", reference_id=str(bill_id),
-        )
+        results = []
+        # One deduct call per sold dish, each at its own quantity:
+        # deduct_recipe multiplies per-portion lines by qty_per_line, which
+        # is exactly this line's sold count. All calls share the session,
+        # so they commit atomically with each other below.
+        for lines, qty in groups:
+            results.extend(await svc.deduct_recipe(
+                db, tenant, outlet, lines, qty,
+                reference_type="bill", reference_id=str(bill_id),
+            ))
         await db.commit()
     except Exception:
         await db.rollback()
@@ -363,8 +384,12 @@ async def _grn_already_recorded(grn_id, tenant) -> bool:
         await db.close()
 
 
-async def _recipe_for(menu_item_id: uuid.UUID) -> list[dict] | None:
-    """Fetch a menu item's recipe lines from the menu service over HTTP.
+async def _recipe_for(menu_item_id: uuid.UUID) -> dict | None:
+    """Fetch a menu item's active BOM envelope from the menu service over HTTP.
+
+    Returns the endpoint's JSON envelope — ``lines`` PLUS ``yield_qty`` — not
+    just the lines, because a correct deduction has to scale each line's raw
+    quantity down by how many portions one batch yields.
 
     Cross-service reads go through the gateway, never through a foreign key or
     a direct database handle. Failures return None, which means "cannot deduct"
@@ -389,7 +414,13 @@ async def _recipe_for(menu_item_id: uuid.UUID) -> list[dict] | None:
             )
         if resp.status_code != 200:
             return None
-        return resp.json().get("lines") or None
+        envelope = resp.json()
+        # No lines yet is a valid state (item not BOM-tracked); keep returning
+        # None so the caller skips it, but only when there is genuinely
+        # nothing to deduct.
+        if not envelope.get("lines"):
+            return None
+        return envelope
     except Exception:
         return None
 

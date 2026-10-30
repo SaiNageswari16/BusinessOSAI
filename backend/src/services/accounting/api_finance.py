@@ -101,6 +101,13 @@ async def _emit(db: AsyncSession, event: Event, outlet_id: uuid.UUID | None = No
         event_id=event.event_id,
     )
     await db.commit()
+    # Stamp the event with the same outlet the outbox row carries, so the
+    # in-process/stream copy is consistent with the durable one. Without this
+    # the local-publish stream entry has outlet_id null while the relay's
+    # copy (same event_id, correct outlet) is skipped by the consumer's
+    # durable dedupe ledger — the consumer then sees only the null-outlet
+    # entry and silently drops the fact.
+    event.outlet_id = outlet_id
     await bus.publish(event, local=True)
 
 

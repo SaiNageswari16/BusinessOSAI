@@ -160,6 +160,24 @@ def main() -> int:
         print(json.dumps(r)[:300])
         return 1
 
+    # ── 2b. inventory: top up the recipe's ingredients (supplier delivery) ───
+    # Repeated runs drain on-hand stock to zero; a zero-store bill.paid then
+    # correctly floors deductions at zero and writes no movement. A realistic
+    # stock-in first makes step 12 deterministic on every run.
+    s, rl = http("GET", "menu", f"/items/{menu_item}/recipe-lines", None, tok)
+    rlines = (rl.get("lines") if isinstance(rl, dict) else rl) or []
+    topped = 0
+    for line in rlines:
+        inv_id = line.get("inventory_item_id")
+        if not inv_id:
+            continue
+        s, sr = http("POST", "inventory", f"/items/{inv_id}/stock-in",
+                     {"qty": 500, "unit_cost": 2}, tok, query=f"outlet_id={OUTLET}")
+        if s in (200, 201):
+            topped += 1
+    step("2b. inventory: stock-in recipe ingredients", s in (200, 201) and topped >= 1,
+         f"{topped} ingredient(s) topped up")
+
     # ── 3. table auto-occupied ────────────────────────────────────────────────
     time.sleep(3)
     s, r = http("GET", "organization", f"/tables/{table}", None, tok)
