@@ -67,6 +67,7 @@ import { EmployeeSalesReportSuite } from "./EmployeeSalesReportSuite";
 import { PaymentModeSalesReportSuite } from "./PaymentModeSalesReportSuite";
 import { VendorOutstandingSuite } from "./VendorOutstandingSuite";
 import { SalesSummaryReportSuite } from "./SalesSummaryReportSuite";
+import { PurchaseStatementSuite } from "./PurchaseStatementSuite";
 
 // ── Types & Metadata ──────────────────────────────────────────────────────────
 export interface ReportItem {
@@ -191,8 +192,9 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     id: "purchases",
     title: "Purchase Reports",
     icon: ShoppingBag,
-    badge: "7 Reports",
+    badge: "8 Reports",
     reports: [
+      { id: "purchase_statement", title: "Purchase Statement (Supplier Ledger)", entity: "purchase_statement", description: "Chronological ledger statement of all vendor purchase bills, payment out settlements, debit notes and running balances.", icon: FileText },
       { id: "purchase_summary", title: "Purchase Summary", entity: "purchase_summary", description: "Total procurement volume, purchase orders & landed cost values.", icon: ShoppingBag },
       { id: "purchase_invoice", title: "Purchase Invoices Register", entity: "purchase_invoice", description: "Vendor bills register with tax details, payment terms and due dates.", icon: FileText },
       { id: "vendor_outstanding", title: "Vendor Outstanding (Payables)", entity: "vendor_outstanding", description: "Register of unpaid vendor bills grouped by supplier with contact details & balances.", icon: Landmark },
@@ -399,14 +401,14 @@ export function ReportsHub() {
 
   // Fetch when report selection or filters change
   useEffect(() => {
-    if (activeReport && !GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id) && !PAYMENT_MODE_SUITE_IDS.has(activeReport.id) && activeReport.id !== "vendor_outstanding" && activeReport.id !== "sales_summary") {
+    if (activeReport && !GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id) && !PAYMENT_MODE_SUITE_IDS.has(activeReport.id) && activeReport.id !== "purchase_statement" && activeReport.id !== "vendor_outstanding" && activeReport.id !== "sales_summary") {
       loadReport(activeReport);
     }
   }, [activeReport, dateRange, customStartDate, customEndDate, builderEntity, builderGroupBy]);
 
   // Debounce search query so customer name search dynamically updates the live report
   useEffect(() => {
-    if (activeReport && !GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id) && !PAYMENT_MODE_SUITE_IDS.has(activeReport.id) && activeReport.id !== "vendor_outstanding" && activeReport.id !== "sales_summary") {
+    if (activeReport && !GST_SUITE_IDS.has(activeReport.id) && !INVENTORY_SUITE_IDS.has(activeReport.id) && !PARTY_SUITE_IDS.has(activeReport.id) && !EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id) && !PAYMENT_MODE_SUITE_IDS.has(activeReport.id) && activeReport.id !== "purchase_statement" && activeReport.id !== "vendor_outstanding" && activeReport.id !== "sales_summary") {
       const timer = setTimeout(() => {
         loadReport(activeReport);
       }, 320);
@@ -904,6 +906,7 @@ export function ReportsHub() {
   const isPartyReport = Boolean(activeReport && PARTY_SUITE_IDS.has(activeReport.id));
   const isEmployeeSalesReport = Boolean(activeReport && EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id));
   const isPaymentModeReport = Boolean(activeReport && PAYMENT_MODE_SUITE_IDS.has(activeReport.id));
+  const isPurchaseStatementReport = Boolean(activeReport && (activeReport.id === "purchase_statement" || activeReport.id === "supplier_statement"));
   const isVendorOutstandingReport = Boolean(activeReport && activeReport.id === "vendor_outstanding");
   const isSalesSummaryReport = Boolean(activeReport && activeReport.id === "sales_summary");
 
@@ -1090,6 +1093,10 @@ export function ReportsHub() {
       ) : isPartyReport ? (
         <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
           <CustomerPartyReportsSuite key={activeReport.id} defaultReport={activeReport.id as CustomerReportType} />
+        </main>
+      ) : isPurchaseStatementReport ? (
+        <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+          <PurchaseStatementSuite onBack={() => setActiveReport(null)} />
         </main>
       ) : isVendorOutstandingReport ? (
         <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">

@@ -341,6 +341,9 @@ export function CustomerPartyReportsSuite({
   const [parties, setParties] = useState<PartyRecord[]>([]);
   const [rawInvoices, setRawInvoices] = useState<any[]>([]);
   const [rawPayments, setRawPayments] = useState<any[]>([]);
+  const [rawBills, setRawBills] = useState<any[]>([]);
+  const [rawVendorPayments, setRawVendorPayments] = useState<any[]>([]);
+  const [rawDebitNotes, setRawDebitNotes] = useState<any[]>([]);
   const [productsList, setProductsList] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -353,7 +356,7 @@ export function CustomerPartyReportsSuite({
         syncLocalStorageCustomerInvoices();
 
         // 1. Fetch live CRM customers, suppliers, vendor bills, live products, POS and live SQL Invoices & Payments
-        const [crmRes, invRes, posRes, sqlInvoicesRes, suppliersRes, billsRes, paymentsRes] = await Promise.allSettled([
+        const [crmRes, invRes, posRes, sqlInvoicesRes, suppliersRes, billsRes, paymentsRes, vendorPaymentsRes, debitNotesRes] = await Promise.allSettled([
           crmCustomersApi.list(1, 1000),
           inventoryApi.getProducts({ page_size: 1000 }),
           posApi.getProducts({ limit: 1000 }),
@@ -361,6 +364,8 @@ export function CustomerPartyReportsSuite({
           inventoryApi.getSuppliers(),
           inventoryApi.getVendorBills(),
           invoicesApi.listPayments({ page_size: 1000 }),
+          inventoryApi.getVendorPayments().catch(() => []),
+          inventoryApi.getVendorDebitNotes().catch(() => []),
         ]);
 
         let dbCustomers: any[] = [];
@@ -379,6 +384,21 @@ export function CustomerPartyReportsSuite({
         if (billsRes.status === "fulfilled" && billsRes.value) {
           const bVal: any = billsRes.value;
           dbBills = Array.isArray(bVal) ? bVal : bVal.items || bVal.data || [];
+          setRawBills(dbBills);
+        }
+
+        let dbVendorPayments: any[] = [];
+        if (vendorPaymentsRes && vendorPaymentsRes.status === "fulfilled" && vendorPaymentsRes.value) {
+          const vpVal: any = vendorPaymentsRes.value;
+          dbVendorPayments = Array.isArray(vpVal) ? vpVal : vpVal.items || vpVal.data || [];
+          setRawVendorPayments(dbVendorPayments);
+        }
+
+        let dbDebitNotes: any[] = [];
+        if (debitNotesRes && debitNotesRes.status === "fulfilled" && debitNotesRes.value) {
+          const dnVal: any = debitNotesRes.value;
+          dbDebitNotes = Array.isArray(dnVal) ? dnVal : dnVal.items || dnVal.data || [];
+          setRawDebitNotes(dbDebitNotes);
         }
 
         // 2. Fetch live Products from database
@@ -986,6 +1006,206 @@ export function CustomerPartyReportsSuite({
     }
 
     const opBal = activeParty.openingBalance || 0;
+
+    // ── IF ACTIVE PARTY IS A SUPPLIER / VENDOR, PROCESS PURCHASE BILLS & PAYMENTS OUT ──
+    if (activeParty.type === "Supplier") {
+      let runningBalance = opBal;
+      const sName = (activeParty.name || "").toLowerCase().trim();
+      const sPhone = (activeParty.phone || "").replace(/\D/g, "");
+      const sId = activeParty.id ? String(activeParty.id) : "";
+
+      const matchedBills = rawBills.filter((b: any) => {
+        const rawStatus = String(b.status || "").toLowerCase();
+        if (rawStatus === "cancelled" || rawStatus === "voided") return false;
+        const bName = (b.supplier_name || b.vendor_name || b.supplier?.name || "").toLowerCase().trim();
+        const bPhone = (b.supplier_phone || b.phone || "").replace(/\D/g, "");
+        const bId = b.supplier_id ? String(b.supplier_id) : "";
+        const mName = bName && (bName === sName || bName.includes(sName) || sName.includes(bName));
+        const mId = bId && (bId === sId || sId.includes(bId));
+        const mPhone = sPhone && sPhone.length >= 10 && bPhone && bPhone.endsWith(sPhone.slice(-10));
+        return (mName || mId || mPhone) && isDateInFilter(b.bill_date || b.created_at);
+      });
+
+      const matchedBillIds = new Set<string>();
+      const matchedBillNumbers = new Set<string>();
+      matchedBills.forEach((b: any) => {
+        if (b.id) matchedBillIds.add(String(b.id));
+        const num = String(b.bill_number || "").trim().toUpperCase();
+        if (num) matchedBillNumbers.add(num);
+      });
+
+      const matchedPayments = rawVendorPayments.filter((p: any) => {
+        const pName = (p.supplier_name || p.vendor_name || "").toLowerCase().trim();
+        const pBillId = p.vendor_bill_id ? String(p.vendor_bill_id) : "";
+        const pBillNo = String(p.bill_number || "").trim().toUpperCase();
+        const mDirect = (pBillId && matchedBillIds.has(pBillId)) || (pBillNo && matchedBillNumbers.has(pBillNo));
+        const mName = pName && (pName === sName || pName.includes(sName) || sName.includes(pName));
+        return (mDirect || mName) && isDateInFilter(p.payment_date || p.created_at);
+      });
+
+      const matchedDebits = rawDebitNotes.filter((dn: any) => {
+        const dnName = (dn.supplier_name || dn.supplier?.name || "").toLowerCase().trim();
+        const dnId = dn.supplier_id ? String(dn.supplier_id) : "";
+        return (dnName === sName || dnName.includes(sName) || sName.includes(dnName) || dnId === sId) && isDateInFilter(dn.created_at || dn.date);
+      });
+
+      const events: any[] = [];
+      let totPur = 0;
+      let totPaid = 0;
+      let overdueAmt = 0;
+
+      const paymentsAllocatedPerBill = new Map<string, number>();
+      const processedPaymentIds = new Set<string>();
+
+      matchedPayments.forEach((p: any, idx: number) => {
+        const pId = String(p.id || p.reference_number || `pay_${idx}`);
+        if (processedPaymentIds.has(pId)) return;
+        processedPaymentIds.add(pId);
+        const amt = Number(p.amount_paid || p.amount || 0);
+        if (amt <= 0) return;
+        const pDate = p.payment_date || p.created_at;
+        const refNo = p.reference_number || `TXN-${String(p.id || idx + 1000).slice(0, 8).toUpperCase()}`;
+        const billRef = p.bill_number ? ` (#${p.bill_number})` : "";
+        const mode = p.payment_method || "Bank Transfer";
+        if (p.bill_number) {
+          const key = String(p.bill_number).trim().toUpperCase();
+          paymentsAllocatedPerBill.set(key, (paymentsAllocatedPerBill.get(key) || 0) + amt);
+        }
+        totPaid += amt;
+        events.push({
+          timestamp: parseSafeDateTimestamp(pDate) || Date.now(),
+          date: formatDisplayDate(pDate),
+          rawDate: pDate,
+          voucher: `Payment Out #${refNo}${billRef}`,
+          srNo: refNo,
+          paymentMode: mode,
+          debit: amt,
+          credit: 0,
+          balance: 0,
+          dueDate: "—",
+          type: "payment",
+        });
+      });
+
+      matchedBills.forEach((b: any, idx: number) => {
+        const bDate = b.bill_date || b.created_at;
+        const bNo = b.bill_number || `BILL-${1000 + idx}`;
+        const total = Number(b.total_amount || b.amount || 0);
+        const paidOnBill = Number(b.paid_amount || b.amount_paid || 0);
+        const mode = b.payment_mode || (paidOnBill >= total ? "Settled" : "Credit Terms");
+        const dueDate = b.due_date ? formatDisplayDate(b.due_date) : "Immediate";
+        totPur += total;
+
+        if (b.due_date) {
+          const dueTs = parseSafeDateTimestamp(b.due_date);
+          if (dueTs && dueTs < Date.now() && total > paidOnBill) {
+            overdueAmt += (total - paidOnBill);
+          }
+        }
+
+        events.push({
+          timestamp: parseSafeDateTimestamp(bDate) || 0,
+          date: formatDisplayDate(bDate),
+          rawDate: bDate,
+          voucher: b.po_number ? `Purchase Invoice #${bNo} (#${b.po_number})` : `Purchase Invoice #${bNo}`,
+          srNo: b.po_number || `PO-${101 + idx}`,
+          paymentMode: mode,
+          credit: total,
+          debit: 0,
+          balance: 0,
+          dueDate: dueDate,
+          type: "invoice",
+        });
+
+        const billKey = String(bNo).trim().toUpperCase();
+        const alreadyAllocated = paymentsAllocatedPerBill.get(billKey) || 0;
+        const unallocatedPaid = Math.max(0, paidOnBill - alreadyAllocated);
+        if (unallocatedPaid > 0.05) {
+          totPaid += unallocatedPaid;
+          events.push({
+            timestamp: (parseSafeDateTimestamp(bDate) || 0) + 1,
+            date: formatDisplayDate(bDate),
+            rawDate: bDate,
+            voucher: `Payment Out #${bNo} (Bill Settlement)`,
+            srNo: `SETTLE-${201 + idx}`,
+            paymentMode: mode,
+            debit: unallocatedPaid,
+            credit: 0,
+            balance: 0,
+            dueDate: "—",
+            type: "payment",
+          });
+        }
+      });
+
+      matchedDebits.forEach((dn: any, idx: number) => {
+        const dnDate = dn.created_at || dn.date;
+        const dnNo = dn.note_number || dn.reference_number || `DN-${1000 + idx}`;
+        const amt = Number(dn.amount || 0);
+        if (amt <= 0) return;
+        events.push({
+          timestamp: parseSafeDateTimestamp(dnDate) || 0,
+          date: formatDisplayDate(dnDate),
+          rawDate: dnDate,
+          voucher: `Vendor Debit Note #${dnNo}`,
+          srNo: dnNo,
+          paymentMode: dn.notes ? `Adjustment (${dn.notes})` : "Purchase Return",
+          debit: amt,
+          credit: 0,
+          balance: 0,
+          dueDate: "—",
+          type: "credit_note",
+        });
+      });
+
+      events.sort((a, b) => {
+        if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+        if (a.type === "invoice" && b.type === "payment") return -1;
+        if (a.type === "payment" && b.type === "invoice") return 1;
+        return 0;
+      });
+
+      const sRows: any[] = [];
+      sRows.push({
+        date: "—",
+        voucher: "Opening Balance",
+        srNo: "—",
+        paymentMode: "—",
+        credit: opBal > 0 ? opBal : 0,
+        debit: opBal < 0 ? Math.abs(opBal) : 0,
+        balance: runningBalance,
+        dueDate: "—",
+        isSummaryRow: true,
+      });
+
+      events.forEach((ev) => {
+        if (ev.credit > 0) runningBalance += ev.credit;
+        if (ev.debit > 0) runningBalance -= ev.debit;
+        ev.balance = runningBalance;
+        sRows.push(ev);
+      });
+
+      const totalPayable = runningBalance > 0 ? Math.round(runningBalance * 100) / 100 : 0;
+      sRows.push({
+        date: "—",
+        voucher: "Closing Balance",
+        srNo: "—",
+        paymentMode: "—",
+        credit: totalPayable > 0 ? totalPayable : 0,
+        debit: runningBalance < 0 ? Math.abs(runningBalance) : 0,
+        balance: runningBalance,
+        dueDate: "—",
+        isSummaryRow: true,
+      });
+
+      return {
+        rows: sRows,
+        totalReceivable: totalPayable,
+        overdue: overdueAmt,
+        totalSales: Math.round(totPur * 100) / 100,
+        totalReceived: Math.round(totPaid * 100) / 100,
+      };
+    }
     let runningBalance = opBal;
 
     const pName = (activeParty.name || "").toLowerCase().trim();
@@ -1243,7 +1463,7 @@ export function CustomerPartyReportsSuite({
       totalSales: Math.round(totSales * 100) / 100,
       totalReceived: Math.round(totReceived * 100) / 100,
     };
-  }, [activeParty, rawInvoices, rawPayments, dateFilter, customStartDate, customEndDate]);
+  }, [activeParty, rawInvoices, rawPayments, rawBills, rawVendorPayments, rawDebitNotes, dateFilter, customStartDate, customEndDate]);
 
   // ─────────────────────────────────────────────────────────────
   // 2. PARTY WISE OUTSTANDING COMPUTATION
@@ -1936,7 +2156,7 @@ export function CustomerPartyReportsSuite({
                   <div className="size-6 rounded-full border border-slate-200 flex items-center justify-center text-slate-500 font-semibold text-xs">
                     ₹
                   </div>
-                  <span className="text-xs font-medium text-slate-600">Total Receivable Amount</span>
+                  <span className="text-xs font-medium text-slate-600">{activeParty?.type === "Supplier" ? "Total Payable Amount" : "Total Receivable Amount"}</span>
                 </div>
                 <div className="text-lg font-bold text-slate-900 mt-2 font-mono">
                   {ledgerData.totalReceivable > 0 ? formatCurrency(ledgerData.totalReceivable) : "₹ 0"}
@@ -1960,7 +2180,7 @@ export function CustomerPartyReportsSuite({
                   <div className="size-6 rounded-full border border-blue-200 bg-blue-50/50 flex items-center justify-center text-blue-600 text-xs">
                     <TrendingUp className="size-3.5" />
                   </div>
-                  <span className="text-xs font-medium text-blue-600">Total Sales Amount</span>
+                  <span className="text-xs font-medium text-blue-600">{activeParty?.type === "Supplier" ? "Total Purchase Amount" : "Total Sales Amount"}</span>
                 </div>
                 <div className="text-lg font-bold text-slate-900 mt-2 font-mono">
                   {ledgerData.totalSales > 0 ? formatCurrency(ledgerData.totalSales) : "₹ 0"}
@@ -1972,7 +2192,7 @@ export function CustomerPartyReportsSuite({
                   <div className="size-6 rounded-full border border-emerald-200 bg-emerald-50/50 flex items-center justify-center text-emerald-600 text-xs">
                     <CheckCircle2 className="size-3.5" />
                   </div>
-                  <span className="text-xs font-medium text-emerald-600">Total Received Amount</span>
+                  <span className="text-xs font-medium text-emerald-600">{activeParty?.type === "Supplier" ? "Total Paid Amount" : "Total Received Amount"}</span>
                 </div>
                 <div className="text-lg font-bold text-slate-900 mt-2 font-mono">
                   {ledgerData.totalReceived > 0 ? formatCurrency(ledgerData.totalReceived) : "₹ 0"}
