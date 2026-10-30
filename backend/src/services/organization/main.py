@@ -15,6 +15,7 @@ logging.basicConfig(
 
 from src.services.organization.api import router
 from src.services.organization import models  # noqa: F401  (registers on this service's base)
+from src.services.organization import events  # noqa: F401 - @bus.on registrations
 from src.services.organization.outbox import OutboxRelay
 from src.services.shared.registry import get_descriptor
 from src.services.shared.service_app import create_service_app
