@@ -464,6 +464,9 @@ ALLOWED_FROM_SERVED = {OrderStatus.BILL_REQUESTED, OrderStatus.SETTLED, OrderSta
 ALLOWED_FROM_BILL_REQUESTED = {OrderStatus.SETTLED, OrderStatus.HOLD}
 ALLOWED_FROM_HOLD = {OrderStatus.PLACED, OrderStatus.IN_KITCHEN, OrderStatus.PREPARING,
                      OrderStatus.SERVED, OrderStatus.BILL_REQUESTED, OrderStatus.CANCELLED}
+# An advance order can only be made live (PLACED — the activation path) or
+# cancelled; nothing kitchen-driven applies to an order that was never fired.
+ALLOWED_FROM_SCHEDULED = {OrderStatus.PLACED, OrderStatus.CANCELLED}
 
 
 def _allowed_to(order: Order) -> set[OrderStatus]:
@@ -475,6 +478,7 @@ def _allowed_to(order: Order) -> set[OrderStatus]:
         OrderStatus.SERVED: ALLOWED_FROM_SERVED,
         OrderStatus.BILL_REQUESTED: ALLOWED_FROM_BILL_REQUESTED,
         OrderStatus.HOLD: ALLOWED_FROM_HOLD,
+        OrderStatus.SCHEDULED: ALLOWED_FROM_SCHEDULED,
     }.get(OrderStatus(cur), set())
 
 
@@ -521,6 +525,74 @@ async def resume_order(
     order.status = to
     await db.flush()
     return order
+
+
+# ─── Scheduled (advance) orders ────────────────────────────────────────────
+
+async def activate_scheduled_order(
+    db: AsyncSession, tenant_id: uuid.UUID, order: Order
+) -> Order:
+    """Make an advance order live: SCHEDULED -> PLACED.
+
+    This is the one transition the due-scan performs on the order itself;
+    the API route then publishes ``order.placed`` so the kitchen (KOT) and
+    inventory react exactly as they would for a same-day order. An empty
+    advance order (no lines yet) is still activatable: it is a reservation
+    in first form (name + phone + time), and lines are added at the table
+    before the bill. The KOT consumer creates nothing from an empty order,
+    so firing it costs the kitchen nothing.
+
+    ``scheduled_for`` is cleared on activation — it is a "when to run"
+    marker, not history. ``placed_at`` is stamped here, not at creation,
+    because the order only *exists* to the kitchen now.
+    """
+    cur = status_value(order.status)
+    if cur != OrderStatus.SCHEDULED.value:
+        raise PosError(f"Only a scheduled order can be activated (got {cur})")
+    order.status = OrderStatus.PLACED
+    order.placed_at = _now()
+    order.scheduled_for = None
+    # order_type is a String column: after a load it is a plain str, so
+    # compare via status_value, never .value.
+    if order.token_number is None and status_value(order.order_type) in (
+        "qsr", "takeaway",
+    ):
+        order.token_number = await next_token_number(
+            db, tenant_id, order.outlet_id
+        )
+    await db.flush()
+    return order
+
+
+async def due_scheduled_orders(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    now: datetime,
+    outlet_id: uuid.UUID | None = None,
+    limit: int = 50,
+) -> list[Order]:
+    """Advance orders that should fire now: still SCHEDULED and due.
+
+    "Due" means ``scheduled_for <= now`` — an advance order that was not
+    activated at its time stays visible in this list so the terminal can
+    catch it on shift start rather than silently expiring. Overdue orders
+    are therefore returned, not filtered out; the terminal decides whether
+    to activate or cancel one that is now stale.
+    """
+    stmt = (
+        select(Order)
+        .where(
+            Order.tenant_id == tenant_id,
+            Order.status == OrderStatus.SCHEDULED,
+            Order.scheduled_for.is_not(None),
+            Order.scheduled_for <= now,
+        )
+        .order_by(Order.scheduled_for.asc())
+        .limit(limit)
+    )
+    if outlet_id is not None:
+        stmt = stmt.where(Order.outlet_id == outlet_id)
+    return list((await db.execute(stmt)).scalars().all())
 
 
 # ─── Void / split / merge ──────────────────────────────────────────────────

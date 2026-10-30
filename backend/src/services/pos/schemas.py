@@ -202,6 +202,51 @@ class OrderCreateResponse(OrmModel):
     items: list[OrderItemResponse]
 
 
+class ScheduledOrderCreate(BaseModel):
+    """An advance order: reserved now, fired at ``scheduled_for``.
+
+    Nothing cooks and no table occupies until activation (or the
+    terminal's due-scan fires it). Lines are optional at schedule time —
+    a walk-in advance order is often just a name, a phone, and a time,
+    and the waiter fills the lines when the guest actually arrives.
+    """
+
+    outlet_id: uuid.UUID
+    order_type: OrderType = OrderType.DINE_IN
+    scheduled_for: datetime
+    table_id: uuid.UUID | None = None
+    section_id: uuid.UUID | None = None
+    covers: int = Field(ge=1, default=1)
+
+    customer_id: uuid.UUID | None = None
+    customer_name: str | None = Field(default=None, max_length=200)
+    customer_phone: str | None = Field(default=None, max_length=30)
+
+    notes: str | None = None
+    lines: list[OrderLineCreate] = Field(default_factory=list)
+
+
+class ScheduledOrderResponse(OrmModel):
+    """The terminal's due list: what advance orders should fire right now.
+
+    Flat, no line aggregation — the terminal only needs to see *which*
+    advance orders are due and who they belong to; the detail view is the
+    normal order endpoint. Kept column-only for the same reason as
+    ``OrderListResponse``: no lazy loads during serialisation.
+    """
+
+    id: uuid.UUID
+    outlet_id: uuid.UUID
+    order_number: str
+    order_type: OrderType
+    status: OrderStatus
+    scheduled_for: datetime
+    customer_name: str | None
+    customer_phone: str | None
+    notes: str | None
+    created_at: datetime
+
+
 class OrderDetailResponse(OrmModel):
     id: uuid.UUID
     outlet_id: uuid.UUID

@@ -70,6 +70,12 @@ class OrderStatus(str, enum.Enum):
     resumed. Distinct from DRAFT: the food was already ordered and the KOT
     fired; this is a pause, not a not-started."""
     HOLD = "hold"
+    """An advance order: reserved for a future time. No KOT fires, no table
+    opens, nothing cooks — activation (or the due-scan) is the moment it
+    becomes a live PLACED order and the kitchen first hears about it.
+    Distinct from HOLD: hold is a live order paused mid-cook; scheduled is
+    a not-yet-started order."""
+    SCHEDULED = "scheduled"
 
 
 class OrderItemStatus(str, enum.Enum):
@@ -191,6 +197,13 @@ class Order(ServiceBase, TimestampMixin):
     )
     closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+    # Advance (scheduled) orders: the wall-clock time the order should fire.
+    # Set only while the order is SCHEDULED; nulled on activation so the
+    # column stays a pure "when should this run" marker, not a history field.
+    scheduled_for: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
     )
 
     # Denormalised totals — recalculated by service.recalculate_totals on every

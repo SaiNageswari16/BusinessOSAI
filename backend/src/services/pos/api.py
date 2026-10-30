@@ -55,6 +55,8 @@ from src.services.pos.schemas import (
     ReservationCreate,
     ReservationResponse,
     ReservationUpdate,
+    ScheduledOrderCreate,
+    ScheduledOrderResponse,
     TableSessionCreate,
     TableSessionResponse,
     WaitlistCreate,
@@ -402,6 +404,137 @@ async def _open_table_session_if_any(db: AsyncSession, tenant_id: uuid.UUID, ord
     )
     _outbox(db, event)
     await bus.publish(event, local=True)
+
+
+# ─── Scheduled (advance) orders ─────────────────────────────────────────────
+# An advance order is reserved now and fires at scheduled_for. Until it is
+# activated (by the terminal's due-scan, or manually) nothing has happened:
+# no KOT, no table occupancy, no bill. These three routes are the whole
+# surface the frontend advance-order dialog talks to. They are registered
+# BEFORE /orders/{order_id} so "scheduled" is never swallowed as an order id.
+
+@router.post("/orders/scheduled", response_model=OrderCreateResponse,
+             status_code=status.HTTP_201_CREATED, tags=["orders"],
+             summary="Reserve an order for a future time — nothing fires yet")
+async def create_scheduled_order(payload: ScheduledOrderCreate,
+                                 identity: CurrentIdentity, db: DbDep):
+    """Create a DRAFT order, add its lines, and hold it at SCHEDULED.
+
+    Deliberately does NOT call place_order and does NOT emit order.placed:
+    a scheduled order is a reservation, and firing the kitchen a day early
+    would cook for a table that isn't seated. Activation is the moment
+    order.placed finally goes out.
+    """
+    identity.require("manage:orders")
+    await _resolve_outlet(identity, payload.outlet_id)
+
+    order = Order(
+        tenant_id=identity.tenant_id,
+        outlet_id=payload.outlet_id,
+        order_number=await svc.allocate_order_number(
+            db, identity.tenant_id, payload.outlet_id
+        ),
+        order_type=payload.order_type,
+        status=OrderStatus.SCHEDULED,
+        scheduled_for=payload.scheduled_for,
+        table_id=payload.table_id,
+        section_id=payload.section_id,
+        covers=payload.covers,
+        customer_id=payload.customer_id,
+        customer_name=payload.customer_name,
+        customer_phone=payload.customer_phone,
+        notes=payload.notes,
+    )
+    db.add(order)
+    await db.flush()
+
+    # The graph is always reloaded (even with no lines) before item_count
+    # and response serialisation: counting a lazily-loaded collection after
+    # the handler has left the request greenlet is the MissingGreenlet trap
+    # this module's docstrings document.
+    if payload.lines:
+        await svc.add_lines(db, identity.tenant_id, order, payload.lines)
+    order = await svc.reload_order(db, order)
+
+    return OrderCreateResponse(
+        id=order.id,
+        order_number=order.order_number,
+        status=order.status,
+        subtotal=float(order.subtotal),
+        grand_total=float(order.grand_total),
+        item_count=svc.item_count(order),
+        items=order.items,
+    )
+
+
+@router.get("/orders/scheduled/due", response_model=list[ScheduledOrderResponse],
+            tags=["orders"],
+            summary="Advance orders that should fire now (for the terminal's shift-start scan)")
+async def due_scheduled_orders(
+    identity: CurrentIdentity, db: DbDep,
+    outlet_id: uuid.UUID | None = None,
+    limit: int = Query(default=50, le=500),
+):
+    """SCHEDULED orders whose scheduled_for has arrived (or passed).
+
+    Overdue ones are returned, not hidden: the terminal shows them so a
+    waiter can activate or cancel a reservation the guest missed, instead
+    of it silently expiring in the database.
+    """
+    identity.require("view:orders")
+    if outlet_id is not None:
+        await _resolve_outlet(identity, outlet_id)
+    orders = await svc.due_scheduled_orders(
+        db, identity.tenant_id, datetime.now(timezone.utc),
+        outlet_id=outlet_id, limit=limit,
+    )
+    return [ScheduledOrderResponse.model_validate(o) for o in orders]
+
+
+@router.post("/orders/{order_id}/activate", response_model=OrderDetailResponse,
+             tags=["orders"],
+             summary="Fire a scheduled order now — this is when the kitchen first hears of it")
+async def activate_scheduled_order(order_id: uuid.UUID,
+                                   identity: CurrentIdentity, db: DbDep):
+    """SCHEDULED -> PLACED, then emit order.placed exactly as a same-day
+    placement would, and open the table session for a dine-in order.
+
+    The status flip and the order.placed outbox row commit atomically; the
+    kitchen KOT and inventory BOM-deduction react from that event, so an
+    activated advance order flows through the same spine as any order.
+    """
+    identity.require("manage:orders")
+    order = await svc.load_order(db, identity.tenant_id, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if not identity.can_access_outlet(order.outlet_id):
+        raise HTTPException(status_code=403, detail="Not authorised for this outlet")
+    try:
+        order = await svc.activate_scheduled_order(db, identity.tenant_id, order)
+    except svc.PosError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    event = _ev(
+        "order.placed", identity.tenant_id, outlet_id=order.outlet_id,
+        data={
+            "order_id": str(order.id),
+            "order_number": order.order_number,
+            "order_type": status_value(order.order_type),
+            "outlet_id": str(order.outlet_id),
+            "table_id": str(order.table_id) if order.table_id else None,
+            "customer_id": str(order.customer_id) if order.customer_id else None,
+            "covers": order.covers,
+            "item_count": svc.item_count(order),
+            "subtotal": float(order.subtotal),
+            "grand_total": float(order.grand_total),
+            "lines": svc.order_lines_payload(order),
+        },
+    )
+    _outbox(db, event)
+    await _open_table_session_if_any(db, identity.tenant_id, order)
+    await db.commit()
+    await bus.publish(event, local=True)
+    return order
 
 
 @router.get("/orders/{order_id}", response_model=OrderDetailResponse, tags=["orders"])
