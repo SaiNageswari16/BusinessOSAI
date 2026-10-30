@@ -301,6 +301,14 @@ async def create_bill(payload: BillCreate, identity: CurrentIdentity, db: DbDep)
         service_charge_pct=payload.service_charge_pct or 0,
         packaging_charge=payload.packaging_charge,
         tip=payload.tip,
+        # Without these the bill loses its guest: the bill.paid consumers
+        # (customers records the visit, loyalty earns points) key on
+        # customer_id in the payload.
+        customer_name=payload.customer_name,
+        customer_phone=payload.customer_phone,
+        customer_id=payload.customer_id,
+        shift_id=payload.shift_id,
+        cashier_id=payload.cashier_id,
     )
     return await svc.load_bill(db, identity.tenant_id, bill.id)
 
@@ -394,6 +402,11 @@ async def settle_bill(bill_id: uuid.UUID, payload: SettleRequest,
             "cashier_id": str(bill.cashier_id) if bill.cashier_id else None,
             "waiter_id": str(bill.waiter_id) if bill.waiter_id else None,
             "customer_gstin": bill.customer_gstin,
+            # The customers and loyalty consumers attribute the bill to a
+            # guest via these two keys; a null customer_id here means the
+            # visit is never recorded and no points are earned.
+            "customer_id": str(bill.customer_id) if bill.customer_id else None,
+            "customer_phone": bill.customer_phone,
             # The BOM-deduction consumer needs the dishes sold, not just the
             # totals — the menu service resolves recipes per menu_item_id.
             "lines": [
@@ -652,7 +665,14 @@ async def list_shifts(identity: CurrentIdentity, db: DbDep,
                       outlet_id: uuid.UUID | None = None,
                       status_filter: str | None = None):
     identity.require("view:bills")
-    stmt = select(Shift).where(Shift.tenant_id == identity.tenant_id)
+    # Eager-load cash_movements: the response model serializes the
+    # relationship, and a lazy load during that serialisation is the
+    # MissingGreenlet 500 this route used to throw. (The open/cash/close
+    # routes don't hit it — their shift was just written in this session,
+    # so its attributes are in memory, not lazy.)
+    stmt = select(Shift).options(selectinload(Shift.cash_movements)).where(
+        Shift.tenant_id == identity.tenant_id
+    )
     if outlet_id:
         stmt = stmt.where(Shift.outlet_id == outlet_id)
     if status_filter:

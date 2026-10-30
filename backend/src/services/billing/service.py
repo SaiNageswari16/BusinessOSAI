@@ -25,7 +25,7 @@ import uuid
 from decimal import ROUND_HALF_UP, Decimal
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -795,7 +795,20 @@ async def cash_movement(
         reason=reason,
         created_by=created_by,
     )
-    db.add(movement)
+    # When the caller's shift already has cash_movements eagerly loaded in
+    # this session (load_shift's selectinload), a bare db.add() leaves that
+    # in-memory collection stale: the endpoint's follow-up load_shift() skips
+    # re-fetching an already-loaded relationship and re-serialises the old
+    # list, so the new movement never appears in the response. Append through
+    # the parent collection instead — back_populates + the
+    # "all, delete-orphan" cascade persist the row on the flush below.
+    # When the relationship is NOT in the attribute dict (transient or
+    # expired shift) db.add() is correct, and touching shift.cash_movements
+    # would trigger a lazy load that AsyncSession cannot satisfy.
+    if "cash_movements" in inspect(shift).dict:
+        shift.cash_movements.append(movement)
+    else:
+        db.add(movement)
     await db.flush()
     return movement
 
