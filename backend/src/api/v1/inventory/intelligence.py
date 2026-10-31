@@ -11,12 +11,12 @@ Computes real signals from your inventory data:
 - Category Concentration
 - Natural-Language Smart Insights
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func, or_, case, desc
 from sqlalchemy.orm import selectinload, joinedload
-from typing import Annotated, List, Dict
+from typing import Annotated, List, Dict, Optional
 from datetime import date, datetime, timedelta
 from collections import defaultdict
 
@@ -742,13 +742,82 @@ async def velocity_leaderboard(
     ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     db: AsyncSession = Depends(get_db),
     direction: str = "top",  # top | bottom
+    limit: Optional[int] = Query(None),
 ):
     """Sort products by velocity for performance review."""
     prods = await _products_with_signals(ctx, db)
-    sorted_list = sorted(prods, key=lambda p: p["movement_30d_qty"], reverse=(direction == "top"))
+    sorted_list = sorted(prods, key=lambda p: (p["movement_30d_qty"], p["movement_90d_qty"]), reverse=(direction == "top"))
+    if limit:
+        sorted_list = sorted_list[:limit]
     return {
-        "items": sorted_list[:20],
+        "items": sorted_list,
         "direction": direction,
+    }
+
+
+@router.get("/intelligence/fast-moving")
+async def fast_moving_inventory(
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: AsyncSession = Depends(get_db),
+    limit: Optional[int] = Query(None),
+):
+    """High-velocity products with active consumption and fast sales movements."""
+    prods = await _products_with_signals(ctx, db)
+    fast_items = [p for p in prods if (p.get("movement_30d_qty", 0) > 0 or p.get("movement_90d_qty", 0) > 0)]
+    if not fast_items:
+        fast_items = sorted(prods, key=lambda p: (p.get("movement_30d_qty", 0), p.get("movement_90d_qty", 0), p.get("on_hand", 0)), reverse=True)
+    else:
+        fast_items.sort(key=lambda p: (p.get("movement_30d_qty", 0), p.get("movement_90d_qty", 0), p.get("potential_revenue", 0)), reverse=True)
+
+    items_slice = fast_items[:limit] if limit else fast_items
+    total_units_sold = sum(p.get("movement_30d_qty", 0) for p in fast_items)
+    total_revenue_30d = sum(p.get("movement_30d_qty", 0) * (p.get("selling_price", 0) or 0) for p in fast_items)
+    total_stock_value = sum(p.get("stock_value", 0) for p in items_slice)
+
+    return {
+        "items": items_slice,
+        "total_count": len(fast_items),
+        "total_units_sold_30d": total_units_sold,
+        "total_estimated_revenue_30d": round(total_revenue_30d, 2),
+        "total_stock_value": round(total_stock_value, 2),
+        "avg_daily_turnover": round(total_units_sold / 30.0, 1),
+    }
+
+
+@router.get("/intelligence/slow-moving")
+async def slow_moving_inventory(
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: AsyncSession = Depends(get_db),
+    limit: Optional[int] = Query(None),
+):
+    """Products with stock sitting but low turnover / high days of cover."""
+    prods = await _products_with_signals(ctx, db)
+    slow_items = []
+    for p in prods:
+        on_hand = p.get("on_hand", 0)
+        if on_hand <= 0:
+            continue
+        m30 = p.get("movement_30d_qty", 0)
+        doc = p.get("days_of_cover")
+        if (doc is not None and doc >= 60) or (m30 <= 2 and on_hand >= 5):
+            slow_items.append(p)
+
+    if not slow_items:
+        slow_items = [p for p in prods if p.get("on_hand", 0) > 0]
+        slow_items.sort(key=lambda p: (p.get("movement_30d_qty", 0), -p.get("stock_value", 0)))
+    else:
+        slow_items.sort(key=lambda p: (p.get("movement_30d_qty", 0), -p.get("stock_value", 0)))
+
+    items_slice = slow_items[:limit] if limit else slow_items
+    total_tied_capital = sum(p.get("stock_value", 0) for p in slow_items)
+    total_units_holding = sum(p.get("on_hand", 0) for p in slow_items)
+
+    return {
+        "items": items_slice,
+        "total_count": len(slow_items),
+        "total_tied_capital": round(total_tied_capital, 2),
+        "total_units_holding": total_units_holding,
+        "avg_holding_value": round(total_tied_capital / max(1, len(slow_items)), 2),
     }
 
 
