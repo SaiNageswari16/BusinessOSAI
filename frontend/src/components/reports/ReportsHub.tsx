@@ -913,37 +913,21 @@ export function ReportsHub() {
   const isPurchaseSummaryReport = Boolean(activeReport && activeReport.id === "purchase_summary");
 
   return (
-    <div className="flex flex-1 h-full w-full bg-slate-50 overflow-hidden font-sans">
+    <div className="flex flex-1 min-h-[calc(100vh-58px)] w-full bg-slate-50 font-sans">
       {/* ──────────────────────────────────────────────────────────────────────────
-          LEFT NAVIGATION SIDEBAR (Categorized Hub)
+          LEFT NAVIGATION SIDEBAR (Categorized Hub - Sticky & Clean)
       ────────────────────────────────────────────────────────────────────────── */}
-      <aside className="w-80 shrink-0 border-r border-slate-200 bg-white flex flex-col h-full shadow-sm z-10">
-        {/* Sidebar Header */}
-        <div className="p-3.5 border-b border-slate-100 bg-gradient-to-b from-slate-50/80 to-white">
-          <div className="flex items-center justify-between mb-2.5">
-            <div className="flex items-center gap-2">
-              <div className="size-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-200">
-                <Sparkles className="size-4" />
-              </div>
-              <div>
-                <h2 className="text-sm font-extrabold text-slate-900 leading-tight">Reports Hub</h2>
-                <p className="text-[10px] font-semibold text-slate-500">Live Business Intelligence</p>
-              </div>
-            </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-              Live DB
-            </span>
-          </div>
-
-          {/* Sidebar Search */}
+      <aside className="w-72 sm:w-80 shrink-0 border-r border-slate-200 bg-white flex flex-col sticky top-0 h-[calc(100vh-58px)] shadow-sm z-20">
+        {/* Sidebar Search Bar (Clean Top without Heading) */}
+        <div className="p-3 border-b border-slate-100 bg-white shrink-0">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
             <input
               type="text"
-              placeholder="Search all 38+ reports..."
+              placeholder="Search all 88+ reports..."
               value={sidebarSearch}
               onChange={(e) => setSidebarSearch(e.target.value)}
-              className="w-full h-8 pl-8 pr-3 text-xs bg-slate-100/70 border border-slate-200/80 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+              className="w-full h-8.5 pl-8 pr-3 text-xs bg-slate-100/80 border border-slate-200/80 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
             />
           </div>
         </div>
@@ -1020,28 +1004,28 @@ export function ReportsHub() {
           MAIN REPORT CONTENT PANEL
       ────────────────────────────────────────────────────────────────────────── */}
       {!activeReport ? (
-        <main className="flex-1 flex flex-col h-full overflow-y-auto bg-slate-50 p-6 custom-scrollbar">
-          <div className="max-w-6xl mx-auto w-full space-y-6">
-            {/* Hero Header */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <main className="flex-1 flex flex-col min-w-0 bg-slate-50 p-4 sm:p-6 custom-scrollbar overflow-y-auto">
+          <div className="w-full space-y-5">
+            {/* Hero Header - Full Width */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4 w-full">
               <div>
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-bold mb-2">
                   <Sparkles className="w-3.5 h-3.5" /> Live Business Intelligence & Tax Audit
                 </div>
                 <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">Report Builder Hub</h1>
-                <p className="text-xs text-slate-500 mt-1 max-w-xl">
+                <p className="text-xs text-slate-500 mt-1">
                   Select any category from the sidebar or choose a module below to open detailed financial statements, GST filings, inventory registers, and performance reports.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
                   {REPORT_CATEGORIES.reduce((acc, c) => acc + c.reports.length, 0)} Reports Available
                 </span>
               </div>
             </div>
 
-            {/* Category Cards Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Category Cards Grid - Full Width Responsive Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-4 w-full">
               {REPORT_CATEGORIES.map((cat) => {
                 const Icon = cat.icon;
                 return (

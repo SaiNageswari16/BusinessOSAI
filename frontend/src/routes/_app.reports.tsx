@@ -195,13 +195,9 @@ function ReportsModule() {
   if (isFullBleed) {
     return (
       <div className="flex min-h-full w-full flex-col bg-background">
-        <div className="flex-1 relative bg-background/50 p-0 min-h-full">
-          <div key={activeTab} className="min-h-full w-full">
-            <ComponentErrorBoundary componentName={activeTab}>
-              <ActiveComponent />
-            </ComponentErrorBoundary>
-          </div>
-        </div>
+        <ComponentErrorBoundary componentName={activeTab}>
+          <ActiveComponent />
+        </ComponentErrorBoundary>
       </div>
     );
   }
