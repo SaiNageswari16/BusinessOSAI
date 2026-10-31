@@ -75,6 +75,7 @@ class Product(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     sku: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     barcode: Mapped[str | None] = mapped_column(String(100), index=True)
     hsn_code: Mapped[str | None] = mapped_column(String(100), index=True, nullable=True)
+    imei: Mapped[str | None] = mapped_column(String(100), index=True, nullable=True)  # Optional IMEI / Serial No
     
     category_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_product_categories.id", ondelete="SET NULL"), nullable=True, index=True)
     brand_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_brands.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -483,6 +484,7 @@ class InventoryBatch(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixi
     location: Mapped[str | None] = mapped_column(String(150), nullable=True)
     supplier_invoice_no: Mapped[str | None] = mapped_column(String(100), nullable=True)
     qc_status: Mapped[str | None] = mapped_column(String(50), default="Passed")
+    imei: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     barcode: Mapped[str | None] = mapped_column(String(100), nullable=True)
     manufacturing_date: Mapped[date | None] = mapped_column(DateTime(timezone=False), nullable=True)
     expiry_date: Mapped[date | None] = mapped_column(DateTime(timezone=False), nullable=True)
@@ -498,6 +500,7 @@ class InventorySerial(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMix
         UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
     )
     serial_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    imei: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     product_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_products.id", ondelete="SET NULL"), nullable=True, index=True)
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     sku: Mapped[str | None] = mapped_column(String(100), nullable=True, default="")
@@ -555,6 +558,7 @@ class TraceabilityEvent(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampM
     source_warehouse_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_warehouses.id", ondelete="SET NULL"), nullable=True)
     destination_warehouse_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_warehouses.id", ondelete="SET NULL"), nullable=True)
     party_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    imei: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     party_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
     reference_document: Mapped[str | None] = mapped_column(String(100), nullable=True)
     quantity: Mapped[int | None] = mapped_column(Integer, nullable=True, default=1)

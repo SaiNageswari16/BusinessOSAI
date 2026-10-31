@@ -62,6 +62,7 @@ import { ThermalReceiptPreviewModal } from "./ThermalReceiptPreviewModal";
 import { useWhatsAppStatus } from "@/hooks/use-whatsapp-status";
 import { EWayBillModal } from "./EWayBillModal";
 import { StandardVoucherModal, StandardVoucherData } from "./StandardVoucherModal";
+import { safeSetItem } from "@/lib/safe-storage";
 import { PaginationControl } from "@/components/ui/PaginationControl";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
@@ -235,7 +236,7 @@ export function PosInvoicesHistory() {
           if (!raw) return;
           const list = JSON.parse(raw);
           const filtered = list.filter((r: any) => !(r.id === deleteTarget.id || r.invoice_number === deleteTarget.invoice_number));
-          localStorage.setItem(k, JSON.stringify(filtered));
+          safeSetItem(k, JSON.stringify(filtered));
         });
       } catch {}
       toast.success(`Invoice ${deleteTarget.invoice_number} deleted permanently.`);
@@ -563,7 +564,7 @@ export function PosInvoicesHistory() {
 
       setInvoices(updatedInvoices);
       try {
-        localStorage.setItem(storageKey, JSON.stringify(updatedInvoices));
+        safeSetItem(storageKey, JSON.stringify(updatedInvoices));
         window.dispatchEvent(new Event("pos_invoices_updated"));
       } catch (e) {}
 
@@ -1078,6 +1079,10 @@ export function PosInvoicesHistory() {
           }
           if ((inv as any).payment_mode) {
             remote.payment_mode = (inv as any).payment_mode;
+            (remote as any).payment_method = (inv as any).payment_method || (remote as any).payment_method;
+            (remote as any).split_payments = (inv as any).split_payments || (remote as any).split_payments;
+            (remote as any).split_payments_details = (inv as any).split_payments_details || (remote as any).split_payments_details;
+            (remote as any).bank_details = (inv as any).bank_details || (remote as any).bank_details;
           }
           if (inv.items && inv.items.length > 0 && (!remote.items || remote.items.length === 0)) {
             remote.items = inv.items;
@@ -1345,7 +1350,7 @@ export function PosInvoicesHistory() {
             }
           : inv
       );
-      localStorage.setItem(storageKey, JSON.stringify(updated));
+      safeSetItem(storageKey, JSON.stringify(updated));
       return updated;
     });
   };
@@ -1457,7 +1462,10 @@ export function PosInvoicesHistory() {
       sales_executive: fullInvRecord.sales_executive,
       invoice_date: fullInvRecord.invoice_date,
       due_date: fullInvRecord.due_date,
-      payment_method: fullInvRecord.payment_mode || 'Cash',
+      payment_method: fullInvRecord.payment_method || (inv as any).payment_method || fullInvRecord.payment_mode || 'Cash',
+      split_payments: fullInvRecord.split_payments || (inv as any).split_payments || (fullInvRecord as any).split_payments_details || (inv as any).split_payments_details || undefined,
+      split_payments_details: (fullInvRecord as any).split_payments_details || (inv as any).split_payments_details || undefined,
+      bank_details: fullInvRecord.bank_details || (inv as any).bank_details || undefined,
       payment_status: fullInvRecord.payment_status || 'PAID',
       subtotal: Number(fullInvRecord.subtotal || 0),
       taxable_value: fullInvRecord.taxable_value !== undefined ? Number(fullInvRecord.taxable_value) : Number(fullInvRecord.subtotal || 0),

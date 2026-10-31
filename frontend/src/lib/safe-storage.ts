@@ -45,8 +45,23 @@ export function sanitizeForStorage(obj: any): any {
  * If quota is exceeded, purges non-critical caches and retries.
  * If it still fails, catches gracefully so the page never crashes with an unhandled exception.
  */
+/**
+ * Safely sets an item in localStorage.
+ * If quota is exceeded, purges non-critical caches, trims large invoice arrays, and retries.
+ * If it still fails, catches gracefully so the page never crashes with an unhandled exception.
+ */
 export function safeSetItem(key: string, value: string): boolean {
   if (typeof window === "undefined" || !window.localStorage) return false;
+
+  // Auto-prune huge arrays for pos_saved_invoices upfront to avoid 5MB quota exhaustion
+  if (key.startsWith("pos_saved_invoices") || key.startsWith("pos_offline_invoices")) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed) && parsed.length > 50) {
+        value = JSON.stringify(sanitizeForStorage(parsed.slice(0, 50)));
+      }
+    } catch {}
+  }
 
   try {
     localStorage.setItem(key, value);
@@ -71,23 +86,45 @@ export function safeSetItem(key: string, value: string): boolean {
         } catch {}
       }
 
-      // 2. If value is JSON, sanitize large base64 fields and retry
+      // 2. Trim invoice lists across localStorage
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k !== key && (k.startsWith("pos_saved_invoices") || k.startsWith("pos_offline_invoices"))) {
+            const raw = localStorage.getItem(k);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed) && parsed.length > 20) {
+                localStorage.setItem(k, JSON.stringify(parsed.slice(0, 20)));
+              }
+            }
+          }
+        }
+      } catch {}
+
+      // 3. If target value is an array, trim down to 25 items and sanitize
       try {
         const parsed = JSON.parse(value);
-        const sanitized = sanitizeForStorage(parsed);
+        const arrayOrObj = Array.isArray(parsed) ? parsed.slice(0, 25) : parsed;
+        const sanitized = sanitizeForStorage(arrayOrObj);
         const compactVal = JSON.stringify(sanitized);
         localStorage.setItem(key, compactVal);
         return true;
       } catch {
-        // Retry standard set after purge
+        // 4. Retry with aggressive trim down to 10 items
         try {
-          localStorage.setItem(key, value);
-          return true;
-        } catch (retryErr) {
-          console.error(`[SafeStorage] Could not write "${key}" even after cache purge:`, retryErr);
-          return false;
-        }
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) {
+            const smallList = parsed.slice(0, 10);
+            localStorage.setItem(key, JSON.stringify(smallList));
+            return true;
+          }
+        } catch {}
       }
+
+      // 5. Final fallback - ignore write rather than crash app
+      console.warn(`[SafeStorage] Skipped writing "${key}" to avoid breaking React lifecycle.`);
+      return false;
     }
 
     console.warn(`[SafeStorage] Error setting "${key}":`, err);

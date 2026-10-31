@@ -394,6 +394,7 @@ export interface InventoryBatch {
   supplier_invoice_no?: string | null;
   qc_status?: string | null;
   barcode?: string | null;
+  imei?: string | null;
   manufacturing_date: string | null;
   expiry_date: string | null;
   notes: string | null;
@@ -407,6 +408,7 @@ export interface InventorySerial {
   id: string;
   tenant_id: string;
   serial_number: string;
+  imei?: string | null;
   batch_id: string | null;
   product_id: string | null;
   product_name: string | null;
@@ -427,6 +429,7 @@ export interface TraceabilityEvent {
   event_type: string;
   batch_id: string | null;
   serial_id: string | null;
+  imei?: string | null;
   source_location: string | null;
   destination_location: string | null;
   source_warehouse_id: string | null;
@@ -4358,6 +4361,7 @@ export interface InventoryProduct {
   short_description: string | null; long_description: string | null;
   image_url: string | null;
   hsn_code?: string | null;
+  imei?: string | null;
   purchase_price: number; mrp: number; selling_price: number;
   wholesale_price?: number; min_wholesale_qty?: number;
   b2b_price?: number; min_b2b_qty?: number;

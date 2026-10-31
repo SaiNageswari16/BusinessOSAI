@@ -1410,7 +1410,7 @@ async def create_invoice(
             db.add(inv_pay)
 
     # Handle payments (including Split Payments)
-    if payload.payment_method and payload.payment_method.lower() == "split" and payload.split_payments:
+    if payload.split_payments and len(payload.split_payments) > 0:
         for idx, (method, amt) in enumerate(payload.split_payments.items()):
             if amt > 0:
                 await _process_payment(method, amt, f"PAY-{invoice_number}-{idx+1}")

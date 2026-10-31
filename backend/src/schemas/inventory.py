@@ -68,6 +68,7 @@ class ProductBase(BaseModel):
     brand_id: Optional[uuid.UUID] = None
     uom_id: Optional[uuid.UUID] = None
     hsn_code: Optional[str] = Field(None, max_length=100)
+    imei: Optional[str] = Field(None, max_length=100)
     
     short_description: Optional[str] = None
     long_description: Optional[str] = None
@@ -116,7 +117,7 @@ class ProductBase(BaseModel):
         return s
 
     @field_validator(
-        "sku", "barcode", "hsn_code", "short_description", "long_description",
+        "sku", "barcode", "hsn_code", "imei", "short_description", "long_description",
         "supplier", "warehouse", "base_name", "product_base_code", "size_l_kg", "status",
         mode="before"
     )
@@ -235,6 +236,7 @@ class ProductUpdate(BaseModel):
     uom_id: Optional[uuid.UUID] = None
     brand: Optional[str] = None
     hsn_code: Optional[str] = Field(None, max_length=100)
+    imei: Optional[str] = Field(None, max_length=100)
     
     short_description: Optional[str] = None
     long_description: Optional[str] = None

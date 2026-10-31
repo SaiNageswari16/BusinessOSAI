@@ -363,6 +363,7 @@ export function Traceability({ preselectedBatchId }: { preselectedBatchId?: stri
     return batches.filter(b =>
       b.batch_number.toLowerCase().includes(q)
       || (b.product_name || "").toLowerCase().includes(q)
+      || ((b as any).imei && (b as any).imei.toLowerCase().includes(q))
     );
   }, [batches, search]);
 
@@ -427,6 +428,7 @@ export function Traceability({ preselectedBatchId }: { preselectedBatchId?: stri
                     {selectedBatchId === b.id && <ChevronRight className="size-4 text-indigo-600" />}
                   </div>
                   <div className="text-xs text-muted-foreground truncate mt-0.5">{b.product_name || "—"}</div>
+                  {b.imei && <div className="text-[10px] font-mono font-bold text-sky-700 bg-sky-50 inline-block px-1.5 py-0.5 rounded border border-sky-200 mt-1">IMEI: {b.imei}</div>}
                   {b.warehouse_name && <div className="text-[10px] text-muted-foreground mt-1">📍 {b.warehouse_name}</div>}
                 </button>
               ))}
@@ -458,6 +460,11 @@ export function Traceability({ preselectedBatchId }: { preselectedBatchId?: stri
                     <div className="text-xs uppercase font-bold text-muted-foreground">Batch</div>
                     <div className="font-mono font-bold text-2xl text-foreground">{genealogy.batch.batch_number}</div>
                     <div className="text-sm font-medium mt-1">{genealogy.batch.product_name || "—"}</div>
+                    {genealogy.batch.imei && (
+                      <div className="text-xs font-mono font-bold text-sky-800 bg-sky-50 inline-block px-2 py-0.5 rounded border border-sky-200 mt-1.5">
+                        IMEI / Serial No: {genealogy.batch.imei}
+                      </div>
+                    )}
                   </div>
                   <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold ${
                     genealogy.batch.status === "Active" ? "bg-emerald-500/10 text-emerald-600"

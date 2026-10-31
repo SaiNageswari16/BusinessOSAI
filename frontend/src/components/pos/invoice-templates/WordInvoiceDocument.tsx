@@ -245,10 +245,10 @@ export function WordInvoiceDocument({
       watermarkOpacity: raw?.watermarkOpacity || 0.04,
       invoiceTitle: isPurchaseDoc ? "PURCHASE INVOICE & BILL" : (
         (raw?.invoiceTitle && raw?.invoiceTitle.toLowerCase().includes('purchase') ? raw.invoiceTitle : (raw?.invoiceTitle || raw?.headerTitle || invoice?.header_title)) ||
-        (invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? "TAX QUOTATION / ESTIMATE" :
-        (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? "TAX ESTIMATE / ESTIMATE" :
-        (invoice.doc_type === 'proforma' || invoice.invoice_type === 'PROFORMA' || String(invoice.invoice_number || '').toUpperCase().startsWith('PI-')) ? "PROFORMA INVOICE" :
-        (template?.headerTitle || "TAX INVOICE")
+          (invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? "TAX QUOTATION / ESTIMATE" :
+          (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? "TAX ESTIMATE / ESTIMATE" :
+            (invoice.doc_type === 'proforma' || invoice.invoice_type === 'PROFORMA' || String(invoice.invoice_number || '').toUpperCase().startsWith('PI-')) ? "PROFORMA INVOICE" :
+              (template?.headerTitle || "TAX INVOICE")
       ),
       logoUrl: resolvedLogoUrl,
       companyName: resolvedCompanyName,
@@ -268,17 +268,17 @@ export function WordInvoiceDocument({
       shippingAddress: raw?.shippingAddress || "",
       invoiceNumberLabel: raw?.invoiceNumberLabel || (
         (invoice.doc_type === 'purchase_invoice' || invoice.invoice_type === 'PURCHASE_INVOICE' || String(invoice.invoice_number || '').toUpperCase().startsWith('BILL-')) ? "Bill No" :
-        (invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? "Quote No" :
-        (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? "Estimate No" :
-        (invoice.doc_type === 'proforma' || invoice.invoice_type === 'PROFORMA' || String(invoice.invoice_number || '').toUpperCase().startsWith('PI-')) ? "Proforma No" :
-        "Invoice No"
+          (invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? "Quote No" :
+            (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? "Estimate No" :
+              (invoice.doc_type === 'proforma' || invoice.invoice_type === 'PROFORMA' || String(invoice.invoice_number || '').toUpperCase().startsWith('PI-')) ? "Proforma No" :
+                "Invoice No"
       ),
       invoiceNumberValue: raw?.invoiceNumberValue || (invoice.invoice_number ? String(invoice.invoice_number) : ""),
       invoiceDateLabel: raw?.invoiceDateLabel || (
         (invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? "Quote Date" :
-        (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? "Estimate Date" :
-        (invoice.doc_type === 'proforma' || invoice.invoice_type === 'PROFORMA' || String(invoice.invoice_number || '').toUpperCase().startsWith('PI-')) ? "Proforma Date" :
-        "Invoice Date"
+          (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? "Estimate Date" :
+            (invoice.doc_type === 'proforma' || invoice.invoice_type === 'PROFORMA' || String(invoice.invoice_number || '').toUpperCase().startsWith('PI-')) ? "Proforma Date" :
+              "Invoice Date"
       ),
       invoiceDateValue: raw?.invoiceDateValue || "",
       dueDateLabel: raw?.dueDateLabel || "Due Date",
@@ -289,28 +289,28 @@ export function WordInvoiceDocument({
       columns: Array.isArray(raw?.columns) && raw.columns.length > 0
         ? raw.columns
         : Array.isArray(template?.columns) && template.columns.length > 0
-        ? template.columns
-        : Array.isArray(template?.wordConfig?.columns) && template.wordConfig.columns.length > 0
-        ? template.wordConfig.columns
-        : DEFAULT_WORD_COLUMNS,
+          ? template.columns
+          : Array.isArray(template?.wordConfig?.columns) && template.wordConfig.columns.length > 0
+            ? template.wordConfig.columns
+            : DEFAULT_WORD_COLUMNS,
       customFields: (Array.isArray(raw?.customFields) && raw.customFields.length > 0)
         ? raw.customFields
         : (Array.isArray(template?.customFields) && template.customFields.length > 0)
-        ? template.customFields
-        : (Array.isArray(template?.wordConfig?.customFields) && template.wordConfig.customFields.length > 0)
-        ? template.wordConfig.customFields
-        : (Array.isArray(template?.metadata?.customFields) && template.metadata.customFields.length > 0)
-        ? template.metadata.customFields
-        : (() => {
-            try {
-              const cached = localStorage.getItem("bos_word_invoice_custom_fields");
-              if (cached) {
-                const parsed = JSON.parse(cached);
-                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-              }
-            } catch {}
-            return [];
-          })(),
+          ? template.customFields
+          : (Array.isArray(template?.wordConfig?.customFields) && template.wordConfig.customFields.length > 0)
+            ? template.wordConfig.customFields
+            : (Array.isArray(template?.metadata?.customFields) && template.metadata.customFields.length > 0)
+              ? template.metadata.customFields
+              : (() => {
+                try {
+                  const cached = localStorage.getItem("bos_word_invoice_custom_fields");
+                  if (cached) {
+                    const parsed = JSON.parse(cached);
+                    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                  }
+                } catch { }
+                return [];
+              })(),
       signatureConfig: {
         signatureUrl: raw?.signatureConfig?.signatureUrl !== undefined ? raw?.signatureConfig?.signatureUrl : (activeSig.signatureUrl || null),
         stampUrl: raw?.signatureConfig?.stampUrl !== undefined ? raw?.signatureConfig?.stampUrl : (activeSig.stampUrl || null),
@@ -438,8 +438,8 @@ export function WordInvoiceDocument({
   const balanceDue = isPaidInFull
     ? 0
     : (invoice.balance_due !== undefined && invoice.balance_due !== null)
-    ? Math.max(0, Number(invoice.balance_due))
-    : Math.max(0, grandTotal - amountPaid);
+      ? Math.max(0, Number(invoice.balance_due))
+      : Math.max(0, grandTotal - amountPaid);
 
   // Dynamic Payment Method Resolution & Classification (Guarded to prevent mix-ups)
   const rawMethod = String(
@@ -461,7 +461,8 @@ export function WordInvoiceDocument({
   const isCard = !isSplit && (lowerMethod.includes("card") || lowerMethod.includes("pos") || lowerMethod.includes("visa") || lowerMethod.includes("mastercard") || lowerMethod.includes("debit"));
   const isCash = !isSplit && (lowerMethod.includes("cash") || (!rawMethod && isPaidInFull));
   const isUpi = !isSplit && (lowerMethod.includes("upi") || lowerMethod.includes("gpay") || lowerMethod.includes("phonepe") || lowerMethod.includes("paytm") || lowerMethod.includes("qr") || lowerMethod.includes("bhim"));
-  const isBank = !isSplit && (lowerMethod.includes("bank") || lowerMethod.includes("neft") || lowerMethod.includes("rtgs") || lowerMethod.includes("imps") || lowerMethod.includes("transfer") || lowerMethod.includes("netbanking"));
+  const isCheque = !isSplit && (lowerMethod.includes("cheque") || lowerMethod.includes("check") || lowerMethod.includes("dd"));
+  const isBank = !isSplit && !isCheque && (lowerMethod.includes("bank") || lowerMethod.includes("neft") || lowerMethod.includes("rtgs") || lowerMethod.includes("imps") || lowerMethod.includes("transfer") || lowerMethod.includes("netbanking"));
   const isWallet = !isSplit && (lowerMethod.includes("wallet"));
   // Guarded: credit card is NOT credit/pay later
   const isCredit = !isSplit && !isCard && (lowerMethod.includes("pay later") || lowerMethod.includes("unpaid") || lowerMethod.includes("due") || lowerMethod.includes("on account") || lowerMethod === "credit" || (!isCard && lowerMethod.includes("credit")) || (!isPaidInFull && balanceDue > 0.01 && !rawMethod));
@@ -494,6 +495,7 @@ export function WordInvoiceDocument({
     if (isCash) return { label: "Cash", icon: "💵", color: "text-emerald-700 bg-emerald-50 border-emerald-200" };
     if (isUpi) return { label: "UPI Instant Pay", icon: "⚡", color: "text-sky-700 bg-sky-50 border-sky-200" };
     if (isCard) return { label: "Card / POS", icon: "💳", color: "text-purple-700 bg-purple-50 border-purple-200" };
+    if (isCheque) return { label: "Cheque / DD", icon: "📝", color: "text-amber-800 bg-amber-50 border-amber-300" };
     if (isBank) return { label: "Bank Transfer", icon: "🏦", color: "text-blue-700 bg-blue-50 border-blue-200" };
     if (isWallet) return { label: "Wallet", icon: "👛", color: "text-amber-700 bg-amber-50 border-amber-200" };
     if (isCredit) return { label: "Credit / Pay Later", icon: "⏳", color: "text-rose-700 bg-rose-50 border-rose-200" };
@@ -700,6 +702,23 @@ export function WordInvoiceDocument({
       // columns always match what the user selected on the template page.
       if (f) {
         const salesAllowed = (key: string) => {
+          if (key === "sno") return f.showItemIndex !== false;
+          if (key === "hsn") return f.showHSN !== false;
+          if (key === "batch") return f.showBatchNumber !== false;
+          if (key === "expiry_date" || key === "exp") return f.showExpMfgDates !== false;
+          if (key === "mrp") return f.showMRP !== false;
+          if (key === "tax_rate") return f.showGstRateCol !== false && f.showTaxSplit !== false;
+          if (key === "unit_price" || key === "selling_price") return f.showItemRate !== false;
+          if (key === "quantity") return f.showItemQty !== false;
+          if (key === "discount") return f.showDiscountCol !== false;
+          if (key === "uom") return f.showSecondaryUnit !== false && (f as any).showUOM !== false;
+          if (key === "total_amount") return f.showItemAmount !== false;
+          if (key === "description") return f.showItemDescription !== false;
+          if (key === "sku") return f.showSKU !== false;
+          if (key === "image") return f.showProductImage !== false;
+          return true;
+        };
+        /* removed dummy
           switch (key) {
             case "hsn":
               return f.showHSN !== false;
@@ -713,7 +732,7 @@ export function WordInvoiceDocument({
               return true;
           }
         };
-        baseCols = baseCols.filter((c) => salesAllowed(c.fieldKey));
+        */ baseCols = baseCols.filter((c) => salesAllowed(c.fieldKey));
       }
       return baseCols;
     }
@@ -1788,7 +1807,7 @@ export function WordInvoiceDocument({
                             const discVal = Number((invoice as any).invoice_discount_value ?? (invoice as any).discount_value ?? (invoice as any).discount_percent ?? (invoice as any).discount_percentage ?? 0);
                             const discType = String((invoice as any).invoice_discount_type ?? (invoice as any).discount_type ?? (discVal > 0 ? "percent" : "fixed")).toLowerCase();
                             const discMode = String((invoice as any).invoice_discount_mode ?? (invoice as any).discount_calculation_mode ?? "").toLowerCase();
-                            
+
                             let label = "";
                             if (discType === "percent" && discVal > 0) {
                               label = `${discVal}%`;
@@ -2058,8 +2077,8 @@ export function WordInvoiceDocument({
               config.signatureConfig.alignment === "left"
                 ? "justify-start text-left"
                 : config.signatureConfig.alignment === "center"
-                ? "justify-center text-center"
-                : "justify-end text-right";
+                  ? "justify-center text-center"
+                  : "justify-end text-right";
 
             return (
               <div key={section.id} className={`pt-4 border-t border-slate-200/80 flex ${alignClass}`}>

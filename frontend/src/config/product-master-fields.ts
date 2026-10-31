@@ -896,6 +896,18 @@ export const PRODUCT_MASTER_FIELDS: MasterProductField[] = [
     getter: (p) => p.specifications?.preferred_supplier || p.supplier || "",
     setter: (form, val) => { form.preferred_supplier = val; },
   },
+  {
+    seq: 71,
+    id: "imei",
+    excelHeader: "IMEI",
+    label: "IMEI / Serial No",
+    type: "text",
+    defaultValue: "",
+    placeholder: "Optional — e.g. 356938035643809",
+    group: "Basic & Identification",
+    getter: (p) => p.imei || p.specifications?.imei || "",
+    setter: (form, val) => { form.imei = val; },
+  },
 ];
 
 // ── Export Utility Helpers ───────────────────────────────────────────────────
@@ -988,7 +1000,8 @@ export function getMasterSampleRows(): Record<string, any>[] {
     unique_item_name: "ASIAN-PAINTS-ROYALE-LUXURY-EMULSION-WHITE-1L",
     keywords: "paint, emulsion, interior, asian paints, white",
     accessories_keyword: "roller, brush, primer, masking tape",
-    preferred_supplier: "Asian Paints Distribution Hub"
+    preferred_supplier: "Asian Paints Distribution Hub",
+    imei: ""
   };
 
   const row: Record<string, any> = {};
@@ -1127,6 +1140,19 @@ export function mapMasterImportRowToProduct(rawRow: Record<string, any>): Record
       if (field.defaultValue !== undefined && !(field.id in product)) {
         product[field.id] = field.defaultValue;
       }
+    }
+  }
+
+  // 2a. IMEI / Serial No (optional) — accept common header variants
+  if (!product.imei) {
+    const imeiRaw = getRawVal("IMEI", [
+      "IMEI No", "IMEI Number", "imei_number", "imei_no", "IMEI1", "IMEI 1", "Serial IMEI", "serial_imei",
+      "Serial No", "Serial Number", "serial_number", "IMEI / Serial No",
+    ]);
+    const imeiVal = cleanImportString(imeiRaw);
+    if (imeiVal) {
+      product.imei = imeiVal;
+      product.specifications.imei = imeiVal;
     }
   }
 

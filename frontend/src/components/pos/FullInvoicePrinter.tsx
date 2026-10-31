@@ -22,6 +22,7 @@ import { InvoiceQuickSettingsModal, loadStoredInvoiceSettings } from './InvoiceQ
 import { PurchaseInvoiceQuickSettingsModal, loadStoredPurchaseInvoiceSettings, PurchaseInvoiceSettings } from '../procurement/PurchaseInvoiceQuickSettingsModal';
 import { WordInvoiceStudioModal } from './WordInvoiceStudioModal';
 import { RealBarcodeSvg } from '@/lib/barcode-svg';
+import { safeSetItem } from '@/lib/safe-storage';
 
 export const isThermalReceiptId = (id: string | null | undefined): boolean => {
   if (!id) return false;
@@ -309,14 +310,14 @@ export function FullInvoicePrinter({
   });
 
   const [selectedOrientation, setSelectedOrientation] = useState<'portrait' | 'landscape'>(() => {
-    if (typeof window === 'undefined') return 'landscape';
+    if (typeof window === 'undefined') return 'portrait';
     try {
       const tid = tenant?.id || getTenantIdFromStorage() || 'default';
       const key = isPurchaseDoc ? `bos_purchase_orientation_${tid}` : `bos_invoice_orientation_${tid}`;
       const saved = localStorage.getItem(key);
       if (saved === 'portrait' || saved === 'landscape') return saved;
     } catch {}
-    return 'landscape';
+    return 'portrait';
   });
 
   const handlePaperSizeChange = (size: 'A4' | 'A5') => {
@@ -1351,7 +1352,7 @@ export function FullInvoicePrinter({
               #a4-invoice-printable-area {
                 display: block !important;
                 visibility: visible !important;
-                position: static !important;
+                position: relative !important;
                 width: 100% !important;
                 max-width: 100% !important;
                 height: auto !important;
@@ -1382,6 +1383,16 @@ export function FullInvoicePrinter({
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
               }
+              table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+              }
+              thead {
+                display: table-header-group !important;
+              }
+              tfoot {
+                display: table-footer-group !important;
+              }
               /* Kill template min-heights so content flows instead of forcing a 2nd page */
               #a4-invoice-printable-area [class*="min-h-"] { min-height: 0 !important; }
               .print\\:hidden, .no-print {
@@ -1397,9 +1408,10 @@ export function FullInvoicePrinter({
               .col-span-5 { grid-column: span 5 / span 5 !important; }
               .flex { display: flex !important; }
               .border-l { border-left-width: 1px !important; }
+              .avoid-break, .break-inside-avoid { page-break-inside: avoid !important; break-inside: avoid !important; }
             </style>
           </head>
-          <body><div id="a4-invoice-portal">${invoiceHtml}</div>
+          <body><div id="a4-invoice-portal">${invoiceHtml}</div><!--
             <script>
               // Fit-to-page: if content is taller than the printable area, zoom
               // the invoice down so it prints on a single page.
@@ -1407,16 +1419,21 @@ export function FullInvoicePrinter({
                 try {
                   var area = document.getElementById('a4-invoice-printable-area');
                   if (!area) return;
-                  var printableH = ${selectedPaperSize === 'A5' ? 760 : 1080}; // A4/A5 printable height @96dpi minus margins
+                  var printableH = ${selectedPaperSize === 'A5' ? (selectedOrientation === 'landscape' ? 530 : 760) : 1080}; // A4/A5 printable height @96dpi minus margins
                   var contentH = area.scrollHeight;
                   if (contentH > printableH + 8) {
-                    var scale = Math.max(0.55, printableH / contentH);
-                    area.style.zoom = String(scale);
+                    if (contentH <= printableH * 1.08) {
+                      area.style.zoom = String(printableH / contentH);
+                    } else {
+                      area.style.zoom = "1";
+                    }
+                    var scale = null;
+                    if (scale) area.style.zoom = String(scale);
                   }
                 } catch (e) {}
               });
             </script>
-          </body>
+          --></body>
         </html>
       `);
       doc.close();
@@ -1458,7 +1475,7 @@ export function FullInvoicePrinter({
           #a4-invoice-portal { display: block !important; visibility: visible !important; position: static !important; width: 100% !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; background: #ffffff !important; color: #000000 !important; overflow: visible !important; }
           #a4-invoice-portal > div { display: block !important; position: static !important; width: 100% !important; max-width: none !important; max-height: none !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; background: #ffffff !important; border: none !important; box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; }
           #a4-invoice-portal .print\\:hidden { display: none !important; visibility: hidden !important; }
-          #a4-invoice-printable-area { display: block !important; visibility: visible !important; position: static !important; width: 100% !important; max-width: 100% !important; height: auto !important; min-height: 0 !important; min-height: auto !important; margin: 0 auto !important; padding: 0 !important; background: #ffffff !important; box-shadow: none !important; border-radius: 0 !important; border: none !important; overflow: visible !important; page-break-after: auto !important; break-after: auto !important; page-break-inside: auto !important; break-inside: auto !important; }
+          #a4-invoice-printable-area { display: block !important; visibility: visible !important; position: relative !important; width: 100% !important; max-width: 100% !important; height: auto !important; min-height: 0 !important; min-height: auto !important; margin: 0 auto !important; padding: 0 !important; background: #ffffff !important; box-shadow: none !important; border-radius: 0 !important; border: none !important; overflow: visible !important; page-break-after: auto !important; break-after: auto !important; page-break-inside: auto !important; break-inside: auto !important; }
           #a4-invoice-printable-area > *:last-child { margin-bottom: 0 !important; padding-bottom: 0 !important; }
           #a4-invoice-printable-area * { visibility: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           tr { page-break-inside: avoid !important; break-inside: avoid !important; }
@@ -1532,8 +1549,8 @@ export function FullInvoicePrinter({
                               }
                               return r;
                             });
-                            localStorage.setItem(posStorageKey, JSON.stringify(updated));
-                            localStorage.setItem('pos_saved_invoices', JSON.stringify(updated));
+                            safeSetItem(posStorageKey, updated.slice(0, 50));
+                            safeSetItem('pos_saved_invoices', updated.slice(0, 50));
                           }
                         } catch {}
                       }
@@ -1714,7 +1731,11 @@ export function FullInvoicePrinter({
                         : 'max-w-[794px] min-h-[1080px]'
                     }`
                   : isCustomReplica
-                  ? 'p-1 md:p-2 max-w-4xl'
+                  ? `p-1 md:p-2 w-full ${
+                      selectedPaperSize === 'A5'
+                        ? selectedOrientation === 'landscape' ? 'max-w-[794px] min-h-[559px]' : 'max-w-[559px] min-h-[794px]'
+                        : 'max-w-[794px] min-h-[1080px]'
+                    } print:min-h-0 print:h-auto shadow-2xl rounded-xl border border-slate-200`
                   : selectedPaperSize === 'A5'
                   ? `p-3 md:p-4 w-full ${
                       selectedOrientation === 'landscape' ? 'max-w-[794px] min-h-[559px]' : 'max-w-[559px] min-h-[794px]'
@@ -2917,6 +2938,18 @@ export function FullInvoicePrinter({
                             <div className="flex justify-between text-red-600 font-bold text-[11px]">
                               <span>Balance Due:</span>
                               <span>{currency.symbol}{Math.max(0, Number(grandTotal || 0) - Number(invoice.amount_received)).toFixed(2)}</span>
+                            </div>
+                          )}
+                          {invoice.split_payments && typeof invoice.split_payments === "object" && Object.keys(invoice.split_payments).length > 1 && (
+                            <div className="pt-1 mt-1 border-t border-dashed border-slate-300 text-[10px]"><div className="space-y-0.5">
+                              <span className="font-bold text-slate-500 uppercase text-[9px] block">Payment Breakdown:</span>
+                              {Object.entries(invoice.split_payments).map(([m, a]) => (
+                                <div key={m} className="flex justify-between text-slate-700 pl-1">
+                                  <span className="capitalize">{m}:</span>
+                                  <span className="font-bold">{currency.symbol}{Number(a).toFixed(2)}</span>
+                                </div>
+                              ))}
+                            </div>
                             </div>
                           )}
                         </>

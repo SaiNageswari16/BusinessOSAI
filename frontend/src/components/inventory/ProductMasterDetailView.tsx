@@ -1,27 +1,28 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { 
-  Search, 
-  Filter, 
-  Plus, 
-  Package, 
-  Edit2, 
-  Trash2, 
-  MoreVertical, 
-  ArrowLeft, 
-  Sliders, 
-  Warehouse, 
-  Receipt, 
-  FileText, 
-  ShoppingCart, 
-  DollarSign, 
-  Layers, 
-  CheckCircle2, 
-  XCircle, 
-  AlertTriangle, 
-  Boxes, 
-  ChevronRight, 
-  Eye, 
-  Copy, 
+import {
+  Search,
+  Hash,
+  Filter,
+  Plus,
+  Package,
+  Edit2,
+  Trash2,
+  MoreVertical,
+  ArrowLeft,
+  Sliders,
+  Warehouse,
+  Receipt,
+  FileText,
+  ShoppingCart,
+  DollarSign,
+  Layers,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Boxes,
+  ChevronRight,
+  Eye,
+  Copy,
   Printer,
   Coins,
   Store,
@@ -91,6 +92,7 @@ export function ProductMasterDetailView({
 
   // Search & filter in left sidebar
   const [sidebarSearch, setSidebarSearch] = useState("");
+  const [imeiSearch, setImeiSearch] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("all");
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const [stockStatusFilter, setStockStatusFilter] = useState<"all" | "in_stock" | "low_stock" | "out_of_stock" | "negative">("all");
@@ -126,7 +128,17 @@ export function ProductMasterDetailView({
         const sku = (p.sku || "").toLowerCase();
         const barcode = (p.barcode || "").toLowerCase();
         const brand = (p.brand || p.brand_name || "").toLowerCase();
-        return name.includes(q) || sku.includes(q) || barcode.includes(q) || brand.includes(q);
+        const imei = String((p as any).imei || (p.specifications as any)?.imei || "").toLowerCase();
+        return name.includes(q) || sku.includes(q) || barcode.includes(q) || brand.includes(q) || imei.includes(q);
+      });
+    }
+
+    // Dedicated IMEI search (separate so barcode scanning is not disturbed)
+    if (imeiSearch.trim()) {
+      const imeiQ = imeiSearch.toLowerCase().trim();
+      list = list.filter((p) => {
+        const imei = String((p as any).imei || (p.specifications as any)?.imei || "").toLowerCase();
+        return imei.includes(imeiQ);
       });
     }
 
@@ -151,7 +163,7 @@ export function ProductMasterDetailView({
     }
 
     return list;
-  }, [products, sidebarSearch, selectedCategoryId, stockStatusFilter]);
+  }, [products, sidebarSearch, imeiSearch, selectedCategoryId, stockStatusFilter]);
 
   // Ensure an item is selected
   const activeProduct = useMemo(() => {
@@ -223,10 +235,10 @@ export function ProductMasterDetailView({
                       localInvoices.push(...parsed);
                     }
                   }
-                } catch {}
+                } catch { }
               }
             }
-          } catch {}
+          } catch { }
 
           // Merge all sources deduplicated by invoice number / id
           const allDocs = new Map<string, any>();
@@ -296,9 +308,9 @@ export function ProductMasterDetailView({
                   total:
                     Number(
                       it.line_total ||
-                        it.total ||
-                        it.subtotal ||
-                        Number(it.quantity || it.qty || 1) * Number(it.unit_price || it.price || 0)
+                      it.total ||
+                      it.subtotal ||
+                      Number(it.quantity || it.qty || 1) * Number(it.unit_price || it.price || 0)
                     ) || 0,
                   status: inv.status || inv.payment_status || "Completed",
                 });
@@ -320,12 +332,12 @@ export function ProductMasterDetailView({
 
   return (
     <div className="flex w-full h-[calc(100vh-140px)] min-h-[580px] bg-slate-50/50 rounded-2xl border border-slate-200/90 overflow-hidden shadow-2xs">
-      
+
       {/* ══════════════════════════════════════════════════════════════
            LEFT PANE: Master Item List / Selector Sidebar
            ══════════════════════════════════════════════════════════════ */}
       <div className="w-80 lg:w-88 border-r border-slate-200 bg-white flex flex-col shrink-0 h-full">
-        
+
         {/* Top Search & Filter Bar */}
         <div className="p-3 border-b border-slate-100 space-y-2.5 shrink-0 bg-white">
           <div className="flex items-center gap-2">
@@ -354,11 +366,10 @@ export function ProductMasterDetailView({
               <button
                 type="button"
                 onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
-                className={`p-2 rounded-xl border transition-colors shadow-2xs ${
-                  isFilterDropdownOpen || selectedCategoryId !== "all" || stockStatusFilter !== "all"
+                className={`p-2 rounded-xl border transition-colors shadow-2xs ${isFilterDropdownOpen || selectedCategoryId !== "all" || stockStatusFilter !== "all"
                     ? "bg-purple-50 border-purple-300 text-purple-700"
                     : "border-slate-200 bg-white hover:bg-slate-50 text-slate-600"
-                }`}
+                  }`}
                 title="Filter by category or stock status"
               >
                 <Filter className="w-4 h-4" />
@@ -421,6 +432,31 @@ export function ProductMasterDetailView({
             </div>
           </div>
 
+          {/* Dedicated Separate IMEI Search Bar (avoids disturbing barcode scanner / name search) */}
+          <div className="relative">
+            <div className="absolute left-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none text-sky-600">
+              <Hash className="w-3.5 h-3.5" />
+              <span className="text-[9px] font-black uppercase tracking-tight bg-sky-100 text-sky-800 px-1 py-0.5 rounded font-mono">IMEI</span>
+            </div>
+            <input
+              type="text"
+              value={imeiSearch}
+              onChange={(e) => setImeiSearch(e.target.value)}
+              placeholder="Search or scan by IMEI / Serial No..."
+              className="w-full pl-15 pr-7 py-1.5 text-xs font-mono rounded-xl border border-sky-200 bg-sky-50/40 focus:bg-white focus:border-sky-400 outline-none focus:ring-2 focus:ring-sky-500 font-semibold transition-all text-slate-800 placeholder:text-slate-400 placeholder:font-sans"
+            />
+            {imeiSearch && (
+              <button
+                type="button"
+                onClick={() => setImeiSearch("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+                title="Clear IMEI search"
+              >
+                ×
+              </button>
+            )}
+          </div>
+
           {/* Quick Create Item button in sidebar */}
           <button
             type="button"
@@ -457,11 +493,10 @@ export function ProductMasterDetailView({
                 <div
                   key={p.id}
                   onClick={() => setSelectedProductId(p.id)}
-                  className={`p-2.5 flex items-center gap-3 cursor-pointer transition-all rounded-xl my-0.5 border ${
-                    isSelected
+                  className={`p-2.5 flex items-center gap-3 cursor-pointer transition-all rounded-xl my-0.5 border ${isSelected
                       ? "bg-purple-50/80 border-purple-300 text-slate-900 shadow-2xs ring-1 ring-purple-200"
                       : "bg-white border-transparent hover:bg-slate-50/90 text-slate-700"
-                  }`}
+                    }`}
                 >
                   {/* Item Thumbnail */}
                   <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
@@ -487,18 +522,24 @@ export function ProductMasterDetailView({
                     <p className="text-[10px] text-slate-400 truncate mt-0.5">
                       {p.sku || p.barcode || (p.category_name ? p.category_name : "-")}
                     </p>
+                    {((p as any).imei || (p.specifications as any)?.imei) && (
+                      <div className="mt-1">
+                        <span className="inline-block text-[10px] font-mono font-bold text-sky-800 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200 truncate max-w-full">
+                          IMEI: {((p as any).imei || (p.specifications as any)?.imei)}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Right: Quantity & Unit */}
                   <div className="text-right shrink-0">
                     <p
-                      className={`text-xs font-black leading-tight ${
-                        isNeg
+                      className={`text-xs font-black leading-tight ${isNeg
                           ? "text-rose-600"
                           : isZero
-                          ? "text-slate-500 font-bold"
-                          : "text-emerald-600"
-                      }`}
+                            ? "text-slate-500 font-bold"
+                            : "text-emerald-600"
+                        }`}
                     >
                       {pStock}
                     </p>
@@ -524,7 +565,7 @@ export function ProductMasterDetailView({
            ══════════════════════════════════════════════════════════════ */}
       {activeProduct ? (
         <div className="flex-1 flex flex-col h-full overflow-y-auto bg-slate-50/30 p-5 space-y-3">
-          
+
           {/* Breadcrumb Navigation: ← Products / {productName} */}
           <div className="flex items-center gap-2 text-sm text-slate-600 px-1 py-0.5">
             <button
@@ -599,6 +640,12 @@ export function ProductMasterDetailView({
                   {activeProduct.sku && (
                     <span className="text-[11px] font-mono text-slate-500">
                       SKU: <strong>{activeProduct.sku}</strong>
+                    </span>
+                  )}
+
+                  {((activeProduct as any).imei || specs.imei) && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-sky-50 text-sky-800 border border-sky-200">
+                      IMEI: {((activeProduct as any).imei || specs.imei)}
                     </span>
                   )}
                 </div>
@@ -740,11 +787,10 @@ export function ProductMasterDetailView({
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`pb-2.5 text-xs font-bold flex items-center gap-1.5 border-b-2 transition-all cursor-pointer ${
-                    isActive
+                  className={`pb-2.5 text-xs font-bold flex items-center gap-1.5 border-b-2 transition-all cursor-pointer ${isActive
                       ? "border-purple-600 text-purple-700"
                       : "border-transparent text-slate-500 hover:text-slate-800"
-                  }`}
+                    }`}
                 >
                   <TabIcon className="w-3.5 h-3.5" />
                   {tab.label}
@@ -758,38 +804,35 @@ export function ProductMasterDetailView({
                ══════════════════════════════════════════════════════════ */}
           {activeTab === "item_details" && (
             <div className="space-y-4">
-              
+
               {/* 4 Metric / KPI Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                
+
                 {/* 1. Current Stock */}
-                <div className={`p-4 rounded-2xl border flex items-center gap-3 shadow-2xs ${
-                  isNegativeStock
+                <div className={`p-4 rounded-2xl border flex items-center gap-3 shadow-2xs ${isNegativeStock
                     ? "bg-rose-50/60 border-rose-100"
                     : isOutOfStock
-                    ? "bg-slate-50/80 border-slate-200"
-                    : "bg-emerald-50/60 border-emerald-100"
-                }`}>
-                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
-                    isNegativeStock
+                      ? "bg-slate-50/80 border-slate-200"
+                      : "bg-emerald-50/60 border-emerald-100"
+                  }`}>
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${isNegativeStock
                       ? "bg-rose-100 text-rose-600"
                       : isOutOfStock
-                      ? "bg-slate-200 text-slate-600"
-                      : "bg-emerald-100 text-emerald-600"
-                  }`}>
+                        ? "bg-slate-200 text-slate-600"
+                        : "bg-emerald-100 text-emerald-600"
+                    }`}>
                     <Boxes className="w-5 h-5" />
                   </div>
                   <div>
                     <span className="text-xs font-semibold text-slate-500 block mb-0.5">
                       Current Stock
                     </span>
-                    <span className={`text-lg font-black ${
-                      isNegativeStock
+                    <span className={`text-lg font-black ${isNegativeStock
                         ? "text-rose-700"
                         : isOutOfStock
-                        ? "text-slate-700"
-                        : "text-emerald-700"
-                    }`}>
+                          ? "text-slate-700"
+                          : "text-emerald-700"
+                      }`}>
                       {currentStock} {uomName}
                     </span>
                   </div>
@@ -843,7 +886,7 @@ export function ProductMasterDetailView({
 
               {/* 2-Column Section Cards (General Details vs Pricing & Stock Details) */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-                
+
                 {/* LEFT CARD: General Details (7 cols) */}
                 <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-4">
                   <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5">
@@ -872,6 +915,28 @@ export function ProductMasterDetailView({
                     <div>
                       <span className="text-slate-400 block text-[11px] mb-0.5">Barcode</span>
                       <p className="font-mono font-bold text-slate-800">{barcodeValue}</p>
+                    </div>
+
+                    <div>
+                      <span className="text-slate-400 block text-[11px] mb-0.5">IMEI / Serial No</span>
+                      <p className="font-mono font-bold text-slate-800">
+                        {((activeProduct as any).imei || specs.imei) ? (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-sky-50 text-sky-800 border border-sky-200 text-xs font-mono font-bold">
+                            <span>{((activeProduct as any).imei || specs.imei)}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText((activeProduct as any).imei || specs.imei);
+                                toast.success("IMEI copied to clipboard");
+                              }}
+                              className="text-sky-600 hover:text-sky-900 cursor-pointer p-0.5"
+                              title="Copy IMEI"
+                            >
+                              <Copy className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ) : ("-")}
+                      </p>
                     </div>
 
                     <div>
@@ -912,16 +977,36 @@ export function ProductMasterDetailView({
 
                     <div className="sm:col-span-2">
                       <span className="text-slate-400 block text-[11px] mb-0.5">Item Description</span>
-                      <p className="font-medium text-slate-700 text-xs">
+                      <p className="font-medium text-slate-700 text-xs leading-relaxed">
                         {activeProduct.short_description || activeProduct.description || "-"}
                       </p>
+                      {((activeProduct as any).imei || specs.imei) && (
+                        <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center gap-2">
+                          <span className="text-[11px] font-bold text-slate-500">IMEI / Serial No:</span>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 text-sky-800 border border-sky-200 font-mono text-xs font-bold shadow-2xs">
+                            <Hash className="w-3.5 h-3.5 text-sky-600" />
+                            <span>{((activeProduct as any).imei || specs.imei)}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText((activeProduct as any).imei || specs.imei);
+                                toast.success("IMEI copied to clipboard");
+                              }}
+                              className="text-sky-600 hover:text-sky-900 ml-1 cursor-pointer p-0.5"
+                              title="Copy IMEI"
+                            >
+                              <Copy className="w-3 h-3" />
+                            </button>
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
 
                 {/* RIGHT CARDS: Pricing & Stock Details (5 cols) */}
                 <div className="lg:col-span-5 space-y-4">
-                  
+
                   {/* Pricing Details Card */}
                   <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-4">
                     <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5">
@@ -1144,11 +1229,10 @@ export function ProductMasterDetailView({
                             {formatCurrency(inv.total)}
                           </td>
                           <td className="px-4 py-3 text-center">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              inv.status === 'Paid' || inv.status === 'Completed'
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${inv.status === 'Paid' || inv.status === 'Completed'
                                 ? 'bg-emerald-100 text-emerald-700'
                                 : 'bg-blue-100 text-blue-700'
-                            }`}>
+                              }`}>
                               {inv.status}
                             </span>
                           </td>

@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Search, RefreshCw, Loader2, AlertCircle, Building2, CreditCard, ArrowUpRight, ArrowDownLeft, CheckCircle, Clock, ChevronRight, X, Save, Pencil, Trash2 } from "lucide-react";
+import { Plus, Search, RefreshCw, Loader2, AlertCircle, Building2, CreditCard, ArrowUpRight, ArrowDownLeft, CheckCircle, CheckCircle2, Sparkles, Clock, ChevronRight, X, Save, Pencil, Trash2 } from "lucide-react";
+import { lookupIfsc, IfscDetails, BANK_PREFIX_MAP } from "@/lib/ifsc-lookup";
 import { bankApi, BankAccountRecord, BankTransaction, accountingApi, ChartOfAccount } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
@@ -53,6 +54,58 @@ function BankAccountFormModal({
     is_default: Boolean(account?.is_default),
     chart_of_account_id: account?.chart_of_account_id || "",
   });
+
+  const [isLookingUpIfsc, setIsLookingUpIfsc] = useState(false);
+  const [ifscStatus, setIfscStatus] = useState<"idle" | "loading" | "verified" | "not_found">(
+    account?.ifsc_code ? "verified" : "idle"
+  );
+  const [ifscDetails, setIfscDetails] = useState<IfscDetails | null>(
+    account?.ifsc_code ? { bank: account.bank_name || "", ifsc: account.ifsc_code, branch: account.branch_name || "" } : null
+  );
+
+  const handleIfscChange = useCallback(async (value: string) => {
+    const clean = value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 11);
+    setForm(p => ({ ...p, ifsc_code: clean }));
+
+    if (clean.length < 11) {
+      setIfscStatus("idle");
+      setIfscDetails(null);
+      const pfx = clean.slice(0, 4);
+      if (clean.length >= 4 && BANK_PREFIX_MAP[pfx]) {
+        setForm(p => ({
+          ...p,
+          bank_name: p.bank_name ? p.bank_name : BANK_PREFIX_MAP[pfx],
+        }));
+      }
+      return;
+    }
+
+    if (clean.length === 11) {
+      setIsLookingUpIfsc(true);
+      setIfscStatus("loading");
+      try {
+        const details = await lookupIfsc(clean);
+        if (details && details.bank) {
+          setIfscStatus("verified");
+          setIfscDetails(details);
+          // Autofill Bank Name and Branch Name ONLY (strictly NOT touching account_number or account_holder_name)
+          setForm(prev => ({
+            ...prev,
+            bank_name: details.bank,
+            branch_name: details.branch || prev.branch_name,
+            name: (!prev.name.trim() || prev.name === "Primary Operating") ? `${details.bank} Account` : prev.name,
+          }));
+          toast.success(`Bank details auto-filled: ${details.bank}${details.branch ? ` (${details.branch})` : ""}`);
+        } else {
+          setIfscStatus("not_found");
+        }
+      } catch {
+        setIfscStatus("not_found");
+      } finally {
+        setIsLookingUpIfsc(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     // Load asset/bank accounts for chart_of_account dropdown selection
@@ -143,9 +196,16 @@ function BankAccountFormModal({
                 className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 font-semibold" placeholder="e.g. Test Company / Kanithi Venkata Phani Kumar" />
             </div>
             <div>
-              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Bank Name *</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-muted-foreground">Bank Name *</label>
+                {ifscStatus === "verified" && form.bank_name && (
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                    <Sparkles className="size-2.5" /> Auto-filled
+                  </span>
+                )}
+              </div>
               <input value={form.bank_name} onChange={e => setForm(p => ({ ...p, bank_name: e.target.value }))} required
-                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20" placeholder="HDFC Bank" />
+                className={`w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 ${ifscStatus === "verified" ? "border-emerald-500/40" : ""}`} placeholder="HDFC Bank" />
             </div>
             <div>
               <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Account Number *</label>
@@ -153,14 +213,72 @@ function BankAccountFormModal({
                 className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 font-mono font-bold" placeholder="501002040" />
             </div>
             <div>
-              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">IFSC Code *</label>
-              <input value={form.ifsc_code} onChange={e => setForm(p => ({ ...p, ifsc_code: e.target.value.toUpperCase() }))} required
-                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 font-mono uppercase font-bold" placeholder="HDFC0000104" />
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                  <span>IFSC Code *</span>
+                  <span className="text-[10px] font-normal bg-primary/10 text-primary px-1.5 py-0.2 rounded flex items-center gap-1 font-mono">
+                    <Sparkles className="size-2.5" /> Auto-fill
+                  </span>
+                </label>
+                {ifscStatus === "loading" && (
+                  <span className="text-[11px] text-primary flex items-center gap-1 font-medium">
+                    <Loader2 className="size-3 animate-spin" /> Fetching...
+                  </span>
+                )}
+                {ifscStatus === "verified" && (
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="size-3" /> Verified
+                  </span>
+                )}
+                {ifscStatus === "not_found" && (
+                  <span className="text-[11px] text-amber-500 font-medium flex items-center gap-1">
+                    <AlertCircle className="size-3" /> Check IFSC
+                  </span>
+                )}
+              </div>
+              <div className="relative">
+                <input
+                  value={form.ifsc_code}
+                  onChange={e => handleIfscChange(e.target.value)}
+                  onBlur={() => form.ifsc_code.length === 11 && ifscStatus !== "verified" && handleIfscChange(form.ifsc_code)}
+                  maxLength={11}
+                  required
+                  className={`w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 font-mono uppercase font-bold tracking-wider transition-colors ${
+                    ifscStatus === "verified"
+                      ? "border-emerald-500/50 focus:ring-emerald-500/20"
+                      : "focus:ring-primary/20"
+                  }`}
+                  placeholder="HDFC0000104"
+                />
+                {isLookingUpIfsc ? (
+                  <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                    <Loader2 className="size-4 animate-spin text-primary" />
+                  </div>
+                ) : ifscStatus === "verified" ? (
+                  <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                    <CheckCircle2 className="size-4 text-emerald-500" />
+                  </div>
+                ) : null}
+              </div>
+              {ifscDetails?.city && (
+                <p className="text-[11px] text-muted-foreground mt-1 truncate">
+                  <span className="font-semibold text-foreground">{ifscDetails.bank}</span>
+                  {ifscDetails.branch && <span> • {ifscDetails.branch}</span>}
+                  <span> ({ifscDetails.city}{ifscDetails.state ? `, ${ifscDetails.state}` : ""})</span>
+                </p>
+              )}
             </div>
             <div>
-              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">Branch Name</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-muted-foreground">Branch Name</label>
+                {ifscStatus === "verified" && form.branch_name && (
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                    <Sparkles className="size-2.5" /> Auto-filled
+                  </span>
+                )}
+              </div>
               <input value={form.branch_name} onChange={e => setForm(p => ({ ...p, branch_name: e.target.value }))}
-                className="w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20" placeholder="Bandra BKC" />
+                className={`w-full h-9 px-3 text-sm rounded-lg border bg-background outline-none focus:ring-2 focus:ring-primary/20 ${ifscStatus === "verified" ? "border-emerald-500/40" : ""}`} placeholder="Bandra BKC" />
             </div>
             <div>
               <label className="block text-xs font-semibold mb-1.5 text-muted-foreground">UPI ID / VPA (For Invoices & QR)</label>

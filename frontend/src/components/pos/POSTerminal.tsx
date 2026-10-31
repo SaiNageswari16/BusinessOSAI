@@ -36,6 +36,7 @@ import { BatchSelectorModal } from "../inventory/BatchSelectorModal";
 import { getEffectiveTaxRate, extractProductDiscount } from "@/lib/gst-utils";
 import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
 import { getActiveBillingGst, getActiveReceiptTemplate, setOrgDocumentPrefixes } from "../../lib/receipt-template-store";
+import { safeSetItem } from "@/lib/safe-storage";
 import { useStoreLocations } from "@/hooks/use-store-locations";
 
 export class ErrorBoundary extends React.Component<any, any> {
@@ -2228,7 +2229,7 @@ function PosTerminalInner() {
           { ...terminalInvoiceRecord, tenant_id: currentTenantId, company_id: currentCompanyId, workspace_id: currentCompanyId },
           ...prevList.filter((r: any) => r.invoice_number !== terminalInvoiceRecord.invoice_number && r.invoice_number !== response.receipt_number)
         ];
-        localStorage.setItem(posStorageKey, JSON.stringify(mergedList));
+        safeSetItem(posStorageKey, JSON.stringify(mergedList.slice(0, 50)));
 
         // Increment stored receipt sequence number
         const nextRecSeq = recSeq + 1;
