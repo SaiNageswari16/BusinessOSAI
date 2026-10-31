@@ -2694,13 +2694,84 @@ export function CustomerPartyReportsSuite({
           <div>
             <div className="flex flex-wrap items-center justify-between gap-3">
               {/* Title & Description */}
-              <div>
+              <div className="shrink-0">
                 <h1 className="text-base font-extrabold text-slate-900">{currentMeta.name}</h1>
                 <p className="text-xs text-slate-500 mt-0.5">{currentMeta.description}</p>
               </div>
 
-              {/* Actions */}
-              <div className="flex items-center gap-2">
+              {/* All Filters and Action Buttons at one place */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Category selector */}
+                <div className="relative inline-flex items-center">
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    className="h-8 pl-3 pr-8 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer appearance-none text-slate-800"
+                  >
+                    <option value="all">All Categories</option>
+                    {productCategories.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedCategory !== "all" ? (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategory("all")}
+                      className="absolute right-2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  ) : (
+                    <ChevronDown className="absolute right-2.5 size-3.5 text-slate-400 pointer-events-none" />
+                  )}
+                </div>
+
+                {/* Searchable Party selector */}
+                <SearchablePartySelect
+                  value={selectedPartyId}
+                  onChange={setSelectedPartyId}
+                  parties={parties}
+                  placeholder="Search Party (e.g. nagi)..."
+                  className="w-48 sm:w-56"
+                />
+
+                {/* Date range selector */}
+                <div className="relative inline-flex items-center">
+                  <CalendarIcon className="absolute left-2.5 size-3.5 text-slate-400 pointer-events-none" />
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value as any)}
+                    className="h-8 pl-8 pr-7 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer appearance-none text-slate-800"
+                  >
+                    <option value="this_week">This Week</option>
+                    <option value="today">Today</option>
+                    <option value="this_month">This Month</option>
+                    <option value="this_quarter">This Quarter</option>
+                    <option value="this_year">This Financial Year</option>
+                    <option value="all">All Time</option>
+                  </select>
+                  <ChevronDown className="absolute right-2 size-3 text-slate-400 pointer-events-none" />
+                </div>
+
+                {/* Search bar */}
+                <div className="relative w-40 sm:w-48">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search party..."
+                    value={searchParty}
+                    onChange={(e) => setSearchParty(e.target.value)}
+                    className="w-full h-8 pl-8 pr-6 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                  {searchParty && (
+                    <button onClick={() => setSearchParty("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
                 {/* Dropdown for Excel / CSV */}
                 <div className="relative" ref={excelDropdownRef}>
                   <Button
@@ -2759,77 +2830,6 @@ export function CustomerPartyReportsSuite({
                   <Printer className="size-3.5 text-indigo-600" />
                   <span>Print PDF</span>
                 </Button>
-              </div>
-            </div>
-
-            {/* Date Range & Specific Filtering Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-2.5 border-t border-slate-100">
-              <div className="flex flex-wrap items-center gap-2">
-                {/* Category selector */}
-                <div className="relative inline-flex items-center">
-                  <select
-                    value={selectedCategory}
-                    onChange={(e) => setSelectedCategory(e.target.value)}
-                    className="h-8 pl-3 pr-8 text-xs font-bold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer appearance-none text-slate-800"
-                  >
-                    <option value="all">All Categories</option>
-                    {productCategories.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedCategory !== "all" ? (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCategory("all")}
-                      className="absolute right-2 text-slate-400 hover:text-slate-600"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  ) : (
-                    <ChevronDown className="absolute right-2.5 size-3.5 text-slate-400 pointer-events-none" />
-                  )}
-                </div>
-
-                {/* Searchable Party selector */}
-                <SearchablePartySelect
-                  value={selectedPartyId}
-                  onChange={setSelectedPartyId}
-                  parties={parties}
-                  placeholder="Search Party (e.g. nagi)..."
-                  className="w-64"
-                />
-
-                {/* Date range selector */}
-                <div className="relative inline-flex items-center">
-                  <CalendarIcon className="absolute left-2.5 size-3.5 text-slate-400 pointer-events-none" />
-                  <select
-                    value={dateFilter}
-                    onChange={(e) => setDateFilter(e.target.value as any)}
-                    className="h-8 pl-8 pr-7 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer appearance-none text-slate-800"
-                  >
-                    <option value="this_week">This Week</option>
-                    <option value="today">Today</option>
-                    <option value="this_month">This Month</option>
-                    <option value="this_quarter">This Quarter</option>
-                    <option value="this_year">This Financial Year</option>
-                    <option value="all">All Time</option>
-                  </select>
-                  <ChevronDown className="absolute right-2 size-3.5 text-slate-400 pointer-events-none" />
-                </div>
-              </div>
-
-              {/* Search bar */}
-              <div className="relative w-64">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search party name, phone, GSTIN..."
-                  value={searchParty}
-                  onChange={(e) => setSearchParty(e.target.value)}
-                  className="w-full h-8 pl-8 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                />
               </div>
             </div>
           </div>

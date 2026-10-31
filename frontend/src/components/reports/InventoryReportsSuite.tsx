@@ -1831,9 +1831,9 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
           </div>
         ) : activeReport === "stock_detail" ? (
           <div>
-            {/* Row 1: Back + Title + Favourite */}
+            {/* Unified Top Toolbar: Back, Title, Favourite, Search Item, Period, Email, Download, Print */}
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 shrink-0">
                 <button
                   onClick={() => window.history.back()}
                   className="p-1 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-slate-700"
@@ -1853,12 +1853,11 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                   <span>Favourite</span>
                 </button>
               </div>
-            </div>
 
-            {/* Row 2: Search Item combobox + Period dropdown + Custom date pickers */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-2.5 border-t border-slate-100">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="w-56">
+              {/* All Filters and Action Buttons at one place */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Search Item combobox */}
+                <div className="w-48 sm:w-56">
                   <SearchableItemSelect
                     value={selectedItemId}
                     onChange={(val) => setSelectedItemId(val)}
@@ -1867,6 +1866,7 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                   />
                 </div>
 
+                {/* Period dropdown */}
                 <div className="relative flex items-center">
                   <CalendarIcon className="absolute left-2.5 size-3.5 text-slate-400 pointer-events-none" />
                   <select
@@ -1886,22 +1886,71 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                 </div>
 
                 {dateFilter === "custom" && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <input
                       type="date"
                       value={customStartDate}
                       onChange={(e) => setCustomStartDate(e.target.value)}
-                      className="h-8 px-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
+                      className="h-8 px-2 text-xs font-medium rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
                     />
                     <span className="text-xs text-slate-400 font-medium">to</span>
                     <input
                       type="date"
                       value={customEndDate}
                       onChange={(e) => setCustomEndDate(e.target.value)}
-                      className="h-8 px-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
+                      className="h-8 px-2 text-xs font-medium rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
                     />
                   </div>
                 )}
+
+                {/* Action Buttons: Email Excel, Download Excel ∨, Print PDF */}
+                <button
+                  onClick={() => setEmailModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Mail className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Email Excel</span>
+                </button>
+
+                <div className="relative">
+                  <button
+                    onClick={() => setShowExcelDropdown(!showExcelDropdown)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <span>Download Excel</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                  </button>
+                  {showExcelDropdown && (
+                    <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
+                      <button
+                        onClick={() => {
+                          handleExport("xlsx");
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Download Excel (.xlsx)
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleExport("csv");
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Download CSV (.csv)
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={handlePrint}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Print PDF</span>
+                </button>
               </div>
             </div>
           </div>
@@ -2032,9 +2081,9 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
           </div>
         ) : activeReport === "item_sales_purchase_summary" ? (
           <div>
-            {/* Row 1: Back + Title + Favourite & Actions */}
+            {/* Unified Top Toolbar: Back + Title + Favourite, Category, Period, Search, Actions */}
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 shrink-0">
                 <button
                   onClick={() => window.history.back()}
                   className="p-1 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-slate-700"
@@ -2055,8 +2104,67 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                 </button>
               </div>
 
-              {/* Action Buttons: Excel / CSV, Print PDF */}
-              <div className="flex items-center gap-2">
+              {/* All Filters and Action Buttons at one place */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="w-48 sm:w-52">
+                  <SearchableCategorySelect
+                    value={selectedCategory}
+                    onChange={(cat) => setSelectedCategory(cat)}
+                    categories={productCategories}
+                    placeholder="Search Category"
+                  />
+                </div>
+
+                <div className="relative flex items-center">
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value as any)}
+                    className="h-8 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white hover:bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer text-slate-700 shadow-2xs"
+                  >
+                    <option value="this_week">This Week</option>
+                    <option value="today">Today</option>
+                    <option value="this_month">This Month</option>
+                    <option value="this_quarter">This Quarter</option>
+                    <option value="this_fy">This Financial Year</option>
+                    <option value="all">All Time</option>
+                    <option value="custom">Custom Date</option>
+                  </select>
+                </div>
+
+                {dateFilter === "custom" && (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="h-8 px-2 text-xs font-medium rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
+                    />
+                    <span className="text-xs text-slate-400 font-medium">to</span>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="h-8 px-2 text-xs font-medium rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
+                    />
+                  </div>
+                )}
+
+                <div className="relative w-40 sm:w-48">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search item, SKU..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full h-8 pl-8 pr-6 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800"
+                  />
+                  {searchTerm && (
+                    <button onClick={() => setSearchTerm("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
                 {/* Dropdown for Excel / CSV */}
                 <div className="relative" ref={excelDropdownRef}>
                   <button
@@ -2111,70 +2219,6 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                   <Printer className="w-3.5 h-3.5 text-slate-600" />
                   <span>Print PDF</span>
                 </button>
-              </div>
-            </div>
-
-            {/* Row 2: Category combobox + Period dropdown + Custom dates + Search input */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-2.5 border-t border-slate-100">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="w-52">
-                  <SearchableCategorySelect
-                    value={selectedCategory}
-                    onChange={(cat) => setSelectedCategory(cat)}
-                    categories={productCategories}
-                    placeholder="Search Category"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <select
-                    value={dateFilter}
-                    onChange={(e) => setDateFilter(e.target.value as any)}
-                    className="h-8 px-3 text-xs font-semibold rounded-xl border border-slate-200 bg-white hover:bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer text-slate-700 shadow-2xs"
-                  >
-                    <option value="this_week">This Week</option>
-                    <option value="today">Today</option>
-                    <option value="this_month">This Month</option>
-                    <option value="this_quarter">This Quarter</option>
-                    <option value="this_fy">This Financial Year</option>
-                    <option value="all">All Time</option>
-                    <option value="custom">Custom Date</option>
-                  </select>
-                </div>
-
-                {dateFilter === "custom" && (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="date"
-                      value={customStartDate}
-                      onChange={(e) => setCustomStartDate(e.target.value)}
-                      className="h-8 px-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
-                    />
-                    <span className="text-xs text-slate-400 font-medium">to</span>
-                    <input
-                      type="date"
-                      value={customEndDate}
-                      onChange={(e) => setCustomEndDate(e.target.value)}
-                      className="h-8 px-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="relative w-64">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search item name, SKU code..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full h-8 pl-8 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                />
-                {searchTerm && (
-                  <button onClick={() => setSearchTerm("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
               </div>
             </div>
           </div>
@@ -2257,9 +2301,9 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
           </div>
         ) : activeReport === "item_party" ? (
           <div>
-            {/* Row 1: Back + Title + Favourite & Actions */}
+            {/* Unified Top Toolbar: Back, Title, Favourite, Search Item, Period, Filter Party, Email, Download, Print */}
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 shrink-0">
                 <button
                   onClick={() => window.history.back()}
                   className="p-1 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-slate-700"
@@ -2280,14 +2324,79 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                 </button>
               </div>
 
-              {/* Action Buttons: Email Excel, Download Excel ∨, Print PDF */}
-              <div className="flex items-center gap-2">
+              {/* All Filters and Action Buttons at one place */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Search Item combobox */}
+                <div className="w-48 sm:w-56">
+                  <SearchableItemSelect
+                    value={selectedItemId}
+                    onChange={(val) => setSelectedItemId(val)}
+                    items={liveProducts}
+                    placeholder="Search Item"
+                  />
+                </div>
+
+                {/* Period dropdown */}
+                <div className="relative flex items-center">
+                  <CalendarIcon className="absolute left-2.5 size-3.5 text-slate-400 pointer-events-none" />
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value as any)}
+                    className="h-8 pl-8 pr-7 text-xs font-medium rounded-lg border border-slate-200 bg-white hover:bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer text-slate-700 appearance-none shadow-2xs"
+                  >
+                    <option value="this_week">This Week</option>
+                    <option value="today">Today</option>
+                    <option value="this_month">This Month</option>
+                    <option value="this_quarter">This Quarter</option>
+                    <option value="this_fy">This Financial Year</option>
+                    <option value="all">All Time</option>
+                    <option value="custom">Custom Date</option>
+                  </select>
+                  <ChevronDown className="absolute right-2 size-3 text-slate-400 pointer-events-none" />
+                </div>
+
+                {dateFilter === "custom" && (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="h-8 px-2 text-xs font-medium rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
+                    />
+                    <span className="text-xs text-slate-400 font-medium">to</span>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="h-8 px-2 text-xs font-medium rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
+                    />
+                  </div>
+                )}
+
+                {/* Party name filter */}
+                <div className="relative w-40 sm:w-48">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Filter party..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full h-8 pl-8 pr-6 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800"
+                  />
+                  {searchTerm && (
+                    <button onClick={() => setSearchTerm("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Action Buttons: Email Excel, Download Excel ∨, Print PDF */}
                 <button
                   onClick={() => setEmailModalOpen(true)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                 >
-                  <span>Email Excel</span>
                   <Mail className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Email Excel</span>
                 </button>
 
                 <div className="relative">
@@ -2326,75 +2435,9 @@ export function InventoryReportsSuite({ defaultReport = "stock_summary" }: { def
                   onClick={handlePrint}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                 >
-                  <span>Print PDF</span>
                   <Printer className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Print PDF</span>
                 </button>
-              </div>
-            </div>
-
-            {/* Row 2: Search Item combobox + Period dropdown + Custom date pickers + Party name filter */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-2.5 border-t border-slate-100">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="w-56">
-                  <SearchableItemSelect
-                    value={selectedItemId}
-                    onChange={(val) => setSelectedItemId(val)}
-                    items={liveProducts}
-                    placeholder="Search Item"
-                  />
-                </div>
-
-                <div className="relative flex items-center">
-                  <CalendarIcon className="absolute left-2.5 size-3.5 text-slate-400 pointer-events-none" />
-                  <select
-                    value={dateFilter}
-                    onChange={(e) => setDateFilter(e.target.value as any)}
-                    className="h-8 pl-8 pr-7 text-xs font-medium rounded-lg border border-slate-200 bg-white hover:bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer text-slate-700 appearance-none shadow-2xs"
-                  >
-                    <option value="this_week">This Week</option>
-                    <option value="today">Today</option>
-                    <option value="this_month">This Month</option>
-                    <option value="this_quarter">This Quarter</option>
-                    <option value="this_fy">This Financial Year</option>
-                    <option value="all">All Time</option>
-                    <option value="custom">Custom Date</option>
-                  </select>
-                  <ChevronDown className="absolute right-2 size-3 text-slate-400 pointer-events-none" />
-                </div>
-
-                {dateFilter === "custom" && (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="date"
-                      value={customStartDate}
-                      onChange={(e) => setCustomStartDate(e.target.value)}
-                      className="h-8 px-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
-                    />
-                    <span className="text-xs text-slate-400 font-medium">to</span>
-                    <input
-                      type="date"
-                      value={customEndDate}
-                      onChange={(e) => setCustomEndDate(e.target.value)}
-                      className="h-8 px-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="relative w-64">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Filter by party name..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full h-8 pl-8 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                />
-                {searchTerm && (
-                  <button onClick={() => setSearchTerm("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
               </div>
             </div>
           </div>
