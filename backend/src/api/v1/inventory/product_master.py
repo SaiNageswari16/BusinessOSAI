@@ -771,7 +771,7 @@ async def list_products(
             for w in words:
                 like = f"%{w}%"
                 conditions.append(
-                    Product.name.ilike(like) | Product.sku.ilike(like) | Product.barcode.ilike(like)
+                    Product.name.ilike(like) | Product.sku.ilike(like) | Product.barcode.ilike(like) | Product.imei.ilike(like)
                 )
             from sqlalchemy import and_
             query = query.where(and_(*conditions))

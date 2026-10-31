@@ -1922,7 +1922,8 @@ export function Products() {
   const fuzzyLocalResults = products.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
     (p.sku && p.sku.toLowerCase().includes(search.toLowerCase())) ||
-    (p.barcode && p.barcode.toLowerCase().includes(search.toLowerCase()))
+    (p.barcode && p.barcode.toLowerCase().includes(search.toLowerCase())) ||
+    ((p as any).imei && String((p as any).imei).toLowerCase().includes(search.toLowerCase()))
   );
 
   // ── AI status ────────────────────────────────────────────────────

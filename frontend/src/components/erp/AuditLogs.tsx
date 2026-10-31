@@ -36,6 +36,7 @@ export function AuditLogs() {
     const { currency, formatCurrency } = useCurrency();
   const { user, accessToken } = useAuth();
   const { tenant } = useTenant();
+  const isPlatformAdmin = Boolean(user?.isPlatformAdmin);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
