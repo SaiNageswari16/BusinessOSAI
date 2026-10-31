@@ -83,7 +83,24 @@ export function LowStockAlerts() {
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
-  const [activeFilter, setActiveFilter] = useState<"all" | "stockout" | "low_stock">("all");
+  const [activeFilter, setActiveFilter] = useState<"all" | "stockout" | "low_stock">(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const f = sp.get("filter");
+      if (f === "stockout" || f === "low_stock") return f;
+    } catch {}
+    return "all";
+  });
+
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const f = sp.get("filter");
+      if (f === "stockout" || f === "low_stock") {
+        setActiveFilter(f);
+      }
+    } catch {}
+  }, []);
 
   // View Mode: Cards vs Table (persisted in localStorage)
   const [viewMode, setViewMode] = useState<"cards" | "table">(() => {

@@ -185,15 +185,15 @@ function Dashboard() {
       case "inventory":
         return {
           kpis: [
-            { id: "val", label: "Stock Verification", value: `${currency.symbol}${(displayedSales * 2.4 / 1000000).toFixed(2)}M`, icon: Boxes, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +8.4%", suffix: "vs last month" },
-            { id: "inflow", label: "Stock Inflow", value: "1,250", icon: Layers, iconBg: "bg-indigo-50 text-indigo-600", growth: "↗ +12%", suffix: "units received" },
-            { id: "outflow", label: "Stock Outflow", value: "840", icon: ShoppingCart, iconBg: "bg-emerald-50 text-emerald-600", growth: "↗ +6%", suffix: "units dispatched" },
-            { id: "out", label: "Out of Stock", value: "0", icon: Package, iconBg: "bg-sky-50 text-sky-600", growth: "✓ 0%", suffix: "stockouts" },
-            { id: "low", label: "Low Stock Limit", value: "3", icon: AlertTriangle, iconBg: "bg-orange-50 text-orange-600", growth: "⚠ Action", suffix: "needs reorder" },
-            { id: "reorder", label: "Reorder Value", value: `${currency.symbol}45.2K`, icon: Receipt, iconBg: "bg-amber-50 text-amber-600", growth: "↗ Pending", suffix: "P.O. queue" },
-            { id: "fast_mov", label: "Fast Moving", value: "42", icon: Flame, iconBg: "bg-orange-50 text-orange-600", growth: "↗ +8.3%", suffix: "top velocity SKUs" },
-            { id: "slow_mov", label: "Slow Moving", value: "18", icon: TrendingDown, iconBg: "bg-rose-50 text-rose-600", growth: "⚠ Review", suffix: ">60 days stagnant" },
-            { id: "dead_stock", label: "Dead Stock", value: "6", icon: Skull, iconBg: "bg-slate-100 text-slate-700", growth: "⚠ 0 sales", suffix: ">90 days stagnant" },
+            { id: "val", label: "Stock Verification", value: `${currency.symbol}${(displayedSales * 2.4 / 1000000).toFixed(2)}M`, icon: Boxes, iconBg: "bg-blue-50 text-blue-600", growth: "↗ +8.4%", suffix: "vs last month", navigateTo: "/inventory?tab=stock_overview" },
+            { id: "inflow", label: "Stock Inflow", value: "1,250", icon: Layers, iconBg: "bg-indigo-50 text-indigo-600", growth: "↗ +12%", suffix: "units received", navigateTo: "/inventory?tab=goods_receipt" },
+            { id: "outflow", label: "Stock Outflow", value: "840", icon: ShoppingCart, iconBg: "bg-emerald-50 text-emerald-600", growth: "↗ +6%", suffix: "units dispatched", navigateTo: "/inventory?tab=goods_issue" },
+            { id: "out", label: "Out of Stock", value: "0", icon: Package, iconBg: "bg-sky-50 text-sky-600", growth: "✓ 0%", suffix: "stockouts", navigateTo: "/inventory?tab=low_stock&filter=stockout" },
+            { id: "low", label: "Low Stock Limit", value: "3", icon: AlertTriangle, iconBg: "bg-orange-50 text-orange-600", growth: "⚠ Action", suffix: "needs reorder", navigateTo: "/inventory?tab=low_stock&filter=low_stock" },
+            { id: "reorder", label: "Reorder Value", value: `${currency.symbol}45.2K`, icon: Receipt, iconBg: "bg-amber-50 text-amber-600", growth: "↗ Pending", suffix: "P.O. queue", navigateTo: "/inventory?tab=reorder_planning" },
+            { id: "fast_mov", label: "Fast Moving", value: "42", icon: Flame, iconBg: "bg-orange-50 text-orange-600", growth: "↗ +8.3%", suffix: "top velocity SKUs", navigateTo: "/inventory?tab=fast_moving" },
+            { id: "slow_mov", label: "Slow Moving", value: "18", icon: TrendingDown, iconBg: "bg-rose-50 text-rose-600", growth: "⚠ Review", suffix: ">60 days stagnant", navigateTo: "/inventory?tab=slow_moving" },
+            { id: "dead_stock", label: "Dead Stock", value: "6", icon: Skull, iconBg: "bg-slate-100 text-slate-700", growth: "⚠ 0 sales", suffix: ">90 days stagnant", navigateTo: "/inventory?tab=dead_stock" },
           ],
           chartTitle: "Stock Inflow vs Outflow",
           chartLine1Name: "Inflow Units",
@@ -663,14 +663,14 @@ function Dashboard() {
       default: // OVERVIEW
         return {
           kpis: [
-            { id: "revenue", label: "Revenue", value: `${currency.symbol}${displayedSales.toLocaleString()}`, icon: ActiveCurrencyIcon, iconBg: "bg-blue-50 text-blue-600", growth: displayedSales > 0 ? "↗ +12.5%" : "0%", suffix: "vs last month" },
-            { id: "sales", label: "Sales", value: String(totalInvoices), icon: ShoppingCart, iconBg: "bg-purple-50 text-purple-600", growth: "0%", suffix: "orders" },
-            { id: "orders_pending", label: "Orders Pending", value: "0", icon: Package, iconBg: "bg-orange-50 text-orange-600", growth: "0%", suffix: "to fulfill" },
-            { id: "active_customers", label: "Active Customers", value: String(totalCustomers), icon: Users, iconBg: "bg-sky-50 text-sky-600", growth: "0%", suffix: "total active" },
-            { id: "inventory_value", label: "Inventory Value", value: `${currency.symbol}${totalStockVal > 0 ? (totalStockVal >= 1000000 ? `${(totalStockVal / 1000000).toFixed(2)}M` : totalStockVal.toLocaleString()) : "0.00"}`, icon: Boxes, iconBg: "bg-indigo-50 text-indigo-600", growth: "0%", suffix: "total holding" },
-            { id: "employees_present", label: "Employees Present", value: `0/${totalEmployees}`, icon: UserCheck, iconBg: "bg-emerald-50 text-emerald-600", growth: "0%", suffix: "attendance" },
-            { id: "pending_deliveries", label: "Pending Deliveries", value: "0", icon: Truck, iconBg: "bg-blue-50 text-blue-600", growth: "0%", suffix: "in transit" },
-            { id: "pending_payments", label: "Pending Payments", value: `${currency.symbol}0.00`, icon: Receipt, iconBg: "bg-amber-50 text-amber-600", growth: "0%", suffix: "AR overdue" },
+            { id: "revenue", label: "Revenue", value: `${currency.symbol}${displayedSales.toLocaleString()}`, icon: ActiveCurrencyIcon, iconBg: "bg-blue-50 text-blue-600", growth: displayedSales > 0 ? "↗ +12.5%" : "0%", suffix: "vs last month", navigateTo: "/pos?tab=sales_history" },
+            { id: "sales", label: "Sales", value: String(totalInvoices), icon: ShoppingCart, iconBg: "bg-purple-50 text-purple-600", growth: "0%", suffix: "orders", navigateTo: "/pos?tab=sales_history" },
+            { id: "orders_pending", label: "Orders Pending", value: "0", icon: Package, iconBg: "bg-orange-50 text-orange-600", growth: "0%", suffix: "to fulfill", navigateTo: "/inventory?tab=delivery_challans" },
+            { id: "active_customers", label: "Active Customers", value: String(totalCustomers), icon: Users, iconBg: "bg-sky-50 text-sky-600", growth: "0%", suffix: "total active", navigateTo: "/crm?tab=customers" },
+            { id: "inventory_value", label: "Inventory Value", value: `${currency.symbol}${totalStockVal > 0 ? (totalStockVal >= 1000000 ? `${(totalStockVal / 1000000).toFixed(2)}M` : totalStockVal.toLocaleString()) : "0.00"}`, icon: Boxes, iconBg: "bg-indigo-50 text-indigo-600", growth: "0%", suffix: "total holding", navigateTo: "/inventory?tab=stock_overview" },
+            { id: "employees_present", label: "Employees Present", value: `0/${totalEmployees}`, icon: UserCheck, iconBg: "bg-emerald-50 text-emerald-600", growth: "0%", suffix: "attendance", navigateTo: "/hrms?tab=attendance" },
+            { id: "pending_deliveries", label: "Pending Deliveries", value: "0", icon: Truck, iconBg: "bg-blue-50 text-blue-600", growth: "0%", suffix: "in transit", navigateTo: "/inventory?tab=delivery_challans" },
+            { id: "pending_payments", label: "Pending Payments", value: `${currency.symbol}0.00`, icon: Receipt, iconBg: "bg-amber-50 text-amber-600", growth: "0%", suffix: "AR overdue", navigateTo: "/procurement?tab=pending_payments" },
           ],
           chartTitle: "Revenue vs Expenses",
           chartLine1Name: "Revenue",
@@ -851,20 +851,41 @@ function Dashboard() {
             ))
           : tabConfig.kpis.map((k, i) => {
               const Icon = k.icon;
+              const navUrl = (k as any).navigateTo;
               return (
                 <div key={i} className="h-full">
-                  <Card className="bg-card border border-border/70 rounded-2xl p-3 shadow-xs hover:shadow-sm hover:border-purple-200 transition-colors flex flex-col justify-between h-full">
+                  <Card
+                    role={navUrl ? "button" : undefined}
+                    tabIndex={navUrl ? 0 : undefined}
+                    onClick={() => {
+                      if (navUrl) {
+                        navigate({ to: navUrl });
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (navUrl && (e.key === "Enter" || e.key === " ")) {
+                        e.preventDefault();
+                        navigate({ to: navUrl });
+                      }
+                    }}
+                    className={cn(
+                      "bg-card border border-border/70 rounded-2xl p-3 shadow-xs transition-all flex flex-col justify-between h-full select-none",
+                      navUrl
+                        ? "cursor-pointer hover:shadow-md hover:border-purple-300 dark:hover:border-purple-600 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] group focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-purple-500"
+                        : "hover:shadow-sm hover:border-purple-200"
+                    )}
+                  >
                     <div className="flex items-center justify-between">
-                      <div className={cn("size-7.5 rounded-xl flex items-center justify-center transition-colors", k.iconBg)}>
+                      <div className={cn("size-7.5 rounded-xl flex items-center justify-center transition-all group-hover:scale-105", k.iconBg)}>
                         <Icon className="size-3.5" />
                       </div>
-                      <span className="text-[11px] font-medium text-muted-foreground text-right truncate">
+                      <span className="text-[11px] font-medium text-muted-foreground text-right truncate group-hover:text-foreground transition-colors">
                         {k.label}
                       </span>
                     </div>
 
                     <div className="my-1">
-                      <div className="text-lg font-bold tracking-tight text-foreground">
+                      <div className="text-lg font-bold tracking-tight text-foreground group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
                         {k.value}
                       </div>
                     </div>
