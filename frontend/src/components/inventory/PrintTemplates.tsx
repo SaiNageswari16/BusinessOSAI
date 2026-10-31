@@ -1655,12 +1655,8 @@ export function PrintTemplates() {
     const nextVal = !curFields[fieldKey];
     const nextFields = {
       ...curFields,
-      [fieldKey]: !curFields[fieldKey],
       [fieldKey]: nextVal,
     };
-    const updatedTemplates = templates.map((t) =>
-      t.id === activeTemplate.id ? { ...t, fields: nextFields } : t
-    );
 
     const fieldToColKey: Record<string, string> = {
       showItemIndex: "sno",
@@ -2846,8 +2842,8 @@ export function PrintTemplates() {
                     onClick={() => setSelectedDocType(doc.type)}
                     title={`${doc.label} (${count} templates)`}
                     className={`relative w-9 h-9 flex items-center justify-center rounded-xl border transition-all cursor-pointer ${isActive
-                        ? "bg-indigo-600 text-white border-indigo-600 shadow-sm scale-105"
-                        : "bg-muted/40 hover:bg-muted text-muted-foreground border-transparent hover:border-border"
+                      ? "bg-indigo-600 text-white border-indigo-600 shadow-sm scale-105"
+                      : "bg-muted/40 hover:bg-muted text-muted-foreground border-transparent hover:border-border"
                       }`}
                   >
                     <IconComp className="h-4 w-4" />
@@ -2896,8 +2892,8 @@ export function PrintTemplates() {
                         key={doc.type}
                         onClick={() => setSelectedDocType(doc.type)}
                         className={`w-full flex items-center justify-between p-2 rounded-xl border transition-all text-left cursor-pointer ${isActive
-                            ? "border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 shadow-sm"
-                            : "border-border/60 bg-card hover:bg-muted/40 hover:border-border text-foreground"
+                          ? "border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 shadow-sm"
+                          : "border-border/60 bg-card hover:bg-muted/40 hover:border-border text-foreground"
                           }`}
                       >
                         <div className="flex items-center gap-2 min-w-0">
@@ -2936,8 +2932,8 @@ export function PrintTemplates() {
             <button
               onClick={() => setActiveEditorTab("design")}
               className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeEditorTab === "design"
-                  ? "bg-indigo-600 text-white shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                ? "bg-indigo-600 text-white shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`}
             >
               <Edit3 className="h-3.5 w-3.5" />
@@ -2946,8 +2942,8 @@ export function PrintTemplates() {
             <button
               onClick={() => setActiveEditorTab("content")}
               className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeEditorTab === "content"
-                  ? "bg-indigo-600 text-white shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                ? "bg-indigo-600 text-white shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`}
             >
               <FileText className="h-3.5 w-3.5" />
@@ -2956,8 +2952,8 @@ export function PrintTemplates() {
             <button
               onClick={() => setActiveEditorTab("branding")}
               className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeEditorTab === "branding"
-                  ? "bg-indigo-600 text-white shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                ? "bg-indigo-600 text-white shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`}
             >
               <Palette className="h-3.5 w-3.5" />
@@ -2966,8 +2962,8 @@ export function PrintTemplates() {
             <button
               onClick={() => setActiveEditorTab("settings")}
               className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeEditorTab === "settings"
-                  ? "bg-indigo-600 text-white shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                ? "bg-indigo-600 text-white shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`}
             >
               <Settings className="h-3.5 w-3.5" />
@@ -3092,8 +3088,8 @@ export function PrintTemplates() {
                           key={preset.id}
                           onClick={() => handleApplyThermalPreset(preset.id as any)}
                           className={`p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between relative ${isSelected
-                              ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 ring-2 ring-indigo-500/30 shadow-xs'
-                              : 'border-border bg-card hover:border-indigo-300 hover:bg-muted/40'
+                            ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 ring-2 ring-indigo-500/30 shadow-xs'
+                            : 'border-border bg-card hover:border-indigo-300 hover:bg-muted/40'
                             }`}
                         >
                           <div className="flex items-center justify-between mb-1">
@@ -3126,8 +3122,8 @@ export function PrintTemplates() {
                           type="button"
                           onClick={() => updateTemplateProperty("paperSize", "80mm")}
                           className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex flex-col items-center gap-0.5 ${activeTemplate.paperSize !== "58mm"
-                              ? "border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-500"
-                              : "border-border bg-card text-foreground hover:bg-muted"
+                            ? "border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-500"
+                            : "border-border bg-card text-foreground hover:bg-muted"
                             }`}
                         >
                           <span>80mm</span>
@@ -3137,8 +3133,8 @@ export function PrintTemplates() {
                           type="button"
                           onClick={() => updateTemplateProperty("paperSize", "58mm")}
                           className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex flex-col items-center gap-0.5 ${activeTemplate.paperSize === "58mm"
-                              ? "border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-500"
-                              : "border-border bg-card text-foreground hover:bg-muted"
+                            ? "border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-500"
+                            : "border-border bg-card text-foreground hover:bg-muted"
                             }`}
                         >
                           <span>58mm</span>
@@ -3248,8 +3244,8 @@ export function PrintTemplates() {
                               type="button"
                               onClick={() => handleSelectTemplate(tpl)}
                               className={`w-full text-left p-2.5 rounded-xl border transition-all cursor-pointer ${isSelected
-                                  ? "border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 ring-1 ring-indigo-500/40"
-                                  : "border-border/60 bg-background hover:border-indigo-300 hover:bg-muted/40"
+                                ? "border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 ring-1 ring-indigo-500/40"
+                                : "border-border/60 bg-background hover:border-indigo-300 hover:bg-muted/40"
                                 }`}
                             >
                               <div className="flex items-start gap-2.5">
@@ -3379,8 +3375,8 @@ export function PrintTemplates() {
                             onClick={() => handleSelectThemeStoreItem(item)}
                             title={item.description}
                             className={`relative aspect-[4/5] rounded-lg border p-1 flex flex-col justify-between transition-all overflow-hidden cursor-pointer ${isSelected
-                                ? "border-indigo-600 ring-1 ring-indigo-500/40 shadow-sm"
-                                : "border-border/60 hover:border-indigo-300"
+                              ? "border-indigo-600 ring-1 ring-indigo-500/40 shadow-sm"
+                              : "border-border/60 hover:border-indigo-300"
                               }`}
                           >
                             <div className={`w-full h-full rounded bg-gradient-to-br ${item.previewGradient} flex flex-col justify-between p-0.5`}>
@@ -3484,8 +3480,8 @@ export function PrintTemplates() {
                           key={sub.id}
                           onClick={() => setBarcodeSubTab(sub.id as any)}
                           className={`px-2.5 py-1.5 rounded-lg font-bold transition whitespace-nowrap ${barcodeSubTab === sub.id
-                              ? "bg-blue-600 text-white shadow-xs"
-                              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                            ? "bg-blue-600 text-white shadow-xs"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted"
                             }`}
                         >
                           {sub.label}
@@ -3699,8 +3695,8 @@ export function PrintTemplates() {
                                 updateTemplateProperty("showMrpStrike", nextVal);
                               }}
                               className={`px-3 py-1 rounded-lg text-xs font-black border transition ${selectedBarcodeElement.showStrike === false || selectedBarcodeElement.textDecoration === "none"
-                                  ? "bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700"
-                                  : "bg-red-600 text-white border-red-600 shadow-2xs"
+                                ? "bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700"
+                                : "bg-red-600 text-white border-red-600 shadow-2xs"
                                 }`}
                             >
                               {selectedBarcodeElement.showStrike === false || selectedBarcodeElement.textDecoration === "none"
@@ -3730,8 +3726,8 @@ export function PrintTemplates() {
                                 key={pt.id}
                                 onClick={() => setMbPrinterType(pt.id)}
                                 className={`flex-1 flex items-center gap-2 p-2.5 rounded-xl border-2 cursor-pointer transition-all ${mbPrinterType === pt.id
-                                    ? "border-blue-500 bg-blue-50/60 dark:bg-blue-950/40 shadow-xs"
-                                    : "border-border/60 bg-card hover:border-border"
+                                  ? "border-blue-500 bg-blue-50/60 dark:bg-blue-950/40 shadow-xs"
+                                  : "border-border/60 bg-card hover:border-border"
                                   }`}
                               >
                                 <input
@@ -3900,8 +3896,8 @@ export function PrintTemplates() {
                                     onClick={handleToggleBold}
                                     disabled={!isVisible || !elBlock}
                                     className={`h-7 w-7 flex items-center justify-center rounded-lg border text-xs transition disabled:opacity-30 disabled:cursor-not-allowed ${isBold
-                                        ? "bg-blue-600 border-blue-600 text-white font-black shadow-xs"
-                                        : "bg-background border-border text-muted-foreground hover:bg-muted font-bold"
+                                      ? "bg-blue-600 border-blue-600 text-white font-black shadow-xs"
+                                      : "bg-background border-border text-muted-foreground hover:bg-muted font-bold"
                                       }`}
                                   >
                                     B
@@ -3993,8 +3989,8 @@ export function PrintTemplates() {
                                     )
                                   }
                                   className={`h-7 w-7 flex items-center justify-center rounded-lg border text-xs transition ${cf.bold
-                                      ? "bg-blue-600 border-blue-600 text-white font-black shadow-xs"
-                                      : "bg-background border-border text-muted-foreground hover:bg-muted font-bold"
+                                    ? "bg-blue-600 border-blue-600 text-white font-black shadow-xs"
+                                    : "bg-background border-border text-muted-foreground hover:bg-muted font-bold"
                                     }`}
                                 >
                                   B
@@ -4259,8 +4255,8 @@ export function PrintTemplates() {
                                 key={el.id}
                                 onClick={() => setSelectedBarcodeElementKey(el.id)}
                                 className={`flex items-center justify-between p-1.5 rounded-lg text-xs cursor-pointer border transition ${isSel
-                                    ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200 font-bold shadow-xs"
-                                    : "border-border/60 bg-background hover:bg-muted/40 text-foreground"
+                                  ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200 font-bold shadow-xs"
+                                  : "border-border/60 bg-background hover:bg-muted/40 text-foreground"
                                   }`}
                               >
                                 <div className="flex items-center gap-1.5 min-w-0">
@@ -4342,8 +4338,8 @@ export function PrintTemplates() {
                                 })
                               }
                               className={`p-1.5 rounded text-xs font-black transition ${selectedBarcodeElement?.fontWeight === "bold" || selectedBarcodeElement?.fontWeight === "900"
-                                  ? "bg-blue-600 text-white shadow-2xs"
-                                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                                ? "bg-blue-600 text-white shadow-2xs"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted"
                                 }`}
                               title="Bold"
                             >
@@ -4358,8 +4354,8 @@ export function PrintTemplates() {
                                 })
                               }
                               className={`p-1.5 rounded text-xs font-black transition ${selectedBarcodeElement?.fontStyle === "italic"
-                                  ? "bg-blue-600 text-white shadow-2xs"
-                                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                                ? "bg-blue-600 text-white shadow-2xs"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted"
                                 }`}
                               title="Italic"
                             >
@@ -4374,8 +4370,8 @@ export function PrintTemplates() {
                                 })
                               }
                               className={`p-1.5 rounded text-xs font-black transition ${selectedBarcodeElement?.textDecoration === "underline"
-                                  ? "bg-blue-600 text-white shadow-2xs"
-                                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                                ? "bg-blue-600 text-white shadow-2xs"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted"
                                 }`}
                               title="Underline"
                             >
@@ -4398,9 +4394,9 @@ export function PrintTemplates() {
                                 }
                               }}
                               className={`p-1.5 rounded text-xs font-black transition ${selectedBarcodeElement?.textDecoration === "line-through" ||
-                                  selectedBarcodeElement?.showStrike === true
-                                  ? "bg-blue-600 text-white shadow-2xs"
-                                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                                selectedBarcodeElement?.showStrike === true
+                                ? "bg-blue-600 text-white shadow-2xs"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted"
                                 }`}
                               title="Strike-through (Line-Through)"
                             >
@@ -4415,8 +4411,8 @@ export function PrintTemplates() {
                                 })
                               }
                               className={`px-2 py-1 rounded text-[10px] font-black uppercase transition ${selectedBarcodeElement?.textTransform === "uppercase"
-                                  ? "bg-blue-600 text-white shadow-2xs"
-                                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                                ? "bg-blue-600 text-white shadow-2xs"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted"
                                 }`}
                               title="UPPERCASE"
                             >
@@ -4562,8 +4558,8 @@ export function PrintTemplates() {
                                 }
                               }}
                               className={`px-3 py-1 rounded-lg text-xs font-black border transition ${activeTemplate.showMrpStrike === false
-                                  ? "bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700"
-                                  : "bg-red-600 text-white border-red-600 shadow-2xs"
+                                ? "bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700"
+                                : "bg-red-600 text-white border-red-600 shadow-2xs"
                                 }`}
                             >
                               {activeTemplate.showMrpStrike === false ? "Strike-through: OFF" : "Strike-through: ON"}
@@ -4585,8 +4581,8 @@ export function PrintTemplates() {
                                 key={s.id}
                                 onClick={() => updateTemplateProperty("spBadgeStyle", s.id)}
                                 className={`px-2 py-1 rounded text-xs font-bold border transition ${(activeTemplate.spBadgeStyle || "none") === s.id
-                                    ? "bg-blue-600 text-white border-blue-600"
-                                    : "border-border text-foreground hover:bg-muted"
+                                  ? "bg-blue-600 text-white border-blue-600"
+                                  : "border-border text-foreground hover:bg-muted"
                                   }`}
                               >
                                 {s.label}
@@ -4607,8 +4603,8 @@ export function PrintTemplates() {
                                 key={c.id}
                                 onClick={() => updateTemplateProperty("mrpStrikeColor", c.id)}
                                 className={`px-2 py-1 rounded text-xs font-bold border transition ${(activeTemplate.mrpStrikeColor || "gray") === c.id
-                                    ? "bg-blue-600 text-white border-blue-600"
-                                    : "border-border text-foreground hover:bg-muted"
+                                  ? "bg-blue-600 text-white border-blue-600"
+                                  : "border-border text-foreground hover:bg-muted"
                                   }`}
                               >
                                 {c.label}
@@ -4710,247 +4706,247 @@ export function PrintTemplates() {
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground">
-                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                            <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                              <input
-                                type="checkbox"
-                                checked={!!activeTemplate.fields.showItemTable}
-                                onChange={() => toggleElementField("showItemTable")}
-                                checked={activeTemplate.fields?.showItemIndex !== false}
-                                onChange={() => toggleElementField("showItemIndex")}
-                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                              />
-                              <span>Item Table</span>
-                              <span>S.No / #</span>
-                            </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
+                          <input
+                            type="checkbox"
+                            checked={activeTemplate.fields?.showItemIndex !== false}
+                            onChange={() => toggleElementField("showItemIndex")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>S.No / #</span>
+                        </label>
 
-                            <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground">
-                              <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                                <input
-                                  type="checkbox"
-                                  checked={!!activeTemplate.fields.showHSN}
-                                  onChange={() => toggleElementField("showHSN")}
-                                  checked={activeTemplate.fields?.showProductName !== false}
-                                  onChange={() => toggleElementField("showProductName")}
-                                  className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                />
-                                <span>HSN / SAC Code</span>
-                                <span>Item Name</span>
-                              </label>
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
+                          <input
+                            type="checkbox"
+                            checked={activeTemplate.fields?.showProductName !== false}
+                            onChange={() => toggleElementField("showProductName")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>Item Name</span>
+                        </label>
 
-                              <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground">
-                                <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                                  <input
-                                    type="checkbox"
-                                    checked={!!activeTemplate.fields.showMRP}
-                                    onChange={() => toggleElementField("showMRP")}
-                                    checked={activeTemplate.fields?.showItemDescription !== false}
-                                    onChange={() => toggleElementField("showItemDescription")}
-                                    className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                  />
-                                  <span>MRP Column</span>
-                                  <span>Description</span>
-                                </label>
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
+                          <input
+                            type="checkbox"
+                            checked={activeTemplate.fields?.showItemDescription !== false}
+                            onChange={() => toggleElementField("showItemDescription")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>Description</span>
+                        </label>
 
-                                <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground">
-                                  <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                                    <input
-                                      type="checkbox"
-                                      checked={!!activeTemplate.fields.showItemDescription}
-                                      onChange={() => toggleElementField("showItemDescription")}
-                                      checked={activeTemplate.fields?.showHSN !== false}
-                                      onChange={() => toggleElementField("showHSN")}
-                                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                    />
-                                    <span>Item Description</span>
-                                    <span>HSN / SAC</span>
-                                  </label>
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
+                          <input
+                            type="checkbox"
+                            checked={activeTemplate.fields?.showHSN !== false}
+                            onChange={() => toggleElementField("showHSN")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>HSN / SAC</span>
+                        </label>
 
-                                  <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground">
-                                    <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                                      <input
-                                        type="checkbox"
-                                        checked={!!activeTemplate.fields.showTaxSplit}
-                                        onChange={() => toggleElementField("showTaxSplit")}
-                                        checked={activeTemplate.fields?.showBatchNumber !== false}
-                                        onChange={() => toggleElementField("showBatchNumber")}
-                                        className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                      />
-                                      <span>Tax / GST % Split</span>
-                                      <span>Batch No</span>
-                                    </label>
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
+                          <input
+                            type="checkbox"
+                            checked={activeTemplate.fields?.showBatchNumber !== false}
+                            onChange={() => toggleElementField("showBatchNumber")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>Batch No</span>
+                        </label>
 
-                                    <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground">
-                                      <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                                        <input
-                                          type="checkbox"
-                                          checked={!!activeTemplate.fields.showProductImage}
-                                          onChange={() => toggleElementField("showProductImage")}
-                                          checked={activeTemplate.fields?.showExpMfgDates !== false}
-                                          onChange={() => toggleElementField("showExpMfgDates")}
-                                          className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                        />
-                                        <span>Product Image</span>
-                                        <span>Mfg / Exp Date</span>
-                                      </label>
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
+                          <input
+                            type="checkbox"
+                            checked={activeTemplate.fields?.showExpMfgDates !== false}
+                            onChange={() => toggleElementField("showExpMfgDates")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>Mfg / Exp Date</span>
+                        </label>
 
-                                      <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground">
-                                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                                          <input
-                                            type="checkbox"
-                                            checked={!!activeTemplate.fields.showSKU}
-                                            checked={activeTemplate.fields?.showSKU !== false}
-                                            onChange={() => toggleElementField("showSKU")}
-                                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                          />
-                                          <span>SKU / Code</span>
-                                        </label>
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
+                          <input
+                            type="checkbox"
+                            checked={activeTemplate.fields?.showSKU !== false}
+                            onChange={() => toggleElementField("showSKU")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>SKU / Code</span>
+                        </label>
 
-                                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground">
-                                          <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                                            <input
-                                              type="checkbox"
-                                              checked={!!activeTemplate.fields.showPartyBalance}
-                                              onChange={() => toggleElementField("showPartyBalance")}
-                                              checked={activeTemplate.fields?.showSecondaryUnit !== false}
-                                              onChange={() => toggleElementField("showSecondaryUnit")}
-                                              className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                            />
-                                            <span>Party Balance</span>
-                                            <span>UOM / Unit</span>
-                                          </label>
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
+                          <input
+                            type="checkbox"
+                            checked={activeTemplate.fields?.showSecondaryUnit !== false}
+                            onChange={() => toggleElementField("showSecondaryUnit")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>UOM / Unit</span>
+                        </label>
 
-                                          <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground">
-                                            <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                                              <input
-                                                type="checkbox"
-                                                checked={!!activeTemplate.fields.showSignature}
-                                                onChange={() => toggleElementField("showSignature")}
-                                                checked={activeTemplate.fields?.showMRP !== false}
-                                                onChange={() => toggleElementField("showMRP")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span>Signature Box</span>
-                                              <span>MRP</span>
-                                            </label>
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
+                          <input
+                            type="checkbox"
+                            checked={activeTemplate.fields?.showMRP !== false}
+                            onChange={() => toggleElementField("showMRP")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>MRP</span>
+                        </label>
 
-                                            <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.fields?.showItemRate !== false}
-                                                onChange={() => toggleElementField("showItemRate")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span>Rate / Price</span>
-                                            </label>
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
+                          <input
+                            type="checkbox"
+                            checked={activeTemplate.fields?.showItemRate !== false}
+                            onChange={() => toggleElementField("showItemRate")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>Rate / Price</span>
+                        </label>
 
-                                            <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.fields?.showDiscountCol !== false}
-                                                onChange={() => toggleElementField("showDiscountCol")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span>Discount</span>
-                                            </label>
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
+                          <input
+                            type="checkbox"
+                            checked={activeTemplate.fields?.showDiscountCol !== false}
+                            onChange={() => toggleElementField("showDiscountCol")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>Discount</span>
+                        </label>
 
-                                            <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.fields?.showGstRateCol !== false}
-                                                onChange={() => toggleElementField("showGstRateCol")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span>GST Rate %</span>
-                                            </label>
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
+                          <input
+                            type="checkbox"
+                            checked={activeTemplate.fields?.showGstRateCol !== false}
+                            onChange={() => toggleElementField("showGstRateCol")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>GST Rate %</span>
+                        </label>
 
-                                            <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.fields?.showItemQty !== false}
-                                                onChange={() => toggleElementField("showItemQty")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span>Quantity</span>
-                                            </label>
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
+                          <input
+                            type="checkbox"
+                            checked={activeTemplate.fields?.showItemQty !== false}
+                            onChange={() => toggleElementField("showItemQty")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>Quantity</span>
+                        </label>
 
-                                            <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.fields?.showItemAmount !== false}
-                                                onChange={() => toggleElementField("showItemAmount")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span>Total Amount</span>
-                                            </label>
-                                          </div>
-                                        </div>
+                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
+                          <input
+                            type="checkbox"
+                            checked={activeTemplate.fields?.showItemAmount !== false}
+                            onChange={() => toggleElementField("showItemAmount")}
+                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>Total Amount</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
 
-                                        {/* Template Elements (14 Reorderable & Toggleable Elements) */}
-                                        <div className="space-y-2 pt-2 border-t border-border/50">
-                                          <div>
-                                            <h4 className="text-xs font-bold text-foreground">{t("Template Elements", "Template Elements")}</h4>
-                                            <p className="text-[10.5px] text-muted-foreground">{t("Drag to reorder or enable/disable elements", "Drag to reorder or enable/disable elements")}</p>
-                                          </div>
+                  {/* Template Elements (14 Reorderable & Toggleable Elements) */}
+                  <div className="space-y-2 pt-2 border-t border-border/50">
+                    <div>
+                      <h4 className="text-xs font-bold text-foreground">{t("Template Elements", "Template Elements")}</h4>
+                      <p className="text-[10.5px] text-muted-foreground">{t("Drag to reorder or enable/disable elements", "Drag to reorder or enable/disable elements")}</p>
+                    </div>
 
-                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                            <ElementToggleRow
-                                              icon={ImageIcon}
-                                              label="Store Header & Logo"
-                                              checked={!!activeTemplate.fields.showLogo}
-                                              onChange={() => toggleElementField("showLogo")}
-                                            />
-                                            <ElementToggleRow
-                                              icon={Building2}
-                                              label="Company Details"
-                                              checked={!!activeTemplate.fields.showCompanyDetails}
-                                              onChange={() => toggleElementField("showCompanyDetails")}
-                                            />
-                                            <ElementToggleRow
-                                              icon={Receipt}
-                                              label="Invoice Details (No, Date, Bill To)"
-                                              checked={!!activeTemplate.fields.showInvoiceDetails}
-                                              onChange={() => toggleElementField("showInvoiceDetails")}
-                                            />
-                                            <ElementToggleRow
-                                              icon={ScanBarcode}
-                                              label="Barcode"
-                                              checked={!!activeTemplate.fields.showBarcode}
-                                              onChange={() => toggleElementField("showBarcode")}
-                                            />
-                                            <ElementToggleRow
-                                              icon={QrCode}
-                                              label="QR Code"
-                                              checked={!!activeTemplate.fields.showQR}
-                                              onChange={() => toggleElementField("showQR")}
-                                            />
-                                            <ElementToggleRow
-                                              icon={User}
-                                              label="Customer Details"
-                                              checked={!!activeTemplate.fields.showCustomerDetails}
-                                              onChange={() => toggleElementField("showCustomerDetails")}
-                                            />
-                                            <ElementToggleRow
-                                              icon={CreditCard}
-                                              label="Payment Details"
-                                              checked={!!activeTemplate.fields.showPaymentDetails}
-                                              onChange={() => toggleElementField("showPaymentDetails")}
-                                            />
-                                            <ElementToggleRow
-                                              icon={FileText}
-                                              label="Terms & Conditions"
-                                              checked={!!activeTemplate.fields.showTerms}
-                                              onChange={() => toggleElementField("showTerms")}
-                                            />
-                                          </div>
-                                        </div>
-
-                                      </div>
-
-                                    </div>
-          )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <ElementToggleRow
+                        icon={ImageIcon}
+                        label="Store Header & Logo"
+                        checked={!!activeTemplate.fields.showLogo}
+                        onChange={() => toggleElementField("showLogo")}
+                      />
+                      <ElementToggleRow
+                        icon={Building2}
+                        label="Company Details"
+                        checked={!!activeTemplate.fields.showCompanyDetails}
+                        onChange={() => toggleElementField("showCompanyDetails")}
+                      />
+                      <ElementToggleRow
+                        icon={Receipt}
+                        label="Invoice Details (No, Date, Bill To)"
+                        checked={!!activeTemplate.fields.showInvoiceDetails}
+                        onChange={() => toggleElementField("showInvoiceDetails")}
+                      />
+                      <ElementToggleRow
+                        icon={TableIcon}
+                        label="Item Table"
+                        checked={!!activeTemplate.fields.showItemTable}
+                        onChange={() => toggleElementField("showItemTable")}
+                      />
+                      <ElementToggleRow
+                        icon={ScanBarcode}
+                        label="Barcode"
+                        checked={!!activeTemplate.fields.showBarcode}
+                        onChange={() => toggleElementField("showBarcode")}
+                      />
+                      <ElementToggleRow
+                        icon={QrCode}
+                        label="QR Code"
+                        checked={!!activeTemplate.fields.showQR}
+                        onChange={() => toggleElementField("showQR")}
+                      />
+                      <ElementToggleRow
+                        icon={User}
+                        label="Customer Details"
+                        checked={!!activeTemplate.fields.showCustomerDetails}
+                        onChange={() => toggleElementField("showCustomerDetails")}
+                      />
+                      <ElementToggleRow
+                        icon={CreditCard}
+                        label="Payment Details"
+                        checked={!!activeTemplate.fields.showPaymentDetails}
+                        onChange={() => toggleElementField("showPaymentDetails")}
+                      />
+                      <ElementToggleRow
+                        icon={Calculator}
+                        label="Tax / GST % Split"
+                        checked={!!activeTemplate.fields.showTaxSplit}
+                        onChange={() => toggleElementField("showTaxSplit")}
+                      />
+                      <ElementToggleRow
+                        icon={FileText}
+                        label="Terms & Conditions"
+                        checked={!!activeTemplate.fields.showTerms}
+                        onChange={() => toggleElementField("showTerms")}
+                      />
+                      <ElementToggleRow
+                        icon={ImageIcon}
+                        label="Product Image in Items"
+                        checked={!!activeTemplate.fields.showProductImage}
+                        onChange={() => toggleElementField("showProductImage")}
+                      />
+                      <ElementToggleRow
+                        icon={CreditCard}
+                        label="Party Balance Summary"
+                        checked={!!activeTemplate.fields.showPartyBalance}
+                        onChange={() => toggleElementField("showPartyBalance")}
+                      />
+                      <ElementToggleRow
+                        icon={PenTool}
+                        label="Signature Box"
+                        checked={!!activeTemplate.fields.showSignature}
+                        onChange={() => toggleElementField("showSignature")}
+                      />
+                      <ElementToggleRow
+                        icon={HeartHandshake}
+                        label="Thank You Note & Footer"
+                        checked={!!activeTemplate.fields.showThankYou}
+                        onChange={() => toggleElementField("showThankYou")}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
                                     {/* ── TAB 2: CONTENT ── */}
                                     {activeEditorTab === "content" && isThermalTemplate ? (
@@ -6376,8 +6372,8 @@ export function PrintTemplates() {
                                                 onClick={() => updateTemplateProperty("primaryColor", swatch.value)}
                                                 title={swatch.label}
                                                 className={`h-7 w-7 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center ${activeTemplate.primaryColor === swatch.value
-                                                    ? "border-foreground scale-110 shadow-md ring-2 ring-indigo-500/30"
-                                                    : "border-transparent hover:scale-105"
+                                                  ? "border-foreground scale-110 shadow-md ring-2 ring-indigo-500/30"
+                                                  : "border-transparent hover:scale-105"
                                                   }`}
                                                 style={{ backgroundColor: swatch.value }}
                                               >
@@ -6468,8 +6464,8 @@ export function PrintTemplates() {
                                                 <button
                                                   onClick={() => updateTemplateProperty("orientation", "portrait")}
                                                   className={`flex-1 py-1 text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${activeTemplate.orientation === "portrait"
-                                                      ? "bg-indigo-600 text-white shadow-xs"
-                                                      : "text-muted-foreground hover:text-foreground"
+                                                    ? "bg-indigo-600 text-white shadow-xs"
+                                                    : "text-muted-foreground hover:text-foreground"
                                                     }`}
                                                 >
                                                   Portrait
@@ -6477,8 +6473,8 @@ export function PrintTemplates() {
                                                 <button
                                                   onClick={() => updateTemplateProperty("orientation", "landscape")}
                                                   className={`flex-1 py-1 text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${activeTemplate.orientation === "landscape"
-                                                      ? "bg-indigo-600 text-white shadow-xs"
-                                                      : "text-muted-foreground hover:text-foreground"
+                                                    ? "bg-indigo-600 text-white shadow-xs"
+                                                    : "text-muted-foreground hover:text-foreground"
                                                     }`}
                                                 >
                                                   Landscape
@@ -6832,8 +6828,8 @@ export function PrintTemplates() {
                                                   type="button"
                                                   onClick={() => setSettingsActiveSubTab(tab.id as any)}
                                                   className={`px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${settingsActiveSubTab === tab.id
-                                                      ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs"
-                                                      : "text-muted-foreground hover:text-foreground"
+                                                    ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs"
+                                                    : "text-muted-foreground hover:text-foreground"
                                                     }`}
                                                 >
                                                   {tab.label}
@@ -7257,8 +7253,8 @@ export function PrintTemplates() {
                                               type="button"
                                               onClick={() => setShowPrintPreview(false)}
                                               className={`px-2.5 py-1.5 transition-colors cursor-pointer ${!showPrintPreview
-                                                  ? "bg-indigo-600 text-white font-bold"
-                                                  : "bg-muted/60 text-muted-foreground hover:text-foreground"
+                                                ? "bg-indigo-600 text-white font-bold"
+                                                : "bg-muted/60 text-muted-foreground hover:text-foreground"
                                                 }`}
                                               title="Edit elements, drag, resize & style"
                                             >
@@ -7268,8 +7264,8 @@ export function PrintTemplates() {
                                               type="button"
                                               onClick={() => setShowPrintPreview(true)}
                                               className={`px-2.5 py-1.5 transition-colors cursor-pointer ${showPrintPreview
-                                                  ? "bg-emerald-600 text-white font-bold"
-                                                  : "bg-muted/60 text-muted-foreground hover:text-foreground"
+                                                ? "bg-emerald-600 text-white font-bold"
+                                                : "bg-muted/60 text-muted-foreground hover:text-foreground"
                                                 }`}
                                               title="See exact output as it will be printed by the printer"
                                             >
@@ -7947,7 +7943,6 @@ export function PrintTemplates() {
                           : "w-full max-w-[800px]"
                           : isA5
                           ? "w-full max-w-[559px] min-h-[794px]"
-                          ? "w-full max-w-[800px]"
                           : isInvoiceDoc || template.paperSize === "A4"
                           ? "w-full max-w-[794px] min-h-[1080px]"
                           : template.paperSize === "A5"
@@ -9370,14 +9365,14 @@ export function PrintTemplates() {
                             {f.showCustomerDetails && (
                               <div
                                 className={`grid grid-cols-3 gap-1.5 p-2 rounded-lg border z-10 relative ${isDecorativeTheme
-                                    ? "bg-amber-500/5 border-amber-300/40"
-                                    : isModern
-                                      ? "bg-slate-50 border-slate-100"
-                                      : isLuxury
-                                        ? "bg-amber-50/40 border-amber-200/60"
-                                        : isTally
-                                          ? "bg-transparent border-slate-900"
-                                          : "bg-black/[0.02] border-slate-200/60"
+                                  ? "bg-amber-500/5 border-amber-300/40"
+                                  : isModern
+                                    ? "bg-slate-50 border-slate-100"
+                                    : isLuxury
+                                      ? "bg-amber-50/40 border-amber-200/60"
+                                      : isTally
+                                        ? "bg-transparent border-slate-900"
+                                        : "bg-black/[0.02] border-slate-200/60"
                                   }`}
                               >
                                 <div>
@@ -9483,8 +9478,8 @@ export function PrintTemplates() {
                             {/* Live Scannable Invoice Barcode & Scannable QR Code */}
                             {(f.showBarcode || f.showQR || (template.showGoogleReviewQR !== false && template.googleReviewUrl)) && (
                               <div className={`flex items-center justify-center gap-4 p-2 rounded-lg my-1 border ${isDecorativeTheme
-                                  ? "bg-white/60 border-amber-300/40"
-                                  : "bg-slate-50/80 border-slate-200"
+                                ? "bg-white/60 border-amber-300/40"
+                                : "bg-slate-50/80 border-slate-200"
                                 }`}>
                                 {f.showBarcode && (
                                   <div className="flex flex-col items-center">
@@ -9492,10 +9487,8 @@ export function PrintTemplates() {
                                       code="INV-2026/0822"
                                       format={template.barcodeSymbology || "Code-128"}
                                       height={32}
-                                      disp
-... [truncated for diff preview]
-                                    displayValue={true}
-                />
+                                      displayValue={true}
+                                    />
                                   </div>
                                 )}
                                 {f.showQR && (
@@ -9538,10 +9531,10 @@ export function PrintTemplates() {
                             <div className="flex justify-between items-start pt-1 z-10 relative">
                               {f.showPaymentDetails !== false && (
                                 <div className={`p-2 rounded-lg border max-w-[150px] ${isDecorativeTheme
-                                    ? "bg-amber-500/5 border-amber-300/40"
-                                    : isTally
-                                      ? "border-slate-900 bg-transparent"
-                                      : "border-slate-100 bg-slate-50/60"
+                                  ? "bg-amber-500/5 border-amber-300/40"
+                                  : isTally
+                                    ? "border-slate-900 bg-transparent"
+                                    : "border-slate-100 bg-slate-50/60"
                                   }`}>
                                   <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">
                                     BANK PAYMENT INFO
@@ -9947,8 +9940,8 @@ export function PrintTemplates() {
                                     <div
                                       key={item.id}
                                       className={`flex flex-col justify-between p-4 rounded-2xl border transition-all ${isSelected
-                                          ? "border-indigo-600 bg-indigo-50/20 ring-2 ring-indigo-500/20 shadow-sm"
-                                          : "border-border/80 bg-card hover:border-indigo-400 hover:bg-muted/20"
+                                        ? "border-indigo-600 bg-indigo-50/20 ring-2 ring-indigo-500/20 shadow-sm"
+                                        : "border-border/80 bg-card hover:border-indigo-400 hover:bg-muted/20"
                                         }`}
                                     >
                                       <div>
@@ -9977,8 +9970,8 @@ export function PrintTemplates() {
                                         <button
                                           onClick={() => onSelect(item)}
                                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${isSelected
-                                              ? "bg-indigo-600 text-white"
-                                              : "border border-border hover:bg-muted text-foreground"
+                                            ? "bg-indigo-600 text-white"
+                                            : "border border-border hover:bg-muted text-foreground"
                                             }`}
                                         >
                                           {isSelected ? "Active Template" : "Select & Customize"}
