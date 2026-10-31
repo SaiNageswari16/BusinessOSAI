@@ -124,6 +124,7 @@ const defaultFormData = () => ({
   discount_amount: "" as any, // Disc1(Rs)
   sales_measuring_unit: "",
   hsn_code: "",
+  imei: "",
 
   // Multi-tier rates
   wholesale_price: "" as any,
@@ -2152,6 +2153,7 @@ export function Products() {
         // Extended Identity & Barcodes
         unique_item_name: (currentForm as any).unique_item_name || "",
         secondary_barcode: (currentForm as any).secondary_barcode || "",
+        imei: String((currentForm as any).imei || "").trim(),
         item_code: (currentForm as any).item_code || "",
         sub_category: currentForm.sub_category || "",
         display_index: (currentForm as any).display_index || "",
@@ -2218,6 +2220,7 @@ export function Products() {
         base_name: currentForm.base_name || null,
         product_base_code: currentForm.product_base_code || null,
         size_l_kg: currentForm.size_l_kg || null,
+        imei: String((currentForm as any).imei || "").trim() || null,
         purchase_price: Number(currentForm.purchase_price) || 0,
         mrp: Number(currentForm.mrp) || 0,
         selling_price: Number(currentForm.selling_price) || 0,
@@ -2282,6 +2285,7 @@ export function Products() {
       sku: product.sku || "",
       barcode: product.barcode || "",
       secondary_barcode: specs.secondary_barcode || (product as any).secondary_barcode || "",
+      imei: (product as any).imei || specs.imei || "",
       category_id: product.category_id || "",
       category: product.category_name || product.category || specs.category || "",
       sub_category: specs.sub_category || (product as any).sub_category || "",
@@ -3369,6 +3373,29 @@ export function Products() {
                   </div>
 
 
+
+                  {/* IMEI / Serial No (optional) */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
+                        IMEI / Serial No <span className="normal-case font-semibold text-slate-400">(optional)</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="imei"
+                        value={(currentForm as any).imei || ""}
+                        onChange={handleFormChange}
+                        maxLength={100}
+                        placeholder="e.g. 356938035643809 — for mobiles, electronics & serialised items"
+                        className="w-full h-10 px-3.5 text-sm font-mono rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <p className="text-[10px] text-slate-500 leading-snug">
+                        Saved on the product and copied to its batch &amp; traceability records. Searchable in Batches and Traceability.
+                      </p>
+                    </div>
+                  </div>
 
                   {/* Category, Brand, UOM, Units */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -5504,6 +5531,17 @@ const getFieldAlignment = (id: string): "text-left" | "text-center" | "text-righ
               return (
                 <td key={colId} className={`px-4 py-2.5 font-mono text-[11px] text-slate-600 whitespace-nowrap ${alignClass}`}>
                   {specs.secondary_barcode || (product as any).secondary_barcode || "-"}
+                </td>
+              );
+
+            case "imei":
+              return (
+                <td key={colId} className={`px-4 py-2.5 whitespace-nowrap ${alignClass}`}>
+                  {((product as any).imei || specs.imei) ? (
+                    <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-sky-50 text-sky-800 border border-sky-200">
+                      {(product as any).imei || specs.imei}
+                    </span>
+                  ) : "-"}
                 </td>
               );
 

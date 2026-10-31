@@ -781,6 +781,16 @@ async def migrate():
         except Exception as e:
             logger.info(f"marketplace_theme_settings is_published column note: {e}")
 
+    # ── Optional IMEI / Serial No columns (Products, Batches, Serials, Traceability) ──
+    for imei_table in ("erp_products", "erp_inventory_batches", "erp_inventory_serials", "erp_traceability_events"):
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(f"ALTER TABLE {imei_table} ADD COLUMN IF NOT EXISTS imei VARCHAR(100)"))
+                await conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{imei_table}_imei ON {imei_table} (imei)"))
+                logger.info(f"Ensured 'imei' column on '{imei_table}'.")
+            except Exception as e:
+                logger.info(f"{imei_table} imei column note: {e}")
+
 if __name__ == "__main__":
     asyncio.run(migrate())
 

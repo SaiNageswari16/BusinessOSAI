@@ -69,6 +69,7 @@ async def list_batches(
         q = q.where(
             (InventoryBatch.batch_number.ilike(f"%{search}%"))
             | (InventoryBatch.product_name.ilike(f"%{search}%"))
+            | (InventoryBatch.imei.ilike(f"%{search}%"))
         )
     q = q.order_by(InventoryBatch.created_at.desc())
     result = await db.execute(q)
@@ -109,6 +110,7 @@ async def create_batch(
         ev = TraceabilityEvent(
             event_type="received",
             batch_id=batch.id,
+            imei=batch.imei,
             destination_location=batch.warehouse_name or batch.location,
             destination_warehouse_id=batch.warehouse_id,
             party_type="supplier",
@@ -232,6 +234,7 @@ async def list_serials(
         q = q.where(
             (InventorySerial.serial_number.ilike(f"%{search}%"))
             | (InventorySerial.product_name.ilike(f"%{search}%"))
+            | (InventorySerial.imei.ilike(f"%{search}%"))
         )
     q = q.order_by(InventorySerial.created_at.desc())
     result = await db.execute(q)
@@ -258,6 +261,7 @@ async def create_serial(
         ev = TraceabilityEvent(
             event_type="received",
             serial_id=serial.id,
+            imei=serial.imei,
             batch_id=serial.batch_id,
             destination_location=serial.warehouse_name or serial.location,
             destination_warehouse_id=serial.warehouse_id,

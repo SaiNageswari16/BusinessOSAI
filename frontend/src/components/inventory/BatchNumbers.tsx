@@ -698,6 +698,12 @@ function BatchDetailsDrawer({
                 <span>Barcode: <strong className="font-mono">{batch.barcode}</strong></span>
               </div>
             )}
+            {batch.imei && (
+              <div className="text-xs text-slate-600 flex items-center gap-1.5">
+                <span className="text-[10px] uppercase font-bold text-slate-400">IMEI:</span>
+                <strong className="font-mono text-sky-800 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">{batch.imei}</strong>
+              </div>
+            )}
           </div>
 
           {/* Pricing & Inventory Valuation */}
@@ -875,6 +881,7 @@ function BatchModal({
       expiry_date: new Date(Date.now() + 86400000 * 365).toISOString().slice(0, 10),
       qc_status: "Passed",
       barcode: "",
+      imei: "",
       notes: "",
       status: "Active",
     }
@@ -911,6 +918,7 @@ function BatchModal({
         mrp: mrpVal > 0 ? mrpVal : f.mrp,
         tax_percent: tax > 0 ? tax : f.tax_percent,
         barcode: (p as any).barcode || f.barcode,
+        imei: (p as any).imei || f.imei,
       }));
     } else {
       set("product_id", productId || null);
@@ -1072,6 +1080,18 @@ function BatchModal({
                   onChange={(e) => set("barcode", e.target.value)}
                   className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
                   placeholder="8901234567890"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  IMEI / Serial No (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={form.imei || ""}
+                  onChange={(e) => set("imei", e.target.value)}
+                  className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                  placeholder="e.g. 356938035643809"
                 />
               </div>
             </div>
@@ -1498,6 +1518,7 @@ export function BatchNumbers({ onSelectForTrace }: { onSelectForTrace?: (id: str
         (b.product_name || "").toLowerCase().includes(q) ||
         (b.warehouse_name || "").toLowerCase().includes(q) ||
         (b.sku || "").toLowerCase().includes(q) ||
+        (b.imei || "").toLowerCase().includes(q) ||
         (b.location || "").toLowerCase().includes(q) ||
         (b.supplier || "").toLowerCase().includes(q)
       );
@@ -1833,6 +1854,13 @@ export function BatchNumbers({ onSelectForTrace }: { onSelectForTrace?: (id: str
                           <Hash className="w-3.5 h-3.5 text-indigo-500" />
                           {batch.batch_number}
                         </button>
+                        {batch.imei && (
+                          <div className="mt-1">
+                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-sky-50 text-sky-800 border border-sky-200" title="IMEI / Serial No">
+                              IMEI: {batch.imei}
+                            </span>
+                          </div>
+                        )}
                         {batch.supplier && (
                           <div className="text-[10px] text-slate-500 truncate max-w-[140px]">
                             {batch.supplier}

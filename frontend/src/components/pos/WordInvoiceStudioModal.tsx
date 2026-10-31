@@ -379,6 +379,7 @@ export function WordInvoiceStudioModal({
        "classic_split");
 
     const defaultPrimaryColor =
+      template?.primaryColor ||
       src?.primaryColor ||
       template?.primaryColor ||
       (tplId.includes("zurich") ? "#dc2626" :
@@ -428,13 +429,43 @@ export function WordInvoiceStudioModal({
       placeOfSupplyLabel: src?.placeOfSupplyLabel || "PLACE OF SUPPLY:",
       placeOfSupplyValue: src?.placeOfSupplyValue || "36 - Telangana",
       sections: src?.sections && Array.isArray(src.sections) && src.sections.length > 0 ? src.sections : DEFAULT_WORD_SECTIONS,
-      columns: src?.columns && Array.isArray(src.columns) && src.columns.length > 0
-        ? src.columns
-        : template?.columns && Array.isArray(template.columns) && template.columns.length > 0
-        ? template.columns
-        : template?.wordConfig?.columns && Array.isArray(template.wordConfig.columns) && template.wordConfig.columns.length > 0
-        ? template.wordConfig.columns
-        : DEFAULT_WORD_COLUMNS,
+      columns: (() => {
+        const base = (src?.columns && Array.isArray(src.columns) && src.columns.length > 0) ? src.columns : (template?.columns && Array.isArray(template.columns) && template.columns.length > 0) ? template.columns : (template?.wordConfig?.columns && Array.isArray(template.wordConfig.columns) && template.wordConfig.columns.length > 0) ? template.wordConfig.columns : DEFAULT_WORD_COLUMNS;
+        const tf = template?.fields || template?.table_columns;
+        if (tf && typeof tf === "object") {
+          return base.map((c: any) => {
+            let enabled = c.enabled !== false;
+            if (c.fieldKey === "hsn_sac" || c.id === "col-hsn") {
+              if (tf.showHSN !== undefined) enabled = Boolean(tf.showHSN);
+            } else if (c.fieldKey === "batch_number" || c.id === "col-batch") {
+              if (tf.showBatchNumber !== undefined) enabled = Boolean(tf.showBatchNumber);
+            } else if (c.fieldKey === "expiry_date" || c.id === "col-exp" || c.fieldKey === "mfg_exp_date") {
+              if (tf.showExpMfgDates !== undefined) enabled = Boolean(tf.showExpMfgDates);
+            } else if (c.fieldKey === "sku_code" || c.id === "col-sku") {
+              if (tf.showSkuCode !== undefined) enabled = Boolean(tf.showSkuCode);
+            } else if (c.fieldKey === "uom" || c.id === "col-unit") {
+              if (tf.showSecondaryUnit !== undefined) enabled = Boolean(tf.showSecondaryUnit);
+            } else if (c.fieldKey === "mrp" || c.id === "col-mrp") {
+              if (tf.showMRP !== undefined) enabled = Boolean(tf.showMRP);
+            } else if (c.fieldKey === "discount_amount" || c.id === "col-discount") {
+              if (tf.showDiscountCol !== undefined) enabled = Boolean(tf.showDiscountCol);
+            } else if (c.fieldKey === "tax_rate" || c.id === "col-gst") {
+              if (tf.showGstRateCol !== undefined) enabled = Boolean(tf.showGstRateCol);
+            } else if (c.fieldKey === "description" || c.id === "col-desc") {
+              if (tf.showItemDescription !== undefined) enabled = Boolean(tf.showItemDescription);
+            }
+            return { ...c, enabled };
+          });
+        }
+        return base;
+      })(),
+
+
+
+
+
+
+
       customFields:
         (src?.customFields && Array.isArray(src.customFields) && src.customFields.length > 0)
           ? src.customFields

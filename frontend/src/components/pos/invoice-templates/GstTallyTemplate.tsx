@@ -80,28 +80,35 @@ export function GstTallyTemplate({
   // Derive GST slabs from items when the invoice does not pre-compute them
   const slabs: any[] = Array.isArray(invoice.tax_slabs) ? (invoice.tax_slabs as any[]) : [];
   const isInter = Boolean(invoice.is_interstate || igstAmount > 0);
-  const slabMap = new Map<number, { rate: number; taxable: number; cgst: number; sgst: number; igst: number; tax: number }>();
+  const slabMap = new Map<number, { rate: number; hsn?: string; taxable: number; cgst: number; sgst: number; igst: number; tax: number }>();
   if (slabs.length > 0) {
     slabs.forEach((s) => {
       const rate = Number(s.rate ?? s.gst_rate ?? 0);
-      slabMap.set(rate, { rate, taxable: Number(s.taxable ?? s.taxable_value ?? 0), cgst: Number(s.cgst ?? 0), sgst: Number(s.sgst ?? 0), igst: Number(s.igst ?? 0), tax: Number(s.tax ?? s.total_tax ?? (Number(s.cgst ?? 0) + Number(s.sgst ?? 0) + Number(s.igst ?? 0))) });
+      slabMap.set(rate, { rate, hsn: s.hsn || s.hsn_code || "", taxable: Number(s.taxable ?? s.taxable_value ?? 0), cgst: Number(s.cgst ?? 0), sgst: Number(s.sgst ?? 0), igst: Number(s.igst ?? 0), tax: Number(s.tax ?? s.total_tax ?? (Number(s.cgst ?? 0) + Number(s.sgst ?? 0) + Number(s.igst ?? 0))) });
     });
   } else {
     items.forEach((item: any) => {
       const qty = Number(item.quantity || 0);
       const rate = Number(item.tax_rate ?? 0);
       const disc = Number(item.discount_value || 0);
-      const taxableLine = qty * Number(item.unit_price || 0) - disc;
-      const halfTax = (taxableLine * rate) / 100 / 2;
-      const row = slabMap.get(rate) || { rate, taxable: 0, cgst: 0, sgst: 0, igst: 0, tax: 0 };
+      const hsn = String(item.hsn_code || item.hsn || "").trim();
+      const taxableLine = item.is_tax_inclusive
+        ? (qty * Number(item.unit_price || 0) - disc) / (1 + rate / 100)
+        : (qty * Number(item.unit_price || 0) - disc);
+      const lineTax = (taxableLine * rate) / 100;
+      const halfTax = lineTax / 2;
+      const row = slabMap.get(rate) || { rate, hsn, taxable: 0, cgst: 0, sgst: 0, igst: 0, tax: 0 };
       row.taxable += taxableLine;
+      if (hsn && (!row.hsn || !row.hsn.includes(hsn))) {
+        row.hsn = row.hsn ? `${row.hsn}, ${hsn}` : hsn;
+      }
       if (isInter) {
-        row.igst += halfTax * 2;
-        row.tax += halfTax * 2;
+        row.igst += lineTax;
+        row.tax += lineTax;
       } else {
         row.cgst += halfTax;
         row.sgst += halfTax;
-        row.tax += halfTax * 2;
+        row.tax += lineTax;
       }
       slabMap.set(rate, row);
     });
@@ -110,6 +117,34 @@ export function GstTallyTemplate({
     }
   }
   const slabRows = Array.from(slabMap.values()).sort((a, b) => b.rate - a.rate);
+
+  const resolvedSplitPayments: { method: string; amount: number; reference?: string }[] = (() => {
+    let raw = invoice.split_payments_details || invoice.split_payments || (invoice as any).splitPayments;
+    if (typeof raw === "string") {
+      try { raw = JSON.parse(raw); } catch { raw = null; }
+    }
+    if (Array.isArray(raw)) {
+      return raw.map((item: any) => ({
+        method: item.method || item.payment_method || item.name || "Payment",
+        amount: Number(item.amount) || 0,
+        reference: item.reference || item.ref || item.note || "",
+      })).filter(s => s.amount > 0);
+    }
+    if (raw && typeof raw === "object") {
+      return Object.entries(raw).map(([method, amount]) => ({
+        method,
+        amount: Number(amount) || 0,
+      })).filter(s => s.amount > 0);
+    }
+    if (Array.isArray((invoice as any).payments) && (invoice as any).payments.length > 0) {
+      return (invoice as any).payments.map((p: any) => ({
+        method: p.payment_method || p.method || "Payment",
+        amount: Number(p.amount) || 0,
+        reference: p.reference_number || p.transaction_id || p.reference || "",
+      })).filter((s: any) => s.amount > 0);
+    }
+    return [];
+  })();
 
   const roundedTotal = Math.round(grandTotal);
   const roundOff = Math.round(grandTotal * 100) / 100 - grandTotal;
@@ -482,6 +517,7 @@ export function GstTallyTemplate({
                 <table className={`w-full border border-black/60 border-collapse ${isA5 ? "text-[7.5px]" : "text-[9.5px]"}`}>
                   <thead>
                     <tr className="bg-black/10 font-bold uppercase border-b border-black/60">
+                      <th className={`${isA5 ? "p-0.5" : "p-1"} border-r border-black/40 text-center`}>Rate</th>
                       {showHsn && <th className={`${isA5 ? "p-0.5" : "p-1"} border-r border-black/40 text-left`}>HSN/SAC</th>}
                       <th className={`${isA5 ? "p-0.5" : "p-1"} border-r border-black/40 text-right`}>Taxable Amt</th>
                       <th className={`${isA5 ? "p-0.5" : "p-1"} border-r border-black/40 text-right`}>{isInter ? "IGST" : "CGST"}</th>
@@ -492,8 +528,9 @@ export function GstTallyTemplate({
                   <tbody>
                     {slabRows.map((s, i) => (
                       <tr key={i} className="border-b border-black/20 last:border-b-0">
+                        <td className={`${isA5 ? "p-0.5" : "p-1"} border-r border-black/30 text-center font-bold`}>{s.rate}%</td>
                         {showHsn && (
-                          <td className={`${isA5 ? "p-0.5" : "p-1"} border-r border-black/30 text-center font-semibold`}>{s.rate}% {t("Rate", "Rate")}</td>
+                          <td className={`${isA5 ? "p-0.5" : "p-1"} border-r border-black/30 text-left font-mono`}>{s.hsn || "-"}</td>
                         )}
                         <td className={`${isA5 ? "p-0.5" : "p-1"} border-r border-black/30 text-right font-mono`}>{s.taxable.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         <td className={`${isA5 ? "p-0.5" : "p-1"} border-r border-black/30 text-right font-mono`}>{isInter ? s.igst.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : s.cgst.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -504,6 +541,17 @@ export function GstTallyTemplate({
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr className="bg-black/5 font-bold border-t border-black/60">
+                      <td colSpan={showHsn ? 2 : 1} className={`${isA5 ? "p-0.5" : "p-1"} border-r border-black/30 text-center uppercase`}>Total</td>
+                      <td className={`${isA5 ? "p-0.5" : "p-1"} border-r border-black/30 text-right font-mono`}>{taxableValue.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td className={`${isA5 ? "p-0.5" : "p-1"} border-r border-black/30 text-right font-mono`}>{(isInter ? igstAmount : cgstAmount).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      {!isInter && (
+                        <td className={`${isA5 ? "p-0.5" : "p-1"} border-r border-black/30 text-right font-mono`}>{sgstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      )}
+                      <td className={`${isA5 ? "p-0.5" : "p-1"} text-right font-mono font-bold`}>{totalTax.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )}
@@ -574,14 +622,14 @@ export function GstTallyTemplate({
                 </div>
               )}
 
-              {invoice.split_payments && typeof invoice.split_payments === "object" && Object.keys(invoice.split_payments).length > 1 && (
+              {resolvedSplitPayments.length > 0 && (
                 <div className={`mt-1.5 pt-1 border-t border-dashed border-black/40 ${isA5 ? "text-[7px]" : "text-[9px]"}`}>
                   <span className="font-bold uppercase text-slate-800 block mb-0.5">Payment Split:</span>
                   <div className="space-y-0.5 pl-1">
-                    {Object.entries(invoice.split_payments).map(([m, a]) => (
-                      <div key={m} className="flex justify-between">
-                        <span className="capitalize">{m}:</span>
-                        <span className="font-mono font-bold">{fmt(Number(a))}</span>
+                    {resolvedSplitPayments.map((sp, idx) => (
+                      <div key={idx} className="flex justify-between">
+                        <span className="capitalize">{sp.method}{sp.reference ? ` (${sp.reference})` : ""}:</span>
+                        <span className="font-mono font-bold">{fmt(sp.amount)}</span>
                       </div>
                     ))}
                   </div>

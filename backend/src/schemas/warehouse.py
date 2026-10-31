@@ -98,6 +98,7 @@ class InventoryBatchBase(BaseModel):
     supplier_invoice_no: Optional[str] = None
     qc_status: Optional[str] = "Passed"
     barcode: Optional[str] = None
+    imei: Optional[str] = None
     manufacturing_date: Optional[date] = None
     expiry_date: Optional[date] = None
     supplier: Optional[str] = None
@@ -123,6 +124,7 @@ class InventoryBatchUpdate(BaseModel):
     supplier_invoice_no: Optional[str] = None
     qc_status: Optional[str] = None
     barcode: Optional[str] = None
+    imei: Optional[str] = None
     manufacturing_date: Optional[date] = None
     expiry_date: Optional[date] = None
     supplier: Optional[str] = None
@@ -139,6 +141,7 @@ class InventoryBatchResponse(InventoryBatchBase, TimestampSchema):
 class InventorySerialBase(BaseModel):
     company_id: Optional[UUID] = None
     serial_number: str
+    imei: Optional[str] = None
     product_id: Optional[UUID] = None
     product_name: Optional[str] = None
     sku: Optional[str] = None
@@ -157,6 +160,7 @@ class InventorySerialCreate(InventorySerialBase):
 class InventorySerialUpdate(BaseModel):
     company_id: Optional[UUID] = None
     serial_number: Optional[str] = None
+    imei: Optional[str] = None
     status: Optional[str] = None
     location: Optional[str] = None
     notes: Optional[str] = None
@@ -226,6 +230,7 @@ class TraceabilityEventBase(BaseModel):
     event_type: str
     batch_id: Optional[UUID] = None
     serial_id: Optional[UUID] = None
+    imei: Optional[str] = None
     source_location: Optional[str] = None
     destination_location: Optional[str] = None
     source_warehouse_id: Optional[UUID] = None

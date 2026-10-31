@@ -1079,6 +1079,10 @@ export function PosInvoicesHistory() {
           }
           if ((inv as any).payment_mode) {
             remote.payment_mode = (inv as any).payment_mode;
+            (remote as any).payment_method = (inv as any).payment_method || (remote as any).payment_method;
+            (remote as any).split_payments = (inv as any).split_payments || (remote as any).split_payments;
+            (remote as any).split_payments_details = (inv as any).split_payments_details || (remote as any).split_payments_details;
+            (remote as any).bank_details = (inv as any).bank_details || (remote as any).bank_details;
           }
           if (inv.items && inv.items.length > 0 && (!remote.items || remote.items.length === 0)) {
             remote.items = inv.items;
@@ -1458,7 +1462,10 @@ export function PosInvoicesHistory() {
       sales_executive: fullInvRecord.sales_executive,
       invoice_date: fullInvRecord.invoice_date,
       due_date: fullInvRecord.due_date,
-      payment_method: fullInvRecord.payment_mode || 'Cash',
+      payment_method: fullInvRecord.payment_method || (inv as any).payment_method || fullInvRecord.payment_mode || 'Cash',
+      split_payments: fullInvRecord.split_payments || (inv as any).split_payments || (fullInvRecord as any).split_payments_details || (inv as any).split_payments_details || undefined,
+      split_payments_details: (fullInvRecord as any).split_payments_details || (inv as any).split_payments_details || undefined,
+      bank_details: fullInvRecord.bank_details || (inv as any).bank_details || undefined,
       payment_status: fullInvRecord.payment_status || 'PAID',
       subtotal: Number(fullInvRecord.subtotal || 0),
       taxable_value: fullInvRecord.taxable_value !== undefined ? Number(fullInvRecord.taxable_value) : Number(fullInvRecord.subtotal || 0),

@@ -1014,6 +1014,8 @@ async def _sync_product_inventory_batch(
             existing_batch.product_name = product.name
             existing_batch.sku = product.sku or existing_batch.sku or ""
             existing_batch.barcode = product.barcode or existing_batch.barcode
+            if getattr(product, "imei", None):
+                existing_batch.imei = product.imei
             if warehouse_id:
                 existing_batch.warehouse_id = warehouse_id
             if warehouse_name:
@@ -1052,6 +1054,7 @@ async def _sync_product_inventory_batch(
                 product_name=product.name,
                 sku=product.sku or "",
                 barcode=product.barcode,
+                imei=getattr(product, "imei", None),
                 warehouse_id=warehouse_id,
                 warehouse_name=warehouse_name,
                 location=loc,
@@ -1080,6 +1083,7 @@ async def _sync_product_inventory_batch(
                 company_id=target_company_id,
                 event_type="received",
                 batch_id=new_batch.id,
+                imei=new_batch.imei,
                 destination_location=warehouse_name or loc or "Main Warehouse",
                 destination_warehouse_id=warehouse_id,
                 party_type="supplier",
@@ -1676,6 +1680,7 @@ async def master_import_products(
             if item.initial_stock and item.initial_stock > 0: existing_p.initial_stock = item.initial_stock
             if item_barcode: existing_p.barcode = item_barcode
             if item_hsn: existing_p.hsn_code = item_hsn
+            if getattr(item, "imei", None): existing_p.imei = item.imei
             if brand_id: existing_p.brand_id = brand_id
             if category_id: existing_p.category_id = category_id
             if uom_id: existing_p.uom_id = uom_id
@@ -1702,6 +1707,7 @@ async def master_import_products(
             sku=sku_val,
             barcode=item_barcode,
             hsn_code=item_hsn,
+            imei=getattr(item, "imei", None),
             short_description=item.short_description,
             long_description=item.long_description,
             brand_id=brand_id,
