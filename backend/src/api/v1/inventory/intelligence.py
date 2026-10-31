@@ -747,7 +747,7 @@ async def velocity_leaderboard(
     """Sort products by velocity for performance review."""
     prods = await _products_with_signals(ctx, db)
     sorted_list = sorted(prods, key=lambda p: (p["movement_30d_qty"], p["movement_90d_qty"]), reverse=(direction == "top"))
-    if limit:
+    if isinstance(limit, int) and limit > 0:
         sorted_list = sorted_list[:limit]
     return {
         "items": sorted_list,
@@ -769,7 +769,7 @@ async def fast_moving_inventory(
     else:
         fast_items.sort(key=lambda p: (p.get("movement_30d_qty", 0), p.get("movement_90d_qty", 0), p.get("potential_revenue", 0)), reverse=True)
 
-    items_slice = fast_items[:limit] if limit else fast_items
+    items_slice = fast_items[:limit] if (isinstance(limit, int) and limit > 0) else fast_items
     total_units_sold = sum(p.get("movement_30d_qty", 0) for p in fast_items)
     total_revenue_30d = sum(p.get("movement_30d_qty", 0) * (p.get("selling_price", 0) or 0) for p in fast_items)
     total_stock_value = sum(p.get("stock_value", 0) for p in items_slice)
@@ -808,7 +808,7 @@ async def slow_moving_inventory(
     else:
         slow_items.sort(key=lambda p: (p.get("movement_30d_qty", 0), -p.get("stock_value", 0)))
 
-    items_slice = slow_items[:limit] if limit else slow_items
+    items_slice = slow_items[:limit] if (isinstance(limit, int) and limit > 0) else slow_items
     total_tied_capital = sum(p.get("stock_value", 0) for p in slow_items)
     total_units_holding = sum(p.get("on_hand", 0) for p in slow_items)
 
