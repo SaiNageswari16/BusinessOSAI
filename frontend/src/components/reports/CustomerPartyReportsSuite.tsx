@@ -113,6 +113,52 @@ export const CUSTOMER_REPORTS_LIST: CustomerReportMeta[] = [
   },
 ];
 
+
+export function calculateAgingBucket(
+  dueDateVal: any,
+  invoiceDateVal: any,
+  creditDays = 0
+): "dueTomorrow" | "upcomingDue" | "overdue1_15" | "overdue16_30" | "overdue30Plus" {
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+  let dueMs: number | null = null;
+  if (dueDateVal && String(dueDateVal).trim() !== "" && String(dueDateVal) !== "—" && String(dueDateVal) !== "-") {
+    const parsed = parseSafeDateTimestamp(dueDateVal);
+    if (parsed) dueMs = parsed;
+  }
+
+  if (!dueMs) {
+    const invMs = parseSafeDateTimestamp(invoiceDateVal) || todayMidnight;
+    if (creditDays > 0) {
+      dueMs = invMs + creditDays * 24 * 60 * 60 * 1000;
+    } else {
+      dueMs = invMs;
+    }
+  }
+
+  const dDueDate = new Date(dueMs);
+  const dueMidnight = new Date(dDueDate.getFullYear(), dDueDate.getMonth(), dDueDate.getDate()).getTime();
+  const diffDays = Math.round((todayMidnight - dueMidnight) / (24 * 60 * 60 * 1000));
+
+  if (diffDays < -1) {
+    // Due after tomorrow (future due date)
+    return "upcomingDue";
+  } else if (diffDays >= -1 && diffDays <= 0) {
+    // Due today or due tomorrow
+    return "dueTomorrow";
+  } else if (diffDays >= 1 && diffDays <= 15) {
+    // Overdue by 1 to 15 days
+    return "overdue1_15";
+  } else if (diffDays >= 16 && diffDays <= 30) {
+    // Overdue by 16 to 30 days
+    return "overdue16_30";
+  } else {
+    // Overdue by more than 30 days
+    return "overdue30Plus";
+  }
+}
+
 interface PartyRecord {
   id: string;
   name: string;
@@ -423,50 +469,6 @@ export function CustomerPartyReportsSuite({
             const numKey = String(inv.invoice_number || inv.receipt_number || inv.id || "").trim().toUpperCase();
             const isOpn = numKey.startsWith("OPN-") || inv.is_opening_balance || inv.invoice_type === "opening_balance";
             if (isOpn) return;
-          const isCreditNote = Boolean(
-            inv.is_credit_note ||
-            inv.is_sales_return ||
-            inv.document_type === "CREDIT_NOTE" ||
-            inv.invoice_type === "credit_note" ||
-            String(inv.invoice_number || "").toUpperCase().startsWith("CN-") ||
-            String(inv.invoice_number || "").toUpperCase().startsWith("CN")
-          );
-
-          if (isCreditNote && typeof partyMap !== "undefined" && typeof targetKey !== "undefined") {
-            if (partyMap.has(targetKey)) {
-              const p = partyMap.get(targetKey)!;
-              if (!p.hasAccumulatedInvoices) {
-                p.closingBalance = p.openingBalance;
-                p.hasAccumulatedInvoices = true;
-              }
-              p.closingBalance = Math.max(0, p.closingBalance - total);
-              p.totalCreditNotes = (p.totalCreditNotes || 0) + total;
-              p.overdue30Plus = Math.max(0, (p.overdue30Plus || 0) - total);
-              if (rawPhone && (!p.phone || p.phone === "—")) p.phone = rawPhone;
-              if (gstin && !p.gstin) p.gstin = gstin;
-            } else {
-              partyMap.set(targetKey, {
-                id: `p_${targetKey.replace(/[^a-z0-9]/g, "_")}`,
-                name: rawName,
-                category: inv.customer_type || "Retail",
-                phone: rawPhone || "—",
-                gstin: gstin || "URP",
-                closingBalance: 0,
-                openingBalance: 0,
-                type: "Customer",
-                totalInvoiced: 0,
-                totalPaid: 0,
-                totalCreditNotes: total,
-                dueTomorrow: 0,
-                upcomingDue: 0,
-                overdue1_15: 0,
-                overdue16_30: 0,
-                overdue30Plus: 0,
-                hasAccumulatedInvoices: true,
-              });
-            }
-            return;
-          }
             if (numKey) {
               allInvoicesMap.set(numKey, {
                 ...inv,
@@ -492,50 +494,6 @@ export function CustomerPartyReportsSuite({
                       const numKey = String(inv.invoice_number || inv.receipt_number || inv.id || "").trim().toUpperCase();
                       const isOpn = numKey.startsWith("OPN-") || inv.is_opening_balance || inv.invoice_type === "opening_balance";
                       if (isOpn) return;
-          const isCreditNote = Boolean(
-            inv.is_credit_note ||
-            inv.is_sales_return ||
-            inv.document_type === "CREDIT_NOTE" ||
-            inv.invoice_type === "credit_note" ||
-            String(inv.invoice_number || "").toUpperCase().startsWith("CN-") ||
-            String(inv.invoice_number || "").toUpperCase().startsWith("CN")
-          );
-
-          if (isCreditNote && typeof partyMap !== "undefined" && typeof targetKey !== "undefined") {
-            if (partyMap.has(targetKey)) {
-              const p = partyMap.get(targetKey)!;
-              if (!p.hasAccumulatedInvoices) {
-                p.closingBalance = p.openingBalance;
-                p.hasAccumulatedInvoices = true;
-              }
-              p.closingBalance = Math.max(0, p.closingBalance - total);
-              p.totalCreditNotes = (p.totalCreditNotes || 0) + total;
-              p.overdue30Plus = Math.max(0, (p.overdue30Plus || 0) - total);
-              if (rawPhone && (!p.phone || p.phone === "—")) p.phone = rawPhone;
-              if (gstin && !p.gstin) p.gstin = gstin;
-            } else {
-              partyMap.set(targetKey, {
-                id: `p_${targetKey.replace(/[^a-z0-9]/g, "_")}`,
-                name: rawName,
-                category: inv.customer_type || "Retail",
-                phone: rawPhone || "—",
-                gstin: gstin || "URP",
-                closingBalance: 0,
-                openingBalance: 0,
-                type: "Customer",
-                totalInvoiced: 0,
-                totalPaid: 0,
-                totalCreditNotes: total,
-                dueTomorrow: 0,
-                upcomingDue: 0,
-                overdue1_15: 0,
-                overdue16_30: 0,
-                overdue30Plus: 0,
-                hasAccumulatedInvoices: true,
-              });
-            }
-            return;
-          }
                       if (numKey && !allInvoicesMap.has(numKey)) {
                         allInvoicesMap.set(numKey, {
                           ...inv,
@@ -727,7 +685,16 @@ export function CustomerPartyReportsSuite({
               }
               p.closingBalance = Math.max(0, p.closingBalance - total);
               p.totalCreditNotes = (p.totalCreditNotes || 0) + total;
-              p.overdue30Plus = Math.max(0, (p.overdue30Plus || 0) - total);
+              let remainingCn = total;
+              for (const k of ["overdue30Plus", "overdue16_30", "overdue1_15", "dueTomorrow", "upcomingDue"] as const) {
+                if (remainingCn <= 0) break;
+                const cur = Number(p[k] || 0);
+                if (cur > 0) {
+                  const dec = Math.min(cur, remainingCn);
+                  p[k] = cur - dec;
+                  remainingCn -= dec;
+                }
+              }
               if (rawPhone && (!p.phone || p.phone === "—")) p.phone = rawPhone;
               if (gstin && !p.gstin) p.gstin = gstin;
             } else {
@@ -758,6 +725,8 @@ export function CustomerPartyReportsSuite({
           const balance = isPaid ? 0 : Number(inv.balance ?? inv.balance_due ?? inv.pending_amount ?? (total - Number(inv.amount_received || inv.amount_paid || 0)));
           const paid = isPaid ? total : Math.min(total, Number(inv.amount_received || inv.amount_paid || 0));
 
+          const invAgingBucket = balance > 0.01 ? calculateAgingBucket(inv.due_date, inv.invoice_date || inv.created_at || inv.date) : null;
+
           if (partyMap.has(targetKey)) {
             const p = partyMap.get(targetKey)!;
             if (!p.hasAccumulatedInvoices) {
@@ -767,7 +736,9 @@ export function CustomerPartyReportsSuite({
             p.closingBalance += balance;
             p.totalInvoiced = (p.totalInvoiced || 0) + total;
             p.totalPaid = (p.totalPaid || 0) + paid;
-            p.overdue30Plus = (p.overdue30Plus || 0) + balance;
+            if (invAgingBucket && balance > 0.01) {
+              p[invAgingBucket] = (p[invAgingBucket] || 0) + balance;
+            }
             if (rawPhone && (!p.phone || p.phone === "—")) p.phone = rawPhone;
             if (gstin && !p.gstin) p.gstin = gstin;
           } else {
@@ -782,11 +753,11 @@ export function CustomerPartyReportsSuite({
               type: "Customer",
               totalInvoiced: total,
               totalPaid: paid,
-              dueTomorrow: 0,
-              upcomingDue: 0,
-              overdue1_15: 0,
-              overdue16_30: 0,
-              overdue30Plus: balance,
+              dueTomorrow: invAgingBucket === "dueTomorrow" ? balance : 0,
+              upcomingDue: invAgingBucket === "upcomingDue" ? balance : 0,
+              overdue1_15: invAgingBucket === "overdue1_15" ? balance : 0,
+              overdue16_30: invAgingBucket === "overdue16_30" ? balance : 0,
+              overdue30Plus: invAgingBucket === "overdue30Plus" ? balance : 0,
               hasAccumulatedInvoices: true,
             });
           }
@@ -839,7 +810,16 @@ export function CustomerPartyReportsSuite({
             const p = partyMap.get(targetKey)!;
             p.totalPaid = (p.totalPaid || 0) + amt;
             p.closingBalance = Math.max(0, p.closingBalance - amt);
-            p.overdue30Plus = Math.max(0, (p.overdue30Plus || 0) - amt);
+            let remainingPmt = amt;
+            for (const k of ["overdue30Plus", "overdue16_30", "overdue1_15", "dueTomorrow", "upcomingDue"] as const) {
+              if (remainingPmt <= 0) break;
+              const cur = Number(p[k] || 0);
+              if (cur > 0) {
+                const dec = Math.min(cur, remainingPmt);
+                p[k] = cur - dec;
+                remainingPmt -= dec;
+              }
+            }
           }
         });
 
@@ -889,10 +869,12 @@ export function CustomerPartyReportsSuite({
             const paid = Number(b.amount_paid || b.paid_amount || 0);
             const due = Number(b.balance_due ?? b.pending_amount ?? (total - paid));
             if (due > 0.01) {
+              const vBucket = calculateAgingBucket(b.due_date, b.bill_date || b.created_at);
               if (partyMap.has(key)) {
                 const p = partyMap.get(key)!;
                 p.closingBalance -= due;
                 if (p.type === "Customer") p.type = "Both";
+                p[vBucket] = (p[vBucket] || 0) + due;
               } else {
                 partyMap.set(key, {
                   id: `supp_${key}`,
@@ -905,11 +887,11 @@ export function CustomerPartyReportsSuite({
                   type: "Supplier",
                   totalInvoiced: 0,
                   totalPaid: paid,
-                  dueTomorrow: 0,
-                  upcomingDue: 0,
-                  overdue1_15: 0,
-                  overdue16_30: 0,
-                  overdue30Plus: due,
+                  dueTomorrow: vBucket === "dueTomorrow" ? due : 0,
+                  upcomingDue: vBucket === "upcomingDue" ? due : 0,
+                  overdue1_15: vBucket === "overdue1_15" ? due : 0,
+                  overdue16_30: vBucket === "overdue16_30" ? due : 0,
+                  overdue30Plus: vBucket === "overdue30Plus" ? due : 0,
                 });
               }
             }
@@ -1485,7 +1467,19 @@ export function CustomerPartyReportsSuite({
     });
 
     // Map by lowercase party name
-    const periodMap = new Map<string, { closingBalance: number; totalInvoiced: number; totalPaid: number; overdue30Plus: number }>();
+    const periodMap = new Map<
+      string,
+      {
+        closingBalance: number;
+        totalInvoiced: number;
+        totalPaid: number;
+        dueTomorrow: number;
+        upcomingDue: number;
+        overdue1_15: number;
+        overdue16_30: number;
+        overdue30Plus: number;
+      }
+    >();
 
     activeInvoices.forEach((inv: any) => {
       const name = (inv.customer_name || inv.party_name || inv.customer?.name || inv.billing_to || "").trim().toLowerCase();
@@ -1498,13 +1492,16 @@ export function CustomerPartyReportsSuite({
       const paid = isPaid ? total : Math.min(total, Number(inv.amount_received || inv.amount_paid || 0));
 
       if (!periodMap.has(name)) {
-        periodMap.set(name, { closingBalance: 0, totalInvoiced: 0, totalPaid: 0, overdue30Plus: 0 });
+        periodMap.set(name, { closingBalance: 0, totalInvoiced: 0, totalPaid: 0, dueTomorrow: 0, upcomingDue: 0, overdue1_15: 0, overdue16_30: 0, overdue30Plus: 0 });
       }
       const pData = periodMap.get(name)!;
       pData.closingBalance += balance;
       pData.totalInvoiced += total;
       pData.totalPaid += paid;
-      pData.overdue30Plus += balance;
+      if (balance > 0.01) {
+        const b = calculateAgingBucket(inv.due_date, inv.invoice_date || inv.created_at || inv.date);
+        pData[b] = (pData[b] || 0) + balance;
+      }
     });
 
     // Apply payment settlements within this date filter to periodMap
@@ -1518,7 +1515,16 @@ export function CustomerPartyReportsSuite({
         const pData = periodMap.get(name)!;
         pData.totalPaid += amt;
         pData.closingBalance = Math.max(0, pData.closingBalance - amt);
-        pData.overdue30Plus = Math.max(0, pData.overdue30Plus - amt);
+        let rem = amt;
+        for (const k of ["overdue30Plus", "overdue16_30", "overdue1_15", "dueTomorrow", "upcomingDue"] as const) {
+          if (rem <= 0) break;
+          const c = pData[k] || 0;
+          if (c > 0) {
+            const dec = Math.min(c, rem);
+            pData[k] = c - dec;
+            rem -= dec;
+          }
+        }
       }
     });
 
@@ -1535,6 +1541,10 @@ export function CustomerPartyReportsSuite({
           closingBalance: pData.closingBalance,
           totalInvoiced: pData.totalInvoiced,
           totalPaid: pData.totalPaid,
+          dueTomorrow: 0,
+          upcomingDue: pData.upcomingDue,
+          overdue1_15: pData.overdue1_15,
+          overdue16_30: pData.overdue16_30,
           overdue30Plus: pData.overdue30Plus,
         });
       }
@@ -1559,10 +1569,10 @@ export function CustomerPartyReportsSuite({
           type: "Customer",
           totalInvoiced: pData.totalInvoiced,
           totalPaid: pData.totalPaid,
-          dueTomorrow: 0,
-          upcomingDue: 0,
-          overdue1_15: 0,
-          overdue16_30: 0,
+          dueTomorrow: pData.dueTomorrow,
+          upcomingDue: pData.upcomingDue,
+          overdue1_15: pData.overdue1_15,
+          overdue16_30: pData.overdue16_30,
           overdue30Plus: pData.overdue30Plus,
         });
       }
@@ -1630,13 +1640,18 @@ export function CustomerPartyReportsSuite({
   // 3. AGEING SCHEDULE COMPUTATION
   // ─────────────────────────────────────────────────────────────
   const ageingList = useMemo(() => {
-    let list = parties;
+    let list = dateFilter === "all" ? parties : effectiveParties;
     if (searchParty.trim()) {
       const q = searchParty.toLowerCase();
       list = list.filter((p) => p.name.toLowerCase().includes(q) || p.phone.includes(q));
     }
-    return list;
-  }, [parties, searchParty]);
+    return [...list].sort((a, b) => {
+      const aAmt = (a.dueTomorrow || 0) + (a.upcomingDue || 0) + (a.overdue1_15 || 0) + (a.overdue16_30 || 0) + (a.overdue30Plus || 0);
+      const bAmt = (b.dueTomorrow || 0) + (b.upcomingDue || 0) + (b.overdue1_15 || 0) + (b.overdue16_30 || 0) + (b.overdue30Plus || 0);
+      if (bAmt !== aAmt) return bAmt - aAmt;
+      return a.name.localeCompare(b.name);
+    });
+  }, [parties, effectiveParties, dateFilter, searchParty]);
 
   const ageingTotals = useMemo(() => {
     let totTomorrow = 0;
@@ -1925,16 +1940,16 @@ export function CustomerPartyReportsSuite({
         ]);
         ageingList.forEach((p) => {
           const tDue = (p.dueTomorrow || 0) + (p.upcomingDue || 0);
-          const tOverdue = (p.overdue1_15 || 0) + (p.overdue16_30 || 0) + (p.overdue30Plus || p.closingBalance || 0);
-          const amt = Math.max(p.closingBalance, tOverdue + tDue);
+          const tOverdue = (p.overdue1_15 || 0) + (p.overdue16_30 || 0) + (p.overdue30Plus || 0);
+          const amt = (tDue + tOverdue) > 0 ? (tDue + tOverdue) : (p.closingBalance > 0 ? p.closingBalance : 0);
           rows.push([
             p.name,
-            p.dueTomorrow ? Number(p.dueTomorrow.toFixed(2)) : "-",
-            p.upcomingDue ? Number(p.upcomingDue.toFixed(2)) : "-",
+            p.dueTomorrow && p.dueTomorrow > 0 ? Number(p.dueTomorrow.toFixed(2)) : "-",
+            p.upcomingDue && p.upcomingDue > 0 ? Number(p.upcomingDue.toFixed(2)) : "-",
             tDue > 0 ? Number(tDue.toFixed(2)) : "-",
-            p.overdue1_15 ? Number(p.overdue1_15.toFixed(2)) : "-",
-            p.overdue16_30 ? Number(p.overdue16_30.toFixed(2)) : "-",
-            (p.overdue30Plus || p.closingBalance) ? Number((p.overdue30Plus || p.closingBalance).toFixed(2)) : "-",
+            p.overdue1_15 && p.overdue1_15 > 0 ? Number(p.overdue1_15.toFixed(2)) : "-",
+            p.overdue16_30 && p.overdue16_30 > 0 ? Number(p.overdue16_30.toFixed(2)) : "-",
+            p.overdue30Plus && p.overdue30Plus > 0 ? Number(p.overdue30Plus.toFixed(2)) : "-",
             tOverdue > 0 ? Number(tOverdue.toFixed(2)) : "-",
             Number(amt.toFixed(2)),
           ]);
@@ -3019,29 +3034,29 @@ export function CustomerPartyReportsSuite({
                   ) : (
                     ageingList.map((p, idx) => {
                       const tDue = (p.dueTomorrow || 0) + (p.upcomingDue || 0);
-                      const tOverdue = (p.overdue1_15 || 0) + (p.overdue16_30 || 0) + (p.overdue30Plus || p.closingBalance || 0);
-                      const tAmt = Math.max(p.closingBalance, tDue + tOverdue);
+                      const tOverdue = (p.overdue1_15 || 0) + (p.overdue16_30 || 0) + (p.overdue30Plus || 0);
+                      const tAmt = (tDue + tOverdue) > 0 ? (tDue + tOverdue) : (p.closingBalance > 0 ? p.closingBalance : 0);
 
                       return (
                         <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
                           <td className="py-2.5 px-4 font-semibold text-slate-900 whitespace-nowrap border-r border-slate-100">{p.name}</td>
                           <td className="py-2.5 px-3 text-right text-slate-600">
-                            {p.dueTomorrow ? formatCurrency(p.dueTomorrow) : "-"}
+                            {p.dueTomorrow && p.dueTomorrow > 0 ? formatCurrency(p.dueTomorrow) : "-"}
                           </td>
                           <td className="py-2.5 px-3 text-right text-slate-600">
-                            {p.upcomingDue ? formatCurrency(p.upcomingDue) : "-"}
+                            {p.upcomingDue && p.upcomingDue > 0 ? formatCurrency(p.upcomingDue) : "-"}
                           </td>
                           <td className="py-2.5 px-3 text-right text-slate-700 border-r border-slate-100">
                             {tDue > 0 ? formatCurrency(tDue) : "-"}
                           </td>
                           <td className="py-2.5 px-3 text-right text-slate-600">
-                            {p.overdue1_15 ? formatCurrency(p.overdue1_15) : "-"}
+                            {p.overdue1_15 && p.overdue1_15 > 0 ? formatCurrency(p.overdue1_15) : "-"}
                           </td>
                           <td className="py-2.5 px-3 text-right text-slate-600">
-                            {p.overdue16_30 ? formatCurrency(p.overdue16_30) : "-"}
+                            {p.overdue16_30 && p.overdue16_30 > 0 ? formatCurrency(p.overdue16_30) : "-"}
                           </td>
                           <td className="py-2.5 px-3 text-right text-slate-700">
-                            {p.overdue30Plus || p.closingBalance ? formatCurrency(p.overdue30Plus || p.closingBalance) : "-"}
+                            {p.overdue30Plus && p.overdue30Plus > 0 ? formatCurrency(p.overdue30Plus) : "-"}
                           </td>
                           <td className="py-2.5 px-3 text-right font-medium text-slate-800">
                             {tOverdue > 0 ? formatCurrency(tOverdue) : "-"}
