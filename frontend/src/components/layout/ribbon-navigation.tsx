@@ -196,7 +196,7 @@ export function RibbonNavigation() {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [hoveredSubItem, setHoveredSubItem] = useState<string | null>(null);
 
-  if (!activeGroup || !activeItem) return null;
+  if (!activeGroup || !activeItem || activeGroup.group === "Report Builder") return null;
 
   return (
     <div className="flex flex-col w-full shrink-0 bg-white z-40 relative no-print select-none">

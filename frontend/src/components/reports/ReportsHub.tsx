@@ -1126,9 +1126,19 @@ export function ReportsHub() {
           <header className="bg-white border-b border-slate-200 px-5 py-3 shrink-0">
             <div className="flex flex-wrap items-center justify-between gap-3">
               {/* Title & Description */}
-              <div>
-                <h1 className="text-base font-extrabold text-slate-900">{activeReport.title}</h1>
-                <p className="text-xs text-slate-500 mt-0.5">{activeReport.description}</p>
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setActiveReport(null)}
+                  className="size-8 rounded-lg border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 transition-colors cursor-pointer shrink-0"
+                  title="Back to Reports Hub"
+                >
+                  <ArrowLeft className="size-4" />
+                </button>
+                <div>
+                  <h1 className="text-base font-extrabold text-slate-900">{activeReport.title}</h1>
+                  <p className="text-xs text-slate-500 mt-0.5">{activeReport.description}</p>
+                </div>
               </div>
 
               {/* Actions: CSV, Print, Refresh */}

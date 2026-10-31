@@ -970,12 +970,6 @@ export const nav: NavGroup[] = [
         label: "Report Builder",
         icon: SlidersHorizontal,
         permission: "view:report_builder",
-        subItems: [
-          { to: "/reports?tab=custom_reports", label: "Reports Hub", icon: SlidersHorizontal, permission: "view:report_builder" },
-          { to: "/reports?tab=saved_reports", label: "Saved Templates", icon: FileCheck, permission: "view:report_builder" },
-          { to: "/reports?tab=scheduled_reports", label: "Scheduled Reports", icon: Clock, permission: "view:report_builder" },
-          { to: "/reports?tab=exports", label: "Export Vault", icon: FileSpreadsheet, permission: "view:report_builder" },
-        ]
       },
     ]
   },
