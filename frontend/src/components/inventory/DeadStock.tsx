@@ -207,11 +207,11 @@ export function DeadStock() {
         phone_number: config.manager_whatsapp,
         custom_message: `☠️ *Dead Stock Alert System Test:*\n\nYour WhatsApp liquidation alert notifications are connected and working properly.`,
       });
-      if (res.success) {
-        toast.success(t("Test WhatsApp message dispatched successfully!", "Test WhatsApp message dispatched successfully!"));
+      if (res?.delivery?.success || res?.message) {
+        toast.success(res?.message || t("Test WhatsApp message dispatched successfully!", "Test WhatsApp message dispatched successfully!"));
         loadHistory();
       } else {
-        toast.warning(t("Message queued, but gateway reported: ", "Message queued, but gateway reported: ") + (res.error || "Offline"));
+        toast.warning(t("Message queued, but gateway reported: ", "Message queued, but gateway reported: ") + (res?.delivery?.error || "Offline"));
       }
     } catch (err: any) {
       toast.error(err?.message || "Failed to dispatch test WhatsApp");
