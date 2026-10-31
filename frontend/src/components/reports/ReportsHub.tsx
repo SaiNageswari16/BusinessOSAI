@@ -1006,19 +1006,18 @@ export function ReportsHub() {
       {!activeReport ? (
         <main className="flex-1 flex flex-col min-w-0 bg-slate-50 p-4 sm:p-6 custom-scrollbar overflow-y-auto">
           <div className="w-full space-y-5">
-            {/* Hero Header - Full Width */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4 w-full">
+            {/* Page Header (Clean, borderless, matching all other pages) */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full pb-1">
               <div>
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-bold mb-2">
-                  <Sparkles className="w-3.5 h-3.5" /> Live Business Intelligence & Tax Audit
-                </div>
-                <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">Report Builder Hub</h1>
-                <p className="text-xs text-slate-500 mt-1">
+                <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                  Report Builder Hub
+                </h1>
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Select any category from the sidebar or choose a module below to open detailed financial statements, GST filings, inventory registers, and performance reports.
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                <span className="text-xs font-semibold text-muted-foreground bg-muted/60 px-3 py-1 rounded-lg border border-border/50">
                   {REPORT_CATEGORIES.reduce((acc, c) => acc + c.reports.length, 0)} Reports Available
                 </span>
               </div>
