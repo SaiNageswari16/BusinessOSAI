@@ -322,11 +322,10 @@ function SearchablePartySelect({
                         onChange(p.name);
                         setIsOpen(false);
                       }}
-                      className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition-colors cursor-pointer ${
-                        isSelected
+                      className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition-colors cursor-pointer ${isSelected
                           ? "bg-indigo-50 text-indigo-900 font-bold"
                           : "hover:bg-slate-100 text-slate-700"
-                      }`}
+                        }`}
                     >
                       <div className="truncate pr-2">
                         <div className="font-bold text-slate-900 truncate">{p.name}</div>
@@ -515,11 +514,11 @@ export function CustomerPartyReportsSuite({
                       }
                     });
                   }
-                } catch (e) {}
+                } catch (e) { }
               }
             }
           }
-        } catch (e) {}
+        } catch (e) { }
 
         const combinedInvoices = Array.from(allInvoicesMap.values());
         setRawInvoices(combinedInvoices);
@@ -586,11 +585,11 @@ export function CustomerPartyReportsSuite({
                       }
                     }
                   });
-                } catch (e) {}
+                } catch (e) { }
               }
             }
           }
-        } catch (e) {}
+        } catch (e) { }
 
         setRawPayments(allPayments);
 
@@ -2425,22 +2424,20 @@ export function CustomerPartyReportsSuite({
             <div className="flex items-center gap-0 mt-3 border-b border-slate-200">
               <button
                 onClick={() => setOutstandingTab("all")}
-                className={`px-6 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
-                  outstandingTab === "all"
+                className={`px-6 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${outstandingTab === "all"
                     ? "border-indigo-600 text-indigo-700 bg-indigo-50/20"
                     : "border-transparent text-slate-600 hover:text-slate-900"
-                }`}
+                  }`}
               >
                 All
               </button>
 
               <button
                 onClick={() => setOutstandingTab("to_collect")}
-                className={`px-6 py-1.5 text-xs font-bold transition-all border-b-2 cursor-pointer flex flex-col items-center ${
-                  outstandingTab === "to_collect"
+                className={`px-6 py-1.5 text-xs font-bold transition-all border-b-2 cursor-pointer flex flex-col items-center ${outstandingTab === "to_collect"
                     ? "border-emerald-600 text-emerald-700 bg-emerald-50/30"
                     : "border-transparent text-slate-600 hover:text-slate-900"
-                }`}
+                  }`}
               >
                 <span>To Collect</span>
                 <span className="text-[11px] font-mono font-bold text-emerald-600 mt-0.5">
@@ -2450,11 +2447,10 @@ export function CustomerPartyReportsSuite({
 
               <button
                 onClick={() => setOutstandingTab("to_pay")}
-                className={`px-6 py-1.5 text-xs font-bold transition-all border-b-2 cursor-pointer flex flex-col items-center ${
-                  outstandingTab === "to_pay"
+                className={`px-6 py-1.5 text-xs font-bold transition-all border-b-2 cursor-pointer flex flex-col items-center ${outstandingTab === "to_pay"
                     ? "border-rose-600 text-rose-700 bg-rose-50/30"
                     : "border-transparent text-slate-600 hover:text-slate-900"
-                }`}
+                  }`}
               >
                 <span>To Pay</span>
                 <span className="text-[11px] font-mono font-bold text-rose-600 mt-0.5">
@@ -2874,9 +2870,8 @@ export function CustomerPartyReportsSuite({
                         return (
                           <tr
                             key={idx}
-                            className={`hover:bg-slate-50/80 transition-colors ${
-                              r.isSummaryRow ? "bg-slate-50/30 text-slate-900" : ""
-                            }`}
+                            className={`hover:bg-slate-50/80 transition-colors ${r.isSummaryRow ? "bg-slate-50/30 text-slate-900" : ""
+                              }`}
                           >
                             <td className="py-3 px-4 whitespace-nowrap text-slate-500 font-mono">
                               {r.date === "—" ? "-" : r.date}
@@ -2917,351 +2912,349 @@ export function CustomerPartyReportsSuite({
               </div>
             )}
 
-        {activeReport === "party_outstanding" && (
-          <div className="bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-700 font-semibold text-xs uppercase tracking-wider">
-                <tr>
-                  <th className="py-3 px-5">NAME</th>
-                  <th className="py-3 px-5">CATEGORY</th>
-                  <th className="py-3 px-5">CONTACT NUMBER</th>
-                  <th className="py-3 px-5 text-right">CLOSING BALANCE</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
-                {outstandingList.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="py-16 text-center text-slate-400 text-xs font-semibold">
-                      No parties found for this filter
-                    </td>
-                  </tr>
-                ) : (
-                  outstandingList.map((p, idx) => {
-                    const isPositive = p.closingBalance > 0.01;
-                    const isNegative = p.closingBalance < -0.01;
-                    const catStr = p.category && p.category !== "Regular Customer" && p.category !== "Client" ? p.category : "Retail";
-                    const phoneStr = p.phone && p.phone !== "—" ? p.phone : "-";
-
-                    let balDisplay = "₹ 0.00";
-                    if (isPositive) {
-                      balDisplay = formatCurrency(p.closingBalance);
-                    } else if (isNegative) {
-                      balDisplay = `- ${formatCurrency(Math.abs(p.closingBalance))}`;
-                    }
-
-                    return (
-                      <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3 px-5 font-bold text-slate-900">
-                          <div className="flex items-center gap-2">
-                            <span>{p.name}</span>
-                            {p.type === "Supplier" && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                                Vendor
-                              </span>
-                            )}
-                            {p.type === "Both" && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300">
-                                Both
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3 px-5 text-slate-500 font-mono text-xs">{catStr}</td>
-                        <td className="py-3 px-5 text-slate-600 font-mono">{phoneStr}</td>
-                        <td
-                          className={`py-3 px-5 text-right font-mono font-bold ${
-                            isPositive
-                              ? "text-emerald-700 dark:text-emerald-400"
-                              : isNegative
-                              ? "text-rose-600 dark:text-rose-400"
-                              : "text-slate-400"
-                          }`}
-                        >
-                          <div className="flex flex-col items-end">
-                            <span>{balDisplay}</span>
-                            {isPositive && outstandingTab === "all" && (
-                              <span className="text-[9px] font-semibold text-emerald-600 uppercase">To Collect</span>
-                            )}
-                            {isNegative && outstandingTab === "all" && (
-                              <span className="text-[9px] font-semibold text-rose-600 uppercase">To Pay</span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {activeReport === "party_ageing" && (
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-200 text-xs font-bold">
-                    <th rowSpan={2} className="py-2.5 px-4 bg-slate-50 text-slate-800 align-middle border-r border-slate-200">
-                      Party Name
-                    </th>
-                    <th
-                      colSpan={3}
-                      className="py-1.5 px-3 text-center bg-amber-50/70 text-slate-800 border-r border-slate-200 font-bold"
-                    >
-                      Not yet due
-                    </th>
-                    <th
-                      colSpan={5}
-                      className="py-1.5 px-3 text-center bg-rose-50/70 text-slate-800 font-bold"
-                    >
-                      Overdue
-                    </th>
-                  </tr>
-                  <tr className="border-b border-slate-200 text-xs font-semibold text-slate-700 bg-slate-50/50">
-                    <th className="py-2 px-3 text-right">By Tomorrow</th>
-                    <th className="py-2 px-3 text-right">Upcoming</th>
-                    <th className="py-2 px-3 text-right border-r border-slate-200 font-semibold text-slate-800">
-                      T. Due
-                    </th>
-                    <th className="py-2 px-3 text-right">1-15 Days</th>
-                    <th className="py-2 px-3 text-right">16-30 Days</th>
-                    <th className="py-2 px-3 text-right">30+ Days</th>
-                    <th className="py-2 px-3 text-right font-semibold text-slate-800">
-                      T. Overdue
-                    </th>
-                    <th className="py-2 px-4 text-right font-semibold text-slate-800">
-                      T. Amount
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
-                  {ageingList.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="py-12 text-center text-slate-400">
-                        No ageing records found
-                      </td>
-                    </tr>
-                  ) : (
-                    ageingList.map((p, idx) => {
-                      const tDue = (p.dueTomorrow || 0) + (p.upcomingDue || 0);
-                      const tOverdue = (p.overdue1_15 || 0) + (p.overdue16_30 || 0) + (p.overdue30Plus || 0);
-                      const tAmt = (tDue + tOverdue) > 0 ? (tDue + tOverdue) : (p.closingBalance > 0 ? p.closingBalance : 0);
-
-                      return (
-                        <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-2.5 px-4 font-semibold text-slate-900 whitespace-nowrap border-r border-slate-100">{p.name}</td>
-                          <td className="py-2.5 px-3 text-right text-slate-600">
-                            {p.dueTomorrow && p.dueTomorrow > 0 ? formatCurrency(p.dueTomorrow) : "-"}
-                          </td>
-                          <td className="py-2.5 px-3 text-right text-slate-600">
-                            {p.upcomingDue && p.upcomingDue > 0 ? formatCurrency(p.upcomingDue) : "-"}
-                          </td>
-                          <td className="py-2.5 px-3 text-right text-slate-700 border-r border-slate-100">
-                            {tDue > 0 ? formatCurrency(tDue) : "-"}
-                          </td>
-                          <td className="py-2.5 px-3 text-right text-slate-600">
-                            {p.overdue1_15 && p.overdue1_15 > 0 ? formatCurrency(p.overdue1_15) : "-"}
-                          </td>
-                          <td className="py-2.5 px-3 text-right text-slate-600">
-                            {p.overdue16_30 && p.overdue16_30 > 0 ? formatCurrency(p.overdue16_30) : "-"}
-                          </td>
-                          <td className="py-2.5 px-3 text-right text-slate-700">
-                            {p.overdue30Plus && p.overdue30Plus > 0 ? formatCurrency(p.overdue30Plus) : "-"}
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-medium text-slate-800">
-                            {tOverdue > 0 ? formatCurrency(tOverdue) : "-"}
-                          </td>
-                          <td className="py-2.5 px-4 text-right font-medium text-slate-900">
-                            {tAmt > 0 ? formatCurrency(tAmt) : "-"}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-                <tfoot className="bg-slate-50 border-t-2 border-slate-200 font-bold text-slate-900 text-xs">
-                  <tr>
-                    <td className="py-3 px-4 border-r border-slate-200">Total</td>
-                    <td className="py-3 px-3 text-right">{formatCurrency(ageingTotals.totTomorrow)}</td>
-                    <td className="py-3 px-3 text-right">{formatCurrency(ageingTotals.totUpcoming)}</td>
-                    <td className="py-3 px-3 text-right border-r border-slate-200">
-                      {formatCurrency(ageingTotals.totDue)}
-                    </td>
-                    <td className="py-3 px-3 text-right">{formatCurrency(ageingTotals.tot1_15)}</td>
-                    <td className="py-3 px-3 text-right">{formatCurrency(ageingTotals.tot16_30)}</td>
-                    <td className="py-3 px-3 text-right">{formatCurrency(ageingTotals.tot30Plus)}</td>
-                    <td className="py-3 px-3 text-right">
-                      {formatCurrency(ageingTotals.totOverdue)}
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      {formatCurrency(ageingTotals.totAmount)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {activeReport === "party_item_report" && (
-          <div className="space-y-3">
-            {/* Sub-banner: Party Name */}
-            {itemReportByPartyData.partyName && (
-              <div className="bg-white px-4 py-2.5 rounded-xl border border-slate-200/80 shadow-2xs flex items-center gap-2">
-                <span className="text-xs font-semibold text-slate-700">Party Name:</span>
-                <span className="text-xs font-extrabold text-emerald-600 uppercase tracking-wide">
-                  {itemReportByPartyData.partyName}
-                </span>
-              </div>
-            )}
-
-            {/* Table or Empty State */}
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden">
-              <div className="overflow-x-auto">
+            {activeReport === "party_outstanding" && (
+              <div className="bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
                 <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10.5px] tracking-wider">
+                  <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-700 font-semibold text-xs uppercase tracking-wider">
                     <tr>
-                      <th className="py-3 px-4">ITEM NAME</th>
-                      <th className="py-3 px-4">ITEM CODE</th>
-                      <th className="py-3 px-4 text-right">SALES QUANTITY</th>
-                      <th className="py-3 px-4 text-right">SALES AMOUNT</th>
-                      <th className="py-3 px-4 text-right">PURCHASE QUANTITY</th>
-                      <th className="py-3 px-4 text-right">PURCHASE AMOUNT</th>
+                      <th className="py-3 px-5">NAME</th>
+                      <th className="py-3 px-5">CATEGORY</th>
+                      <th className="py-3 px-5">CONTACT NUMBER</th>
+                      <th className="py-3 px-5 text-right">CLOSING BALANCE</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
-                    {itemReportByPartyData.rows.length === 0 ? (
+                    {outstandingList.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="py-24 text-center">
-                          <div className="flex flex-col items-center justify-center">
-                            <div className="size-16 rounded-full bg-slate-50 border border-slate-200/90 flex items-center justify-center text-slate-400 mb-3 shadow-2xs">
-                              <Search className="size-7 text-slate-300 stroke-[1.5]" />
-                            </div>
-                            <p className="text-sm font-semibold text-slate-600">
-                              {!selectedPartyId
-                                ? "Select a party from the toolbar above to view item transactions"
-                                : "No transactions available for selected party"}
-                            </p>
-                          </div>
+                        <td colSpan={4} className="py-16 text-center text-slate-400 text-xs font-semibold">
+                          No parties found for this filter
                         </td>
                       </tr>
                     ) : (
-                      itemReportByPartyData.rows.map((r, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-3 px-4 font-bold text-slate-900">{r.itemName}</td>
-                          <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">{r.itemCode}</td>
-                          <td className="py-3 px-4 text-right font-semibold">
-                            {r.salesQty > 0 ? `${r.salesQty} PCS` : "0 PCS"}
-                          </td>
-                          <td className="py-3 px-4 text-right font-bold text-slate-900">
-                            {formatCurrency(r.salesAmount)}
-                          </td>
-                          <td className="py-3 px-4 text-right font-semibold">
-                            {r.purchaseQty > 0 ? `${r.purchaseQty} PCS` : "0 PCS"}
-                          </td>
-                          <td className="py-3 px-4 text-right font-bold text-slate-900">
-                            {formatCurrency(r.purchaseAmount)}
-                          </td>
-                        </tr>
-                      ))
+                      outstandingList.map((p, idx) => {
+                        const isPositive = p.closingBalance > 0.01;
+                        const isNegative = p.closingBalance < -0.01;
+                        const catStr = p.category && p.category !== "Regular Customer" && p.category !== "Client" ? p.category : "Retail";
+                        const phoneStr = p.phone && p.phone !== "—" ? p.phone : "-";
+
+                        let balDisplay = "₹ 0.00";
+                        if (isPositive) {
+                          balDisplay = formatCurrency(p.closingBalance);
+                        } else if (isNegative) {
+                          balDisplay = `- ${formatCurrency(Math.abs(p.closingBalance))}`;
+                        }
+
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3 px-5 font-bold text-slate-900">
+                              <div className="flex items-center gap-2">
+                                <span>{p.name}</span>
+                                {p.type === "Supplier" && (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                                    Vendor
+                                  </span>
+                                )}
+                                {p.type === "Both" && (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300">
+                                    Both
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-3 px-5 text-slate-500 font-mono text-xs">{catStr}</td>
+                            <td className="py-3 px-5 text-slate-600 font-mono">{phoneStr}</td>
+                            <td
+                              className={`py-3 px-5 text-right font-mono font-bold ${isPositive
+                                  ? "text-emerald-700 dark:text-emerald-400"
+                                  : isNegative
+                                    ? "text-rose-600 dark:text-rose-400"
+                                    : "text-slate-400"
+                                }`}
+                            >
+                              <div className="flex flex-col items-end">
+                                <span>{balDisplay}</span>
+                                {isPositive && outstandingTab === "all" && (
+                                  <span className="text-[9px] font-semibold text-emerald-600 uppercase">To Collect</span>
+                                )}
+                                {isNegative && outstandingTab === "all" && (
+                                  <span className="text-[9px] font-semibold text-rose-600 uppercase">To Pay</span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
-                  {itemReportByPartyData.rows.length > 0 && (
+                </table>
+              </div>
+            )}
+
+            {activeReport === "party_ageing" && (
+              <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-xs font-bold">
+                        <th rowSpan={2} className="py-2.5 px-4 bg-slate-50 text-slate-800 align-middle border-r border-slate-200">
+                          Party Name
+                        </th>
+                        <th
+                          colSpan={3}
+                          className="py-1.5 px-3 text-center bg-amber-50/70 text-slate-800 border-r border-slate-200 font-bold"
+                        >
+                          Not yet due
+                        </th>
+                        <th
+                          colSpan={5}
+                          className="py-1.5 px-3 text-center bg-rose-50/70 text-slate-800 font-bold"
+                        >
+                          Overdue
+                        </th>
+                      </tr>
+                      <tr className="border-b border-slate-200 text-xs font-semibold text-slate-700 bg-slate-50/50">
+                        <th className="py-2 px-3 text-right">By Tomorrow</th>
+                        <th className="py-2 px-3 text-right">Upcoming</th>
+                        <th className="py-2 px-3 text-right border-r border-slate-200 font-semibold text-slate-800">
+                          T. Due
+                        </th>
+                        <th className="py-2 px-3 text-right">1-15 Days</th>
+                        <th className="py-2 px-3 text-right">16-30 Days</th>
+                        <th className="py-2 px-3 text-right">30+ Days</th>
+                        <th className="py-2 px-3 text-right font-semibold text-slate-800">
+                          T. Overdue
+                        </th>
+                        <th className="py-2 px-4 text-right font-semibold text-slate-800">
+                          T. Amount
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
+                      {ageingList.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="py-12 text-center text-slate-400">
+                            No ageing records found
+                          </td>
+                        </tr>
+                      ) : (
+                        ageingList.map((p, idx) => {
+                          const tDue = (p.dueTomorrow || 0) + (p.upcomingDue || 0);
+                          const tOverdue = (p.overdue1_15 || 0) + (p.overdue16_30 || 0) + (p.overdue30Plus || 0);
+                          const tAmt = (tDue + tOverdue) > 0 ? (tDue + tOverdue) : (p.closingBalance > 0 ? p.closingBalance : 0);
+
+                          return (
+                            <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="py-2.5 px-4 font-semibold text-slate-900 whitespace-nowrap border-r border-slate-100">{p.name}</td>
+                              <td className="py-2.5 px-3 text-right text-slate-600">
+                                {p.dueTomorrow && p.dueTomorrow > 0 ? formatCurrency(p.dueTomorrow) : "-"}
+                              </td>
+                              <td className="py-2.5 px-3 text-right text-slate-600">
+                                {p.upcomingDue && p.upcomingDue > 0 ? formatCurrency(p.upcomingDue) : "-"}
+                              </td>
+                              <td className="py-2.5 px-3 text-right text-slate-700 border-r border-slate-100">
+                                {tDue > 0 ? formatCurrency(tDue) : "-"}
+                              </td>
+                              <td className="py-2.5 px-3 text-right text-slate-600">
+                                {p.overdue1_15 && p.overdue1_15 > 0 ? formatCurrency(p.overdue1_15) : "-"}
+                              </td>
+                              <td className="py-2.5 px-3 text-right text-slate-600">
+                                {p.overdue16_30 && p.overdue16_30 > 0 ? formatCurrency(p.overdue16_30) : "-"}
+                              </td>
+                              <td className="py-2.5 px-3 text-right text-slate-700">
+                                {p.overdue30Plus && p.overdue30Plus > 0 ? formatCurrency(p.overdue30Plus) : "-"}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-medium text-slate-800">
+                                {tOverdue > 0 ? formatCurrency(tOverdue) : "-"}
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-medium text-slate-900">
+                                {tAmt > 0 ? formatCurrency(tAmt) : "-"}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
                     <tfoot className="bg-slate-50 border-t-2 border-slate-200 font-bold text-slate-900 text-xs">
                       <tr>
-                        <td className="py-3 px-4 font-extrabold">Total</td>
-                        <td className="py-3 px-4 text-slate-400">—</td>
-                        <td className="py-3 px-4 text-right font-extrabold">
-                          {itemReportByPartyData.totSalesQty} PCS
+                        <td className="py-3 px-4 border-r border-slate-200">Total</td>
+                        <td className="py-3 px-3 text-right">{formatCurrency(ageingTotals.totTomorrow)}</td>
+                        <td className="py-3 px-3 text-right">{formatCurrency(ageingTotals.totUpcoming)}</td>
+                        <td className="py-3 px-3 text-right border-r border-slate-200">
+                          {formatCurrency(ageingTotals.totDue)}
                         </td>
-                        <td className="py-3 px-4 text-right font-extrabold text-indigo-700">
-                          {formatCurrency(itemReportByPartyData.totSalesAmt)}
+                        <td className="py-3 px-3 text-right">{formatCurrency(ageingTotals.tot1_15)}</td>
+                        <td className="py-3 px-3 text-right">{formatCurrency(ageingTotals.tot16_30)}</td>
+                        <td className="py-3 px-3 text-right">{formatCurrency(ageingTotals.tot30Plus)}</td>
+                        <td className="py-3 px-3 text-right">
+                          {formatCurrency(ageingTotals.totOverdue)}
                         </td>
-                        <td className="py-3 px-4 text-right font-extrabold">
-                          {itemReportByPartyData.totPurQty} PCS
-                        </td>
-                        <td className="py-3 px-4 text-right font-extrabold text-indigo-700">
-                          {formatCurrency(itemReportByPartyData.totPurAmt)}
+                        <td className="py-3 px-4 text-right">
+                          {formatCurrency(ageingTotals.totAmount)}
                         </td>
                       </tr>
                     </tfoot>
-                  )}
-                </table>
+                  </table>
+                </div>
               </div>
-            </div>
-          </div>
-        )}
+            )}
 
-        {activeReport === "customer_sales" && (
-          <div className="bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10.5px] tracking-wider">
-                  <tr>
-                    <th className="py-3 px-3.5">DATE</th>
-                    <th className="py-3 px-3.5">INVOICE NO</th>
-                    <th className="py-3 px-3.5">PARTY SALE</th>
-                    <th className="py-3 px-3.5">CREATED BY</th>
-                    <th className="py-3 px-3.5">DUE DATE</th>
-                    <th className="py-3 px-3.5 text-right">AMOUNT</th>
-                    <th className="py-3 px-3.5 text-right">BALANCE</th>
-                    <th className="py-3 px-3.5">INVOICE TYPE</th>
-                    <th className="py-3 px-3.5">INVOICE STATUS</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
-                  {customerSalesSummary.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="py-24 text-center">
-                        <div className="flex flex-col items-center justify-center">
-                          <div className="size-20 rounded-2xl bg-slate-50 border border-slate-200/60 flex items-center justify-center text-slate-300 mb-4 shadow-2xs">
-                            <FileText className="size-10 stroke-[1.5] text-slate-400" />
-                          </div>
-                          <p className="text-sm font-semibold text-slate-500">
-                            No transaction between selected dates
-                          </p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    customerSalesSummary.map((s: any, idx: number) => (
-                      <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3 px-3.5 whitespace-nowrap text-slate-500 font-mono text-xs">{s.date}</td>
-                        <td className="py-3 px-3.5 font-bold text-slate-900 font-mono text-xs">{s.invoiceNo}</td>
-                        <td className="py-3 px-3.5 font-bold text-slate-900">{s.partySale}</td>
-                        <td className="py-3 px-3.5 text-slate-600 text-xs">{s.createdBy || "Admin"}</td>
-                        <td className="py-3 px-3.5 text-slate-500 font-mono text-xs whitespace-nowrap">{s.dueDate}</td>
-                        <td className="py-3 px-3.5 text-right font-bold text-slate-900 font-mono">
-                          {formatCurrency(s.amount)}
-                        </td>
-                        <td className="py-3 px-3.5 text-right font-bold text-rose-600 font-mono">
-                          {s.balance > 0 ? formatCurrency(s.balance) : "—"}
-                        </td>
-                        <td className="py-3 px-3.5 text-slate-600 text-xs">
-                          {s.invoiceType || "Tax Invoice"}
-                        </td>
-                        <td className="py-3 px-3.5">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              s.invoiceStatus === "PAID"
-                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                : s.invoiceStatus === "PARTIAL"
-                                ? "bg-amber-50 text-amber-700 border border-amber-200"
-                                : "bg-rose-50 text-rose-700 border border-rose-200"
-                            }`}
-                          >
-                            {s.invoiceStatus}
-                          </span>
-                        </td>
+            {activeReport === "party_item_report" && (
+              <div className="space-y-3">
+                {/* Sub-banner: Party Name */}
+                {itemReportByPartyData.partyName && (
+                  <div className="bg-white px-4 py-2.5 rounded-xl border border-slate-200/80 shadow-2xs flex items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-700">Party Name:</span>
+                    <span className="text-xs font-extrabold text-emerald-600 uppercase tracking-wide">
+                      {itemReportByPartyData.partyName}
+                    </span>
+                  </div>
+                )}
+
+                {/* Table or Empty State */}
+                <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10.5px] tracking-wider">
+                        <tr>
+                          <th className="py-3 px-4">ITEM NAME</th>
+                          <th className="py-3 px-4">ITEM CODE</th>
+                          <th className="py-3 px-4 text-right">SALES QUANTITY</th>
+                          <th className="py-3 px-4 text-right">SALES AMOUNT</th>
+                          <th className="py-3 px-4 text-right">PURCHASE QUANTITY</th>
+                          <th className="py-3 px-4 text-right">PURCHASE AMOUNT</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
+                        {itemReportByPartyData.rows.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="py-24 text-center">
+                              <div className="flex flex-col items-center justify-center">
+                                <div className="size-16 rounded-full bg-slate-50 border border-slate-200/90 flex items-center justify-center text-slate-400 mb-3 shadow-2xs">
+                                  <Search className="size-7 text-slate-300 stroke-[1.5]" />
+                                </div>
+                                <p className="text-sm font-semibold text-slate-600">
+                                  {!selectedPartyId
+                                    ? "Select a party from the toolbar above to view item transactions"
+                                    : "No transactions available for selected party"}
+                                </p>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : (
+                          itemReportByPartyData.rows.map((r, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="py-3 px-4 font-bold text-slate-900">{r.itemName}</td>
+                              <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">{r.itemCode}</td>
+                              <td className="py-3 px-4 text-right font-semibold">
+                                {r.salesQty > 0 ? `${r.salesQty} PCS` : "0 PCS"}
+                              </td>
+                              <td className="py-3 px-4 text-right font-bold text-slate-900">
+                                {formatCurrency(r.salesAmount)}
+                              </td>
+                              <td className="py-3 px-4 text-right font-semibold">
+                                {r.purchaseQty > 0 ? `${r.purchaseQty} PCS` : "0 PCS"}
+                              </td>
+                              <td className="py-3 px-4 text-right font-bold text-slate-900">
+                                {formatCurrency(r.purchaseAmount)}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                      {itemReportByPartyData.rows.length > 0 && (
+                        <tfoot className="bg-slate-50 border-t-2 border-slate-200 font-bold text-slate-900 text-xs">
+                          <tr>
+                            <td className="py-3 px-4 font-extrabold">Total</td>
+                            <td className="py-3 px-4 text-slate-400">—</td>
+                            <td className="py-3 px-4 text-right font-extrabold">
+                              {itemReportByPartyData.totSalesQty} PCS
+                            </td>
+                            <td className="py-3 px-4 text-right font-extrabold text-indigo-700">
+                              {formatCurrency(itemReportByPartyData.totSalesAmt)}
+                            </td>
+                            <td className="py-3 px-4 text-right font-extrabold">
+                              {itemReportByPartyData.totPurQty} PCS
+                            </td>
+                            <td className="py-3 px-4 text-right font-extrabold text-indigo-700">
+                              {formatCurrency(itemReportByPartyData.totPurAmt)}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeReport === "customer_sales" && (
+              <div className="bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10.5px] tracking-wider">
+                      <tr>
+                        <th className="py-3 px-3.5">DATE</th>
+                        <th className="py-3 px-3.5">INVOICE NO</th>
+                        <th className="py-3 px-3.5">PARTY SALE</th>
+                        <th className="py-3 px-3.5">CREATED BY</th>
+                        <th className="py-3 px-3.5">DUE DATE</th>
+                        <th className="py-3 px-3.5 text-right">AMOUNT</th>
+                        <th className="py-3 px-3.5 text-right">BALANCE</th>
+                        <th className="py-3 px-3.5">INVOICE TYPE</th>
+                        <th className="py-3 px-3.5">INVOICE STATUS</th>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
+                      {customerSalesSummary.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="py-24 text-center">
+                            <div className="flex flex-col items-center justify-center">
+                              <div className="size-20 rounded-2xl bg-slate-50 border border-slate-200/60 flex items-center justify-center text-slate-300 mb-4 shadow-2xs">
+                                <FileText className="size-10 stroke-[1.5] text-slate-400" />
+                              </div>
+                              <p className="text-sm font-semibold text-slate-500">
+                                No transaction between selected dates
+                              </p>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        customerSalesSummary.map((s: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3 px-3.5 whitespace-nowrap text-slate-500 font-mono text-xs">{s.date}</td>
+                            <td className="py-3 px-3.5 font-bold text-slate-900 font-mono text-xs">{s.invoiceNo}</td>
+                            <td className="py-3 px-3.5 font-bold text-slate-900">{s.partySale}</td>
+                            <td className="py-3 px-3.5 text-slate-600 text-xs">{s.createdBy || "Admin"}</td>
+                            <td className="py-3 px-3.5 text-slate-500 font-mono text-xs whitespace-nowrap">{s.dueDate}</td>
+                            <td className="py-3 px-3.5 text-right font-bold text-slate-900 font-mono">
+                              {formatCurrency(s.amount)}
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-bold text-rose-600 font-mono">
+                              {s.balance > 0 ? formatCurrency(s.balance) : "—"}
+                            </td>
+                            <td className="py-3 px-3.5 text-slate-600 text-xs">
+                              {s.invoiceType || "Tax Invoice"}
+                            </td>
+                            <td className="py-3 px-3.5">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${s.invoiceStatus === "PAID"
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                    : s.invoiceStatus === "PARTIAL"
+                                      ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                      : "bg-rose-50 text-rose-700 border border-rose-200"
+                                  }`}
+                              >
+                                {s.invoiceStatus}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </>
         )}
 
