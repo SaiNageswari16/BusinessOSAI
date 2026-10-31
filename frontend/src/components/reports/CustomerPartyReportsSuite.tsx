@@ -128,33 +128,44 @@ export function calculateAgingBucket(
     if (parsed) dueMs = parsed;
   }
 
-  if (!dueMs) {
-    const invMs = parseSafeDateTimestamp(invoiceDateVal) || todayMidnight;
-    if (creditDays > 0) {
-      dueMs = invMs + creditDays * 24 * 60 * 60 * 1000;
+  // 1. If explicit future due date is given:
+  if (dueMs) {
+    const dDueDate = new Date(dueMs);
+    const dueMidnight = new Date(dDueDate.getFullYear(), dDueDate.getMonth(), dDueDate.getDate()).getTime();
+    const diffDays = Math.round((todayMidnight - dueMidnight) / (24 * 60 * 60 * 1000));
+
+    // When payment deadline is still in the future:
+    if (diffDays < -1) {
+      return "upcomingDue"; // Upcoming (not yet due)
+    } else if (diffDays === -1) {
+      return "dueTomorrow"; // By Tomorrow (not yet due)
+    }
+
+    // When payment deadline has arrived or elapsed:
+    if (diffDays >= 0 && diffDays <= 15) {
+      return "overdue1_15"; // Default 1-15 Days
+    } else if (diffDays >= 16 && diffDays <= 30) {
+      return "overdue16_30"; // 16-30 Days
     } else {
-      dueMs = invMs;
+      return "overdue30Plus"; // 30+ Days (30-45+ days)
     }
   }
 
-  const dDueDate = new Date(dueMs);
-  const dueMidnight = new Date(dDueDate.getFullYear(), dDueDate.getMonth(), dDueDate.getDate()).getTime();
-  const diffDays = Math.round((todayMidnight - dueMidnight) / (24 * 60 * 60 * 1000));
+  // 2. If NO future due date is specified (default debit bill):
+  // Calculate based on days elapsed since the invoice / billing date:
+  const invMs = parseSafeDateTimestamp(invoiceDateVal) || todayMidnight;
+  const dInvDate = new Date(invMs);
+  const invMidnight = new Date(dInvDate.getFullYear(), dInvDate.getMonth(), dInvDate.getDate()).getTime();
+  const daysSinceBilled = Math.round((todayMidnight - invMidnight) / (24 * 60 * 60 * 1000));
 
-  if (diffDays < -1) {
-    // Due after tomorrow (future due date)
-    return "upcomingDue";
-  } else if (diffDays >= -1 && diffDays <= 0) {
-    // Due today or due tomorrow
-    return "dueTomorrow";
-  } else if (diffDays >= 1 && diffDays <= 15) {
-    // Overdue by 1 to 15 days
+  if (daysSinceBilled <= 15) {
+    // Customer billed today (day 0) through day 15 -> default shows in 1-15 Days under Overdue
     return "overdue1_15";
-  } else if (diffDays >= 16 && diffDays <= 30) {
-    // Overdue by 16 to 30 days
+  } else if (daysSinceBilled >= 16 && daysSinceBilled <= 30) {
+    // Exceeding 15 days -> moves to 16-30 Days under Overdue
     return "overdue16_30";
   } else {
-    // Overdue by more than 30 days
+    // Exceeding 30 days -> moves to 30+ Days under Overdue
     return "overdue30Plus";
   }
 }
