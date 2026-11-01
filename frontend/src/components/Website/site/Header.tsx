@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Menu, X, Sparkles, ArrowRight, LogIn } from "lucide-react";
+import { Menu, X, Sparkles, ArrowRight, LogIn, Download } from "lucide-react";
+import { DownloadAppModal } from "@/components/common/DownloadAppModal";
 import { getAuthUrls } from "@/lib/auth-urls";
 
 const nav = [
@@ -16,6 +17,7 @@ const nav = [
 export function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  const [downloadModalOpen, setDownloadModalOpen] = useState(false);
   const authUrls = getAuthUrls();
 
   useEffect(() => {
@@ -68,6 +70,16 @@ export function Header() {
 
           {/* Right Action Buttons */}
           <div className="flex items-center gap-1.5 sm:gap-2">
+            <button
+              type="button"
+              onClick={() => setDownloadModalOpen(true)}
+              title="Download BusinessOS AI Desktop App for Windows & macOS"
+              className="border border-cyan-200/90 bg-cyan-50/80 text-cyan-900 text-[11px] sm:text-[12px] font-bold px-3 sm:px-3.5 py-1.5 rounded-full hover:bg-cyan-100 hover:text-cyan-950 hover:border-cyan-300 transition-all cursor-pointer whitespace-nowrap shadow-xs flex items-center gap-1.5 hover:-translate-y-0.5"
+            >
+              <Download className="size-3 sm:size-3.5 text-cyan-600" />
+              <span>Desktop App</span>
+            </button>
+
             <a
               href={authUrls.signIn}
               title="Sign In to your existing account"
@@ -135,6 +147,17 @@ export function Header() {
                 Explore Products
               </a>
               <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    setDownloadModalOpen(true);
+                  }}
+                  className="col-span-2 rounded-xl border border-cyan-300 bg-cyan-50 text-cyan-900 hover:bg-cyan-100 px-3 py-2 text-center text-xs font-bold shadow-xs flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <Download className="size-3.5 text-cyan-600" />
+                  <span>Download Desktop App</span>
+                </button>
                 <a
                   href={authUrls.signIn}
                   onClick={() => setOpen(false)}
@@ -156,6 +179,10 @@ export function Header() {
           </div>
         </div>
       ) : null}
+      <DownloadAppModal
+        isOpen={downloadModalOpen}
+        onClose={() => setDownloadModalOpen(false)}
+      />
     </header>
   );
 }

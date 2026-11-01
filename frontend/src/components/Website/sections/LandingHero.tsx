@@ -10,6 +10,7 @@ import {
   ChevronDown,
   Menu,
   X,
+  Download,
   Box,
   Zap,
   Cloud,
@@ -26,6 +27,7 @@ import {
 } from "lucide-react";
 import { getAuthUrls } from "@/lib/auth-urls";
 import "./LandingHero.css";
+import { DownloadAppModal } from "@/components/common/DownloadAppModal";
 
 const navItems = [
   { name: "Home", href: "#home" },
@@ -152,6 +154,7 @@ export function LandingHero() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [activeSection, setActiveSection] = useState("Home");
+  const [downloadModalOpen, setDownloadModalOpen] = useState(false);
   const authUrls = getAuthUrls();
 
   useEffect(() => {
@@ -230,6 +233,17 @@ export function LandingHero() {
             </a>
           ))}
           <div className="mobile-nav-auth-group">
+            <button
+              type="button"
+              className="nav-download"
+              onClick={() => {
+                setMenuOpen(false);
+                setDownloadModalOpen(true);
+              }}
+            >
+              <Download size={15} className="nav-download-icon" />
+              <span>Download Desktop App</span>
+            </button>
             <a
               href={authUrls.signIn}
               className="nav-signin"
@@ -251,6 +265,16 @@ export function LandingHero() {
         </nav>
 
         <div className="hero-nav-actions">
+          <button
+            type="button"
+            onClick={() => setDownloadModalOpen(true)}
+            className="nav-download"
+            title="Download BusinessOS AI Desktop App for Windows & macOS"
+          >
+            <Download size={14} className="nav-download-icon" />
+            <span>Desktop App</span>
+          </button>
+
           <a
             href={authUrls.signIn}
             className="nav-signin"
@@ -600,6 +624,11 @@ export function LandingHero() {
           </div>
         </div>
       </div>
+      {/* Download Desktop App Modal */}
+      <DownloadAppModal
+        isOpen={downloadModalOpen}
+        onClose={() => setDownloadModalOpen(false)}
+      />
     </section>
   );
 }

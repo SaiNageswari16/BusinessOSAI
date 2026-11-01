@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Menu, X, Sparkles, ArrowRight, LogIn, UserPlus } from "lucide-react";
+import { Menu, X, Sparkles, ArrowRight, LogIn, UserPlus, Download } from "lucide-react";
+import { DownloadAppModal } from "@/components/common/DownloadAppModal";
 
 const nav = [
   { label: "Home", href: "/#top" },
@@ -16,6 +17,7 @@ const nav = [
 export function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  const [downloadModalOpen, setDownloadModalOpen] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -57,6 +59,16 @@ export function Header() {
 
           {/* Right Action Buttons */}
           <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setDownloadModalOpen(true)}
+              title="Download BusinessOS AI Desktop App for Windows & macOS"
+              className="border border-cyan-200/90 bg-cyan-50/80 text-cyan-900 text-[11.5px] sm:text-[12px] font-bold px-3 py-1.5 rounded-full hover:bg-cyan-100 hover:text-cyan-950 hover:border-cyan-300 transition-all cursor-pointer whitespace-nowrap shadow-xs flex items-center gap-1.5 hover:-translate-y-0.5"
+            >
+              <Download className="size-3 text-cyan-600" />
+              <span>Desktop App</span>
+            </button>
+
             <Link
               to="/login"
               className="hidden sm:inline-flex items-center gap-1 text-[11.5px] sm:text-[12px] font-bold text-slate-700 hover:text-purple-700 px-3 py-1.5 rounded-full border border-slate-200 hover:bg-slate-100 transition-all cursor-pointer whitespace-nowrap"
@@ -137,6 +149,10 @@ export function Header() {
           </div>
         </div>
       ) : null}
+      <DownloadAppModal
+        isOpen={downloadModalOpen}
+        onClose={() => setDownloadModalOpen(false)}
+      />
     </header>
   );
 }

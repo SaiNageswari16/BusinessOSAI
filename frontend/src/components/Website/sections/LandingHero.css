@@ -355,6 +355,77 @@ html {
   }
 }
 
+.nav-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(240, 253, 250, 0.95);
+  color: #0f172a;
+  padding: 0.48rem 0.95rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(153, 246, 228, 0.95);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 1px 3px rgba(13, 148, 136, 0.08);
+  transition: all 0.25s ease;
+  white-space: nowrap;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.nav-download:hover {
+  background: #ffffff;
+  border-color: rgba(14, 165, 233, 0.7);
+  color: #0284c7;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(14, 165, 233, 0.2);
+}
+
+.hero-dark .nav-download {
+  background: rgba(15, 23, 42, 0.9);
+  color: #e0f2fe;
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.hero-dark .nav-download:hover {
+  background: rgba(12, 74, 96, 0.6);
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.7);
+  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.25);
+}
+
+.nav-download-icon {
+  color: #0891b2;
+  transition: transform 0.2s ease;
+}
+
+.hero-dark .nav-download-icon {
+  color: #38bdf8;
+}
+
+.nav-download:hover .nav-download-icon {
+  transform: translateY(1.5px);
+}
+
+@media (max-width: 768px) {
+  .nav-download {
+    padding: 0.36rem 0.65rem;
+    font-size: 0.72rem;
+    gap: 0.25rem;
+  }
+  .nav-download svg {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+@media (max-width: 440px) {
+  .nav-download {
+    padding: 0.36rem 0.55rem;
+  }
+}
+
 .nav-signin {
   display: inline-flex;
   align-items: center;
