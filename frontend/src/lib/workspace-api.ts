@@ -1,7 +1,4 @@
-import { ApiError } from "./api-client";
-import { useCurrency } from "@/hooks/use-currency";
-
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000/api/v1";
+import { request } from "./api-client";
 
 export interface DashboardKPI {
   label: string;
@@ -14,52 +11,20 @@ export interface DashboardKPI {
 
 export interface DashboardData {
   kpis: DashboardKPI[];
-}
-
-async function fetchWithAuth(url: string, options: RequestInit = {}) {
-  let token = null;
-  try {
-    const authItem = localStorage.getItem("bos-auth");
-    if (authItem) {
-      token = JSON.parse(authItem).accessToken;
-    }
-  } catch (e) {
-    console.warn("Failed to parse bos-auth from localStorage");
-  }
-
-  const headers = new Headers(options.headers || {});
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-  try {
-    const activeCompanyId = localStorage.getItem("bos_active_company_id");
-    if (activeCompanyId) {
-      headers.set("X-Company-Id", activeCompanyId);
-      headers.set("X-Workspace-Id", activeCompanyId);
-    }
-    const storedTenant = localStorage.getItem("bos-tenant");
-    if (storedTenant) {
-      const parsed = JSON.parse(storedTenant);
-      const targetTenantId = parsed.raw?.tenant_id || parsed.tenant_id || parsed.id;
-      if (targetTenantId) {
-        headers.set("X-Impersonate-Tenant", targetTenantId);
-        headers.set("X-Tenant-Id", targetTenantId);
-      }
-      const companyId = parsed.id || parsed.company_id || parsed.raw?.id;
-      if (companyId && !headers.has("X-Company-Id")) {
-        headers.set("X-Company-Id", companyId);
-        headers.set("X-Workspace-Id", companyId);
-      }
-    }
-  } catch {}
-  
-  const response = await fetch(url, { ...options, headers });
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ detail: "Unknown error" }));
-    throw { status: response.status, detail: errorData.detail } as ApiError;
-  }
-  
-  return response.json();
+  totalSales?: number;
+  todaysSalesCount?: number;
+  ordersPending?: number;
+  activeCustomers?: number;
+  employeesPresent?: number;
+  totalEmployees?: number;
+  employeesAbsent?: number;
+  inventoryValue?: number;
+  pendingDeliveries?: number;
+  pendingPayments?: number;
+  posRevenueToday?: number;
+  posTransactionsToday?: number;
+  lifetimeRevenue?: number;
+  lifetimeSalesCount?: number;
 }
 
 export interface DashboardChartsData {
@@ -82,15 +47,15 @@ export const workspaceApi = {
     return { id: "W-1", name: "Store HQ" };
   },
   getDashboardKPIs: async (): Promise<DashboardData> => {
-    return fetchWithAuth(`${API_BASE_URL}/workspace/dashboard/kpis`);
+    return request<DashboardData>("GET", "/workspace/dashboard/kpis");
   },
   getDashboardCharts: async (): Promise<DashboardChartsData> => {
-    return fetchWithAuth(`${API_BASE_URL}/workspace/dashboard/charts`);
+    return request<DashboardChartsData>("GET", "/workspace/dashboard/charts");
   },
   getDashboardWidgets: async (): Promise<DashboardWidgetsData> => {
-    return fetchWithAuth(`${API_BASE_URL}/workspace/dashboard/widgets`);
+    return request<DashboardWidgetsData>("GET", "/workspace/dashboard/widgets");
   },
   getDashboardFeeds: async (): Promise<Record<string, any[]>> => {
-    return fetchWithAuth(`${API_BASE_URL}/workspace/dashboard/feeds`);
+    return request<Record<string, any[]>>("GET", "/workspace/dashboard/feeds");
   }
 };

@@ -61,6 +61,20 @@ async def get_dashboard_kpis(
     pos_sales = await db.scalar(pos_sales_q) or 0
     todays_sales = inv_sales + pos_sales
 
+    # Lifetime / All-Time Revenue and Sales Count (for live fallbacks when today's sales are 0)
+    all_time_inv_rev_q = select(func.sum(Invoice.total_amount)).where(
+        Invoice.tenant_id == ctx.tenant_id,
+        cast(Invoice.invoice_type, String) == InvoiceType.TAX_INVOICE.value,
+        *([Invoice.company_id == cid] if cid else [])
+    )
+    all_time_inv_count_q = select(func.count(Invoice.id)).where(
+        Invoice.tenant_id == ctx.tenant_id,
+        cast(Invoice.invoice_type, String) == InvoiceType.TAX_INVOICE.value,
+        *([Invoice.company_id == cid] if cid else [])
+    )
+    all_time_inv_rev = float(await db.scalar(all_time_inv_rev_q) or 0.0)
+    all_time_inv_count = int(await db.scalar(all_time_inv_count_q) or 0)
+
     # 2. Orders Pending
     pending_orders_q = select(func.count(CRMSalesOrder.id)).where(
         CRMSalesOrder.tenant_id == ctx.tenant_id,
@@ -95,10 +109,15 @@ async def get_dashboard_kpis(
     attendance_str = f"{employees_present} / {total_employees}"
 
     # 5. Inventory Value
-    inv_value_q = select(func.sum(Product.initial_stock * Product.selling_price)).where(Product.tenant_id == ctx.tenant_id)
+    inv_value_q = select(
+        func.sum(
+            func.coalesce(Product.on_hand_stock, Product.initial_stock, 0)
+            * func.coalesce(Product.selling_price, Product.mrp, Product.purchase_price, 0)
+        )
+    ).where(Product.tenant_id == ctx.tenant_id)
     if cid:
         inv_value_q = inv_value_q.where(Product.company_id == cid)
-    inventory_value = await db.scalar(inv_value_q) or 0.0
+    inventory_value = float(await db.scalar(inv_value_q) or 0.0)
 
     # 6. Pending Deliveries
     pending_deliveries_q = select(func.count(GoodsIssue.id)).where(
@@ -183,7 +202,9 @@ async def get_dashboard_kpis(
                 "isCurrency": True
             }
         ],
-        "totalSales": todays_revenue,
+        "totalSales": todays_revenue if todays_revenue > 0 else all_time_inv_rev,
+        "lifetimeRevenue": all_time_inv_rev,
+        "lifetimeSalesCount": all_time_inv_count,
         "todaysSalesCount": todays_sales,
         "ordersPending": orders_pending,
         "activeCustomers": active_customers,

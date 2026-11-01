@@ -4837,6 +4837,33 @@ export const inventoryApi = {
 
   // Intelligence
   getIntelligence: () => request<IntelligenceSummary>("GET", "/inventory/intelligence/summary"),
+  getReorderRecommendations: () =>
+    request<{
+      items: ReorderItem[];
+      total_count: number;
+      critical: number;
+      high: number;
+      medium: number;
+      low: number;
+      estimated_total_value: number;
+    }>("GET", "/inventory/intelligence/reorder-recommendations"),
+  getFastMoving: (limit?: number) =>
+    request<{
+      items: any[];
+      total_count: number;
+      total_units_sold_30d: number;
+      total_estimated_revenue_30d: number;
+      total_stock_value: number;
+      avg_daily_turnover: number;
+    }>("GET", "/inventory/intelligence/fast-moving", undefined, limit ? { limit } : undefined),
+  getSlowMoving: (limit?: number) =>
+    request<{
+      items: any[];
+      total_count: number;
+      total_tied_capital: number;
+      total_units_holding: number;
+      avg_holding_value: number;
+    }>("GET", "/inventory/intelligence/slow-moving", undefined, limit ? { limit } : undefined),
 
   // Warehouse Management
   getWarehouses: () => request<Warehouse[]>("GET", "/inventory/warehouses"),
