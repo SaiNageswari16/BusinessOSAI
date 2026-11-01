@@ -2150,7 +2150,7 @@ async def reset_platform_user_password(
     await db.refresh(user)
 
     # Dispatch email notification to the user
-    login_url = f"{cfg.frontend_url}/login" if cfg.frontend_url else "https://lazymonkeyai.com/login"
+    login_url = f"{cfg.frontend_url}/login" if cfg.frontend_url else ""
     try:
         asyncio.create_task(
             send_email(

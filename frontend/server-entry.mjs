@@ -32,8 +32,28 @@ const MIME = {
 function serveStatic(reqUrl) {
   const url = new URL(reqUrl, "http://localhost");
   const pathname = decodeURIComponent(url.pathname);
+  const ext = extname(pathname).toLowerCase();
+  if (!ext) return null;
+
   let filePath = join(CLIENT_DIR, pathname);
   if (!existsSync(filePath)) filePath = join(PUBLIC_DIR, pathname);
+
+  // Fallback check for case-insensitive file matching (ONLY for files with an extension)
+  if (!existsSync(filePath)) {
+    const filename = pathname.replace(/^\//, "");
+    const fallbacks = [
+      join(CLIENT_DIR, filename.toLowerCase()),
+      join(CLIENT_DIR, filename.charAt(0).toUpperCase() + filename.slice(1)),
+      join(PUBLIC_DIR, filename.toLowerCase()),
+      join(PUBLIC_DIR, filename.charAt(0).toUpperCase() + filename.slice(1)),
+    ];
+    for (const fb of fallbacks) {
+      if (existsSync(fb)) {
+        filePath = fb;
+        break;
+      }
+    }
+  }
 
   // Fallback check for uploaded images in backend directories
   if (!existsSync(filePath) && (pathname.startsWith("/upload_images/") || pathname.startsWith("/images/"))) {
@@ -54,14 +74,12 @@ function serveStatic(reqUrl) {
 
   if (!existsSync(filePath)) return null;
 
-  const ext = extname(filePath).toLowerCase();
-  const contentType = MIME[ext] || "application/octet-stream";
+  const fileExt = extname(filePath).toLowerCase() || ext;
+  const contentType = MIME[fileExt] || "application/octet-stream";
 
   try {
     const body = readFileSync(filePath);
-    return new Response(body, {
-      headers: { "content-type": contentType, "cache-control": "public, max-age=86400" },
-    });
+    return { body, contentType };
   } catch {
     return null;
   }
@@ -75,13 +93,16 @@ const server = createServer(async (nodeReq, nodeRes) => {
     if (nodeReq.method === "GET" || nodeReq.method === "HEAD") {
       const staticResponse = serveStatic(nodeReq.url);
       if (staticResponse) {
-        const headers = {};
-        staticResponse.headers.forEach((value, key) => { headers[key] = value; });
-        nodeRes.writeHead(staticResponse.status, headers);
-        if (staticResponse.body) {
-          for await (const chunk of staticResponse.body) nodeRes.write(chunk);
+        nodeRes.writeHead(200, {
+          "content-type": staticResponse.contentType,
+          "content-length": staticResponse.body.length,
+          "cache-control": "public, max-age=86400",
+        });
+        if (nodeReq.method === "HEAD") {
+          nodeRes.end();
+        } else {
+          nodeRes.end(staticResponse.body);
         }
-        nodeRes.end();
         return;
       }
     }
@@ -103,6 +124,9 @@ const server = createServer(async (nodeReq, nodeRes) => {
     const response = await appHandler.fetch(request, {}, {});
     const headers = {};
     response.headers.forEach((value, key) => { headers[key] = value; });
+    if (!headers["cache-control"]) {
+      headers["cache-control"] = "no-cache, no-store, must-revalidate";
+    }
     nodeRes.writeHead(response.status, headers);
     if (response.body) {
       for await (const chunk of response.body) nodeRes.write(chunk);

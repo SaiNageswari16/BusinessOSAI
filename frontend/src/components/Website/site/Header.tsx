@@ -38,6 +38,16 @@ export function Header() {
           >
             <img
               src="/logo.png"
+              onError={(e) => {
+                const img = e.currentTarget;
+                if (!img.dataset.failedOnce) {
+                  img.dataset.failedOnce = "true";
+                  img.src = "/Logo.png";
+                } else if (!img.dataset.failedTwice) {
+                  img.dataset.failedTwice = "true";
+                  img.src = "/iotroncs-logo.png";
+                }
+              }}
               alt="IOTRONICS"
               className="h-5.5 sm:h-6 2xl:h-7 w-auto object-contain transition-transform duration-300 group-hover:scale-105"
             />

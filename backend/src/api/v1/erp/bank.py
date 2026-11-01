@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select, or_, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
 from src.api.deps import CurrentUserContext, require_permission
 from src.database.init_db import write_audit_log
@@ -93,6 +94,7 @@ async def get_bank_account(
 async def _sync_bank_to_settings(db: AsyncSession, tenant_id: uuid.UUID, account: BankAccount) -> None:
     """Sync default bank account details into Tenant.settings and Company.settings for invoice print engines."""
     from src.models import Tenant, Company
+    from sqlalchemy.orm.attributes import flag_modified
     parts = [f"Bank: {account.bank_name or account.name}"]
     if account.account_number:
         parts.append(f"A/C: {account.account_number}")

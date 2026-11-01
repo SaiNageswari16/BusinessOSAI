@@ -199,6 +199,16 @@ export function LandingHero() {
         <a href="#home" className="hero-brand" aria-label="IOTRONICS Home">
           <img
             src={dark ? "/logo-white.png" : "/logo.png"}
+            onError={(e) => {
+              const img = e.currentTarget;
+              if (!img.dataset.failedOnce) {
+                img.dataset.failedOnce = "true";
+                img.src = dark ? "/logo-white.png" : "/Logo.png";
+              } else if (!img.dataset.failedTwice) {
+                img.dataset.failedTwice = "true";
+                img.src = "/iotroncs-logo.png";
+              }
+            }}
             alt="IOTRONICS"
             className="hero-brand-logo"
           />
