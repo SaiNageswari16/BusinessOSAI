@@ -2,10 +2,10 @@
  * Environment-aware Authentication & App Navigation
  * 
  * Ensures that:
- * - When developing or working on a local system (localhost, 127.0.0.1, local ports),
- *   navigation stays within the local environment (e.g. `/login` and `/login?mode=register`).
- * - When running on the production server (e.g. lazymonkeyai.com),
- *   navigation redirects to the production server login/app (`https://lazymonkeyai.com/login` and `https://lazymonkeyai.com/login?mode=register`).
+ * - Navigation stays relative to the current environment and origin (/login, /login?mode=register, /dashboard).
+ * - On localhost (e.g. http://localhost:8080), it opens http://localhost:8080/login.
+ * - On production or custom domains, it preserves the active host.
+ * - If an external SSO / Auth URL is explicitly configured via VITE_AUTH_URL, it uses that base URL.
  */
 
 export function isLocalEnvironment(): boolean {
@@ -43,11 +43,8 @@ export function getAuthUrl(path: string = "/login"): string {
     return `${cleanBase}${normalizedPath}`;
   }
 
-  if (isLocalEnvironment()) {
-    return normalizedPath;
-  }
-
-  return `https://lazymonkeyai.com${normalizedPath}`;
+  // Always use relative path so it routes directly to the current origin (localhost or production domain)
+  return normalizedPath;
 }
 
 export function getAuthUrls() {
