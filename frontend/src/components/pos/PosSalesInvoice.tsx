@@ -1346,7 +1346,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
   // Autofill and preload all details when editing an existing Quotation/Invoice
   useEffect(() => {
-    const inv = activeEditingInvoice || editingInvoice;
+    // Prefer the explicit target handed in by the parent (Quotations/Proformas convert
+    // flow passes `editingInvoice`). An internal/session `activeEditingInvoice` left over
+    // from a previous open must not shadow it — that is what made a converted quotation
+    // load the wrong document's items (first quote's qty/price).
+    const inv = editingInvoice || activeEditingInvoice;
     if (!inv) return;
 
     // 1. Metadata: Invoice / Quote Number, Dates, Status, Executive, Location
@@ -1526,14 +1530,17 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     }
 
     // 3. Line Items & Services
-    const rawLines =
-      inv.items?.items ||
-      (Array.isArray(inv.items) ? inv.items : []) ||
-      inv.lines ||
-      inv.line_items ||
+    // Quotations/proformas can store items in several shapes: a nested dict
+    // (CRM `items.items`), a bare array (localStorage), or a `lines` list.
+    // Resolve to a concrete array so each document loads exactly its own lines.
+    const rawLines: any[] =
+      (Array.isArray(inv.items?.items) ? (inv.items as any).items : null) ||
+      (Array.isArray(inv.items) ? (inv.items as any[]) : null) ||
+      (Array.isArray(inv.lines) ? (inv.lines as any[]) : null) ||
+      (Array.isArray(inv.line_items) ? (inv.line_items as any[]) : null) ||
       [];
 
-    if (Array.isArray(rawLines) && rawLines.length > 0) {
+    if (rawLines.length > 0) {
       const mappedItems: InvoiceItem[] = rawLines.map((it: any) => {
         const rawProdId = it.product_id || it.sku || "";
         const rawProdName = it.product_name || it.name || it.item_name || "";
@@ -1549,8 +1556,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const invTaxRate = matchedProduct ? getEffectiveTaxRate(matchedProduct) : undefined;
         const invDisc = matchedProduct ? extractProductDiscount(matchedProduct) : undefined;
 
-        const isFreeLine = isInvoiceLineFree(it) || Number(it.unit_price ?? it.price ?? 0) <= 0.009 || Number(it.total_amount ?? it.subtotal ?? it.amount ?? 1) <= 0.009;
-        const unitP = isFreeLine ? 0 : Number(it.unit_price ?? it.price ?? 0);
+        const isFreeLine = isInvoiceLineFree(it) || Number(it.unit_price ?? it.price ?? it.rate ?? 0) <= 0.009 || Number(it.total_amount ?? it.subtotal ?? it.amount ?? it.line_total ?? 1) <= 0.009;
+        const unitP = isFreeLine ? 0 : Number(it.unit_price ?? it.price ?? it.rate ?? 0);
         // Prioritize actual GST rate given in inventory for the product
         const taxR = isFreeLine ? 0 : (invTaxRate !== undefined ? invTaxRate : getEffectiveTaxRate(it));
         const mrpVal = Number(it.mrp) > 0 ? Number(it.mrp) : (matchedProduct && Number(matchedProduct.mrp) > 0 ? Number(matchedProduct.mrp) : Math.ceil(unitP * (1 + taxR / 100)));
@@ -1563,7 +1570,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           discType = invDisc.discount_type;
         }
 
-        const rawQty = Math.max(1, Number(it.quantity) || 1);
+        const rawQty = Math.max(1, Number(it.quantity ?? it.qty ?? it.primary_qty ?? it.amount ?? 1) || 1);
         const rawUom = it.uom || it.unit_of_measure || it.unit || matchedProduct?.uom || "Pcs";
         const rawSecUom = it.secondary_uom || matchedProduct?.secondary_uom || "";
         const rawFactor = Number(it.conversion_factor) > 0 ? Number(it.conversion_factor) : (Number(matchedProduct?.conversion_factor) > 0 ? Number(matchedProduct.conversion_factor) : 1);
@@ -1595,7 +1602,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           is_free: isFreeLine,
         };
       });
+      // Always load this document's own lines. If it has none, clear the grid so a
+      // previously-opened quotation/proforma's items do not leak into the next one.
       setItems(mappedItems);
+    } else {
+      setItems([]);
     }
 
     // 4. Financial & Discount Settings
@@ -2540,6 +2551,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
     const processEditAndRecreateTarget = async () => {
       try {
+        // When an explicit document was handed in to convert/edit (Quotations/Proformas
+        // page passes `editingInvoice`), a stale in-app edit/recreate target left in
+        // sessionStorage must NOT clobber it — otherwise a leftover INV row's items
+        // (wrong qty/price) overwrite the source document being converted.
+        if (editingInvoice) return;
+
         let editTarget: any = null;
         const storedEdit = sessionStorage.getItem("pos_edit_invoice");
         if (storedEdit) {

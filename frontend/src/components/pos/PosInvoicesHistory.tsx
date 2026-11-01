@@ -1891,6 +1891,21 @@ export function PosInvoicesHistory() {
     return Array.from(set);
   }, [invoices, tenant?.name]);
 
+  // Helper to identify an open / pre-revenue document (Proforma, Quotation, Estimate).
+  // These are NOT realized sales: their amounts must be segregated out of every
+  // "sales" KPI on this page, and a converted PI/QT must not double-count alongside
+  // its realized tax invoice. The documents themselves remain browsable in the list.
+  const isPreRevenueInv = (inv: any) => {
+    const num = String(inv.invoice_number || inv.display_number || "").toUpperCase().trim();
+    const type = String(inv.invoice_type || inv.doc_type || "").toUpperCase().trim();
+    return (
+      num.startsWith("PI-") || num.startsWith("PI ") ||
+      num.startsWith("QT-") || num.startsWith("QT ") ||
+      num.startsWith("EST-") || num.startsWith("EST ") ||
+      type === "PROFORMA" || type === "QUOTATION" || type === "ESTIMATE"
+    );
+  };
+
   // Unique Sales Representatives & Aggregate Metrics
   const { uniqueSalesReps, salesRepStats } = React.useMemo(() => {
     const repSet = new Set<string>();
@@ -1900,6 +1915,9 @@ export function PosInvoicesHistory() {
       // Opening balance records are NOT sales rep sales transactions
       const isOpn = String(inv.invoice_number || "").toUpperCase().trim().startsWith("OPN-") || inv.invoice_type === "opening_balance";
       if (isOpn) return;
+      // Open / pre-revenue docs (proforma, quotation, estimate) are NOT realized sales —
+      // exclude from rep volume & points so a converted PI/QT never double-counts.
+      if (isPreRevenueInv(inv)) return;
 
       const repName = inv.sales_executive || (inv as any).sales_rep_name || "Admin / Cashier";
       repSet.add(repName);
@@ -1993,14 +2011,14 @@ export function PosInvoicesHistory() {
     return s === "returned" || ps === "returned" || Boolean((inv as any).return_info);
   };
 
-  // Total sales invoices count (excluding Credit Notes)
+  // Total sales invoices count (excluding Credit Notes and open pre-revenue docs)
   const totalSalesInvoicesCount = React.useMemo(() => {
-    return invoices.filter((inv) => !isCreditNoteInv(inv)).length;
+    return invoices.filter((inv) => !isCreditNoteInv(inv) && !isPreRevenueInv(inv)).length;
   }, [invoices]);
 
-  // Active sales invoices count (excluding Credit Notes and Cancelled/Returned invoices)
+  // Active sales invoices count (excluding Credit Notes, open pre-revenue docs, and Cancelled/Returned)
   const activeSalesInvoicesCount = React.useMemo(() => {
-    return invoices.filter((inv) => !isCreditNoteInv(inv) && !isCancelledInv(inv) && !isReturnedInv(inv)).length;
+    return invoices.filter((inv) => !isCreditNoteInv(inv) && !isPreRevenueInv(inv) && !isCancelledInv(inv) && !isReturnedInv(inv)).length;
   }, [invoices]);
 
   // Cancelled Invoices count
@@ -2021,6 +2039,8 @@ export function PosInvoicesHistory() {
 
     invoices.forEach((curr) => {
       if (isCreditNoteInv(curr)) return;
+      // Open / pre-revenue docs are not billed sales revenue
+      if (isPreRevenueInv(curr)) return;
       const amt = Math.abs(Number(curr.grand_total || 0));
 
       if (isCancelledInv(curr)) {
@@ -2060,6 +2080,10 @@ export function PosInvoicesHistory() {
         creditNotesCount += 1;
         return;
       }
+
+      // Open / pre-revenue docs don't represent collected sales — keep them out of
+      // the payment-mode breakdown so collections match realized revenue.
+      if (isPreRevenueInv(inv)) return;
 
       const isCancelled = isCancelledInv(inv);
       const isReturned = isReturnedInv(inv);

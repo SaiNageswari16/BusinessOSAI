@@ -1059,12 +1059,21 @@ async def _get_all_sales_invoices(
         stmt_erp = stmt_erp.where(Invoice.company_id == company_id)
     if not include_notes:
         stmt_erp = stmt_erp.where(
-            ~Invoice.invoice_type.in_(["credit_note", "debit_note", "opening_balance"]),
+            ~Invoice.invoice_type.in_([
+                "credit_note", "debit_note", "opening_balance",
+                "proforma", "proforma_invoice", "quotation", "quote", "estimate",
+            ]),
             ~Invoice.invoice_number.ilike("CN-%"),
             ~Invoice.invoice_number.ilike("CN %"),
             ~Invoice.invoice_number.ilike("DN-%"),
             ~Invoice.invoice_number.ilike("DN %"),
             ~Invoice.invoice_number.ilike("OPN-%"),
+            ~Invoice.invoice_number.ilike("PI-%"),
+            ~Invoice.invoice_number.ilike("PI %"),
+            ~Invoice.invoice_number.ilike("QT-%"),
+            ~Invoice.invoice_number.ilike("QT %"),
+            ~Invoice.invoice_number.ilike("EST-%"),
+            ~Invoice.invoice_number.ilike("EST %"),
         )
     if search:
         stmt_erp = stmt_erp.where(or_(Invoice.invoice_number.ilike(f"%{search}%"), Invoice.customer_name.ilike(f"%{search}%"), Invoice.status.ilike(f"%{search}%")))
@@ -1075,7 +1084,7 @@ async def _get_all_sales_invoices(
         inv_no = (inv.invoice_number or "").strip().upper()
         inv_type = (inv.invoice_type or "").strip().lower()
         if not include_notes:
-            if inv_type in ["credit_note", "debit_note", "opening_balance"] or inv_no.startswith(("CN-", "CN ", "DN-", "DN ", "OPN-")):
+            if inv_type in ["credit_note", "debit_note", "opening_balance", "proforma", "proforma_invoice", "quotation", "quote", "estimate"] or inv_no.startswith(("CN-", "CN ", "DN-", "DN ", "OPN-", "PI-", "PI ", "QT-", "QT ", "EST-", "EST ")):
                 continue
         inv_date = _db_timestamp_to_ist(inv.created_at or inv.invoice_date)
         if norm_start and inv_date < norm_start:
@@ -5474,6 +5483,20 @@ async def get_employee_sales_report(
     # 2. Fetch POS transactions & ERP Invoices strictly isolated per workspace
     tx_stmt = select(POSTransaction).where(POSTransaction.tenant_id == ctx.tenant_id).options(selectinload(POSTransaction.payments)).order_by(POSTransaction.created_at.desc())
     inv_stmt = select(Invoice).where(Invoice.tenant_id == ctx.tenant_id).order_by(Invoice.created_at.desc())
+
+    # Revenue counts only realized sales (settled tax invoices + POS receipts).
+    # Open / pre-revenue documents (proforma, quotation, estimate) must NOT feed the
+    # "Net Total Sales" / "Active Bills" totals, otherwise a converted PI + its tax
+    # invoice get double-counted. We exclude them on the default ("all") view and on
+    # realized-type filters, but keep them when the user explicitly filters for them.
+    _requested_type = str(invoice_type or "").lower().replace(" ", "").replace("_", "")
+    _wants_open_doc = _requested_type in ("proforma", "proformainvoice", "pi", "quotation", "quote", "qt", "estimate", "est")
+    if not _wants_open_doc:
+        inv_stmt = inv_stmt.where(
+            ~Invoice.invoice_type.in_([
+                "proforma", "proforma_invoice", "quotation", "quote", "estimate",
+            ])
+        )
 
     if target_cid:
         if target_cid == first_comp_id:
