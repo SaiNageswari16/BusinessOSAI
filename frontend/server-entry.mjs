@@ -35,6 +35,27 @@ function serveStatic(reqUrl) {
   let filePath = join(CLIENT_DIR, pathname);
   if (!existsSync(filePath)) filePath = join(PUBLIC_DIR, pathname);
 
+  // Fallback check for case-insensitive file matching (e.g. logo.png vs Logo.png)
+  if (!existsSync(filePath)) {
+    const filename = pathname.replace(/^\//, "");
+    const fallbacks = [
+      join(CLIENT_DIR, filename.toLowerCase()),
+      join(CLIENT_DIR, filename.charAt(0).toUpperCase() + filename.slice(1)),
+      join(CLIENT_DIR, "Logo.png"),
+      join(CLIENT_DIR, "iotroncs-logo.png"),
+      join(PUBLIC_DIR, filename.toLowerCase()),
+      join(PUBLIC_DIR, filename.charAt(0).toUpperCase() + filename.slice(1)),
+      join(PUBLIC_DIR, "Logo.png"),
+      join(PUBLIC_DIR, "iotroncs-logo.png"),
+    ];
+    for (const fb of fallbacks) {
+      if (existsSync(fb)) {
+        filePath = fb;
+        break;
+      }
+    }
+  }
+
   // Fallback check for uploaded images in backend directories
   if (!existsSync(filePath) && (pathname.startsWith("/upload_images/") || pathname.startsWith("/images/"))) {
     const filename = pathname.replace(/^\/(upload_images|images)\//, "");
@@ -59,9 +80,7 @@ function serveStatic(reqUrl) {
 
   try {
     const body = readFileSync(filePath);
-    return new Response(body, {
-      headers: { "content-type": contentType, "cache-control": "public, max-age=86400" },
-    });
+    return { body, contentType };
   } catch {
     return null;
   }
@@ -75,13 +94,16 @@ const server = createServer(async (nodeReq, nodeRes) => {
     if (nodeReq.method === "GET" || nodeReq.method === "HEAD") {
       const staticResponse = serveStatic(nodeReq.url);
       if (staticResponse) {
-        const headers = {};
-        staticResponse.headers.forEach((value, key) => { headers[key] = value; });
-        nodeRes.writeHead(staticResponse.status, headers);
-        if (staticResponse.body) {
-          for await (const chunk of staticResponse.body) nodeRes.write(chunk);
+        nodeRes.writeHead(200, {
+          "content-type": staticResponse.contentType,
+          "content-length": staticResponse.body.length,
+          "cache-control": "public, max-age=86400",
+        });
+        if (nodeReq.method === "HEAD") {
+          nodeRes.end();
+        } else {
+          nodeRes.end(staticResponse.body);
         }
-        nodeRes.end();
         return;
       }
     }
