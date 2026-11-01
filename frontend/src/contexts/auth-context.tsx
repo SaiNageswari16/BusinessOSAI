@@ -531,7 +531,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Force hard redirect to /login to ensure all state, queries and sockets are cleanly reset
     if (typeof window !== "undefined") {
-      window.location.href = "/login";
+      window.location.href = "/login?mode=login";
     }
   };
 
