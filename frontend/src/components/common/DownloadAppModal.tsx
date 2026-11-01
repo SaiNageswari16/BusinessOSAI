@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
@@ -19,23 +20,48 @@ interface DownloadAppModalProps {
 }
 
 export function DownloadAppModal({ isOpen, onClose }: DownloadAppModalProps) {
+  const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'windows' | 'apple'>('all');
 
   const windowsExeUrl = '/downloads/BusinessOS-AI-Setup-1.0.0.exe';
   const macosDmgUrl = '/downloads/BusinessOS-AI-1.0.0.dmg';
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-  return (
+  // Lock background body scroll when modal is active
+  useEffect(() => {
+    if (!isOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isOpen]);
+
+  // Handle ESC key to dismiss modal
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen || !mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
-        {/* Backdrop */}
+      <div className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+        {/* Backdrop overlay covering entire viewport including sticky navbars */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-md transition-opacity"
+          className="fixed inset-0 bg-slate-950/75 backdrop-blur-md transition-opacity z-0"
         />
 
         {/* Modal Container */}
@@ -44,7 +70,7 @@ export function DownloadAppModal({ isOpen, onClose }: DownloadAppModalProps) {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white border border-slate-200/90 rounded-3xl shadow-2xl text-slate-900 z-10 my-auto custom-scrollbar"
+          className="relative w-full max-w-4xl max-h-[88vh] overflow-y-auto bg-white border border-slate-200/90 rounded-3xl shadow-2xl text-slate-900 z-10 my-auto custom-scrollbar"
         >
           {/* Subtle Ambient Background Accents */}
           <div className="absolute top-0 left-1/4 w-96 h-96 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
@@ -315,6 +341,7 @@ export function DownloadAppModal({ isOpen, onClose }: DownloadAppModalProps) {
           </div>
         </motion.div>
       </div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }
