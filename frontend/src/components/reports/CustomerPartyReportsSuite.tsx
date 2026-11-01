@@ -2275,9 +2275,9 @@ export function CustomerPartyReportsSuite({
           </div>
         ) : activeReport === "party_outstanding" ? (
           <div>
-            {/* Row 1: Back + Title + Favourite & Actions */}
+            {/* Unified Top Toolbar: Back, Title, Favourite, Category, Date Filter, Actions */}
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 shrink-0">
                 <button
                   onClick={() => window.history.back()}
                   className="p-1 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-slate-700"
@@ -2298,61 +2298,8 @@ export function CustomerPartyReportsSuite({
                 </button>
               </div>
 
-              {/* Action Buttons: Email Excel, Download Excel ∨, Print PDF */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setEmailModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
-                >
-                  <span>Email Excel</span>
-                  <Mail className="w-3.5 h-3.5 text-slate-400" />
-                </button>
-
-                <div className="relative">
-                  <button
-                    onClick={() => setShowExcelDropdown(!showExcelDropdown)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
-                  >
-                    <span>Download Excel</span>
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-                  </button>
-                  {showExcelDropdown && (
-                    <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
-                      <button
-                        onClick={() => {
-                          handleExportExcel("xlsx");
-                          setShowExcelDropdown(false);
-                        }}
-                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
-                      >
-                        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Download Excel (.xlsx)
-                      </button>
-                      <button
-                        onClick={() => {
-                          handleExportExcel("csv");
-                          setShowExcelDropdown(false);
-                        }}
-                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
-                      >
-                        <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Download CSV (.csv)
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  onClick={handlePrintPDF}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
-                >
-                  <span>Print PDF</span>
-                  <Printer className="w-3.5 h-3.5 text-slate-400" />
-                </button>
-              </div>
-            </div>
-
-            {/* Row 2: Filter controls + Yellow banner */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-2.5 border-t border-slate-100">
-              <div className="flex flex-wrap items-center gap-3">
+              {/* All Filters and Action Buttons at one place */}
+              <div className="flex flex-wrap items-center gap-2">
                 <div className="relative inline-flex items-center">
                   <select
                     value={selectedCategory}
@@ -2396,30 +2343,77 @@ export function CustomerPartyReportsSuite({
                 </div>
 
                 {dateFilter === "custom" && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <input
                       type="date"
                       value={customStartDate}
                       onChange={(e) => setCustomStartDate(e.target.value)}
-                      className="h-8 px-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
+                      className="h-8 px-2 text-xs font-medium rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
                     />
                     <span className="text-xs text-slate-400 font-medium">to</span>
                     <input
                       type="date"
                       value={customEndDate}
                       onChange={(e) => setCustomEndDate(e.target.value)}
-                      className="h-8 px-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
+                      className="h-8 px-2 text-xs font-medium rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
                     />
                   </div>
                 )}
-              </div>
 
-              {/* Yellow notice matching reference ss1, ss2, ss3 */}
-              <div className="bg-amber-50/80 border border-amber-200/60 rounded-lg px-3.5 py-1.5 text-xs text-amber-900 font-medium">
-                GSTIN, Address, along with Custom Fields, can be viewed in the Excel report
+                <button
+                  onClick={() => setEmailModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Mail className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Email Excel</span>
+                </button>
+
+                <div className="relative">
+                  <button
+                    onClick={() => setShowExcelDropdown(!showExcelDropdown)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <span>Download Excel</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                  </button>
+                  {showExcelDropdown && (
+                    <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
+                      <button
+                        onClick={() => {
+                          handleExportExcel("xlsx");
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Download Excel (.xlsx)
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleExportExcel("csv");
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Download CSV (.csv)
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={handlePrintPDF}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Print PDF</span>
+                </button>
               </div>
             </div>
 
+            {/* Yellow notice matching reference ss1, ss2, ss3 */}
+            <div className="mt-2.5 bg-amber-50/80 border border-amber-200/60 rounded-lg px-3.5 py-1.5 text-xs text-amber-900 font-medium">
+              GSTIN, Address, along with Custom Fields, can be viewed in the Excel report
+            </div>
             {/* Row 3: Tabs matching ss1, ss2, ss3 */}
             <div className="flex items-center gap-0 mt-3 border-b border-slate-200">
               <button
@@ -2461,9 +2455,9 @@ export function CustomerPartyReportsSuite({
           </div>
         ) : activeReport === "party_ageing" ? (
           <div>
-            {/* Row 1: Back + Title + Favourite & Actions */}
+            {/* Unified Top Toolbar: Back + Title + Favourite, Search party, Actions */}
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 shrink-0">
                 <button
                   onClick={() => window.history.back()}
                   className="p-1 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-slate-700"
@@ -2484,8 +2478,24 @@ export function CustomerPartyReportsSuite({
                 </button>
               </div>
 
-              {/* Action Buttons: Email Excel, Download Excel ∨, Print PDF */}
-              <div className="flex items-center gap-2">
+              {/* All Filters and Action Buttons in one place */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative w-48 sm:w-60">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search by party name"
+                    value={searchParty}
+                    onChange={(e) => setSearchParty(e.target.value)}
+                    className="w-full h-8 pl-8 pr-6 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none placeholder:text-slate-400 text-slate-800 font-medium"
+                  />
+                  {searchParty && (
+                    <button onClick={() => setSearchParty("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
                 <button
                   onClick={() => setEmailModalOpen(true)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
@@ -2499,7 +2509,6 @@ export function CustomerPartyReportsSuite({
                     onClick={() => setShowExcelDropdown(!showExcelDropdown)}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                   >
-                    <Download className="w-3.5 h-3.5 text-slate-400" />
                     <span>Download Excel</span>
                     <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
                   </button>
@@ -2510,7 +2519,7 @@ export function CustomerPartyReportsSuite({
                           handleExportExcel("xlsx");
                           setShowExcelDropdown(false);
                         }}
-                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                        className="w-full text-left px-3.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
                       >
                         <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Download Excel (.xlsx)
                       </button>
@@ -2519,7 +2528,7 @@ export function CustomerPartyReportsSuite({
                           handleExportExcel("csv");
                           setShowExcelDropdown(false);
                         }}
-                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                        className="w-full text-left px-3.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
                       >
                         <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Download CSV (.csv)
                       </button>
@@ -2536,31 +2545,12 @@ export function CustomerPartyReportsSuite({
                 </button>
               </div>
             </div>
-
-            {/* Row 2: Search input */}
-            <div className="pt-3 mt-2.5 border-t border-slate-100">
-              <div className="relative w-64">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search by party name"
-                  value={searchParty}
-                  onChange={(e) => setSearchParty(e.target.value)}
-                  className="w-full h-8 pl-8 pr-3 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none placeholder:text-slate-400 text-slate-800 font-medium"
-                />
-                {searchParty && (
-                  <button onClick={() => setSearchParty("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
           </div>
         ) : activeReport === "customer_sales" ? (
           <div>
-            {/* Row 1: Back + Title + Favourite & Actions */}
+            {/* Unified Top Toolbar: Back, Title, Favourite, Date Filter, Search, Actions */}
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 shrink-0">
                 <button
                   onClick={() => window.history.back()}
                   className="p-1 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-slate-700"
@@ -2581,61 +2571,8 @@ export function CustomerPartyReportsSuite({
                 </button>
               </div>
 
-              {/* Action Buttons: Email Excel, Download Excel ∨, Print PDF */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setEmailModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
-                >
-                  <span>Email Excel</span>
-                  <Mail className="w-3.5 h-3.5 text-slate-400" />
-                </button>
-
-                <div className="relative">
-                  <button
-                    onClick={() => setShowExcelDropdown(!showExcelDropdown)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
-                  >
-                    <span>Download Excel</span>
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-                  </button>
-                  {showExcelDropdown && (
-                    <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
-                      <button
-                        onClick={() => {
-                          handleExportExcel("xlsx");
-                          setShowExcelDropdown(false);
-                        }}
-                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
-                      >
-                        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Download Excel (.xlsx)
-                      </button>
-                      <button
-                        onClick={() => {
-                          handleExportExcel("csv");
-                          setShowExcelDropdown(false);
-                        }}
-                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
-                      >
-                        <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Download CSV (.csv)
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  onClick={handlePrintPDF}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
-                >
-                  <span>Print PDF</span>
-                  <Printer className="w-3.5 h-3.5 text-slate-400" />
-                </button>
-              </div>
-            </div>
-
-            {/* Row 2: Date Selector + Search bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-2.5 border-t border-slate-100">
-              <div className="flex flex-wrap items-center gap-3">
+              {/* All Filters and Action Buttons in one place */}
+              <div className="flex flex-wrap items-center gap-2">
                 <div className="relative flex items-center">
                   <CalendarIcon className="absolute left-2.5 size-3.5 text-slate-400 pointer-events-none" />
                   <select
@@ -2655,38 +2592,86 @@ export function CustomerPartyReportsSuite({
                 </div>
 
                 {dateFilter === "custom" && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <input
                       type="date"
                       value={customStartDate}
                       onChange={(e) => setCustomStartDate(e.target.value)}
-                      className="h-8 px-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
+                      className="h-8 px-2 text-xs font-medium rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
                     />
                     <span className="text-xs text-slate-400 font-medium">to</span>
                     <input
                       type="date"
                       value={customEndDate}
                       onChange={(e) => setCustomEndDate(e.target.value)}
-                      className="h-8 px-2.5 text-xs font-medium rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
+                      className="h-8 px-2 text-xs font-medium rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700 shadow-2xs"
                     />
                   </div>
                 )}
-              </div>
 
-              <div className="relative w-64">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search invoice, customer..."
-                  value={searchParty}
-                  onChange={(e) => setSearchParty(e.target.value)}
-                  className="w-full h-8 pl-8 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                />
-                {searchParty && (
-                  <button onClick={() => setSearchParty("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
-                    <X className="w-3.5 h-3.5" />
+                <div className="relative w-40 sm:w-52">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search invoice, customer..."
+                    value={searchParty}
+                    onChange={(e) => setSearchParty(e.target.value)}
+                    className="w-full h-8 pl-8 pr-6 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800"
+                  />
+                  {searchParty && (
+                    <button onClick={() => setSearchParty("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setEmailModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Mail className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Email Excel</span>
+                </button>
+
+                <div className="relative">
+                  <button
+                    onClick={() => setShowExcelDropdown(!showExcelDropdown)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <span>Download Excel</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
                   </button>
-                )}
+                  {showExcelDropdown && (
+                    <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
+                      <button
+                        onClick={() => {
+                          handleExportExcel("xlsx");
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Download Excel (.xlsx)
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleExportExcel("csv");
+                          setShowExcelDropdown(false);
+                        }}
+                        className="w-full text-left px-3.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Download CSV (.csv)
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={handlePrintPDF}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Print PDF</span>
+                </button>
               </div>
             </div>
           </div>

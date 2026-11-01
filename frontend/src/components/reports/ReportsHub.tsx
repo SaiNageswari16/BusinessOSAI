@@ -1107,9 +1107,9 @@ export function ReportsHub() {
         <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
           {/* Top Action & Filtering Toolbar */}
           <header className="bg-white border-b border-slate-200 px-5 py-3 shrink-0">
+            {/* Unified Top Action & Filtering Toolbar */}
             <div className="flex flex-wrap items-center justify-between gap-3">
-              {/* Title & Description */}
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 shrink-0">
                 <button
                   type="button"
                   onClick={() => setActiveReport(null)}
@@ -1124,9 +1124,68 @@ export function ReportsHub() {
                 </div>
               </div>
 
-              {/* Actions: CSV, Print, Refresh */}
-              <div className="flex items-center gap-2">
-                {/* Dropdown for Excel / CSV */}
+              {/* All Filters and Action Buttons in one place */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Date Filters */}
+                <div className="relative flex items-center">
+                  <CalendarIcon className="absolute left-2.5 size-3.5 text-slate-400 pointer-events-none" />
+                  <select
+                    value={dateRange}
+                    onChange={(e) => setDateRange(e.target.value)}
+                    className="h-8 pl-8 pr-7 text-xs font-semibold rounded-xl border border-slate-200 bg-white hover:bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer appearance-none shadow-2xs text-slate-700"
+                  >
+                    <option value="all">All Time</option>
+                    <option value="today">Today</option>
+                    <option value="yesterday">Yesterday</option>
+                    <option value="this_week">This Week</option>
+                    <option value="this_month">This Month</option>
+                    <option value="last_month">Last Month</option>
+                    <option value="this_quarter">This Quarter</option>
+                    <option value="this_year">This Financial Year</option>
+                    <option value="custom">Custom Date Range</option>
+                  </select>
+                  <ChevronDown className="absolute right-2 size-3 text-slate-400 pointer-events-none" />
+                </div>
+
+                {/* Custom Date Pickers strictly in DD/MM/YYYY */}
+                {dateRange === "custom" && (
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-28">
+                      <DatePickerInput
+                        value={customStartDate}
+                        onChange={(val) => setCustomStartDate(val)}
+                        placeholder="DD/MM/YYYY"
+                      />
+                    </div>
+                    <span className="text-xs font-bold text-slate-400">to</span>
+                    <div className="w-28">
+                      <DatePickerInput
+                        value={customEndDate}
+                        onChange={(val) => setCustomEndDate(val)}
+                        placeholder="DD/MM/YYYY"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Search Input for filtering current table */}
+                <div className="relative w-40 sm:w-52">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Filter rows..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full h-8 pl-8 pr-6 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800"
+                  />
+                  {searchQuery && (
+                    <button onClick={() => setSearchQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Actions: CSV, Print, Refresh */}
                 <div className="relative" ref={exportDropdownRef}>
                   <Button
                     variant="outline"
@@ -1195,65 +1254,6 @@ export function ReportsHub() {
                 >
                   <RefreshCw className={`size-3.5 text-slate-600 ${loading ? "animate-spin text-indigo-600" : ""}`} />
                 </Button>
-              </div>
-            </div>
-
-            {/* Date Range & Search Filtering Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-2.5 border-t border-slate-100">
-              {/* Date Filters */}
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-bold text-slate-600 flex items-center gap-1">
-                  <CalendarIcon className="size-3.5 text-indigo-500" /> Period:
-                </span>
-
-                <select
-                  value={dateRange}
-                  onChange={(e) => setDateRange(e.target.value)}
-                  className="h-8 px-2.5 text-xs font-semibold rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
-                >
-                  <option value="all">All Time (All Recorded Invoices)</option>
-                  <option value="today">Today</option>
-                  <option value="yesterday">Yesterday</option>
-                  <option value="this_week">This Week</option>
-                  <option value="this_month">This Month</option>
-                  <option value="last_month">Last Month</option>
-                  <option value="this_quarter">This Quarter</option>
-                  <option value="this_year">This Financial Year</option>
-                  <option value="custom">📅 Custom Date Range (DD/MM/YYYY)</option>
-                </select>
-
-                {/* Custom Date Pickers strictly in DD/MM/YYYY */}
-                {dateRange === "custom" && (
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-32">
-                      <DatePickerInput
-                        value={customStartDate}
-                        onChange={(val) => setCustomStartDate(val)}
-                        placeholder="DD/MM/YYYY"
-                      />
-                    </div>
-                    <span className="text-xs font-bold text-slate-400">to</span>
-                    <div className="w-32">
-                      <DatePickerInput
-                        value={customEndDate}
-                        onChange={(val) => setCustomEndDate(val)}
-                        placeholder="DD/MM/YYYY"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Search Input for filtering current table */}
-              <div className="relative w-64">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Filter current report rows..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full h-8 pl-8 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                />
               </div>
             </div>
           </header>

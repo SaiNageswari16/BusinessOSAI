@@ -1031,7 +1031,7 @@ export function GstReportsSuite({
       <header className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-slate-200 px-6 py-3.5 shrink-0 shadow-2xs">
         <div className="flex flex-wrap items-center justify-between gap-3">
           {/* Back button + Report Title + Favourite button */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             {onBack && (
               <button
                 type="button"
@@ -1053,8 +1053,64 @@ export function GstReportsSuite({
             </button>
           </div>
 
-          {/* Quick Action Buttons (Export & Print) */}
+          {/* Quick Actions & Filters all in one top row */}
           <div className="flex items-center flex-wrap gap-2">
+            {/* 📅 Period dropdown */}
+            <div className="relative">
+              <div className="flex items-center border border-slate-200 rounded-lg bg-white px-3 py-1.5 shadow-2xs">
+                <CalendarIcon className="w-3.5 h-3.5 text-slate-400 mr-2 shrink-0 pointer-events-none" />
+                <select
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value as any)}
+                  className="text-xs text-slate-800 bg-transparent font-medium outline-none cursor-pointer pr-4 appearance-none"
+                >
+                  <option value="this_week">This Week</option>
+                  <option value="today">Today</option>
+                  <option value="yesterday">Yesterday</option>
+                  <option value="this_month">This Month</option>
+                  <option value="this_quarter">This Quarter</option>
+                  <option value="this_fy">This Financial Year</option>
+                  <option value="all">All Time</option>
+                  <option value="custom">Custom Range</option>
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 pointer-events-none -ml-2" />
+              </div>
+            </div>
+
+            {dateFilter === "custom" && (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 bg-white shadow-2xs"
+                />
+                <span className="text-xs text-slate-400">to</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 bg-white shadow-2xs"
+                />
+              </div>
+            )}
+
+            <div className="relative w-44 sm:w-56">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search party, GSTIN..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full h-8 pl-8 pr-6 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              />
+              {searchTerm && (
+                <button onClick={() => setSearchTerm("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
             <div className="relative">
               <button
                 type="button"
@@ -1106,67 +1162,6 @@ export function GstReportsSuite({
               <Printer className="w-3.5 h-3.5 text-slate-500" />
               <span>Print PDF</span>
             </button>
-          </div>
-        </div>
-
-        {/* Filter Bar (Date Selector + Search) matching reference screenshot */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-2.5 border-t border-slate-100">
-          <div className="flex items-center flex-wrap gap-2.5">
-            {/* 📅 This Week ∨ dropdown */}
-            <div className="relative">
-              <div className="flex items-center border border-slate-200 rounded-lg bg-white px-3 py-1.5 shadow-2xs">
-                <CalendarIcon className="w-3.5 h-3.5 text-slate-400 mr-2 shrink-0 pointer-events-none" />
-                <select
-                  value={dateFilter}
-                  onChange={(e) => setDateFilter(e.target.value as any)}
-                  className="text-xs text-slate-800 bg-transparent font-medium outline-none cursor-pointer pr-4 appearance-none"
-                >
-                  <option value="this_week">This Week</option>
-                  <option value="today">Today</option>
-                  <option value="yesterday">Yesterday</option>
-                  <option value="this_month">This Month</option>
-                  <option value="this_quarter">This Quarter</option>
-                  <option value="this_fy">This Financial Year</option>
-                  <option value="all">All Time</option>
-                  <option value="custom">Custom Range</option>
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 pointer-events-none -ml-2" />
-              </div>
-            </div>
-
-            {dateFilter === "custom" && (
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="date"
-                  value={customStartDate}
-                  onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 bg-white shadow-2xs"
-                />
-                <span className="text-xs text-slate-400">to</span>
-                <input
-                  type="date"
-                  value={customEndDate}
-                  onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 bg-white shadow-2xs"
-                />
-              </div>
-            )}
-          </div>
-
-          <div className="relative w-64">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Search party, GSTIN, invoice..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full h-8 pl-8 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            />
-            {searchTerm && (
-              <button onClick={() => setSearchTerm("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
           </div>
         </div>
       </header>
