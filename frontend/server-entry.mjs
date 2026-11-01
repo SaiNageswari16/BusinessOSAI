@@ -32,21 +32,20 @@ const MIME = {
 function serveStatic(reqUrl) {
   const url = new URL(reqUrl, "http://localhost");
   const pathname = decodeURIComponent(url.pathname);
+  const ext = extname(pathname).toLowerCase();
+  if (!ext) return null;
+
   let filePath = join(CLIENT_DIR, pathname);
   if (!existsSync(filePath)) filePath = join(PUBLIC_DIR, pathname);
 
-  // Fallback check for case-insensitive file matching (e.g. logo.png vs Logo.png)
+  // Fallback check for case-insensitive file matching (ONLY for files with an extension)
   if (!existsSync(filePath)) {
     const filename = pathname.replace(/^\//, "");
     const fallbacks = [
       join(CLIENT_DIR, filename.toLowerCase()),
       join(CLIENT_DIR, filename.charAt(0).toUpperCase() + filename.slice(1)),
-      join(CLIENT_DIR, "Logo.png"),
-      join(CLIENT_DIR, "iotroncs-logo.png"),
       join(PUBLIC_DIR, filename.toLowerCase()),
       join(PUBLIC_DIR, filename.charAt(0).toUpperCase() + filename.slice(1)),
-      join(PUBLIC_DIR, "Logo.png"),
-      join(PUBLIC_DIR, "iotroncs-logo.png"),
     ];
     for (const fb of fallbacks) {
       if (existsSync(fb)) {
@@ -75,8 +74,8 @@ function serveStatic(reqUrl) {
 
   if (!existsSync(filePath)) return null;
 
-  const ext = extname(filePath).toLowerCase();
-  const contentType = MIME[ext] || "application/octet-stream";
+  const fileExt = extname(filePath).toLowerCase() || ext;
+  const contentType = MIME[fileExt] || "application/octet-stream";
 
   try {
     const body = readFileSync(filePath);
@@ -125,6 +124,9 @@ const server = createServer(async (nodeReq, nodeRes) => {
     const response = await appHandler.fetch(request, {}, {});
     const headers = {};
     response.headers.forEach((value, key) => { headers[key] = value; });
+    if (!headers["cache-control"]) {
+      headers["cache-control"] = "no-cache, no-store, must-revalidate";
+    }
     nodeRes.writeHead(response.status, headers);
     if (response.body) {
       for await (const chunk of response.body) nodeRes.write(chunk);

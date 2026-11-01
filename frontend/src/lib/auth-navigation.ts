@@ -49,7 +49,7 @@ export function getAuthUrl(path: string = "/login"): string {
 
 export function getAuthUrls() {
   return {
-    signIn: getAuthUrl("/login"),
+    signIn: getAuthUrl("/login?mode=login"),
     signUp: getAuthUrl("/login?mode=register"),
     dashboard: getAuthUrl("/dashboard"),
   };
