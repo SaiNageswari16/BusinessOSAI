@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
@@ -19,8 +20,8 @@
   --radius-3xl: calc(var(--radius) + 16px);
   --radius-4xl: calc(var(--radius) + 24px);
 
-  --font-display: "Sora", ui-sans-serif, system-ui, sans-serif;
-  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-primary, 'Inter', sans-serif);
+  --font-sans: var(--font-primary, 'Inter', sans-serif);
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   --breakpoint-3xl: 1920px;
@@ -63,6 +64,33 @@
 }
 
 :root {
+  /* ==========================================================================
+     GLOBAL TYPOGRAPHY SYSTEM
+     ========================================================================== */
+  /* Font Family */
+  --font-primary: 'Inter', sans-serif;
+
+  /* Headings */
+  --font-h1: 56px;
+  --font-h2: 40px;
+  --font-h3: 28px;
+  --font-h4: 22px;
+  --font-h5: 18px;
+
+  /* Body */
+  --font-body: 16px;
+  --font-description: 15px;
+  --font-small: 14px;
+  --font-caption: 12px;
+
+  /* Navigation & Buttons */
+  --font-nav: 15px;
+  --font-button: 15px;
+  --font-label: 13px;
+
+  /* ==========================================================================
+     DESIGN TOKENS & COLORS
+     ========================================================================== */
   --radius: 0.875rem;
 
   --background: oklch(0.985 0.004 260);
@@ -110,6 +138,18 @@
   --gradient-halo: radial-gradient(60% 60% at 50% 0%, oklch(0.53 0.22 293 / 0.08), transparent 70%);
 }
 
+@media (max-width: 768px) {
+  :root {
+    --font-h1: 36px;
+    --font-h2: 28px;
+    --font-h3: 22px;
+    --font-h4: 18px;
+    --font-h5: 16px;
+    --font-body: 15px;
+    --font-description: 14px;
+  }
+}
+
 .dark {
   --background: oklch(0.985 0.004 260);
   --foreground: oklch(0.18 0.03 260);
@@ -140,20 +180,125 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
-    font-family: var(--font-sans);
+    font-family: var(--font-primary);
+    font-size: var(--font-body);
+    line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
     max-width: 100vw;
     width: 100%;
   }
 
-  h1,
-  h2,
-  h3,
-  h4 {
-    font-family: var(--font-display);
+  h1 {
+    font-family: var(--font-primary);
+    font-size: var(--font-h1);
+    font-weight: 800;
+    line-height: 1.1;
     letter-spacing: -0.025em;
   }
+
+  h2 {
+    font-family: var(--font-primary);
+    font-size: var(--font-h2);
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.025em;
+  }
+
+  h3 {
+    font-family: var(--font-primary);
+    font-size: var(--font-h3);
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.025em;
+  }
+
+  h4 {
+    font-family: var(--font-primary);
+    font-size: var(--font-h4);
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: -0.025em;
+  }
+
+  h5 {
+    font-family: var(--font-primary);
+    font-size: var(--font-h5);
+    font-weight: 600;
+    line-height: 1.35;
+    letter-spacing: -0.015em;
+  }
+
+  p {
+    font-size: var(--font-body);
+    line-height: 1.6;
+  }
+
+  button {
+    font-size: var(--font-button);
+    font-weight: 600;
+  }
+}
+
+/* ==========================================================================
+   TYPOGRAPHY UTILITIES
+   ========================================================================== */
+@utility text-h1 {
+  font-size: var(--font-h1);
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+@utility text-h2 {
+  font-size: var(--font-h2);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+@utility text-h3 {
+  font-size: var(--font-h3);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+@utility text-h4 {
+  font-size: var(--font-h4);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+@utility text-h5 {
+  font-size: var(--font-h5);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+@utility text-body {
+  font-size: var(--font-body);
+}
+
+@utility text-description {
+  font-size: var(--font-description);
+}
+
+@utility text-small {
+  font-size: var(--font-small);
+}
+
+@utility text-caption {
+  font-size: var(--font-caption);
+}
+
+@utility text-nav {
+  font-size: var(--font-nav);
+}
+
+@utility text-button {
+  font-size: var(--font-button);
+}
+
+@utility text-label {
+  font-size: var(--font-label);
 }
 
 @utility text-gradient-brand {

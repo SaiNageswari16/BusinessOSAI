@@ -30,12 +30,12 @@ function BenefitItem({ title, description, icon: Icon }: BenefitItemProps) {
       </div>
       <div className="flex flex-col gap-1">
         <h3
-          className="text-slate-950 text-[20px] md:text-[24px] font-bold leading-[26px] md:leading-[30px] tracking-tight group-hover:text-purple-700 transition-colors"
-          style={{ fontFamily: "'Onest', sans-serif" }}
+          className="text-slate-950 text-base sm:text-lg font-bold leading-snug tracking-tight group-hover:text-purple-700 transition-colors"
+
         >
           {title}
         </h3>
-        <p className="text-slate-600 font-sans text-base md:text-[18px] font-normal leading-[24px] md:leading-[28px]">
+        <p className="text-slate-600 font-sans text-xs sm:text-sm font-normal leading-relaxed">
           {description}
         </p>
       </div>
@@ -61,15 +61,23 @@ export default function WhyChooseUs01Finsyc({ className }: { className?: string 
       return;
     }
 
+    let ticking = false;
     const handleScroll = () => {
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const totalHeight = containerRef.current.scrollHeight - window.innerHeight;
-      if (totalHeight <= 0) return;
-
-      const currentScroll = -rect.top;
-      const progress = Math.min(Math.max(currentScroll / totalHeight, 0), 1);
-      setScrollProgress(progress);
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          if (containerRef.current) {
+            const rect = containerRef.current.getBoundingClientRect();
+            const totalHeight = containerRef.current.scrollHeight - window.innerHeight;
+            if (totalHeight > 0) {
+              const currentScroll = -rect.top;
+              const progress = Math.min(Math.max(currentScroll / totalHeight, 0), 1);
+              setScrollProgress(progress);
+            }
+          }
+          ticking = false;
+        });
+        ticking = true;
+      }
     };
 
     window.addEventListener("scroll", handleScroll, { passive: true });
@@ -153,14 +161,6 @@ export default function WhyChooseUs01Finsyc({ className }: { className?: string 
 
   return (
     <>
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-      <link
-        href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&display=swap"
-        rel="stylesheet"
-        crossOrigin="anonymous"
-      />
-
       <section
         className={cn(
           "w-full bg-white py-6 md:py-8 lg:py-10 flex justify-center border-t border-slate-200/90",
@@ -180,8 +180,8 @@ export default function WhyChooseUs01Finsyc({ className }: { className?: string 
                 </div>
 
                 <h2
-                  className="text-slate-950 text-[32px] sm:text-[42px] md:text-[52px] 2xl:text-[60px] font-extrabold leading-[38px] sm:leading-[48px] md:leading-[58px] 2xl:leading-[68px] tracking-tight mb-3"
-                  style={{ fontFamily: "'Onest', sans-serif" }}
+                  className="text-slate-950 text-2xl sm:text-3xl md:text-4xl 2xl:text-5xl font-extrabold tracking-tight leading-[1.15] mb-3"
+        
                 >
                   Take full control of your business growth with{" "}
                   <span className="bg-gradient-to-r from-purple-700 via-indigo-600 to-purple-600 bg-clip-text text-transparent italic">
@@ -190,7 +190,7 @@ export default function WhyChooseUs01Finsyc({ className }: { className?: string 
                   tools
                 </h2>
 
-                <p className="text-slate-600 font-sans text-lg md:text-[20px] 2xl:text-[22px] font-normal leading-[26px] md:leading-[32px] 2xl:leading-[36px] mb-5 max-w-[560px] 2xl:max-w-[680px]">
+                <p className="text-slate-600 font-sans text-xs sm:text-sm 2xl:text-base font-normal leading-relaxed mb-4 max-w-[560px] 2xl:max-w-[680px]">
                   Manage your enterprise smarter with powerful tools designed to simplify tracking,
                   optimize workflows, and drive better business decisions.
                 </p>
@@ -210,9 +210,9 @@ export default function WhyChooseUs01Finsyc({ className }: { className?: string 
               {/* Right Column - Scrollable List */}
               <div
                 ref={containerRef}
-                className="flex-1 lg:max-w-[578px] 2xl:max-w-[680px] 3xl:max-w-[780px] flex items-start pr-0 lg:h-[220vh] h-auto relative w-full"
+                className="flex-1 lg:max-w-[578px] 2xl:max-w-[680px] 3xl:max-w-[780px] flex items-start pr-0 lg:h-[130vh] h-auto relative w-full"
               >
-                <div className="lg:sticky lg:top-[120px] lg:h-[800px] h-auto flex items-start w-full lg:overflow-hidden overflow-visible">
+                <div className="lg:sticky lg:top-[120px] lg:h-[520px] h-auto flex items-start w-full lg:overflow-hidden overflow-visible">
                   <div className="hidden lg:block absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-white via-white/95 to-transparent z-10 pointer-events-none" />
 
                   {/* Vertical progress rail */}

@@ -37,13 +37,6 @@ export function AboutUsSection({ className }: { className?: string }) {
 
   return (
     <>
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-      <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-        rel="stylesheet"
-      />
-
       <style>{`
         @keyframes pulse-purple-border {
           0%, 100% {
@@ -64,7 +57,7 @@ export function AboutUsSection({ className }: { className?: string }) {
         id="about"
         ref={sectionRef}
         className={
-          "pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-16 bg-[#f8f9fb] text-zinc-900 font-sans flex items-center relative overflow-hidden border-y border-zinc-200/80 scroll-mt-24 md:scroll-mt-32 " +
+          "py-8 sm:py-10 md:py-12 bg-[#f8f9fb] text-zinc-900 font-sans flex items-center relative overflow-hidden border-y border-zinc-200/80 scroll-mt-20 " +
           (className || "")
         }
       >

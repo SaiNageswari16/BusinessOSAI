@@ -61,7 +61,13 @@ const SCREENSHOT_BRANDS = [
   },
 ];
 
-export function TrustedBrandBlack({ className }: { className?: string }) {
+export function TrustedBrandBlack({
+  className,
+  containerClassName,
+}: {
+  className?: string;
+  containerClassName?: string;
+}) {
   // 3 sets per group to easily span wide & ultrawide 4K monitors with seamless scroll
   const brandGroup = [...SCREENSHOT_BRANDS, ...SCREENSHOT_BRANDS, ...SCREENSHOT_BRANDS];
 
@@ -94,82 +100,80 @@ export function TrustedBrandBlack({ className }: { className?: string }) {
 
       <section
         className={
-          "w-full bg-[#f8fafd] -mt-3 sm:-mt-5 pt-1 sm:pt-1.5 pb-2 sm:pb-3 select-none relative z-20 border-y border-slate-200/80 " +
+          "w-full select-none relative z-20 py-2 sm:py-3.5 " +
           (className || "")
         }
       >
-        <div className="max-w-[1360px] 2xl:max-w-[1600px] 3xl:max-w-[1840px] mx-auto relative z-10 px-4 mb-1.5 text-center">
-          <div className="inline-flex max-w-full items-center justify-center gap-1.5 sm:gap-2 px-3 py-0.5 rounded-full bg-white/80 border border-slate-200/90 shadow-2xs">
-            <span className="size-1.5 shrink-0 rounded-full bg-emerald-500 animate-pulse" />
-            <p className="text-[9.5px] sm:text-[11px] font-bold uppercase tracking-wider sm:tracking-[0.14em] text-slate-600 leading-tight">
-              Trusted by Municipal Corporations, Government Bodies &amp; Enterprise Leaders
-            </p>
-          </div>
-        </div>
-
-        {/* Continuous Smooth Infinite Marquee (Active on All Devices) */}
-        <div className="w-full relative overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_8%,black_92%,transparent)]">
-          <div className="brand-marquee-track flex items-center py-0.5">
-            {/* Primary Track */}
-            <div className="flex shrink-0 items-center gap-[45px] sm:gap-[65px] md:gap-[85px] pr-[45px] sm:pr-[65px] md:pr-[85px]">
-              {brandGroup.map((brand, idx) => (
-                <div
-                  key={`track1-${brand.name}-${idx}`}
-                  className="flex flex-col items-center justify-center shrink-0 transition-all duration-300 hover:scale-105 gap-1 px-2 text-center group cursor-pointer"
-                  title={brand.name}
-                >
-                  <div className="h-[44px] md:h-[50px] 2xl:h-[54px] flex items-center justify-center">
-                    <img
-                      src={brand.url}
-                      alt={brand.name}
-                      className={`${brand.heightClass} w-auto max-w-[140px] object-contain shrink-0 drop-shadow-xs transition-transform duration-300 group-hover:scale-105`}
-                      loading="lazy"
-                    />
-                  </div>
-                  <div className="flex flex-col items-center leading-tight">
-                    <span className="text-[11.5px] sm:text-[12px] font-bold text-slate-800 tracking-tight whitespace-nowrap group-hover:text-purple-700 transition-colors">
-                      {brand.displayName}
-                    </span>
-                    <span className="text-[9.5px] sm:text-[10px] font-semibold text-slate-500 uppercase tracking-wider font-mono whitespace-nowrap mt-0.5">
-                      {brand.subName}
-                    </span>
-                  </div>
+        <div
+          className={
+            containerClassName ||
+            "w-full max-w-7xl 2xl:max-w-[1560px] 3xl:max-w-[1840px] mx-auto px-4 sm:px-6 2xl:px-8 3xl:px-12"
+          }
+        >
+          {/* Continuous Smooth Infinite Marquee (Without border or card box, aligned to header and section width) */}
+          <div className="w-full relative overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_5%,black_95%,transparent)]">
+            <div className="brand-marquee-track flex items-center py-1">
+                {/* Primary Track */}
+                <div className="flex shrink-0 items-center gap-[45px] sm:gap-[65px] md:gap-[85px] pr-[45px] sm:pr-[65px] md:pr-[85px]">
+                  {brandGroup.map((brand, idx) => (
+                    <div
+                      key={`track1-${brand.name}-${idx}`}
+                      className="flex flex-col items-center justify-center shrink-0 transition-all duration-300 hover:scale-105 gap-1 px-2 text-center group cursor-pointer"
+                      title={brand.name}
+                    >
+                      <div className="h-[44px] md:h-[50px] 2xl:h-[54px] flex items-center justify-center">
+                        <img
+                          src={brand.url}
+                          alt={brand.name}
+                          className={`${brand.heightClass} w-auto max-w-[140px] object-contain shrink-0 drop-shadow-xs transition-transform duration-300 group-hover:scale-105`}
+                          loading="lazy"
+                        />
+                      </div>
+                      <div className="flex flex-col items-center leading-tight">
+                        <span className="text-[11.5px] sm:text-[12px] font-bold text-slate-800 dark:text-slate-200 tracking-tight whitespace-nowrap group-hover:text-purple-700 transition-colors">
+                          {brand.displayName}
+                        </span>
+                        <span className="text-[9.5px] sm:text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider font-mono whitespace-nowrap mt-0.5">
+                          {brand.subName}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            {/* Seamless Clone Track */}
-            <div
-              className="flex shrink-0 items-center gap-[45px] sm:gap-[65px] md:gap-[85px] pr-[45px] sm:pr-[65px] md:pr-[85px]"
-              aria-hidden="true"
-            >
-              {brandGroup.map((brand, idx) => (
+                {/* Seamless Clone Track */}
                 <div
-                  key={`track2-${brand.name}-${idx}`}
-                  className="flex flex-col items-center justify-center shrink-0 transition-all duration-300 hover:scale-105 gap-1 px-2 text-center group cursor-pointer"
-                  title={brand.name}
+                  className="flex shrink-0 items-center gap-[45px] sm:gap-[65px] md:gap-[85px] pr-[45px] sm:pr-[65px] md:pr-[85px]"
+                  aria-hidden="true"
                 >
-                  <div className="h-[44px] md:h-[50px] 2xl:h-[54px] flex items-center justify-center">
-                    <img
-                      src={brand.url}
-                      alt={brand.name}
-                      className={`${brand.heightClass} w-auto max-w-[140px] object-contain shrink-0 drop-shadow-xs transition-transform duration-300 group-hover:scale-105`}
-                      loading="lazy"
-                    />
-                  </div>
-                  <div className="flex flex-col items-center leading-tight">
-                    <span className="text-[11.5px] sm:text-[12px] font-bold text-slate-800 tracking-tight whitespace-nowrap group-hover:text-purple-700 transition-colors">
-                      {brand.displayName}
-                    </span>
-                    <span className="text-[9.5px] sm:text-[10px] font-semibold text-slate-500 uppercase tracking-wider font-mono whitespace-nowrap mt-0.5">
-                      {brand.subName}
-                    </span>
-                  </div>
+                  {brandGroup.map((brand, idx) => (
+                    <div
+                      key={`track2-${brand.name}-${idx}`}
+                      className="flex flex-col items-center justify-center shrink-0 transition-all duration-300 hover:scale-105 gap-1 px-2 text-center group cursor-pointer"
+                      title={brand.name}
+                    >
+                      <div className="h-[44px] md:h-[50px] 2xl:h-[54px] flex items-center justify-center">
+                        <img
+                          src={brand.url}
+                          alt={brand.name}
+                          className={`${brand.heightClass} w-auto max-w-[140px] object-contain shrink-0 drop-shadow-xs transition-transform duration-300 group-hover:scale-105`}
+                          loading="lazy"
+                        />
+                      </div>
+                      <div className="flex flex-col items-center leading-tight">
+                        <span className="text-[11.5px] sm:text-[12px] font-bold text-slate-800 dark:text-slate-200 tracking-tight whitespace-nowrap group-hover:text-purple-700 transition-colors">
+                          {brand.displayName}
+                        </span>
+                        <span className="text-[9.5px] sm:text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider font-mono whitespace-nowrap mt-0.5">
+                          {brand.subName}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
           </div>
-        </div>
       </section>
     </>
   );

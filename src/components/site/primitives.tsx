@@ -58,7 +58,7 @@ export function Section({
     <section
       id={id}
       className={cn(
-        "relative overflow-hidden pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-16 scroll-mt-24 md:scroll-mt-32",
+        "relative overflow-hidden py-8 sm:py-10 md:py-12 scroll-mt-20",
         tone === "light" && "bg-background text-foreground",
         tone === "muted" && "bg-secondary/50 text-foreground",
         tone === "ink" && "bg-gradient-ink text-ink-foreground",

@@ -7,7 +7,7 @@ export function ApplicationsSection() {
   return (
     <section
       id="applications"
-      className="relative overflow-hidden pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-16 bg-[#f8f9fb] text-zinc-900 font-sans border-y border-zinc-200/80 scroll-mt-24 md:scroll-mt-32"
+      className="relative overflow-hidden py-8 sm:py-10 md:py-12 bg-[#f8f9fb] text-zinc-900 font-sans border-y border-zinc-200/80 scroll-mt-20"
     >
       <div className="relative mx-auto w-full max-w-7xl 2xl:max-w-[1560px] 3xl:max-w-[1840px] px-4 sm:px-6 2xl:px-8 3xl:px-12">
         {/* Section Heading */}
@@ -27,8 +27,8 @@ export function ApplicationsSection() {
           </p>
         </div>
 
-        {/* Grid of 3 Product Cards Linking to Dedicated Full Pages */}
-        <div className="mt-4 2xl:mt-8 grid grid-cols-1 gap-5 2xl:gap-8 md:grid-cols-3">
+        {/* Grid of 4 Product Cards Linking to Dedicated Full Pages */}
+        <div className="mt-4 2xl:mt-8 grid grid-cols-1 gap-5 2xl:gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {products.map((prod) => (
             <div
               key={prod.id}
@@ -44,7 +44,7 @@ export function ApplicationsSection() {
                   src={prod.image}
                   alt={prod.name}
                   loading="lazy"
-                  className="h-full w-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
+                  className="h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
 

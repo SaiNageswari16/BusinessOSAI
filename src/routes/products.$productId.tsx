@@ -72,6 +72,11 @@ import {
 } from "lucide-react";
 import { Header } from "@/components/site/Header";
 import { Footer } from "@/components/site/Footer";
+import { GymPageTemplate } from "@/components/sections/GymPageTemplate";
+import { RetailPageTemplate } from "@/components/sections/RetailPageTemplate";
+import { SaloonPageTemplate } from "@/components/sections/SaloonPageTemplate";
+import { RestaurantPageTemplate } from "@/components/sections/RestaurantPageTemplate";
+import { AnalyticsPageTemplate } from "@/components/sections/AnalyticsPageTemplate";
 import { products, type ProductItem } from "@/data/products";
 import { Icon } from "@/components/site/icon";
 
@@ -1099,7 +1104,7 @@ function AiBusinessOsTemplate({ product }: { product: ProductItem }) {
           <div className="group overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 hover:shadow-lg transition-all">
             <div className="relative h-48 overflow-hidden">
               <img
-                src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=800&auto=format&fit=crop"
+                src="/images/app-retail.jpg"
                 alt="Executive BI Telemetry & Double-Entry Ledger"
                 className="size-full object-cover group-hover:scale-105 transition-transform duration-500"
               />
@@ -1971,7 +1976,7 @@ function FitClubAiTemplate({ product }: { product: ProductItem }) {
           <div className="group overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 hover:shadow-lg transition-all">
             <div className="relative h-48 overflow-hidden">
               <img
-                src="https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=800&auto=format&fit=crop"
+                src="/images/app-gym.jpg"
                 alt="Modern Strength & Conditioning Floor"
                 className="size-full object-cover group-hover:scale-105 transition-transform duration-500"
               />
@@ -3138,7 +3143,7 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
           <div className="group overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 hover:shadow-lg transition-all">
             <div className="relative h-48 overflow-hidden">
               <img
-                src="https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=800&auto=format&fit=crop"
+                src="/images/app-salon.jpg"
                 alt="Luxury Hair Styling & Balayage Chairs"
                 className="size-full object-cover group-hover:scale-105 transition-transform duration-500"
               />
@@ -3678,25 +3683,52 @@ function SalonOsTemplate({ product }: { product: ProductItem }) {
    ========================================================================= */
 function ProductDetailPage() {
   const { productId } = useParams({ from: "/products/$productId" });
-  const product = products.find((p) => p.id === productId) || products[0];
+  const normalizedId = (productId || "").toLowerCase().trim();
 
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    company: "",
-    businessType: "Gym & Fitness Club",
-    locations: "1 - 3 Branches",
-    interestedModules: "Complete 16-Module Suite",
-    estimatedUsers: "5 - 20 Users",
-    message: "",
-  });
-  const [submitted, setSubmitted] = useState(false);
+  const isGym =
+    normalizedId === "fit-club-ai" ||
+    normalizedId === "fit_club_ai" ||
+    normalizedId === "gym" ||
+    normalizedId === "gym-os" ||
+    normalizedId === "gym_os";
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitted(true);
-  };
+  const isRetail =
+    normalizedId === "ai-business-os" ||
+    normalizedId === "ai_business_os" ||
+    normalizedId === "retail" ||
+    normalizedId === "retail-os" ||
+    normalizedId === "retail_os";
+
+  const isSalon =
+    normalizedId === "salon-os" ||
+    normalizedId === "salon_os" ||
+    normalizedId === "saloon" ||
+    normalizedId === "salon" ||
+    normalizedId === "saloon-os" ||
+    normalizedId === "saloon_os" ||
+    normalizedId === "luxury-salon" ||
+    normalizedId === "luxury-saloon" ||
+    normalizedId === "luxury_salon" ||
+    normalizedId === "luxury_saloon";
+
+  const isRestaurant =
+    normalizedId === "restaurant-os" ||
+    normalizedId === "restaurant_os" ||
+    normalizedId === "restaurant";
+
+  const resolvedId = isGym
+    ? "fit-club-ai"
+    : isRetail
+    ? "ai-business-os"
+    : isSalon
+    ? "salon-os"
+    : isRestaurant
+    ? "restaurant-os"
+    : normalizedId;
+
+  const product =
+    products.find((p) => p.id === resolvedId || p.id === normalizedId) ??
+    products[0];
 
   if (!product) {
     return (
@@ -3715,6 +3747,83 @@ function ProductDetailPage() {
       </div>
     );
   }
+
+  // Dedicated Gym Page replicating the complete UI from ss1
+  if (isGym || product.id === "fit-club-ai") {
+    return (
+      <div className="relative min-h-screen bg-[#f8fafd] text-slate-900 font-sans selection:bg-purple-500/20 selection:text-purple-900">
+        <Header activeLink="Applications" />
+        <GymPageTemplate product={product} />
+        <Footer />
+      </div>
+    );
+  }
+
+  // Dedicated Retail Page replicating the complete UI from screenshot
+  if (isRetail || product.id === "ai-business-os") {
+    return (
+      <div className="relative min-h-screen bg-[#f8fafd] text-slate-900 font-sans selection:bg-purple-500/20 selection:text-purple-900">
+        <Header activeLink="Applications" />
+        <RetailPageTemplate product={product} />
+        <Footer />
+      </div>
+    );
+  }
+
+  // Dedicated Luxury Saloon Page replicating the complete UI from screenshot
+  if (isSalon || product.id === "salon-os") {
+    return (
+      <div className="relative min-h-screen bg-[#f8fafd] text-slate-900 font-sans selection:bg-purple-500/20 selection:text-purple-900">
+        <Header activeLink="Applications" />
+        <SaloonPageTemplate product={product} />
+        <Footer />
+      </div>
+    );
+  }
+
+  // Dedicated Restaurant Page replicating the complete UI from screenshot
+  if (isRestaurant || product.id === "restaurant-os") {
+    return (
+      <div className="relative min-h-screen bg-[#f8fafd] text-slate-900 font-sans selection:bg-purple-500/20 selection:text-purple-900">
+        <Header activeLink="Applications" />
+        <RestaurantPageTemplate product={product} />
+        <Footer />
+      </div>
+    );
+  }
+
+  // Dedicated Analytics Page replicating the complete UI from ss1 & ss2
+  if (
+    product.id === "analytics" ||
+    productId === "analytics" ||
+    productId === "analytics-os"
+  ) {
+    return (
+      <div className="relative min-h-screen bg-[#f8fafd] text-slate-900 font-sans selection:bg-purple-500/20 selection:text-purple-900">
+        <Header activeLink="Analytics" />
+        <AnalyticsPageTemplate product={product} />
+        <Footer />
+      </div>
+    );
+  }
+
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    company: "",
+    businessType: "Gym & Fitness Club",
+    locations: "1 - 3 Branches",
+    interestedModules: "Complete 16-Module Suite",
+    estimatedUsers: "5 - 20 Users",
+    message: "",
+  });
+  const [submitted, setSubmitted] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitted(true);
+  };
 
   return (
     <div className="relative min-h-screen bg-[#f8f9fb] text-slate-900 font-sans selection:bg-purple-500/20 selection:text-purple-900">
@@ -3789,6 +3898,7 @@ function ProductDetailPage() {
                   key={p.id}
                   to="/products/$productId"
                   params={{ productId: p.id }}
+                  preload="intent"
                   className={`rounded-2xl border p-4.5 transition-all flex items-center justify-between group ${
                     isCurrent
                       ? "bg-purple-50/60 border-purple-300 ring-2 ring-purple-400/20"

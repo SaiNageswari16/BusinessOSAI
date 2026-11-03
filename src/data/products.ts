@@ -19,10 +19,10 @@ export type ProductItem = {
 export const products: ProductItem[] = [
   {
     id: "ai-business-os",
-    name: "AI Business OS",
-    tagline: "Your Business. One Intelligent Operating System.",
+    name: "IOTRONICS – Retail",
+    tagline: "BusinessOS AI for Retail & Commerce",
     description:
-      "Run your entire business from one intelligent platform. LazyMonkeyAI combines ERP, inventory, POS, accounting, CRM, procurement, HRMS, and AI-powered analytics to simplify operations, improve productivity, and support smarter business decisions.",
+      "Manage your stores, warehouses, suppliers, online sales, finance and teams in one AI-powered platform. Built for modern retail, wholesale and multi-branch commerce businesses.",
     tags: [
       "ERP",
       "Inventory & RAG",
@@ -35,8 +35,7 @@ export const products: ProductItem[] = [
       "BI Copilot",
     ],
     category: "Enterprise Business Operating System",
-    image:
-      "https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=1200&auto=format&fit=crop",
+    image: "/images/app-retail.jpg",
     icon: "Building2",
     badge: "Flagship Business OS",
     highlights: [
@@ -106,10 +105,10 @@ export const products: ProductItem[] = [
   },
   {
     id: "fit-club-ai",
-    name: "FIT CLUB AI",
-    tagline: "Smarter Gym Management. Better Fitness Experiences.",
+    name: "IOTRONICS – Gym",
+    tagline: "The Complete Gym Management OS",
     description:
-      "A complete fitness business management platform to manage memberships, registrations, attendance, personal training, workout programs, payments, staff, equipment, and multi-branch operations.",
+      "An end-to-end, AI-powered platform to run single or multi-branch gyms, fitness studios, and wellness centers — from member onboarding to performance tracking, billing, staff, inventory and financials.",
     tags: [
       "Gym & Fitness",
       "Biometric Access",
@@ -119,8 +118,7 @@ export const products: ProductItem[] = [
       "Multi-Branch",
     ],
     category: "AI-Powered Gym & Fitness Management",
-    image:
-      "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=1200&auto=format&fit=crop",
+    image: "/images/app-gym.jpg",
     icon: "Dumbbell",
     badge: "Gym OS",
     externalUrl: "https://gym.lazymonkeyai.com/",
@@ -220,10 +218,10 @@ export const products: ProductItem[] = [
   },
   {
     id: "salon-os",
-    name: "Salon OS",
-    tagline: "Smarter Salon Management. Better Customer Experiences.",
+    name: "IOTRONICS – Luxury Saloon",
+    tagline: "The Complete Saloon Management OS",
     description:
-      "A smart salon management solution designed to manage appointments, customers, staff, billing, services, and inventory from one platform.",
+      "An all-in-one, AI-powered platform to run modern salons, spas and wellness clinics — from online booking and client care to staff, inventory, billing and business growth.",
     tags: [
       "Appointment Booking",
       "Customer Management",
@@ -232,8 +230,7 @@ export const products: ProductItem[] = [
       "Inventory Tracking",
     ],
     category: "Luxury Salon Operating System",
-    image:
-      "https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=1200&auto=format&fit=crop",
+    image: "/images/app-salon.jpg",
     icon: "Scissors",
     badge: "Luxury Salon OS",
     externalUrl: "https://saloon.lazymonkeyai.com/",
@@ -320,6 +317,70 @@ export const products: ProductItem[] = [
       { value: "100%", label: "Formula Precision" },
       { value: "14", label: "Core Modules" },
       { value: "Multi-Branch", label: "Ready" },
+    ],
+  },
+  {
+    id: "restaurant-os",
+    name: "IOTRONICS – Restaurant",
+    tagline: "The Complete Restaurant Management OS",
+    description:
+      "An all-in-one, AI-powered platform to run restaurants, cafés, cloud kitchens and multi-branch food brands — from table booking and kitchen operations to delivery, inventory, billing and growth.",
+    tags: [
+      "Table & Reservation",
+      "POS & Billing",
+      "Kitchen Display (KDS)",
+      "Online Ordering",
+      "Inventory & Purchase",
+      "Delivery & Dispatch",
+    ],
+    category: "Restaurant & Food Service Operating System",
+    image: "/images/app-restaurant.jpg",
+    icon: "Utensils",
+    badge: "Restaurant OS",
+    externalUrl: "https://restaurant.lazymonkeyai.com/",
+    highlights: [
+      "Real-time kitchen order queue and digital KDS station routing",
+      "Integrated table reservation, QR dine-in ordering and contactless digital payments",
+      "Gram-level recipe ingredient mapping with real-time stock deduction and auto-reorder",
+      "Multi-outlet and franchise central control with aggregator syncing",
+    ],
+    features: [
+      {
+        title: "Table & Reservation",
+        desc: "Online table booking, guest waitlists, floor status, and dining preferences.",
+      },
+      {
+        title: "POS & Billing",
+        desc: "Fast touch POS, split bills, tips, combo menus, and multi-channel payment reconciliation.",
+      },
+      {
+        title: "Kitchen Display (KDS)",
+        desc: "Color-coded order preparation tickets, station-wise routing, and course timers.",
+      },
+      {
+        title: "Inventory & Recipe Management",
+        desc: "Live batch ingredient tracking, dish BOM cost calculation, and wastage alerts.",
+      },
+    ],
+    benefits: [
+      "Reduce kitchen turnaround time by up to 25% with live digital KDS routing",
+      "Eliminate order mistakes with integrated dine-in QR ordering and split-table checks",
+      "Prevent ingredient theft and food wastage with real-time bill-of-materials deduction",
+      "Centralized menu, pricing, and tax control across multiple restaurant outlets",
+    ],
+    techStack: [
+      "React 19",
+      "FastAPI / Python",
+      "PostgreSQL",
+      "Redis Queue",
+      "KDS WebSockets",
+      "Thermal Print SDK",
+    ],
+    stats: [
+      { value: "3,420+", label: "Total Orders" },
+      { value: "< 8min", label: "KDS Prep Time" },
+      { value: "₹9.84L", label: "Monthly Revenue" },
+      { value: "99.9%", label: "Uptime" },
     ],
   },
 ];

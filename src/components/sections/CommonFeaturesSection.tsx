@@ -91,7 +91,7 @@ export function CommonFeaturesSection({ className }: { className?: string }) {
       <section
         id="features"
         className={
-          "w-full px-4 sm:px-6 md:px-10 lg:px-16 pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-16 bg-[#f4f6f9] font-sans text-slate-900 relative overflow-hidden border-y border-slate-200/80 scroll-mt-24 md:scroll-mt-32 " +
+          "w-full px-4 sm:px-6 md:px-10 lg:px-16 py-8 sm:py-10 md:py-12 bg-[#f4f6f9] font-sans text-slate-900 relative overflow-hidden border-y border-slate-200/80 scroll-mt-20 " +
           (className || "")
         }
       >

@@ -25,9 +25,11 @@ export function SideScrollNavigator() {
 
     // Section detection
     const sections = [
-      { id: "contact", label: "Contact" },
-      { id: "about", label: "About" },
+      { id: "action-hub", label: "Action Hub" },
+      { id: "faq", label: "FAQ" },
+      { id: "ecosystem", label: "Ecosystem" },
       { id: "security", label: "Security" },
+      { id: "customization", label: "Bespoke" },
       { id: "analytics", label: "Analytics" },
       { id: "industries", label: "Verticals" },
       { id: "features", label: "Intelligence" },

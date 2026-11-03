@@ -1,7 +1,17 @@
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { biDashboards } from "@/data/platform";
 import { Section, SectionHeading, Reveal } from "@/components/site/primitives";
-import { TrendingUp, TrendingDown, Layers, Filter } from "lucide-react";
+import {
+  TrendingUp,
+  TrendingDown,
+  Layers,
+  Filter,
+  BarChart3,
+  ArrowRight,
+  ChevronRight,
+  Sparkles,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function AnalyticsDashboard() {
@@ -125,6 +135,14 @@ export function AnalyticsDashboard() {
             <option>Last 30 Days</option>
             <option>Fiscal YTD</option>
           </select>
+
+          <Link
+            to="/analytics"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-3 py-1 text-xs font-bold shadow-xs transition-all cursor-pointer ml-1"
+          >
+            <span>Explore More</span>
+            <ArrowRight className="size-3" />
+          </Link>
         </div>
       </div>
 
@@ -167,6 +185,40 @@ export function AnalyticsDashboard() {
           );
         })}
       </div>
+
+      {/* Explore More Card / Call-to-Action to Full Dedicated Analytics Page */}
+      <Reveal delay={250}>
+        <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-6 rounded-2xl sm:rounded-3xl border border-purple-200/90 bg-gradient-to-r from-purple-50/90 via-white to-indigo-50/90 p-5 sm:p-6 shadow-xs hover:shadow-md transition-all">
+          <div className="flex items-center gap-4">
+            <div className="grid size-12 place-items-center rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/25 shrink-0">
+              <BarChart3 className="size-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-purple-700 bg-purple-100/90 px-2 py-0.5 rounded-md border border-purple-200/60">
+                  Dedicated Application
+                </span>
+                <span className="text-xs text-slate-400">•</span>
+                <span className="text-xs font-semibold text-slate-500">Cross-Vertical Business Intelligence</span>
+              </div>
+              <h4 className="text-sm sm:text-base font-black text-slate-950 mt-1 leading-tight">
+                AI-Powered Business Analytics OS
+              </h4>
+              <p className="text-xs text-slate-600 mt-0.5 max-w-xl leading-relaxed">
+                Unlock end-to-end analytics workflows, AI forecasting, custom dashboards, 9 specialized modules and multi-branch intelligence.
+              </p>
+            </div>
+          </div>
+
+          <Link
+            to="/analytics"
+            className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-purple-600 via-purple-700 to-indigo-600 px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-bold text-white shadow-lg shadow-purple-500/30 transition-all hover:scale-105 hover:shadow-xl hover:shadow-purple-500/40 cursor-pointer shrink-0 w-full sm:w-auto justify-center"
+          >
+            <span>Explore More</span>
+            <ArrowRight className="size-4" />
+          </Link>
+        </div>
+      </Reveal>
     </Section>
   );
 }

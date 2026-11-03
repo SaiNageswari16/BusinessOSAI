@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { Link } from "@tanstack/react-router";
 import {
   Sparkles,
   ArrowRight,
+  LogIn,
   Sun,
   Moon,
   ChevronDown,
@@ -22,18 +24,20 @@ import {
   Truck,
   Utensils,
   Handshake,
+  Building2,
+  ShoppingBag,
 } from "lucide-react";
+import { getAuthUrls } from "@/lib/auth-urls";
 import "./LandingHero.css";
 
 const navItems = [
-  { name: "Home", href: "#home" },
-  { name: "Services", href: "#services" },
-  { name: "Applications", href: "#applications" },
-  { name: "Verticals", href: "#industries" },
-  { name: "Analytics", href: "#analytics" },
-  { name: "Security", href: "#security" },
-  { name: "About", href: "#about" },
-  { name: "Contact", href: "#contact" },
+  { name: "Home", href: "/", hash: "#home" },
+  { name: "Services", href: "/services", hash: "#services" },
+  { name: "Applications", href: "#applications", hash: "#applications" },
+  { name: "Analytics", href: "/analytics", hash: "#analytics" },
+  { name: "Security", href: "/security", hash: "#security" },
+  { name: "About", href: "/about", hash: "#about" },
+  { name: "Contact", href: "/contact", hash: "#contact" },
 ];
 
 const stats = [
@@ -47,12 +51,12 @@ const stats = [
 const leftCards = [
   {
     id: "retail-inventory",
-    icon: ShoppingCart,
+    icon: ShoppingBag,
     cardClass: "card-retail eco-pos-l1",
     iconBoxClass: "icon-retail",
     title: "Retail & Inventory",
     description: "AI inventory, billing & store operations",
-    href: "#applications",
+    href: "/products/ai-business-os",
   },
   {
     id: "fitness-gym",
@@ -61,7 +65,7 @@ const leftCards = [
     iconBoxClass: "icon-fitness",
     title: "Fitness & Gym",
     description: "Members, training & plans",
-    href: "#industries",
+    href: "/products/fit-club-ai",
   },
   {
     id: "salon-beauty",
@@ -70,7 +74,7 @@ const leftCards = [
     iconBoxClass: "icon-salon",
     title: "Salon & Beauty",
     description: "Appointments, staff & scheduling",
-    href: "#industries",
+    href: "/products/salon-os",
   },
   {
     id: "order-delivery",
@@ -102,7 +106,7 @@ const bottomCenterCard = {
   iconBoxClass: "icon-restaurant",
   title: "Restaurant",
   description: "Orders, kitchen & table management",
-  href: "#industries",
+  href: "/products/restaurant-os",
 };
 
 // 4 Cards on the Right
@@ -149,61 +153,53 @@ export function LandingHero() {
   const [dark, setDark] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [navVisible, setNavVisible] = useState(true);
   const [activeSection, setActiveSection] = useState("Home");
-  const lastScrollY = useRef(0);
+  const [appsDropdownOpen, setAppsDropdownOpen] = useState(false);
+  const appsDropdownRef = useRef<HTMLDivElement>(null);
+  const authUrls = getAuthUrls();
 
   useEffect(() => {
-    const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-      setScrolled(currentScrollY > 15);
-
-      // Smart navbar hide on scroll down, reveal on scroll up
-      if (currentScrollY > 120) {
-        if (currentScrollY > lastScrollY.current + 8) {
-          // Scrolling down -> hide navbar so it never covers section titles
-          setNavVisible(false);
-        } else if (currentScrollY < lastScrollY.current - 6) {
-          // Scrolling up -> reveal navbar
-          setNavVisible(true);
-        }
-      } else {
-        // At or near top of page -> always show navbar
-        setNavVisible(true);
-      }
-      lastScrollY.current = currentScrollY;
-
-      // Scrollspy active section
-      const sections = navItems.map((item) => ({
-        name: item.name,
-        el: document.querySelector(item.href),
-      }));
-
-      const scrollPos = currentScrollY + 130;
-      for (let i = sections.length - 1; i >= 0; i--) {
-        const sec = sections[i];
-        if (!sec || !sec.el) continue;
-        const top = sec.el.getBoundingClientRect().top + currentScrollY;
-        if (scrollPos >= top) {
-          setActiveSection(sec.name);
-          break;
-        }
+    const handleClickOutside = (e: MouseEvent) => {
+      if (appsDropdownRef.current && !appsDropdownRef.current.contains(e.target as Node)) {
+        setAppsDropdownOpen(false);
       }
     };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-    // Reveal navbar when cursor hovers near top 50px of window
-    const handleMouseMove = (e: MouseEvent) => {
-      if (e.clientY < 50) {
-        setNavVisible(true);
+  useEffect(() => {
+    let ticking = false;
+    const handleScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const currentScrollY = window.scrollY;
+          setScrolled(currentScrollY > 15);
+
+          const scrollPos = currentScrollY + 130;
+          for (let i = navItems.length - 1; i >= 0; i--) {
+            const item = navItems[i];
+            if (!item) continue;
+            const selector = item.hash || (item.href.startsWith("#") ? item.href : null);
+            if (!selector) continue;
+            const el = document.querySelector(selector);
+            if (!el) continue;
+            const top = el.getBoundingClientRect().top + currentScrollY;
+            if (scrollPos >= top) {
+              setActiveSection(item.name);
+              break;
+            }
+          }
+          ticking = false;
+        });
+        ticking = true;
       }
     };
 
     window.addEventListener("scroll", handleScroll, { passive: true });
-    window.addEventListener("mousemove", handleMouseMove, { passive: true });
     handleScroll();
     return () => {
       window.removeEventListener("scroll", handleScroll);
-      window.removeEventListener("mousemove", handleMouseMove);
     };
   }, []);
 
@@ -217,9 +213,7 @@ export function LandingHero() {
 
       {/* Sticky Floating Capsule Glass Navbar (hoisted to section root to escape shell stacking context) */}
       <header
-        className={`glass-navbar ${scrolled ? "is-scrolled" : ""} ${
-          navVisible || menuOpen ? "nav-visible" : "nav-hidden"
-        }`}
+        className={`glass-navbar ${scrolled ? "is-scrolled" : ""}`}
       >
         <a href="#home" className="hero-brand" aria-label="IOTRONICS Home">
           <img
@@ -231,23 +225,227 @@ export function LandingHero() {
         </a>
 
         <nav className={`hero-nav ${menuOpen ? "nav-open" : ""}`}>
-          {navItems.map((item) => (
+          {navItems.map((item) => {
+            if (item.name === "Applications") {
+              return (
+                <div
+                  key={item.name}
+                  ref={appsDropdownRef}
+                  className="relative"
+                  onMouseEnter={() => setAppsDropdownOpen(true)}
+                  onMouseLeave={() => setAppsDropdownOpen(false)}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setAppsDropdownOpen((v) => !v)}
+                    className={`hero-nav-link ${activeSection === "Applications" ? "active" : ""} flex items-center gap-0.5 cursor-pointer py-1`}
+                  >
+                    <span>Applications</span>
+                    <ChevronDown
+                      size={13}
+                      className={`ml-0.5 opacity-70 transition-transform duration-200 ${
+                        appsDropdownOpen ? "rotate-180 text-purple-600" : ""
+                      }`}
+                    />
+                  </button>
+
+                  {appsDropdownOpen && (
+                    <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-80 bg-white/98 dark:bg-slate-900/98 backdrop-blur-2xl border border-slate-200/90 dark:border-slate-800 rounded-2xl shadow-xl p-2 z-50 animate-in fade-in duration-150">
+                      <div className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 font-mono">
+                          Our Applications
+                        </span>
+                        <span className="text-[10px] font-bold text-purple-600">Enterprise AI</span>
+                      </div>
+                      <div className="space-y-1 mt-1">
+                        <Link
+                          to="/products/$productId" params={{ productId: "fit-club-ai" }}
+                          preload="intent"
+                          onClick={() => {
+                            setAppsDropdownOpen(false);
+                            setMenuOpen(false);
+                          }}
+                          className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors group cursor-pointer"
+                        >
+                          <div className="size-8 rounded-lg border border-purple-200 bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 mt-0.5 shadow-2xs group-hover:scale-105 transition-transform">
+                            <Dumbbell className="size-4" />
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-slate-900 dark:text-slate-100 group-hover:text-purple-600 transition-colors">
+                                IOTRONICS – Gym
+                              </span>
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold">
+                                Gym OS
+                              </span>
+                            </div>
+                            <span className="text-[10.5px] text-slate-500 leading-snug truncate mt-0.5">
+                              Memberships, biometric turnstiles, workouts &amp; diet plans
+                            </span>
+                          </div>
+                        </Link>
+
+                        <Link
+                          to="/products/$productId" params={{ productId: "ai-business-os" }}
+                          preload="intent"
+                          onClick={() => {
+                            setAppsDropdownOpen(false);
+                            setMenuOpen(false);
+                          }}
+                          className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors group cursor-pointer"
+                        >
+                          <div className="size-8 rounded-lg border border-purple-200 bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 mt-0.5 shadow-2xs group-hover:scale-105 transition-transform">
+                            <ShoppingBag className="size-4" />
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-slate-900 dark:text-slate-100 group-hover:text-purple-600 transition-colors">
+                                IOTRONICS – Retail
+                              </span>
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold">
+                                Retail OS
+                              </span>
+                            </div>
+                            <span className="text-[10.5px] text-slate-500 leading-snug truncate mt-0.5">
+                              POS, inventory, procurement, accounting, GST &amp; e-commerce
+                            </span>
+                          </div>
+                        </Link>
+
+                        <Link
+                          to="/products/$productId" params={{ productId: "salon-os" }}
+                          preload="intent"
+                          onClick={() => {
+                            setAppsDropdownOpen(false);
+                            setMenuOpen(false);
+                          }}
+                          className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors group cursor-pointer"
+                        >
+                          <div className="size-8 rounded-lg border border-pink-200 bg-pink-50 text-pink-600 flex items-center justify-center shrink-0 mt-0.5 shadow-2xs group-hover:scale-105 transition-transform">
+                            <Scissors className="size-4" />
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-slate-900 dark:text-slate-100 group-hover:text-purple-600 transition-colors">
+                                IOTRONICS – Luxury Saloon
+                              </span>
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold">
+                                Saloon OS
+                              </span>
+                            </div>
+                            <span className="text-[10.5px] text-slate-500 leading-snug truncate mt-0.5">
+                              24/7 appointments, client CRM, stylist rosters &amp; luxury POS
+                            </span>
+                          </div>
+                        </Link>
+
+                        <Link
+                          to="/products/$productId" params={{ productId: "restaurant-os" }}
+                          preload="intent"
+                          onClick={() => {
+                            setAppsDropdownOpen(false);
+                            setMenuOpen(false);
+                          }}
+                          className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors group cursor-pointer"
+                        >
+                          <div className="size-8 rounded-lg border border-amber-200 bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 mt-0.5 shadow-2xs group-hover:scale-105 transition-transform">
+                            <Utensils className="size-4" />
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-slate-900 dark:text-slate-100 group-hover:text-purple-600 transition-colors">
+                                IOTRONICS – Restaurant
+                              </span>
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold">
+                                Restaurant OS
+                              </span>
+                            </div>
+                            <span className="text-[10.5px] text-slate-500 leading-snug truncate mt-0.5">
+                              Table booking, KDS, touch POS, delivery &amp; inventory
+                            </span>
+                          </div>
+                        </Link>
+                      </div>
+
+                      <div className="mt-1 pt-1.5 border-t border-slate-100 dark:border-slate-800 px-2 pb-1">
+                        <a
+                          href="#applications"
+                          onClick={() => {
+                            setAppsDropdownOpen(false);
+                            setMenuOpen(false);
+                          }}
+                          className="text-[11px] font-bold text-purple-700 dark:text-purple-400 hover:text-purple-800 flex items-center justify-between px-2 py-1 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950/40 transition-colors"
+                        >
+                          <span>Explore all applications</span>
+                          <ArrowRight size={12} />
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            if (item.href.startsWith("/")) {
+              return (
+                <Link
+                  to={item.href}
+                  key={item.name}
+                  className={`hero-nav-link ${activeSection === item.name ? "active" : ""}`}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  {item.name}
+                </Link>
+              );
+            }
+
+            return (
+              <a
+                href={item.href}
+                key={item.name}
+                className={`hero-nav-link ${activeSection === item.name ? "active" : ""}`}
+                onClick={() => setMenuOpen(false)}
+              >
+                {item.name}
+              </a>
+            );
+          })}
+          <div className="mobile-nav-auth-group">
             <a
-              href={item.href}
-              key={item.name}
-              className={`hero-nav-link ${activeSection === item.name ? "active" : ""}`}
+              href={authUrls.signIn}
+              className="nav-signin"
               onClick={() => setMenuOpen(false)}
             >
-              {item.name}
-              {(item.name === "Applications" || item.name === "Verticals") && (
-                <ChevronDown size={13} className="ml-0.5 opacity-70" />
-              )}
+              <LogIn size={15} />
+              <span>Sign In / Login</span>
             </a>
-          ))}
+            <a
+              href={authUrls.signUp}
+              className="nav-demo"
+              onClick={() => setMenuOpen(false)}
+            >
+              <Sparkles size={15} />
+              <span>Sign Up</span>
+              <ArrowRight size={15} />
+            </a>
+          </div>
         </nav>
 
         <div className="hero-nav-actions">
-          <a href="https://lazymonkeyai.com/login" className="nav-demo">
+          <a
+            href={authUrls.signIn}
+            className="nav-signin"
+            title="Sign In to your existing account"
+          >
+            <LogIn size={14} />
+            <span>Sign In / Login</span>
+          </a>
+
+          <a
+            href={authUrls.signUp}
+            className="nav-demo"
+            title="Sign Up - Create a new account"
+          >
             <Sparkles size={14} />
             <span>Sign Up</span>
             <ArrowRight size={14} />

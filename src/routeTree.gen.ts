@@ -10,12 +10,72 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AboutRouteImport } from './routes/about'
+import { Route as AnalyticsRouteImport } from './routes/analytics'
+import { Route as ContactRouteImport } from './routes/contact'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as SecurityRouteImport } from './routes/security'
+import { Route as ServicesRouteImport } from './routes/services'
+import { Route as AboutIndexRouteImport } from './routes/about.index'
+import { Route as AboutCompanyOverviewRouteImport } from './routes/about.company-overview'
+import { Route as ContactIndexRouteImport } from './routes/contact.index'
+import { Route as ContactRequestDemoRouteImport } from './routes/contact.request-demo'
 import { Route as ProductsProductIdRouteImport } from './routes/products.$productId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AnalyticsRoute = AnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SecurityRoute = SecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServicesRoute = ServicesRouteImport.update({
+  id: '/services',
+  path: '/services',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AboutIndexRoute = AboutIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AboutRoute,
+} as any)
+const AboutCompanyOverviewRoute = AboutCompanyOverviewRouteImport.update({
+  id: '/company-overview',
+  path: '/company-overview',
+  getParentRoute: () => AboutRoute,
+} as any)
+const ContactIndexRoute = ContactIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ContactRoute,
+} as any)
+const ContactRequestDemoRoute = ContactRequestDemoRouteImport.update({
+  id: '/request-demo',
+  path: '/request-demo',
+  getParentRoute: () => ContactRoute,
 } as any)
 const ProductsProductIdRoute = ProductsProductIdRouteImport.update({
   id: '/products/$productId',
@@ -25,27 +85,96 @@ const ProductsProductIdRoute = ProductsProductIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AboutRouteWithChildren
+  '/analytics': typeof AnalyticsRoute
+  '/contact': typeof ContactRouteWithChildren
+  '/login': typeof LoginRoute
+  '/security': typeof SecurityRoute
+  '/services': typeof ServicesRoute
+  '/about/company-overview': typeof AboutCompanyOverviewRoute
+  '/contact/request-demo': typeof ContactRequestDemoRoute
   '/products/$productId': typeof ProductsProductIdRoute
+  '/about/': typeof AboutIndexRoute
+  '/contact/': typeof ContactIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
+  '/login': typeof LoginRoute
+  '/security': typeof SecurityRoute
+  '/services': typeof ServicesRoute
+  '/about/company-overview': typeof AboutCompanyOverviewRoute
+  '/contact/request-demo': typeof ContactRequestDemoRoute
   '/products/$productId': typeof ProductsProductIdRoute
+  '/about': typeof AboutIndexRoute
+  '/contact': typeof ContactIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/about': typeof AboutRouteWithChildren
+  '/analytics': typeof AnalyticsRoute
+  '/contact': typeof ContactRouteWithChildren
+  '/login': typeof LoginRoute
+  '/security': typeof SecurityRoute
+  '/services': typeof ServicesRoute
+  '/about/company-overview': typeof AboutCompanyOverviewRoute
+  '/contact/request-demo': typeof ContactRequestDemoRoute
   '/products/$productId': typeof ProductsProductIdRoute
+  '/about/': typeof AboutIndexRoute
+  '/contact/': typeof ContactIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/products/$productId'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/analytics'
+    | '/contact'
+    | '/login'
+    | '/security'
+    | '/services'
+    | '/about/company-overview'
+    | '/contact/request-demo'
+    | '/products/$productId'
+    | '/about/'
+    | '/contact/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/products/$productId'
-  id: '__root__' | '/' | '/products/$productId'
+  to:
+    | '/'
+    | '/analytics'
+    | '/login'
+    | '/security'
+    | '/services'
+    | '/about/company-overview'
+    | '/contact/request-demo'
+    | '/products/$productId'
+    | '/about'
+    | '/contact'
+  id:
+    | '__root__'
+    | '/'
+    | '/about'
+    | '/analytics'
+    | '/contact'
+    | '/login'
+    | '/security'
+    | '/services'
+    | '/about/company-overview'
+    | '/contact/request-demo'
+    | '/products/$productId'
+    | '/about/'
+    | '/contact/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AboutRoute: typeof AboutRouteWithChildren
+  AnalyticsRoute: typeof AnalyticsRoute
+  ContactRoute: typeof ContactRouteWithChildren
+  LoginRoute: typeof LoginRoute
+  SecurityRoute: typeof SecurityRoute
+  ServicesRoute: typeof ServicesRoute
   ProductsProductIdRoute: typeof ProductsProductIdRoute
 }
 
@@ -58,6 +187,76 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/analytics': {
+      id: '/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof AnalyticsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/security': {
+      id: '/security'
+      path: '/security'
+      fullPath: '/security'
+      preLoaderRoute: typeof SecurityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/services': {
+      id: '/services'
+      path: '/services'
+      fullPath: '/services'
+      preLoaderRoute: typeof ServicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/about/': {
+      id: '/about/'
+      path: '/'
+      fullPath: '/about/'
+      preLoaderRoute: typeof AboutIndexRouteImport
+      parentRoute: typeof AboutRoute
+    }
+    '/about/company-overview': {
+      id: '/about/company-overview'
+      path: '/company-overview'
+      fullPath: '/about/company-overview'
+      preLoaderRoute: typeof AboutCompanyOverviewRouteImport
+      parentRoute: typeof AboutRoute
+    }
+    '/contact/': {
+      id: '/contact/'
+      path: '/'
+      fullPath: '/contact/'
+      preLoaderRoute: typeof ContactIndexRouteImport
+      parentRoute: typeof ContactRoute
+    }
+    '/contact/request-demo': {
+      id: '/contact/request-demo'
+      path: '/request-demo'
+      fullPath: '/contact/request-demo'
+      preLoaderRoute: typeof ContactRequestDemoRouteImport
+      parentRoute: typeof ContactRoute
+    }
     '/products/$productId': {
       id: '/products/$productId'
       path: '/products/$productId'
@@ -68,8 +267,39 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AboutRouteChildren {
+  AboutCompanyOverviewRoute: typeof AboutCompanyOverviewRoute
+  AboutIndexRoute: typeof AboutIndexRoute
+}
+
+const AboutRouteChildren: AboutRouteChildren = {
+  AboutCompanyOverviewRoute: AboutCompanyOverviewRoute,
+  AboutIndexRoute: AboutIndexRoute,
+}
+
+const AboutRouteWithChildren = AboutRoute._addFileChildren(AboutRouteChildren)
+
+interface ContactRouteChildren {
+  ContactRequestDemoRoute: typeof ContactRequestDemoRoute
+  ContactIndexRoute: typeof ContactIndexRoute
+}
+
+const ContactRouteChildren: ContactRouteChildren = {
+  ContactRequestDemoRoute: ContactRequestDemoRoute,
+  ContactIndexRoute: ContactIndexRoute,
+}
+
+const ContactRouteWithChildren =
+  ContactRoute._addFileChildren(ContactRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AboutRoute: AboutRouteWithChildren,
+  AnalyticsRoute: AnalyticsRoute,
+  ContactRoute: ContactRouteWithChildren,
+  LoginRoute: LoginRoute,
+  SecurityRoute: SecurityRoute,
+  ServicesRoute: ServicesRoute,
   ProductsProductIdRoute: ProductsProductIdRoute,
 }
 export const routeTree = rootRouteImport

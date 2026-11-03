@@ -10,10 +10,10 @@ import { IndustrySolutions } from "@/components/sections/IndustrySolutions";
 import { AnalyticsDashboard } from "@/components/sections/AnalyticsDashboard";
 import { CustomizationSection } from "@/components/sections/CustomizationSection";
 import { IntegrationsSecurity } from "@/components/sections/IntegrationsSecurity";
-import { AboutUsSection } from "@/components/sections/AboutUsSection";
+import { PlatformEcosystemArchitecture } from "@/components/sections/PlatformEcosystemArchitecture";
 import WhyChooseUs01Finsyc from "@/components/sections/WhyChooseUs01Finsyc";
 import { ResourcesFaq } from "@/components/sections/ResourcesFaq";
-import { ContactSection } from "@/components/sections/ContactSection";
+import { HomeActionHub } from "@/components/sections/HomeActionHub";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -50,8 +50,8 @@ function Index() {
         {/* 8. Enterprise Hardware Connectivity & Zero-Trust Security */}
         <IntegrationsSecurity />
 
-        {/* 9. About Us Section & Architecture */}
-        <AboutUsSection />
+        {/* 9. Interconnected Platform Ecosystem Architecture */}
+        <PlatformEcosystemArchitecture />
 
         {/* 10. Strategic Advantages & Financial Growth Benefits */}
         <WhyChooseUs01Finsyc />
@@ -59,8 +59,8 @@ function Index() {
         {/* 11. Frequently Asked Questions & Knowledge Base */}
         <ResourcesFaq />
 
-        {/* 12. Contact & Demo Section */}
-        <ContactSection />
+        {/* 12. Strategic Conversion & Action Hub */}
+        <HomeActionHub />
       </main>
       <Footer />
     </div>

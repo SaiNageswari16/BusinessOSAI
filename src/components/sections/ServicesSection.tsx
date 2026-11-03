@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { Link } from "@tanstack/react-router";
 import {
   Globe,
   Smartphone,
@@ -119,20 +120,29 @@ export function ServicesSection({ className }: { className?: string }) {
       <div className="w-full max-w-7xl 2xl:max-w-[1560px] 3xl:max-w-[1840px] mx-auto">
         {/* Section Heading */}
         <Reveal>
-          <div className="max-w-3xl 2xl:max-w-4xl 3xl:max-w-5xl">
-            <span className="inline-flex items-center gap-2 rounded-full border border-pink-500/20 bg-pink-50 px-3.5 py-1 text-[11px] 2xl:text-xs font-bold tracking-wider text-pink-700 uppercase shadow-2xs">
-              <Sparkles className="size-3 2xl:size-3.5 text-pink-600" /> Enterprise Services &amp; Solutions
-            </span>
-            <h2 className="mt-2 text-2xl sm:text-3xl md:text-4xl 2xl:text-5xl font-extrabold text-slate-950 tracking-tight leading-[1.15]">
-              End-to-End Technology Services for{" "}
-              <span className="bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
-                Modern Operations.
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div className="max-w-3xl 2xl:max-w-4xl 3xl:max-w-5xl">
+              <span className="inline-flex items-center gap-2 rounded-full border border-purple-200 bg-purple-50 px-3.5 py-1 text-[11px] 2xl:text-xs font-bold tracking-wider text-purple-700 uppercase shadow-2xs font-mono">
+                <Sparkles className="size-3 2xl:size-3.5 text-purple-600" /> ENTERPRISE SERVICES &amp; SOLUTIONS
               </span>
-            </h2>
-            <p className="mt-2 text-xs sm:text-sm 2xl:text-base 3xl:text-lg text-slate-600 leading-relaxed max-w-2xl 2xl:max-w-4xl">
-              From custom web &amp; mobile engineering to enterprise cloud migration and generative
-              AI integration, our technical architects build the solutions that power your company.
-            </p>
+              <h2 className="mt-2 text-2xl sm:text-3xl md:text-4xl 2xl:text-5xl font-extrabold text-slate-950 tracking-tight leading-[1.15]">
+                End-to-End Technology Services for{" "}
+                <span className="bg-gradient-to-r from-purple-700 via-indigo-600 to-purple-800 bg-clip-text text-transparent">
+                  Modern Businesses.
+                </span>
+              </h2>
+              <p className="mt-2 text-xs sm:text-sm 2xl:text-base 3xl:text-lg text-slate-600 leading-relaxed max-w-2xl 2xl:max-w-4xl">
+                From intelligent application development to enterprise automation, cloud infrastructure, and AI-powered transformation, IOTRONICS delivers technology solutions that help businesses operate smarter, scale faster, and innovate confidently.
+              </p>
+            </div>
+
+            <Link
+              to="/services"
+              className="inline-flex items-center gap-2 rounded-xl bg-purple-600 hover:bg-purple-700 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-purple-500/20 transition-all hover:scale-105 shrink-0 self-start md:self-auto"
+            >
+              <span>Explore All Services</span>
+              <ArrowRight className="size-3.5" />
+            </Link>
           </div>
         </Reveal>
 
@@ -168,13 +178,13 @@ export function ServicesSection({ className }: { className?: string }) {
                   </div>
 
                   <div className="mt-4 2xl:mt-5 pt-3 2xl:pt-4 border-t border-slate-100 flex items-center justify-between">
-                    <a
-                      href="#contact"
-                      className="inline-flex items-center gap-1 text-[11px] 2xl:text-xs 3xl:text-sm font-bold text-pink-600 hover:text-pink-700 transition-colors"
+                    <Link
+                      to="/services"
+                      className="inline-flex items-center gap-1 text-[11px] 2xl:text-xs 3xl:text-sm font-bold text-purple-700 hover:text-purple-900 transition-colors"
                     >
-                      <span>Request Scope</span>
+                      <span>Explore Capability</span>
                       <ArrowRight className="size-3 2xl:size-3.5 transition-transform group-hover:translate-x-0.5" />
-                    </a>
+                    </Link>
                   </div>
                 </div>
               </Reveal>

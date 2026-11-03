@@ -1,4 +1,5 @@
-import { ShieldCheck, Lock, Key, Server, Cpu, Globe } from "lucide-react";
+import { ShieldCheck, Lock, Key, Server, Cpu, Globe, ArrowRight } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { integrationCategories, securityFeatures } from "@/data/platform";
 import { Section, SectionHeading, Reveal, Chip } from "@/components/site/primitives";
 
@@ -7,17 +8,27 @@ export function IntegrationsSecurity() {
     <Section id="security" tone="ink">
       <div className="pointer-events-none absolute inset-0 grid-lines opacity-20" />
       <Reveal>
-        <SectionHeading
-          tone="ink"
-          eyebrow="Extensibility & Security"
-          title={
-            <>
-              Enterprise-grade foundation.{" "}
-              <span className="text-gradient-brand">Boundless connectivity.</span>
-            </>
-          }
-          description="Built on zero-trust principles with multi-tenant data isolation, role-based governance, and pre-built API connectors for your essential stack."
-        />
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <SectionHeading
+            tone="ink"
+            eyebrow="Extensibility & Security"
+            title={
+              <>
+                Enterprise-grade foundation.{" "}
+                <span className="text-gradient-brand">Boundless connectivity.</span>
+              </>
+            }
+            description="Built on zero-trust principles with multi-tenant data isolation, role-based governance, and pre-built API connectors for your essential stack."
+          />
+
+          <Link
+            to="/security"
+            className="inline-flex items-center gap-2 rounded-xl bg-purple-600 hover:bg-purple-700 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-purple-500/20 transition-all hover:scale-105 shrink-0 self-start md:self-auto"
+          >
+            <span>Explore Security Platform</span>
+            <ArrowRight className="size-3.5" />
+          </Link>
+        </div>
       </Reveal>
 
       {/* Grid: Integrations Ecosystem + Enterprise Security */}
@@ -100,9 +111,18 @@ export function IntegrationsSecurity() {
               Choose on-premise private clouds or dedicated tenant clusters with automated
               continuous backups and 99.99% SLA.
             </p>
+            <Link
+              to="/security"
+              className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-purple-700 hover:text-purple-900 transition-colors"
+            >
+              <span>Explore Enterprise Security Architecture</span>
+              <ArrowRight className="size-3.5" />
+            </Link>
           </div>
         </div>
       </div>
     </Section>
   );
 }
+
+export default IntegrationsSecurity;
