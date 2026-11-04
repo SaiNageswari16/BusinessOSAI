@@ -12,9 +12,10 @@ from src.models import (
     AttendanceRecord, Employee, Product, GoodsIssue, ExpenseClaim,
     PurchaseRequest, LeaveRequest, Warehouse, InventoryBatch, 
     InvoiceReturn, PurchaseOrder, Branch, ActivityLog, 
-    LiveNotification, Interview, User, Lead
+    LiveNotification, Interview, User, Lead, CRMQuotation
 )
-from src.models.marketplace import MarketplaceOrder
+from src.models.procurement import VendorBill, Supplier, GoodsReceivedNote
+from src.models.marketplace import MarketplaceVendor, MarketplaceOrder
 from src.models.erp import InvoiceType, InvoiceStatus, ExpenseStatus
 from src.utils.clock import clock
 
@@ -61,19 +62,46 @@ async def get_dashboard_kpis(
     pos_sales = await db.scalar(pos_sales_q) or 0
     todays_sales = inv_sales + pos_sales
 
-    # Lifetime / All-Time Revenue and Sales Count (for live fallbacks when today's sales are 0)
+    # Subquery for POS receipts already converted/linked into an Invoice record to prevent double-counting
+    linked_pos_receipts = select(Invoice.reference_number).where(
+        Invoice.tenant_id == ctx.tenant_id,
+        Invoice.reference_number.isnot(None),
+        *([Invoice.company_id == cid] if cid else [])
+    )
+
+    # Lifetime / All-Time Revenue and Sales Count (deduplicating linked POS transactions & excluding cancelled)
     all_time_inv_rev_q = select(func.sum(Invoice.total_amount)).where(
         Invoice.tenant_id == ctx.tenant_id,
         cast(Invoice.invoice_type, String) == InvoiceType.TAX_INVOICE.value,
+        ~cast(Invoice.status, String).in_([InvoiceStatus.CANCELLED.value, InvoiceStatus.VOIDED.value]),
         *([Invoice.company_id == cid] if cid else [])
     )
     all_time_inv_count_q = select(func.count(Invoice.id)).where(
         Invoice.tenant_id == ctx.tenant_id,
         cast(Invoice.invoice_type, String) == InvoiceType.TAX_INVOICE.value,
+        ~cast(Invoice.status, String).in_([InvoiceStatus.CANCELLED.value, InvoiceStatus.VOIDED.value]),
         *([Invoice.company_id == cid] if cid else [])
     )
+    all_time_pos_rev_q = select(func.sum(POSTransaction.total_amount)).where(
+        POSTransaction.tenant_id == ctx.tenant_id,
+        POSTransaction.status == "completed",
+        ~POSTransaction.receipt_number.in_(linked_pos_receipts),
+        *([POSTransaction.company_id == cid] if cid else [])
+    )
+    all_time_pos_count_q = select(func.count(POSTransaction.id)).where(
+        POSTransaction.tenant_id == ctx.tenant_id,
+        POSTransaction.status == "completed",
+        ~POSTransaction.receipt_number.in_(linked_pos_receipts),
+        *([POSTransaction.company_id == cid] if cid else [])
+    )
+
     all_time_inv_rev = float(await db.scalar(all_time_inv_rev_q) or 0.0)
     all_time_inv_count = int(await db.scalar(all_time_inv_count_q) or 0)
+    all_time_pos_rev = float(await db.scalar(all_time_pos_rev_q) or 0.0)
+    all_time_pos_count = int(await db.scalar(all_time_pos_count_q) or 0)
+
+    total_lifetime_rev = all_time_inv_rev + all_time_pos_rev
+    total_lifetime_count = all_time_inv_count + all_time_pos_count
 
     # 2. Orders Pending
     pending_orders_q = select(func.count(CRMSalesOrder.id)).where(
@@ -128,7 +156,15 @@ async def get_dashboard_kpis(
         pending_deliveries_q = pending_deliveries_q.where(GoodsIssue.company_id == cid)
     pending_deliveries = await db.scalar(pending_deliveries_q) or 0
 
-    # 7. Pending Payments (AR overdue/unpaid)
+    # 7. Customer Invoiced & Collections (AR)
+    all_time_inv_paid_q = select(func.sum(Invoice.amount_paid)).where(
+        Invoice.tenant_id == ctx.tenant_id,
+        cast(Invoice.invoice_type, String) == InvoiceType.TAX_INVOICE.value,
+        ~cast(Invoice.status, String).in_([InvoiceStatus.CANCELLED.value, InvoiceStatus.VOIDED.value]),
+        *([Invoice.company_id == cid] if cid else [])
+    )
+    all_time_inv_paid = float(await db.scalar(all_time_inv_paid_q) or 0.0)
+
     pending_payments_filter = [
         Invoice.tenant_id == ctx.tenant_id,
         cast(Invoice.invoice_type, String) == InvoiceType.TAX_INVOICE.value,
@@ -137,7 +173,93 @@ async def get_dashboard_kpis(
     if cid:
         pending_payments_filter.append(Invoice.company_id == cid)
     pending_payments_q = select(func.sum(Invoice.balance_due)).where(*pending_payments_filter)
-    pending_payments = await db.scalar(pending_payments_q) or 0.0
+    pending_payments = float(await db.scalar(pending_payments_q) or 0.0)
+
+    # 8. Procurement / Purchase Vendor Bills (AP)
+    bills_filter = [VendorBill.tenant_id == ctx.tenant_id]
+    if cid:
+        bills_filter.append(VendorBill.company_id == cid)
+    vendor_bills_stats_q = select(
+        func.count(VendorBill.id),
+        func.coalesce(func.sum(VendorBill.total_amount), 0),
+        func.coalesce(func.sum(VendorBill.paid_amount), 0)
+    ).where(*bills_filter)
+    bills_row = (await db.execute(vendor_bills_stats_q)).fetchone() or (0, 0.0, 0.0)
+    vendor_bills_count = int(bills_row[0] or 0)
+    vendor_bills_amount = float(bills_row[1] or 0.0)
+    vendor_bills_paid = float(bills_row[2] or 0.0)
+    pending_payables = max(0.0, vendor_bills_amount - vendor_bills_paid)
+
+    suppliers_q = select(func.count(Supplier.id)).where(Supplier.tenant_id == ctx.tenant_id)
+    if cid:
+        suppliers_q = suppliers_q.where(Supplier.company_id == cid)
+    suppliers_count = int(await db.scalar(suppliers_q) or 0)
+
+    po_q = select(func.count(PurchaseOrder.id)).where(PurchaseOrder.tenant_id == ctx.tenant_id)
+    if cid:
+        po_q = po_q.where(PurchaseOrder.company_id == cid)
+    purchase_orders_count = int(await db.scalar(po_q) or 0)
+
+    grn_q = select(func.count(GoodsReceivedNote.id)).where(GoodsReceivedNote.tenant_id == ctx.tenant_id)
+    if cid:
+        grn_q = grn_q.where(GoodsReceivedNote.company_id == cid)
+    grn_count = int(await db.scalar(grn_q) or 0)
+
+    pr_q = select(func.count(PurchaseRequest.id)).where(PurchaseRequest.tenant_id == ctx.tenant_id)
+    if cid:
+        pr_q = pr_q.where(PurchaseRequest.company_id == cid)
+    purchase_requests_count = int(await db.scalar(pr_q) or 0)
+
+    # 9. CRM Pipeline & Quotations
+    leads_filter = [Lead.tenant_id == ctx.tenant_id]
+    if cid:
+        leads_filter.append(Lead.company_id == cid)
+    leads_stats_q = select(
+        func.count(Lead.id),
+        func.coalesce(func.sum(Lead.estimated_value), 0)
+    ).where(*leads_filter)
+    leads_row = (await db.execute(leads_stats_q)).fetchone() or (0, 0.0)
+    crm_leads_count = int(leads_row[0] or 0)
+    crm_pipeline_value = float(leads_row[1] or 0.0)
+
+    quotes_filter = [CRMQuotation.tenant_id == ctx.tenant_id]
+    if cid:
+        quotes_filter.append(CRMQuotation.company_id == cid)
+    quotes_stats_q = select(
+        func.count(CRMQuotation.id),
+        func.coalesce(func.sum(CRMQuotation.total), 0)
+    ).where(*quotes_filter)
+    quotes_row = (await db.execute(quotes_stats_q)).fetchone() or (0, 0.0)
+    crm_quotations_count = int(quotes_row[0] or 0)
+    crm_quotations_value = float(quotes_row[1] or 0.0)
+
+    # 10. Marketplace
+    mp_vendors_q = select(func.count(MarketplaceVendor.id)).where(MarketplaceVendor.tenant_id == ctx.tenant_id)
+    marketplace_vendors_count = int(await db.scalar(mp_vendors_q) or 0)
+
+    mp_orders_q = select(
+        func.count(MarketplaceOrder.id),
+        func.coalesce(func.sum(MarketplaceOrder.total_amount), 0)
+    ).where(MarketplaceOrder.tenant_id == ctx.tenant_id)
+    mp_orders_row = (await db.execute(mp_orders_q)).fetchone() or (0, 0.0)
+    marketplace_orders_count = int(mp_orders_row[0] or 0)
+    marketplace_gmv = float(mp_orders_row[1] or 0.0)
+
+    # 11. Inventory Stock Counts
+    prod_filter = [Product.tenant_id == ctx.tenant_id]
+    if cid:
+        prod_filter.append(Product.company_id == cid)
+    stock_stats_q = select(
+        func.count(Product.id),
+        func.coalesce(func.sum(func.case((func.coalesce(Product.on_hand_stock, 0) <= 0, 1), else_=0)), 0),
+        func.coalesce(func.sum(func.case((func.coalesce(Product.on_hand_stock, 0) > 0, 1), else_=0)), 0),
+        func.coalesce(func.sum(func.coalesce(Product.on_hand_stock, 0)), 0)
+    ).where(*prod_filter)
+    stock_row = (await db.execute(stock_stats_q)).fetchone() or (0, 0, 0, 0)
+    total_products_count = int(stock_row[0] or 0)
+    out_of_stock_count = int(stock_row[1] or 0)
+    in_stock_count = int(stock_row[2] or 0)
+    total_stock_units = int(stock_row[3] or 0)
 
     # Construct the KPIs array to match frontend mock structure
     return {
@@ -202,9 +324,14 @@ async def get_dashboard_kpis(
                 "isCurrency": True
             }
         ],
-        "totalSales": todays_revenue if todays_revenue > 0 else all_time_inv_rev,
-        "lifetimeRevenue": all_time_inv_rev,
-        "lifetimeSalesCount": all_time_inv_count,
+        "totalSales": todays_revenue if todays_revenue > 0 else total_lifetime_rev,
+        "lifetimeRevenue": total_lifetime_rev,
+        "lifetimeSalesCount": total_lifetime_count,
+        "totalInvoicesCount": all_time_inv_count,
+        "totalInvoicedAmount": all_time_inv_rev,
+        "totalInvoicedPaid": all_time_inv_paid,
+        "totalPosCount": all_time_pos_count,
+        "totalPosRevenue": all_time_pos_rev,
         "todaysSalesCount": todays_sales,
         "ordersPending": orders_pending,
         "activeCustomers": active_customers,
@@ -212,10 +339,33 @@ async def get_dashboard_kpis(
         "totalEmployees": total_employees,
         "employeesAbsent": max(0, total_employees - employees_present),
         "inventoryValue": inventory_value,
+        "totalProductsCount": total_products_count,
+        "outOfStockCount": out_of_stock_count,
+        "inStockCount": in_stock_count,
+        "totalStockUnits": total_stock_units,
         "pendingDeliveries": pending_deliveries,
         "pendingPayments": pending_payments,
         "posRevenueToday": float(pos_rev),
         "posTransactionsToday": pos_sales,
+        # Procurement
+        "vendorBillsCount": vendor_bills_count,
+        "vendorBillsAmount": vendor_bills_amount,
+        "vendorBillsPaid": vendor_bills_paid,
+        "pendingPayables": pending_payables,
+        "suppliersCount": suppliers_count,
+        "purchaseOrdersCount": purchase_orders_count,
+        "grnCount": grn_count,
+        "purchaseRequestsCount": purchase_requests_count,
+        # CRM
+        "crmLeadsCount": crm_leads_count,
+        "crmPipelineValue": crm_pipeline_value,
+        "crmQuotationsCount": crm_quotations_count,
+        "crmQuotationsValue": crm_quotations_value,
+        "crmSalesOrdersCount": orders_pending,
+        # Marketplace
+        "marketplaceVendorsCount": marketplace_vendors_count,
+        "marketplaceOrdersCount": marketplace_orders_count,
+        "marketplaceGmv": marketplace_gmv,
     }
 
 @router.get("/dashboard/charts")

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from "react";
-import { useAuth } from "./auth-context";
-import type { AuthRole } from "./auth-context";
+import { useAuth } from "@/contexts/auth-context";
+import type { AuthRole } from "@/contexts/auth-context";
 import {
   resolveEffectiveModules,
   resolveEffectiveTabs,

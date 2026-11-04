@@ -130,7 +130,11 @@ interface AuthCtx {
   logout: () => void;
 }
 
-const Ctx = createContext<AuthCtx | null>(null);
+declare global {
+  var __BOS_AUTH_CTX__: React.Context<AuthCtx | null> | undefined;
+}
+
+const Ctx = (globalThis.__BOS_AUTH_CTX__ ??= createContext<AuthCtx | null>(null));
 
 async function parseErrorWithData(response: Response): Promise<{ message: string; data?: any }> {
   let message = "Authentication request failed";
@@ -598,9 +602,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useAuth() {
+const defaultAuthContextValue: AuthCtx = {
+  user: null,
+  accessToken: null,
+  isAuthed: false,
+  authReady: false,
+  login: async () => { throw new Error("Authentication provider not yet initialized"); },
+  checkLockout: async () => null,
+  verifyFirstTimeCode: async () => { throw new Error("Authentication provider not yet initialized"); },
+  resendVerificationCode: async () => ({ message: "" }),
+  register: async () => { throw new Error("Authentication provider not yet initialized"); },
+  selectRole: async () => { throw new Error("Authentication provider not yet initialized"); },
+  changePassword: async () => { throw new Error("Authentication provider not yet initialized"); },
+  applySession: () => {},
+  loginWithToken: async () => { throw new Error("Authentication provider not yet initialized"); },
+  refreshUser: async () => {},
+  logout: () => {},
+};
+
+export function useAuth(): AuthCtx {
   const c = useContext(Ctx);
-  if (!c) throw new Error("useAuth must be used within AuthProvider");
+  if (!c) {
+    return defaultAuthContextValue;
+  }
   return c;
 }
 

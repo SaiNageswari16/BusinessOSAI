@@ -19,7 +19,7 @@ from src.models import (
     LeadActivity, CRMOpportunity, CRMQuotation, CRMSupportTicket, User, Designation, POSPayment
 )
 from src.models.inventory import Product, Warehouse, StockMovement, MasterCatalogProduct
-from src.models.procurement import Supplier, PurchaseOrder, VendorBill, VendorDebitNote
+from src.models.procurement import Supplier, PurchaseOrder, VendorBill, VendorDebitNote, VendorPayment
 from src.models.erp import Invoice, InvoiceReturn, InvoiceReturnLine
 from src.models.marketplace import MarketplaceOrder
 from src.utils.clock import clock
@@ -6248,6 +6248,344 @@ class EmailReportPayload(BaseModel):
     rows: List[List[Any]] = []
     sheet_name: str = "Report"
     attachment_filename: Optional[str] = None
+
+
+
+@router.get("/payment-mode-purchases")
+async def get_payment_mode_purchases_report(
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: AsyncSession = Depends(get_db),
+    start_date: Optional[str] = Query(None, description="Start date in YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="End date in YYYY-MM-DD"),
+    mode: Optional[str] = Query(None, description="Filter by payment mode (all, cash, upi, bank, credit, dues, debit_notes)"),
+    search: Optional[str] = Query(None, description="Search query across vendor, bill_no, phone"),
+):
+    """
+    Authoritative Payment Mode & Outflow Breakdown Report for Purchases & Vendors:
+    - Cash Purchases (Total Amount + No. of Bills + % Share)
+    - UPI Vendor Payouts (Total Amount + No. of Bills + % Share)
+    - Bank / NEFT / Card Payouts (Total Amount + No. of Bills + % Share)
+    - Credit / Due Payables (Total Amount + No. of Bills + % Share)
+    - Outstanding Payables (Total Amount + No. of Bills with Pending Payables)
+    - Vendor Debit Notes (Total Value + No. of Debit Notes)
+    - Grand Totals (Total Bills + Grand Total Procurement Outflow + Average Bill Size)
+    - Full Itemized Vendor Bill Ledger with Filtering & Export
+    """
+    from sqlalchemy.orm import selectinload
+
+    start_dt = None
+    end_dt = None
+    start_str = start_date if isinstance(start_date, str) else None
+    end_str = end_date if isinstance(end_date, str) else None
+    search_str = search if isinstance(search, str) else None
+    mode_str_arg = mode.lower() if isinstance(mode, str) else "all"
+
+    if start_str:
+        try:
+            start_dt = datetime.strptime(start_str.strip(), "%Y-%m-%d").replace(hour=0, minute=0, second=0)
+        except Exception:
+            start_dt = None
+    if end_str:
+        try:
+            end_dt = datetime.strptime(end_str.strip(), "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+        except Exception:
+            end_dt = None
+
+    # Query VendorBill
+    bill_query = select(VendorBill).options(
+        selectinload(VendorBill.payments),
+        selectinload(VendorBill.purchase_order).selectinload(PurchaseOrder.supplier)
+    )
+    if ctx.active_company_id:
+        if ctx.is_primary_company:
+            bill_query = bill_query.where(
+                or_(
+                    VendorBill.company_id == ctx.active_company_id,
+                    and_(VendorBill.tenant_id == ctx.tenant_id, VendorBill.company_id == None)
+                )
+            )
+        else:
+            bill_query = bill_query.where(VendorBill.company_id == ctx.active_company_id)
+    elif ctx.tenant_id:
+        bill_query = bill_query.where(VendorBill.tenant_id == ctx.tenant_id)
+
+    bill_res = await db.execute(bill_query.order_by(VendorBill.created_at.desc()))
+    bills = bill_res.scalars().all()
+
+    # Query Debit Notes
+    dn_query = select(VendorDebitNote).options(selectinload(VendorDebitNote.supplier))
+    if ctx.active_company_id:
+        if ctx.is_primary_company:
+            dn_query = dn_query.where(
+                or_(
+                    VendorDebitNote.company_id == ctx.active_company_id,
+                    and_(VendorDebitNote.tenant_id == ctx.tenant_id, VendorDebitNote.company_id == None)
+                )
+            )
+        else:
+            dn_query = dn_query.where(VendorDebitNote.company_id == ctx.active_company_id)
+    elif ctx.tenant_id:
+        dn_query = dn_query.where(VendorDebitNote.tenant_id == ctx.tenant_id)
+    
+    dn_res = await db.execute(dn_query.order_by(VendorDebitNote.created_at.desc()))
+    raw_debit_notes = dn_res.scalars().all()
+
+    cash_bills = []
+    upi_bills = []
+    bank_bills = []
+    credit_bills = []
+    debit_notes_list = []
+    cancelled_bills = []
+    all_active_bills = []
+
+    for b in bills:
+        b_date = b.bill_date or b.created_at
+        if start_dt and b_date and b_date < start_dt:
+            continue
+        if end_dt and b_date and b_date > end_dt:
+            continue
+
+        supp_name = "Unknown Vendor"
+        supp_phone = ""
+        supp_gstin = ""
+        if b.purchase_order and b.purchase_order.supplier:
+            supp = b.purchase_order.supplier
+            supp_name = getattr(supp, "name", None) or "Vendor Partner"
+            supp_phone = getattr(supp, "phone", None) or ""
+            supp_gstin = getattr(supp, "gst_number", None) or getattr(supp, "gstin", None) or ""
+
+        # Search matching
+        if search_str:
+            q = search_str.lower().strip()
+            match = (
+                q in str(b.bill_number or "").lower() or
+                q in supp_name.lower() or
+                q in supp_phone.lower() or
+                q in supp_gstin.lower()
+            )
+            if not match:
+                continue
+
+        raw_status = str(b.status or "").lower()
+        is_canc = raw_status in ["cancelled", "canceled", "void", "voided"]
+        total_amt = float(b.total_amount or 0.0)
+        paid_amt = float(b.paid_amount or 0.0)
+        pending_amt = max(0.0, total_amt - paid_amt)
+        if pending_amt < 0.01:
+            pending_amt = 0.0
+
+        # Determine payment mode from linked payments or bill state
+        payments = getattr(b, "payments", []) or []
+        pay_methods = [str(p.payment_method or "").lower() for p in payments if getattr(p, "payment_method", None)]
+        comb_methods = " ".join(pay_methods)
+
+        if is_canc:
+            cat = "cancelled"
+            cat_label = "Cancelled Bill"
+        elif any(k in comb_methods for k in ["cash"]):
+            cat = "cash"
+            cat_label = "Cash"
+        elif any(k in comb_methods for k in ["upi", "gpay", "phonepe", "paytm", "qr"]):
+            cat = "upi"
+            cat_label = "UPI / QR"
+        elif any(k in comb_methods for k in ["bank", "card", "neft", "rtgs", "cheque", "online", "transfer"]):
+            cat = "bank"
+            cat_label = "Bank / NEFT"
+        elif paid_amt > 0.01:
+            cat = "bank"
+            cat_label = "Bank Transfer"
+        else:
+            cat = "credit"
+            cat_label = "Credit / Payables"
+
+        bill_item = {
+            "id": str(b.id),
+            "bill_number": b.bill_number,
+            "date": b_date.strftime("%Y-%m-%d") if b_date else None,
+            "raw_date": b_date.isoformat() if b_date else None,
+            "vendor_name": supp_name,
+            "vendor_phone": supp_phone,
+            "vendor_gstin": supp_gstin,
+            "payment_mode_raw": cat_label,
+            "total_amount": round(total_amt, 2),
+            "paid_amount": 0.0 if is_canc else round(paid_amt, 2),
+            "pending_amount": 0.0 if is_canc else round(pending_amt, 2),
+            "status": "Cancelled" if is_canc else ("Paid" if pending_amt < 0.01 and paid_amt > 0 else ("Partially Paid" if paid_amt > 0 else "Payable")),
+            "category": cat,
+            "category_label": cat_label,
+            "is_cancelled": is_canc,
+            "is_debit_note": False,
+        }
+
+        if is_canc:
+            cancelled_bills.append(bill_item)
+            continue
+
+        all_active_bills.append(bill_item)
+        if cat == "cash":
+            cash_bills.append(bill_item)
+        elif cat == "upi":
+            upi_bills.append(bill_item)
+        elif cat == "bank":
+            bank_bills.append(bill_item)
+        else:
+            credit_bills.append(bill_item)
+
+    # Process Debit Notes
+    for dn in raw_debit_notes:
+        dn_date = dn.created_at
+        if start_dt and dn_date and dn_date < start_dt:
+            continue
+        if end_dt and dn_date and dn_date > end_dt:
+            continue
+
+        dn_supp = "Vendor Partner"
+        if dn.supplier:
+            dn_supp = dn.supplier.name or "Vendor Partner"
+
+        if search_str:
+            q = search_str.lower().strip()
+            if q not in str(dn.note_number or "").lower() and q not in dn_supp.lower():
+                continue
+
+        amt = float(dn.amount or 0.0)
+        debit_notes_list.append({
+            "id": str(dn.id),
+            "bill_number": dn.note_number,
+            "date": dn_date.strftime("%Y-%m-%d") if dn_date else None,
+            "raw_date": dn_date.isoformat() if dn_date else None,
+            "vendor_name": dn_supp,
+            "vendor_phone": dn.supplier.phone if dn.supplier else "",
+            "vendor_gstin": dn.supplier.gstin if dn.supplier else "",
+            "payment_mode_raw": "Debit Note",
+            "total_amount": round(amt, 2),
+            "paid_amount": round(amt, 2),
+            "pending_amount": 0.0,
+            "status": dn.status or "Applied",
+            "category": "debit_note",
+            "category_label": "Debit Note",
+            "is_cancelled": False,
+            "is_debit_note": True,
+        })
+
+    grand_total_procurement = sum(x["total_amount"] for x in all_active_bills)
+    total_bills_cnt = len(all_active_bills)
+    avg_bill = (grand_total_procurement / total_bills_cnt) if total_bills_cnt > 0 else 0.0
+
+    cash_total = sum(x["total_amount"] for x in cash_bills)
+    cash_paid = sum(x["paid_amount"] for x in cash_bills)
+    cash_dues = sum(x["pending_amount"] for x in cash_bills)
+    cash_dues_cnt = sum(1 for x in cash_bills if x["pending_amount"] > 0.01)
+
+    upi_total = sum(x["total_amount"] for x in upi_bills)
+    upi_paid = sum(x["paid_amount"] for x in upi_bills)
+    upi_dues = sum(x["pending_amount"] for x in upi_bills)
+    upi_dues_cnt = sum(1 for x in upi_bills if x["pending_amount"] > 0.01)
+
+    bank_total = sum(x["total_amount"] for x in bank_bills)
+    bank_paid = sum(x["paid_amount"] for x in bank_bills)
+    bank_dues = sum(x["pending_amount"] for x in bank_bills)
+    bank_dues_cnt = sum(1 for x in bank_bills if x["pending_amount"] > 0.01)
+
+    credit_total = sum(x["total_amount"] for x in credit_bills)
+    credit_paid = sum(x["paid_amount"] for x in credit_bills)
+    credit_dues = sum(x["pending_amount"] for x in credit_bills)
+    credit_dues_cnt = sum(1 for x in credit_bills if x["pending_amount"] > 0.01)
+
+    grand_dues = sum(x["pending_amount"] for x in all_active_bills)
+    grand_dues_cnt = sum(1 for x in all_active_bills if x["pending_amount"] > 0.01)
+
+    dn_total = sum(x["total_amount"] for x in debit_notes_list)
+    dn_cnt = len(debit_notes_list)
+
+    mode_breakdown = [
+        {
+            "mode_key": "cash",
+            "payment_mode": "Cash Purchases",
+            "invoices_count": len(cash_bills),
+            "percentage_share": round((cash_total / max(1.0, grand_total_procurement)) * 100, 1),
+            "total_billed": round(cash_total, 2),
+            "collected_amount": round(cash_paid, 2),
+            "dues_amount": round(cash_dues, 2),
+            "dues_invoices_count": cash_dues_cnt,
+            "average_ticket": round(cash_total / max(1, len(cash_bills)), 2),
+        },
+        {
+            "mode_key": "upi",
+            "payment_mode": "UPI / QR Payouts",
+            "invoices_count": len(upi_bills),
+            "percentage_share": round((upi_total / max(1.0, grand_total_procurement)) * 100, 1),
+            "total_billed": round(upi_total, 2),
+            "collected_amount": round(upi_paid, 2),
+            "dues_amount": round(upi_dues, 2),
+            "dues_invoices_count": upi_dues_cnt,
+            "average_ticket": round(upi_total / max(1, len(upi_bills)), 2),
+        },
+        {
+            "mode_key": "bank",
+            "payment_mode": "Bank Transfer / NEFT / Card",
+            "invoices_count": len(bank_bills),
+            "percentage_share": round((bank_total / max(1.0, grand_total_procurement)) * 100, 1),
+            "total_billed": round(bank_total, 2),
+            "collected_amount": round(bank_paid, 2),
+            "dues_amount": round(bank_dues, 2),
+            "dues_invoices_count": bank_dues_cnt,
+            "average_ticket": round(bank_total / max(1, len(bank_bills)), 2),
+        },
+        {
+            "mode_key": "credit",
+            "payment_mode": "Credit / Payables (Net Terms)",
+            "invoices_count": len(credit_bills),
+            "percentage_share": round((credit_total / max(1.0, grand_total_procurement)) * 100, 1),
+            "total_billed": round(credit_total, 2),
+            "collected_amount": round(credit_paid, 2),
+            "dues_amount": round(credit_dues, 2),
+            "dues_invoices_count": credit_dues_cnt,
+            "average_ticket": round(credit_total / max(1, len(credit_bills)), 2),
+        },
+    ]
+
+    # Filter detailed list by mode if requested
+    if mode_str_arg == "cash":
+        detailed_list = cash_bills
+    elif mode_str_arg == "upi":
+        detailed_list = upi_bills
+    elif mode_str_arg in ["bank", "card"]:
+        detailed_list = bank_bills
+    elif mode_str_arg in ["credit", "due"]:
+        detailed_list = credit_bills
+    elif mode_str_arg == "dues":
+        detailed_list = [x for x in all_active_bills if x["pending_amount"] > 0.01]
+    elif mode_str_arg in ["debit_note", "debit_notes"]:
+        detailed_list = debit_notes_list
+    else:
+        detailed_list = all_active_bills
+
+    return {
+        "summary": {
+            "total_bills": total_bills_cnt,
+            "total_procurement_cost": round(grand_total_procurement, 2),
+            "avg_bill": round(avg_bill, 2),
+            "cash_total": round(cash_total, 2),
+            "cash_count": len(cash_bills),
+            "cash_pct": round((cash_total / max(1.0, grand_total_procurement)) * 100, 1),
+            "upi_total": round(upi_total, 2),
+            "upi_count": len(upi_bills),
+            "upi_pct": round((upi_total / max(1.0, grand_total_procurement)) * 100, 1),
+            "bank_total": round(bank_total, 2),
+            "bank_count": len(bank_bills),
+            "bank_pct": round((bank_total / max(1.0, grand_total_procurement)) * 100, 1),
+            "credit_total": round(credit_total, 2),
+            "credit_count": len(credit_bills),
+            "credit_pct": round((credit_total / max(1.0, grand_total_procurement)) * 100, 1),
+            "dues_total": round(grand_dues, 2),
+            "dues_count": grand_dues_cnt,
+            "debit_notes_total": round(dn_total, 2),
+            "debit_notes_count": dn_cnt,
+        },
+        "mode_breakdown": mode_breakdown,
+        "detailed_bills": detailed_list,
+    }
 
 
 @router.post("/email-report")

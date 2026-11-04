@@ -5046,6 +5046,8 @@ export const inventoryApi = {
     request<any>("GET", "/analytics/employee-sales", undefined, params as Record<string, any>),
   getPaymentModeSalesReport: (params?: { start_date?: string; end_date?: string; mode?: string; search?: string }) =>
     request<any>("GET", "/analytics/payment-mode-sales", undefined, params as Record<string, any>),
+  getPaymentModePurchaseReport: (params?: { start_date?: string; end_date?: string; mode?: string; search?: string }) =>
+    request<any>("GET", "/analytics/payment-mode-purchases", undefined, params as Record<string, any>),
   consultAIReport: (tab: string, query: string, contextData: any) => request<{ answer: string }>("POST", `/analytics/reports/${tab}/ai-consult`, { query, contextData }),
   getReportBuilderPresets: () => request<any>("GET", "/analytics/report-builder/presets"),
   generateCustomReport: (payload: any) => request<any>("POST", "/analytics/report-builder/generate", payload),

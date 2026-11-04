@@ -149,6 +149,23 @@ export const nav: NavGroup[] = [
         ]
       },
       {
+        to: "/inventory?tab=low_stock",
+        label: "Inventory Intelligence",
+        icon: BrainCircuit,
+        permission: "view:inventory",
+        subItems: [
+          { to: "/inventory?tab=ai_health", label: "AI Inventory Health", icon: Sparkles, permission: "view:inventory" },
+          { to: "/inventory?tab=low_stock", label: "Low Stock Alerts", icon: AlertTriangle, permission: "view:inventory" },
+          { to: "/inventory?tab=reorder_planning", label: "Reorder Planning", icon: TrendingUp, permission: "view:inventory" },
+          { to: "/inventory?tab=slow_moving", label: "Slow Moving Inventory", icon: Snail, permission: "view:inventory" },
+          { to: "/inventory?tab=fast_moving", label: "Fast Moving Inventory", icon: Rocket, permission: "view:inventory" },
+          { to: "/inventory?tab=dead_stock", label: "Dead Stock", icon: Skull, permission: "view:inventory" },
+          { to: "/inventory?tab=abc_analysis", label: "ABC Analysis", icon: PieChart, permission: "view:inventory" },
+          { to: "/inventory?tab=xyz_analysis", label: "XYZ Analysis", icon: LineChart, permission: "view:inventory" },
+          { to: "/inventory?tab=forecast", label: "Inventory Forecast", icon: BrainCircuit, permission: "view:inventory" },
+        ]
+      },
+      {
         to: "/inventory?tab=stock_overview",
         label: "Inventory Operations",
         icon: Activity,
@@ -160,21 +177,6 @@ export const nav: NavGroup[] = [
           { to: "/inventory?tab=stock_transfer", label: "Stock Transfer", icon: Truck, permission: "view:stock_transfers" },
           { to: "/inventory?tab=cycle_counting", label: "Cycle Counting", icon: RotateCw, permission: "view:inventory" },
           { to: "/inventory?tab=physical_audit", label: "Physical Stock Audit", icon: ClipboardCheck, permission: "view:inventory" },
-        ]
-      },
-      {
-        to: "/inventory?tab=warehouses",
-        label: "Warehouse Management",
-        icon: Warehouse,
-        permission: "view:warehouse",
-        subItems: [
-          { to: "/inventory?tab=warehouses", label: "Warehouses", icon: Warehouse, permission: "view:warehouse" },
-          { to: "/inventory?tab=storage_locations", label: "Storage Locations", icon: MapPin, permission: "view:warehouse" },
-          { to: "/inventory?tab=zones", label: "Zones", icon: Grid, permission: "view:warehouse" },
-          { to: "/inventory?tab=racks", label: "Racks", icon: Columns, permission: "view:warehouse" },
-          { to: "/inventory?tab=bins", label: "Bins", icon: Inbox, permission: "view:warehouse" },
-          { to: "/inventory?tab=put_away_rules", label: "Put Away Rules", icon: ArrowDownToLine, permission: "view:warehouse" },
-          { to: "/inventory?tab=picking_rules", label: "Picking Rules", icon: ListChecks, permission: "view:warehouse" },
         ]
       },
       {
@@ -194,20 +196,18 @@ export const nav: NavGroup[] = [
         ]
       },
       {
-        to: "/inventory?tab=low_stock",
-        label: "Inventory Intelligence",
-        icon: BrainCircuit,
-        permission: "view:inventory",
+        to: "/inventory?tab=warehouses",
+        label: "Warehouse Management",
+        icon: Warehouse,
+        permission: "view:warehouse",
         subItems: [
-          { to: "/inventory?tab=ai_health", label: "AI Inventory Health", icon: Sparkles, permission: "view:inventory" },
-          { to: "/inventory?tab=low_stock", label: "Low Stock Alerts", icon: AlertTriangle, permission: "view:inventory" },
-          { to: "/inventory?tab=reorder_planning", label: "Reorder Planning", icon: TrendingUp, permission: "view:inventory" },
-          { to: "/inventory?tab=slow_moving", label: "Slow Moving Inventory", icon: Snail, permission: "view:inventory" },
-          { to: "/inventory?tab=fast_moving", label: "Fast Moving Inventory", icon: Rocket, permission: "view:inventory" },
-          { to: "/inventory?tab=dead_stock", label: "Dead Stock", icon: Skull, permission: "view:inventory" },
-          { to: "/inventory?tab=abc_analysis", label: "ABC Analysis", icon: PieChart, permission: "view:inventory" },
-          { to: "/inventory?tab=xyz_analysis", label: "XYZ Analysis", icon: LineChart, permission: "view:inventory" },
-          { to: "/inventory?tab=forecast", label: "Inventory Forecast", icon: BrainCircuit, permission: "view:inventory" },
+          { to: "/inventory?tab=warehouses", label: "Warehouses", icon: Warehouse, permission: "view:warehouse" },
+          { to: "/inventory?tab=storage_locations", label: "Storage Locations", icon: MapPin, permission: "view:warehouse" },
+          { to: "/inventory?tab=zones", label: "Zones", icon: Grid, permission: "view:warehouse" },
+          { to: "/inventory?tab=racks", label: "Racks", icon: Columns, permission: "view:warehouse" },
+          { to: "/inventory?tab=bins", label: "Bins", icon: Inbox, permission: "view:warehouse" },
+          { to: "/inventory?tab=put_away_rules", label: "Put Away Rules", icon: ArrowDownToLine, permission: "view:warehouse" },
+          { to: "/inventory?tab=picking_rules", label: "Picking Rules", icon: ListChecks, permission: "view:warehouse" },
         ]
       },
       {
@@ -268,13 +268,6 @@ export const nav: NavGroup[] = [
   {
     group: "Sales", theme: "violet", icon: ScanLine, permission: "view:pos", items: [
       { to: "/pos?tab=sales_history", label: "Invoices History", icon: History, permission: "view:pos_history" },
-      { to: "/pos?tab=sales_return", label: "Sales Returns", icon: RotateCcw, permission: "view:invoices" },
-      { to: "/pos?tab=customers", label: "Customers", icon: Users, permission: "view:crm_customers" },
-      { to: "/pos?tab=quotations", label: "Quotations", icon: FileCheck, permission: "view:crm_quotations" },
-      { to: "/pos?tab=credit_notes", label: "Credit Notes", icon: FileCheck, permission: "view:invoices" },
-      { to: "/pos?tab=debit_notes", label: "Debit Notes", icon: FileText, permission: "view:invoices" },
-      { to: "/pos?tab=proforma", label: "Proforma Invoices", icon: FileText, permission: "view:invoices" },
-      { to: "/pos?tab=payment_in", label: "Payment In", icon: Wallet, permission: "view:invoices" },
       {
         to: "/pos?tab=terminal",
         label: "Terminal",
@@ -294,9 +287,8 @@ export const nav: NavGroup[] = [
           { to: "/pos?tab=returns", label: "Return / Exchange", icon: ArrowRightLeft, permission: "refund:pos_history" },
         ]
       },
-      { to: "/pos?tab=goods_receipt", label: "Goods Receipt (GRN)", icon: ClipboardList, permission: "view:grn" },
-      { to: "/pos?tab=goods_issue", label: "Goods Issue", icon: Truck, permission: "view:dispatch" },
-      { to: "/pos?tab=delivery_challans", label: "Delivery Challans", icon: FileCheck, permission: "view:dispatch" },
+      { to: "/pos?tab=sales_return", label: "Sales Returns", icon: RotateCcw, permission: "view:invoices" },
+      { to: "/pos?tab=payment_in", label: "Payment In", icon: Wallet, permission: "view:invoices" },
       {
         to: "/pos?tab=expense_claims",
         label: "Expenses",
@@ -311,6 +303,14 @@ export const nav: NavGroup[] = [
           { to: "/pos?tab=operational_expenses", label: "Operational Expenses", icon: Activity, permission: "view:expense_claims" },
         ]
       },
+      { to: "/pos?tab=customers", label: "Customers", icon: Users, permission: "view:crm_customers" },
+      { to: "/pos?tab=quotations", label: "Quotations", icon: FileCheck, permission: "view:crm_quotations" },
+      { to: "/pos?tab=proforma", label: "Proforma Invoices", icon: FileText, permission: "view:invoices" },
+      { to: "/pos?tab=debit_notes", label: "Debit Notes", icon: FileText, permission: "view:invoices" },
+      { to: "/pos?tab=credit_notes", label: "Credit Notes", icon: FileCheck, permission: "view:invoices" },
+      { to: "/pos?tab=goods_receipt", label: "Goods Receipt (GRN)", icon: ClipboardList, permission: "view:grn" },
+      { to: "/pos?tab=goods_issue", label: "Goods Issue", icon: Truck, permission: "view:dispatch" },
+      { to: "/pos?tab=delivery_challans", label: "Delivery Challans", icon: FileCheck, permission: "view:dispatch" },
     ]
   },
   {

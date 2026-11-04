@@ -65,6 +65,7 @@ import { InventoryReportsSuite, InventoryReportType } from "./InventoryReportsSu
 import { CustomerPartyReportsSuite, CustomerReportType } from "./CustomerPartyReportsSuite";
 import { EmployeeSalesReportSuite } from "./EmployeeSalesReportSuite";
 import { PaymentModeSalesReportSuite } from "./PaymentModeSalesReportSuite";
+import { PaymentModePurchaseReportSuite } from "./PaymentModePurchaseReportSuite";
 import { VendorOutstandingSuite } from "./VendorOutstandingSuite";
 import { SalesSummaryReportSuite } from "./SalesSummaryReportSuite";
 import { PurchaseSummaryReportSuite } from "./PurchaseSummaryReportSuite";
@@ -109,7 +110,7 @@ export const EMPLOYEE_SALES_SUITE_IDS = new Set<string>([
 ]);
 
 export const PAYMENT_MODE_SUITE_IDS = new Set<string>([
-  "payment_mode_sales", "payment_collection", "cash_bank_transactions"
+  "payment_mode_sales", "payment_collection", "cash_bank_transactions", "payment_mode_purchases"
 ]);
 
 export const REPORT_CATEGORIES: ReportCategory[] = [
@@ -193,8 +194,9 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     id: "purchases",
     title: "Purchase Reports",
     icon: ShoppingBag,
-    badge: "8 Reports",
+    badge: "9 Reports",
     reports: [
+      { id: "payment_mode_purchases", title: "Payment Mode & Outflow Report", entity: "payment_mode_purchases", description: "Complete breakdown of vendor purchases and payouts across Cash, UPI, Bank Transfer / Card, Credit / Payables, and Debit Notes with settlement tracking.", icon: CreditCard },
       { id: "purchase_statement", title: "Purchase Statement (Supplier Ledger)", entity: "purchase_statement", description: "Chronological ledger statement of all vendor purchase bills, payment out settlements, debit notes and running balances.", icon: FileText },
       { id: "purchase_summary", title: "Purchase Summary", entity: "purchase_summary", description: "Total procurement volume, purchase orders & landed cost values.", icon: ShoppingBag },
       { id: "purchase_invoice", title: "Purchase Invoices Register", entity: "purchase_invoice", description: "Vendor bills register with tax details, payment terms and due dates.", icon: FileText },
@@ -209,9 +211,10 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
     id: "payments",
     title: "Payment & Cash Registers",
     icon: CreditCard,
-    badge: "3 Reports",
+    badge: "4 Reports",
     reports: [
       { id: "payment_mode_sales", title: "Payment Mode & Collections Report", entity: "payment_mode_sales", description: "Complete breakdown of sales across Cash, UPI, Bank / Card, and Credit / Dues with invoice counts, dues, and credit notes.", icon: CreditCard },
+      { id: "payment_mode_purchases", title: "Vendor Payment Mode & Payouts", entity: "payment_mode_purchases", description: "Complete breakdown of vendor purchases and payouts across Cash, UPI, Bank Transfer / Card, Credit / Payables, and Debit Notes with settlement tracking.", icon: CreditCard },
       { id: "payment_collection", title: "Payment Collections & Receipts", entity: "payment_collection", description: "Collections split across Cash, UPI, Cards, NetBanking and Wallets.", icon: CheckCircle2 },
       { id: "cash_bank_transactions", title: "Cash & Bank Transaction Register", entity: "cash_bank_transactions", description: "Consolidated cash drawer logs and bank account inflows/outflows.", icon: Landmark },
     ],
@@ -325,6 +328,21 @@ export function ReportsHub() {
   const [activeReport, setActiveReport] = useState<ReportItem | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [sidebarSearch, setSidebarSearch] = useState<string>("");
+
+  const activeCategory = useMemo(() => {
+    return REPORT_CATEGORIES.find((c) => c.id === selectedCategory) || null;
+  }, [selectedCategory]);
+
+  const [categorySearch, setCategorySearch] = useState<string>("");
+
+  const filteredCategoryReports = useMemo(() => {
+    if (!activeCategory) return [];
+    if (!categorySearch.trim()) return activeCategory.reports;
+    const q = categorySearch.toLowerCase();
+    return activeCategory.reports.filter(
+      (r) => r.title.toLowerCase().includes(q) || r.description.toLowerCase().includes(q)
+    );
+  }, [activeCategory, categorySearch]);
 
   // Filter States
   const [dateRange, setDateRange] = useState<string>("all");
@@ -906,7 +924,8 @@ export function ReportsHub() {
   const isInventoryReport = Boolean(activeReport && INVENTORY_SUITE_IDS.has(activeReport.id));
   const isPartyReport = Boolean(activeReport && PARTY_SUITE_IDS.has(activeReport.id));
   const isEmployeeSalesReport = Boolean(activeReport && EMPLOYEE_SALES_SUITE_IDS.has(activeReport.id));
-  const isPaymentModeReport = Boolean(activeReport && PAYMENT_MODE_SUITE_IDS.has(activeReport.id));
+  const isPaymentModePurchaseReport = Boolean(activeReport && (activeReport.id === "payment_mode_purchases" || activeReport.id === "vendor_payment_mode"));
+  const isPaymentModeReport = Boolean(activeReport && !isPaymentModePurchaseReport && PAYMENT_MODE_SUITE_IDS.has(activeReport.id));
   const isPurchaseStatementReport = Boolean(activeReport && (activeReport.id === "purchase_statement" || activeReport.id === "supplier_statement"));
   const isVendorOutstandingReport = Boolean(activeReport && activeReport.id === "vendor_outstanding");
   const isSalesSummaryReport = Boolean(activeReport && activeReport.id === "sales_summary");
@@ -932,69 +951,46 @@ export function ReportsHub() {
           </div>
         </div>
 
-        {/* Scrollable Category Accordion */}
-        <div className="flex-1 overflow-y-auto px-2.5 py-3 space-y-3 custom-scrollbar">
+        {/* Scrollable Category List (Direct selection without dropdown) */}
+        <div className="flex-1 overflow-y-auto px-2.5 py-3 space-y-1.5 custom-scrollbar">
           {filteredCategories.map((cat) => {
             const isCatSelected = selectedCategory === cat.id;
             const Icon = cat.icon;
 
             return (
-              <div key={cat.id} className="space-y-1">
-                {/* Category Header Button */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedCategory(isCatSelected ? "" : cat.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${isCatSelected
-                    ? "bg-indigo-50/80 text-indigo-900 font-extrabold"
-                    : "text-slate-700 hover:bg-slate-100/70"
-                    }`}
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => {
+                  if (selectedCategory === cat.id && !activeReport) {
+                    setSelectedCategory("");
+                    setActiveReport(null);
+                  } else {
+                    setSelectedCategory(cat.id);
+                    setActiveReport(null);
+                    setCategorySearch("");
+                  }
+                }}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer text-left ${
+                  isCatSelected
+                    ? "bg-indigo-600 text-white font-bold shadow-xs shadow-indigo-200"
+                    : "text-slate-700 hover:bg-slate-100/80"
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                  <Icon className={`size-4 shrink-0 ${isCatSelected ? "text-white" : "text-slate-500"}`} />
+                  <span className="truncate">{cat.title}</span>
+                </div>
+                <span
+                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 ${
+                    isCatSelected
+                      ? "bg-white/20 text-white"
+                      : "bg-slate-200/60 text-slate-600"
+                  }`}
                 >
-                  <div className="flex items-center gap-2.5">
-                    <Icon className={`size-4 ${isCatSelected ? "text-indigo-600" : "text-slate-500"}`} />
-                    <span>{cat.title}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-slate-200/60 text-slate-600">
-                      {cat.reports.length}
-                    </span>
-                    <ChevronDown
-                      className={`size-3.5 text-slate-400 transition-transform duration-200 ${isCatSelected ? "rotate-180 text-indigo-600" : ""
-                        }`}
-                    />
-                  </div>
-                </button>
-
-                {/* Sub Reports List */}
-                <AnimatePresence>
-                  {(isCatSelected || sidebarSearch.length > 0) && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.15 }}
-                      className="pl-3.5 space-y-0.5 overflow-hidden"
-                    >
-                      {cat.reports.map((item) => {
-                        const isReportActive = activeReport?.id === item.id;
-                        return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            onClick={() => handleSelectReport(cat.id, item)}
-                            className={`w-full text-left px-3 py-2 rounded-lg text-[11px] font-medium transition-all flex items-center justify-between cursor-pointer ${isReportActive
-                              ? "bg-indigo-600 text-white font-bold shadow-md shadow-indigo-200"
-                              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                              }`}
-                          >
-                            <span className="truncate">{item.title}</span>
-                            {isReportActive && <ChevronRight className="size-3 shrink-0" />}
-                          </button>
-                        );
-                      })}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
+                  {cat.reports.length}
+                </span>
+              </button>
             );
           })}
         </div>
@@ -1003,59 +999,106 @@ export function ReportsHub() {
       {/* ──────────────────────────────────────────────────────────────────────────
           MAIN REPORT CONTENT PANEL
       ────────────────────────────────────────────────────────────────────────── */}
-      {!activeReport ? (
+      {!selectedCategory || !activeCategory ? (
+        <main className="flex-1 flex flex-col items-center justify-center min-w-0 bg-slate-50/60 p-8 text-center select-none">
+          <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200/80 flex items-center justify-center text-slate-400 mb-4 shadow-2xs">
+            <FileSpreadsheet className="size-8 text-slate-400" />
+          </div>
+          <h2 className="text-base font-bold text-slate-800">Select a Report Category</h2>
+          <p className="text-xs text-slate-400 mt-1 max-w-sm">
+            Choose any category from the sidebar on the left to view its subreports and detailed business registers.
+          </p>
+        </main>
+      ) : !activeReport ? (
+        /* ── BIG TABS: Card grid of all subreports in the selected category ── */
         <main className="flex-1 flex flex-col min-w-0 bg-slate-50 p-4 sm:p-6 custom-scrollbar overflow-y-auto">
-          <div className="w-full space-y-5">
-            {/* Page Header (Clean, borderless, matching all other pages) */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full pb-1">
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight text-foreground">
-                  Report Builder Hub
-                </h1>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Select any category from the sidebar or choose a module below to open detailed financial statements, GST filings, inventory registers, and performance reports.
-                </p>
+          <div className="w-full space-y-6 max-w-7xl mx-auto">
+            {/* Category Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2.5 border-b border-slate-200/80">
+              <div className="flex items-center gap-2.5">
+                <div className="size-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-2xs border border-indigo-100/60">
+                  <activeCategory.icon className="size-4.5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-base font-extrabold tracking-tight text-slate-900">
+                      {activeCategory.title}
+                    </h1>
+                    <span className="text-[11px] font-bold px-2 py-0.2 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                      {activeCategory.badge || `${activeCategory.reports.length} Reports`}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Select any report below to open detailed registers, statements, and analytics.
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-xs font-semibold text-muted-foreground bg-muted/60 px-3 py-1 rounded-lg border border-border/50">
-                  {REPORT_CATEGORIES.reduce((acc, c) => acc + c.reports.length, 0)} Reports Available
-                </span>
+
+              <div className="flex items-center gap-2">
+                {/* Search within this category */}
+                <div className="relative w-64">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder={`Search in ${activeCategory.title}...`}
+                    value={categorySearch}
+                    onChange={(e) => setCategorySearch(e.target.value)}
+                    className="w-full h-8.5 pl-8 pr-3 text-xs bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none shadow-2xs"
+                  />
+                  {categorySearch && (
+                    <button
+                      onClick={() => setCategorySearch("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory("");
+                    setActiveReport(null);
+                  }}
+                  className="size-8.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors cursor-pointer shrink-0 shadow-2xs"
+                  title="Close Category"
+                >
+                  <X className="size-4" />
+                </button>
               </div>
             </div>
 
-            {/* Category Cards Grid - Full Width Responsive Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-4 w-full">
-              {REPORT_CATEGORIES.map((cat) => {
-                const Icon = cat.icon;
+            {/* Subreports Tabs Grid - Compact, Modern & Balanced */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 w-full">
+              {filteredCategoryReports.map((item) => {
+                const ItemIcon = item.icon || FileText;
                 return (
                   <div
-                    key={cat.id}
-                    onClick={() => {
-                      setSelectedCategory(cat.id);
-                      setActiveReport(cat.reports[0]);
-                    }}
-                    className="group bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer flex flex-col justify-between"
+                    key={item.id}
+                    onClick={() => handleSelectReport(activeCategory.id, item)}
+                    className="group bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-2xs hover:shadow-sm hover:border-indigo-400 hover:-translate-y-0.5 transition-all cursor-pointer flex flex-col justify-between min-h-[135px]"
                   >
                     <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="size-10 rounded-xl bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white flex items-center justify-center transition-colors">
-                          <Icon className="size-5" />
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="size-8 rounded-lg bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white flex items-center justify-center transition-colors shadow-2xs">
+                          <ItemIcon className="size-4 shrink-0" />
                         </div>
-                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 group-hover:bg-indigo-50 group-hover:text-indigo-700 transition-colors">
-                          {cat.badge || `${cat.reports.length} Reports`}
+                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-500 group-hover:bg-indigo-50 group-hover:text-indigo-700 transition-colors">
+                          Report
                         </span>
                       </div>
-                      <h3 className="font-bold text-sm text-slate-900 group-hover:text-indigo-600 transition-colors">
-                        {cat.title}
+                      <h3 className="font-bold text-xs text-slate-900 group-hover:text-indigo-600 transition-colors leading-snug line-clamp-2">
+                        {item.title}
                       </h3>
-                      <p className="text-xs text-slate-500 mt-1 line-clamp-2">
-                        {cat.reports.slice(0, 3).map((r) => r.title).join(", ")}...
+                      <p className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-tight">
+                        {item.description}
                       </p>
                     </div>
 
-                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-indigo-600 group-hover:text-indigo-700">
-                      <span>Open {cat.title}</span>
-                      <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                    <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-semibold text-indigo-600 group-hover:text-indigo-700">
+                      <span>Open Report</span>
+                      <ChevronRight className="size-3.5 group-hover:translate-x-0.5 transition-transform" />
                     </div>
                   </div>
                 );
@@ -1063,48 +1106,119 @@ export function ReportsHub() {
             </div>
           </div>
         </main>
-      ) : isGstReport ? (
-        <main className="flex-1 flex flex-col h-full overflow-hidden bg-white">
-          <GstReportsSuite
-            key={activeReport.id}
-            defaultReport={activeReport.id as GstReportType}
-            onBack={() => setActiveReport(null)}
-          />
-        </main>
-      ) : isInventoryReport ? (
-        <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
-          <InventoryReportsSuite key={activeReport.id} defaultReport={activeReport.id as InventoryReportType} />
-        </main>
-      ) : isPartyReport ? (
-        <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
-          <CustomerPartyReportsSuite key={activeReport.id} defaultReport={activeReport.id as CustomerReportType} />
-        </main>
-      ) : isPurchaseStatementReport ? (
-        <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
-          <PurchaseStatementSuite onBack={() => setActiveReport(null)} />
-        </main>
-      ) : isVendorOutstandingReport ? (
-        <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
-          <VendorOutstandingSuite onBack={() => setActiveReport(null)} />
-        </main>
-      ) : isEmployeeSalesReport ? (
-        <main className="flex-1 flex flex-col h-full overflow-hidden bg-white">
-          <EmployeeSalesReportSuite onBack={() => setActiveReport(null)} />
-        </main>
-      ) : isPaymentModeReport ? (
-        <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
-          <PaymentModeSalesReportSuite onBack={() => setActiveReport(null)} />
-        </main>
-      ) : isSalesSummaryReport ? (
-        <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
-          <SalesSummaryReportSuite onBack={() => setActiveReport(null)} />
-        </main>
-      ) : isPurchaseSummaryReport ? (
-        <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
-          <PurchaseSummaryReportSuite onBack={() => setActiveReport(null)} />
-        </main>
       ) : (
-        <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+        /* ── REPORT VIEW: Selected report opened in the main page place ── */
+        <div className="flex-1 flex flex-col min-w-0 h-[calc(100vh-58px)] overflow-hidden bg-slate-50">
+          {/* Top Breadcrumb & Navigation Bar */}
+          <div className="bg-white border-b border-slate-200 px-5 py-2.5 flex items-center justify-between shrink-0 shadow-2xs z-10">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setActiveReport(null)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 shadow-2xs transition-colors cursor-pointer"
+                title={`Back to ${activeCategory.title}`}
+              >
+                <ArrowLeft className="size-3.5" />
+                <span>Back to {activeCategory.title}</span>
+              </button>
+
+              <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+
+              <div className="hidden sm:flex items-center gap-1.5 text-xs">
+                <span className="text-slate-500 font-medium">{activeCategory.title}</span>
+                <ChevronRight className="size-3 text-slate-400" />
+                <span className="text-slate-900 font-bold">{activeReport.title}</span>
+              </div>
+            </div>
+
+            {/* Quick Switcher Dropdown */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 font-medium hidden md:inline">Switch Report:</span>
+              <select
+                value={activeReport.id}
+                onChange={(e) => {
+                  const found = activeCategory.reports.find((r) => r.id === e.target.value);
+                  if (found) setActiveReport(found);
+                }}
+                className="h-8 px-2.5 text-xs font-semibold rounded-xl border border-slate-200 bg-slate-50 hover:bg-white text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs"
+              >
+                {activeCategory.reports.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Active Report View Container */}
+          <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+            {isGstReport ? (
+              <main className="flex-1 flex flex-col h-full overflow-hidden bg-white">
+                <GstReportsSuite
+                  key={activeReport.id}
+                  defaultReport={activeReport.id as GstReportType}
+                  onBack={() => setActiveReport(null)}
+                />
+              </main>
+            ) : isInventoryReport ? (
+              <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+                <InventoryReportsSuite
+                  key={activeReport.id}
+                  defaultReport={activeReport.id as InventoryReportType}
+                />
+              </main>
+            ) : isPartyReport ? (
+              <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+                <CustomerPartyReportsSuite
+                  key={activeReport.id}
+                  defaultReport={activeReport.id as CustomerReportType}
+                />
+              </main>
+            ) : isPurchaseStatementReport ? (
+              <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+                <PurchaseStatementSuite
+                  onBack={() => setActiveReport(null)}
+                />
+              </main>
+            ) : isVendorOutstandingReport ? (
+              <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+                <VendorOutstandingSuite
+                  onBack={() => setActiveReport(null)}
+                />
+              </main>
+            ) : isEmployeeSalesReport ? (
+              <main className="flex-1 flex flex-col h-full overflow-hidden bg-white">
+                <EmployeeSalesReportSuite
+                  onBack={() => setActiveReport(null)}
+                />
+              </main>
+            ) : isPaymentModePurchaseReport ? (
+              <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+                <PaymentModePurchaseReportSuite
+                  onBack={() => setActiveReport(null)}
+                />
+              </main>
+            ) : isPaymentModeReport ? (
+              <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+                <PaymentModeSalesReportSuite
+                  onBack={() => setActiveReport(null)}
+                />
+              </main>
+            ) : isSalesSummaryReport ? (
+              <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+                <SalesSummaryReportSuite
+                  onBack={() => setActiveReport(null)}
+                />
+              </main>
+            ) : isPurchaseSummaryReport ? (
+              <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+                <PurchaseSummaryReportSuite
+                  onBack={() => setActiveReport(null)}
+                />
+              </main>
+            ) : (
+              <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
           {/* Top Action & Filtering Toolbar */}
           <header className="bg-white border-b border-slate-200 px-5 py-3 shrink-0">
             {/* Unified Top Action & Filtering Toolbar */}
@@ -1112,7 +1226,10 @@ export function ReportsHub() {
               <div className="flex items-center gap-2.5 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setActiveReport(null)}
+                  onClick={() => {
+                    setSelectedCategory("");
+                    setActiveReport(null);
+                  }}
                   className="size-8 rounded-lg border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 transition-colors cursor-pointer shrink-0"
                   title="Back to Reports Hub"
                 >
@@ -1637,6 +1754,9 @@ export function ReportsHub() {
             </div>
           </div>
         </main>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
