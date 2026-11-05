@@ -47,6 +47,106 @@ import { syncLocalStorageCustomerInvoices } from "@/lib/safe-storage";
 import { Button } from "@/components/ui/button";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
 
+export function extractCleanSrNo(raw: any, fallbackIdx?: number): string {
+  if (!raw || raw === "—" || raw === "-") {
+    return fallbackIdx !== undefined ? String(fallbackIdx) : "-";
+  }
+  const str = String(raw).trim();
+  if (/^\d+$/.test(str)) {
+    return String(parseInt(str, 10));
+  }
+  const matches = str.match(/\d+/g);
+  if (matches && matches.length > 0) {
+    const lastNum = matches[matches.length - 1];
+    const parsed = parseInt(lastNum, 10);
+    return !isNaN(parsed) && parsed > 0 ? String(parsed) : lastNum;
+  }
+  return str.replace(/^[#\-_\s]+/, "") || (fallbackIdx !== undefined ? String(fallbackIdx) : "-");
+}
+
+export function formatCleanPaymentMode(mode: any): string {
+  if (!mode || mode === "—" || mode === "-" || mode === "Immediate" || mode === "Credit Terms" || mode === "Settled") {
+    return "-";
+  }
+  const s = String(mode).toLowerCase().trim();
+  if (s.includes("upi") || s.includes("gpay") || s.includes("phonepe") || s.includes("paytm") || s.includes("qr")) {
+    return "Upi";
+  }
+  if (s.includes("cheque") || s.includes("check")) {
+    return "Cheque";
+  }
+  if (s.includes("bank") || s.includes("neft") || s.includes("rtgs") || s.includes("imps") || s.includes("wire") || s.includes("transfer")) {
+    return "Bank";
+  }
+  if (s.includes("cash")) {
+    return "Cash";
+  }
+  if (s.includes("card") || s.includes("debit") || s.includes("credit card") || s.includes("pos")) {
+    return "Card";
+  }
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+export function formatTableCurrency(
+  val: number | undefined | null,
+  options?: {
+    isLiabilityNegative?: boolean;
+    allowZero?: boolean;
+  }
+): string {
+  if (val === undefined || val === null || isNaN(val)) return "-";
+  if (Math.abs(val) < 0.005) {
+    return options?.allowZero ? "₹ 0" : "-";
+  }
+
+  const absVal = Math.abs(val);
+  const formattedNum = absVal.toLocaleString("en-IN", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: absVal % 1 === 0 ? 0 : 2,
+  });
+
+  const isNeg = options?.isLiabilityNegative ? val > 0 : val < 0;
+  if (isNeg) {
+    return `- ₹ ${formattedNum}`;
+  }
+  return `₹ ${formattedNum}`;
+}
+
+export function getDueDateDisplay(
+  dueDateVal: any,
+  isPaid: boolean,
+  isPartiallyPaid: boolean
+): { text: string; status: "paid" | "partially_paid" | "overdue" | "normal" | "none" } {
+  if (isPaid) {
+    return { text: "Paid", status: "paid" };
+  }
+  if (isPartiallyPaid) {
+    return { text: "Partially Paid", status: "partially_paid" };
+  }
+  if (!dueDateVal || dueDateVal === "—" || dueDateVal === "-") {
+    return { text: "-", status: "none" };
+  }
+  const dueTs = parseSafeDateTimestamp(dueDateVal);
+  if (!dueTs) {
+    return { text: String(dueDateVal), status: "normal" };
+  }
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dDueDate = new Date(dueTs);
+  const dueMidnight = new Date(dDueDate.getFullYear(), dDueDate.getMonth(), dDueDate.getDate()).getTime();
+  const diffDays = Math.round((todayMidnight - dueMidnight) / (24 * 60 * 60 * 1000));
+
+  const formattedDate = formatDisplayDate(dueDateVal);
+  if (diffDays > 0) {
+    return {
+      text: `${formattedDate} (Overdue by ${diffDays} day${diffDays > 1 ? "s" : ""})`,
+      status: "overdue",
+    };
+  }
+  return { text: formattedDate, status: "normal" };
+}
+
+
 // ── Types ──────────────────────────────────────────────────────────
 export type CustomerReportType =
   | "party_statement"
@@ -1041,7 +1141,23 @@ export function CustomerPartyReportsSuite({
         return (dnName === sName || dnName.includes(sName) || sName.includes(dnName) || dnId === sId) && isDateInFilter(dn.created_at || dn.date);
       });
 
-      const events: any[] = [];
+      interface SupplierTimelineEvent {
+        timestamp: number;
+        date: string;
+        rawDate: string;
+        voucher: string;
+        srNo: string;
+        paymentMode: string;
+        debit: number;
+        credit: number;
+        balance: number;
+        dueDate: string;
+        dueStatus: "paid" | "partially_paid" | "overdue" | "normal" | "none";
+        type: "bill" | "payment" | "debit_note";
+        billNumber?: string;
+      }
+
+      const events: SupplierTimelineEvent[] = [];
       let totPur = 0;
       let totPaid = 0;
       let overdueAmt = 0;
@@ -1049,125 +1165,149 @@ export function CustomerPartyReportsSuite({
       const paymentsAllocatedPerBill = new Map<string, number>();
       const processedPaymentIds = new Set<string>();
 
+      // Matched Payment Out vouchers (Debit entries)
       matchedPayments.forEach((p: any, idx: number) => {
         const pId = String(p.id || p.reference_number || `pay_${idx}`);
         if (processedPaymentIds.has(pId)) return;
         processedPaymentIds.add(pId);
+
         const amt = Number(p.amount_paid || p.amount || 0);
         if (amt <= 0) return;
+
         const pDate = p.payment_date || p.created_at;
         const refNo = p.reference_number || `TXN-${String(p.id || idx + 1000).slice(0, 8).toUpperCase()}`;
-        const billRef = p.bill_number ? ` (#${p.bill_number})` : "";
-        const mode = p.payment_method || "Bank Transfer";
+        const mode = p.payment_method || p.payment_mode || "Bank Transfer";
+
         if (p.bill_number) {
           const key = String(p.bill_number).trim().toUpperCase();
           paymentsAllocatedPerBill.set(key, (paymentsAllocatedPerBill.get(key) || 0) + amt);
         }
+
         totPaid += amt;
+
         events.push({
           timestamp: parseSafeDateTimestamp(pDate) || Date.now(),
           date: formatDisplayDate(pDate),
           rawDate: pDate,
-          voucher: `Payment Out #${refNo}${billRef}`,
-          srNo: refNo,
-          paymentMode: mode,
+          voucher: "Payment Out",
+          srNo: extractCleanSrNo(refNo, idx + 1),
+          paymentMode: formatCleanPaymentMode(mode),
           debit: amt,
           credit: 0,
           balance: 0,
-          dueDate: "—",
+          dueDate: "-",
+          dueStatus: "none",
           type: "payment",
+          billNumber: p.bill_number,
         });
       });
 
+      // Matched Vendor Bills (Credit entries)
       matchedBills.forEach((b: any, idx: number) => {
         const bDate = b.bill_date || b.created_at;
         const bNo = b.bill_number || `BILL-${1000 + idx}`;
         const total = Number(b.total_amount || b.amount || 0);
         const paidOnBill = Number(b.paid_amount || b.amount_paid || 0);
-        const mode = b.payment_mode || (paidOnBill >= total ? "Settled" : "Credit Terms");
-        const dueDate = b.due_date ? formatDisplayDate(b.due_date) : "Immediate";
+
         totPur += total;
 
-        if (b.due_date) {
+        const billKey = String(bNo).trim().toUpperCase();
+        const alreadyAllocated = paymentsAllocatedPerBill.get(billKey) || 0;
+        const unallocatedPaid = Math.max(0, paidOnBill - alreadyAllocated);
+
+        if (unallocatedPaid > 0.05) {
+          totPaid += unallocatedPaid;
+        }
+
+        const totalPaidForBill = alreadyAllocated + unallocatedPaid;
+        const remainingOnBill = Math.max(0, total - totalPaidForBill);
+
+        if (remainingOnBill > 0.01 && b.due_date) {
           const dueTs = parseSafeDateTimestamp(b.due_date);
-          if (dueTs && dueTs < Date.now() && total > paidOnBill) {
-            overdueAmt += (total - paidOnBill);
+          if (dueTs && dueTs < Date.now()) {
+            overdueAmt += remainingOnBill;
           }
         }
+
+        let dueDateStr = "-";
+        let dueStatus: "paid" | "partially_paid" | "overdue" | "normal" | "none" = "none";
+
+        if (remainingOnBill <= 0.01) {
+          dueDateStr = "Paid";
+          dueStatus = "paid";
+        } else if (totalPaidForBill > 0.01) {
+          dueDateStr = "Partially Paid";
+          dueStatus = "partially_paid";
+        } else if (b.due_date) {
+          const info = getDueDateDisplay(b.due_date, false, false);
+          dueDateStr = info.text;
+          dueStatus = info.status;
+        }
+
+        const upfrontMode = unallocatedPaid > 0.01
+          ? formatCleanPaymentMode(b.payment_mode || b.payment_method || "Upi")
+          : "-";
 
         events.push({
           timestamp: parseSafeDateTimestamp(bDate) || 0,
           date: formatDisplayDate(bDate),
           rawDate: bDate,
-          voucher: b.po_number ? `Purchase Invoice #${bNo} (#${b.po_number})` : `Purchase Invoice #${bNo}`,
-          srNo: b.po_number || `PO-${101 + idx}`,
-          paymentMode: mode,
+          voucher: "Purchase Invoices",
+          srNo: extractCleanSrNo(bNo, idx + 1),
+          paymentMode: upfrontMode,
           credit: total,
-          debit: 0,
+          debit: unallocatedPaid > 0.01 ? unallocatedPaid : 0,
           balance: 0,
-          dueDate: dueDate,
-          type: "invoice",
+          dueDate: dueDateStr,
+          dueStatus: dueStatus,
+          type: "bill",
+          billNumber: bNo,
         });
-
-        const billKey = String(bNo).trim().toUpperCase();
-        const alreadyAllocated = paymentsAllocatedPerBill.get(billKey) || 0;
-        const unallocatedPaid = Math.max(0, paidOnBill - alreadyAllocated);
-        if (unallocatedPaid > 0.05) {
-          totPaid += unallocatedPaid;
-          events.push({
-            timestamp: (parseSafeDateTimestamp(bDate) || 0) + 1,
-            date: formatDisplayDate(bDate),
-            rawDate: bDate,
-            voucher: `Payment Out #${bNo} (Bill Settlement)`,
-            srNo: `SETTLE-${201 + idx}`,
-            paymentMode: mode,
-            debit: unallocatedPaid,
-            credit: 0,
-            balance: 0,
-            dueDate: "—",
-            type: "payment",
-          });
-        }
       });
 
+      // Matched Debit Notes
       matchedDebits.forEach((dn: any, idx: number) => {
         const dnDate = dn.created_at || dn.date;
         const dnNo = dn.note_number || dn.reference_number || `DN-${1000 + idx}`;
         const amt = Number(dn.amount || 0);
         if (amt <= 0) return;
+
         events.push({
           timestamp: parseSafeDateTimestamp(dnDate) || 0,
           date: formatDisplayDate(dnDate),
           rawDate: dnDate,
-          voucher: `Vendor Debit Note #${dnNo}`,
-          srNo: dnNo,
-          paymentMode: dn.notes ? `Adjustment (${dn.notes})` : "Purchase Return",
+          voucher: "Debit Note",
+          srNo: extractCleanSrNo(dnNo, idx + 1),
+          paymentMode: "-",
           debit: amt,
           credit: 0,
           balance: 0,
-          dueDate: "—",
-          type: "credit_note",
+          dueDate: "-",
+          dueStatus: "none",
+          type: "debit_note",
         });
       });
 
       events.sort((a, b) => {
         if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
-        if (a.type === "invoice" && b.type === "payment") return -1;
-        if (a.type === "payment" && b.type === "invoice") return 1;
+        if (a.type === "bill" && b.type !== "bill") return -1;
+        if (b.type === "bill" && a.type !== "bill") return 1;
         return 0;
       });
 
       const sRows: any[] = [];
       sRows.push({
-        date: "—",
+        date: "-",
         voucher: "Opening Balance",
-        srNo: "—",
-        paymentMode: "—",
+        srNo: "-",
+        paymentMode: "-",
         credit: opBal > 0 ? opBal : 0,
         debit: opBal < 0 ? Math.abs(opBal) : 0,
         balance: runningBalance,
-        dueDate: "—",
+        dueDate: "-",
+        dueStatus: "none",
         isSummaryRow: true,
+        isOpening: true,
       });
 
       events.forEach((ev) => {
@@ -1179,15 +1319,17 @@ export function CustomerPartyReportsSuite({
 
       const totalPayable = runningBalance > 0 ? Math.round(runningBalance * 100) / 100 : 0;
       sRows.push({
-        date: "—",
+        date: "-",
         voucher: "Closing Balance",
-        srNo: "—",
-        paymentMode: "—",
+        srNo: "-",
+        paymentMode: "-",
         credit: totalPayable > 0 ? totalPayable : 0,
         debit: runningBalance < 0 ? Math.abs(runningBalance) : 0,
         balance: runningBalance,
-        dueDate: "—",
+        dueDate: "-",
+        dueStatus: "none",
         isSummaryRow: true,
+        isClosing: true,
       });
 
       return {
@@ -1198,6 +1340,8 @@ export function CustomerPartyReportsSuite({
         totalReceived: Math.round(totPaid * 100) / 100,
       };
     }
+
+    // ── CUSTOMER / CLIENT (ACCOUNTS RECEIVABLE) ──
     let runningBalance = opBal;
 
     const pName = (activeParty.name || "").toLowerCase().trim();
@@ -1224,7 +1368,6 @@ export function CustomerPartyReportsSuite({
       if (inv.id) matchedInvoiceIds.add(String(inv.id).trim());
     });
 
-    // Match explicit payments (from invoicesApi.listPayments or local settlement vouchers)
     const matchedPayments = rawPayments.filter((p: any) => {
       const pPartyName = (p.party_name || p.customer_name || "").toLowerCase().trim();
       const pPhone = (p.party_phone || p.phone || "").replace(/\D/g, "");
@@ -1260,6 +1403,7 @@ export function CustomerPartyReportsSuite({
       credit: number;
       balance: number;
       dueDate: string;
+      dueStatus: "paid" | "partially_paid" | "overdue" | "normal" | "none";
       type: "invoice" | "credit_note" | "payment";
       invoiceNumber?: string;
     }
@@ -1268,11 +1412,10 @@ export function CustomerPartyReportsSuite({
     let totSales = 0;
     let totReceived = 0;
 
-    // Track explicit payment allocations per invoice to avoid double-counting upfront payments
     const paymentsAllocatedPerInvoice = new Map<string, number>();
     const processedPaymentIds = new Set<string>();
 
-    // 1. Process explicit matched payments
+    // 1. Matched Payment In vouchers (Credit entries)
     matchedPayments.forEach((p: any, idx: number) => {
       const pId = String(p.id || p.payment_number || p.voucher_number || p.reference_number || `pay_${idx}`);
       if (processedPaymentIds.has(pId)) return;
@@ -1283,10 +1426,8 @@ export function CustomerPartyReportsSuite({
 
       const pDate = p.payment_date || p.created_at || p.date;
       const vNo = p.payment_number || p.voucher_number || p.reference_number || (p.id ? `PAY-${String(p.id).slice(0, 6).toUpperCase()}` : `PAY-${1000 + idx}`);
-      const invRef = p.invoice_number ? `#${p.invoice_number}` : "";
       const mode = p.payment_method || p.payment_mode || "Cash";
 
-      // Track allocation against invoice if present
       if (p.invoice_number) {
         const key = String(p.invoice_number).trim().toUpperCase();
         paymentsAllocatedPerInvoice.set(key, (paymentsAllocatedPerInvoice.get(key) || 0) + amt);
@@ -1306,25 +1447,24 @@ export function CustomerPartyReportsSuite({
         timestamp: parseSafeDateTimestamp(pDate) || Date.now(),
         date: formatDisplayDate(pDate),
         rawDate: pDate,
-        voucher: invRef ? `Payment In #${vNo} (${invRef})` : `Payment In #${vNo}`,
-        srNo: vNo,
-        paymentMode: mode,
+        voucher: "Payment In",
+        srNo: extractCleanSrNo(vNo, idx + 1),
+        paymentMode: formatCleanPaymentMode(mode),
         debit: 0,
         credit: amt,
         balance: 0,
-        dueDate: "—",
+        dueDate: "-",
+        dueStatus: "none",
         type: "payment",
         invoiceNumber: p.invoice_number,
       });
     });
 
-    // 2. Process invoices
+    // 2. Matched Invoices (Debit entries, upfront paid as Credit on same line)
     matchedInvoices.forEach((inv: any, idx: number) => {
       const invDate = inv.created_at || inv.date || inv.invoice_date;
       const invNo = inv.invoice_number || inv.invoice_no || `INV-${1000 + idx}`;
       const total = Number(inv.total_amount || inv.grand_total || 0);
-      const mode = inv.payment_mode || inv.mode || "Cash / UPI";
-      const dueDate = inv.due_date ? formatDisplayDate(inv.due_date) : (inv.created_at ? formatDisplayDate(inv.created_at) : "Immediate");
 
       const isCreditNote = Boolean(
         inv.is_credit_note ||
@@ -1335,40 +1475,23 @@ export function CustomerPartyReportsSuite({
       );
 
       if (isCreditNote) {
-        // Credit note / sales return reduces balance (Credit entry)
         events.push({
           timestamp: parseSafeDateTimestamp(invDate) || 0,
           date: formatDisplayDate(invDate),
           rawDate: invDate,
-          voucher: `Sales Return / Credit Note #${invNo}`,
-          srNo: inv.order_number || `CN-${101 + idx}`,
-          paymentMode: mode,
+          voucher: "Credit Note",
+          srNo: extractCleanSrNo(invNo, idx + 1),
+          paymentMode: "-",
           credit: total,
           debit: 0,
           balance: 0,
-          dueDate: "—",
+          dueDate: "-",
+          dueStatus: "none",
           type: "credit_note",
         });
       } else {
         totSales += total;
 
-        // Debit entry: Invoiced
-        events.push({
-          timestamp: parseSafeDateTimestamp(invDate) || 0,
-          date: formatDisplayDate(invDate),
-          rawDate: invDate,
-          voucher: `Sales Invoice #${invNo}`,
-          srNo: inv.order_number || `SR-${101 + idx}`,
-          paymentMode: mode,
-          credit: 0,
-          debit: total,
-          balance: 0,
-          dueDate: dueDate,
-          type: "invoice",
-          invoiceNumber: invNo,
-        });
-
-        // Check if there was an upfront payment on the invoice not already covered by explicit payments
         const invNumKey = String(invNo).trim().toUpperCase();
         const alreadyAllocated = paymentsAllocatedPerInvoice.get(invNumKey) || 0;
         const totalPaidOnInvoice = Number(
@@ -1378,47 +1501,72 @@ export function CustomerPartyReportsSuite({
         const unallocatedPaid = Math.max(0, totalPaidOnInvoice - alreadyAllocated);
         if (unallocatedPaid > 0.05) {
           totReceived += unallocatedPaid;
-          events.push({
-            timestamp: (parseSafeDateTimestamp(invDate) || 0) + 1,
-            date: formatDisplayDate(invDate),
-            rawDate: invDate,
-            voucher: `Payment Receipt #${invNo}`,
-            srNo: `RCT-${201 + idx}`,
-            paymentMode: mode,
-            credit: unallocatedPaid,
-            debit: 0,
-            balance: 0,
-            dueDate: "—",
-            type: "payment",
-            invoiceNumber: invNo,
-          });
         }
+
+        const totalPaidForInv = alreadyAllocated + unallocatedPaid;
+        const remainingOnInv = Math.max(0, total - totalPaidForInv);
+
+        let dueDateStr = "-";
+        let dueStatus: "paid" | "partially_paid" | "overdue" | "normal" | "none" = "none";
+
+        if (remainingOnInv <= 0.01) {
+          dueDateStr = "Paid";
+          dueStatus = "paid";
+        } else if (totalPaidForInv > 0.01) {
+          dueDateStr = "Partially Paid";
+          dueStatus = "partially_paid";
+        } else if (inv.due_date) {
+          const info = getDueDateDisplay(inv.due_date, false, false);
+          dueDateStr = info.text;
+          dueStatus = info.status;
+        }
+
+        const upfrontMode = unallocatedPaid > 0.01
+          ? formatCleanPaymentMode(inv.payment_mode || inv.mode || "Upi")
+          : "-";
+
+        events.push({
+          timestamp: parseSafeDateTimestamp(invDate) || 0,
+          date: formatDisplayDate(invDate),
+          rawDate: invDate,
+          voucher: "Sales Invoices",
+          srNo: extractCleanSrNo(invNo, idx + 1),
+          paymentMode: upfrontMode,
+          debit: total,
+          credit: unallocatedPaid > 0.01 ? unallocatedPaid : 0,
+          balance: 0,
+          dueDate: dueDateStr,
+          dueStatus: dueStatus,
+          type: "invoice",
+          invoiceNumber: invNo,
+        });
       }
     });
 
-    // 3. Sort events chronologically: oldest to newest
-    // For identical timestamps: Invoice (Debit) comes before Payment (Credit)
+    // 3. Sort chronologically
     events.sort((a, b) => {
       if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
-      if (a.type === "invoice" && b.type === "payment") return -1;
-      if (a.type === "payment" && b.type === "invoice") return 1;
+      if (a.type === "invoice" && b.type !== "invoice") return -1;
+      if (b.type === "invoice" && a.type !== "invoice") return 1;
       return 0;
     });
 
-    // 4. Calculate chronological running balance
+    // 4. Running Balance
     const rows: any[] = [];
 
     // Opening Balance Row
     rows.push({
-      date: "—",
+      date: "-",
       voucher: "Opening Balance",
-      srNo: "—",
-      paymentMode: "—",
-      credit: 0,
-      debit: opBal,
+      srNo: "-",
+      paymentMode: "-",
+      credit: opBal < 0 ? Math.abs(opBal) : 0,
+      debit: opBal > 0 ? opBal : 0,
       balance: runningBalance,
-      dueDate: "—",
+      dueDate: "-",
+      dueStatus: "none",
       isSummaryRow: true,
+      isOpening: true,
     });
 
     events.forEach((ev) => {
@@ -1435,15 +1583,17 @@ export function CustomerPartyReportsSuite({
     // Closing Balance Row
     const totalReceivable = runningBalance > 0 ? Math.round(runningBalance * 100) / 100 : 0;
     rows.push({
-      date: "—",
+      date: "-",
       voucher: "Closing Balance",
-      srNo: "—",
-      paymentMode: "—",
-      credit: 0,
-      debit: totalReceivable,
+      srNo: "-",
+      paymentMode: "-",
+      credit: runningBalance < 0 ? Math.abs(runningBalance) : 0,
+      debit: totalReceivable > 0 ? totalReceivable : 0,
       balance: runningBalance,
-      dueDate: "—",
+      dueDate: "-",
+      dueStatus: "none",
       isSummaryRow: true,
+      isClosing: true,
     });
 
     const overdueAmount = activeParty.overdue30Plus !== undefined ? Math.min(activeParty.overdue30Plus, totalReceivable) : totalReceivable;
@@ -1894,20 +2044,44 @@ export function CustomerPartyReportsSuite({
     switch (activeReport) {
       case "party_statement": {
         const partyName = activeParty?.name || "Party";
+        const isSupplier = activeParty?.type === "Supplier";
         filename = `party_statement_${partyName.replace(/[^a-zA-Z0-9]/g, "_")}_${new Date().toISOString().slice(0, 10)}`;
         rows.push([`Party Statement: ${partyName} (${activeParty?.phone || "No Phone"})`]);
-        rows.push([`Total Sales: ₹${ledgerData.totalSales} | Total Received: ₹${ledgerData.totalReceived} | Balance Due: ₹${ledgerData.totalReceivable}`]);
+        rows.push([
+          isSupplier
+            ? `Total Purchases: ₹${ledgerData.totalSales} | Total Paid: ₹${ledgerData.totalReceived} | Balance Due: ₹${ledgerData.totalReceivable}`
+            : `Total Sales: ₹${ledgerData.totalSales} | Total Received: ₹${ledgerData.totalReceived} | Balance Due: ₹${ledgerData.totalReceivable}`
+        ]);
         rows.push([]);
-        rows.push(["Date", "Type", "Voucher No", "Debit (₹)", "Credit (₹)", "Running Balance (₹)", "Status"]);
-        (ledgerData.rows || []).forEach((tx: any) => {
+        rows.push(["Date", "Voucher", "Sr No", "Payment Mode", "Credit (₹)", "Debit (₹)", "Balance (₹)", "Due Date (Overdue by)"]);
+        (ledgerData.rows || []).forEach((r: any) => {
+          const creditVal = r.isOpening
+            ? (r.credit > 0 ? Number(r.credit.toFixed(2)) : "-")
+            : r.isClosing
+            ? (r.credit > 0 ? Number(r.credit.toFixed(2)) : "-")
+            : (r.credit > 0 ? Number(r.credit.toFixed(2)) : "-");
+
+          const debitVal = r.isOpening
+            ? (r.debit > 0 ? Number(r.debit.toFixed(2)) : "₹ 0")
+            : r.isClosing
+            ? (r.debit > 0 ? Number(r.debit.toFixed(2)) : "-")
+            : (r.debit > 0 ? Number(r.debit.toFixed(2)) : "-");
+
+          const balanceVal = r.balance === 0
+            ? "₹ 0"
+            : isSupplier
+            ? formatTableCurrency(r.balance, { isLiabilityNegative: true })
+            : formatTableCurrency(r.balance);
+
           rows.push([
-            tx.date,
-            tx.voucher || tx.type,
-            tx.voucherNo || tx.srNo || "-",
-            tx.debit > 0 ? Number(tx.debit.toFixed(2)) : "-",
-            tx.credit > 0 ? Number(tx.credit.toFixed(2)) : "-",
-            tx.balance !== undefined ? Number(tx.balance.toFixed(2)) : 0,
-            tx.status || "-",
+            r.date,
+            r.voucher,
+            r.srNo,
+            r.paymentMode,
+            creditVal,
+            debitVal,
+            balanceVal,
+            r.dueDate,
           ]);
         });
         break;
@@ -2084,7 +2258,7 @@ export function CustomerPartyReportsSuite({
   const currentMeta = CUSTOMER_REPORTS_LIST.find((r) => r.id === activeReport) || CUSTOMER_REPORTS_LIST[0];
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+    <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50">
       {/* Top Action & Filtering Toolbar */}
       <header className="bg-white border-b border-slate-200 px-5 py-3 shrink-0">
         {activeReport === "party_statement" ? (
@@ -2822,7 +2996,7 @@ export function CustomerPartyReportsSuite({
       </header>
 
       {/* Scrollable Report Content */}
-      <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
+      <div className="flex-1 min-h-0 overflow-y-auto p-5 custom-scrollbar">
         {loading ? (
           <div className="py-24 flex flex-col items-center justify-center text-center">
             <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
@@ -2837,60 +3011,99 @@ export function CustomerPartyReportsSuite({
                   <table className="w-full text-left text-xs border-collapse">
                     <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-700 font-semibold text-xs">
                       <tr>
-                        <th className="py-3 px-4 font-semibold">Date</th>
-                        <th className="py-3 px-4 font-semibold">Voucher</th>
-                        <th className="py-3 px-4 font-semibold">Sr No</th>
-                        <th className="py-3 px-4 font-semibold">Payment Mode</th>
-                        <th className="py-3 px-4 text-right font-semibold">Credit</th>
-                        <th className="py-3 px-4 text-right font-semibold">Debit</th>
-                        <th className="py-3 px-4 text-right font-semibold">Balance</th>
-                        <th className="py-3 px-4 font-semibold">Due Date (Overdue by)</th>
+                        <th className="py-3 px-4 text-left font-semibold">Date</th>
+                        <th className="py-3 px-4 text-left font-semibold">Voucher</th>
+                        <th className="py-3 px-4 text-left font-semibold">Sr No</th>
+                        <th className="py-3 px-4 text-left font-semibold">Payment Mode</th>
+                        <th className="py-3 px-4 text-left font-semibold">Credit</th>
+                        <th className="py-3 px-4 text-left font-semibold">Debit</th>
+                        <th className="py-3 px-4 text-left font-semibold">Balance</th>
+                        <th className="py-3 px-4 text-left font-semibold">Due Date (Overdue by)</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
-                      {ledgerData.rows.map((r: any, idx: number) => {
-                        const isOpening = r.voucher === "Opening Balance";
-                        const isClosing = r.voucher === "Closing Balance";
+                    <tbody className="divide-y divide-slate-100 text-slate-800 font-normal">
+                      {ledgerData.rows.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="py-16 text-center text-slate-400 text-xs font-semibold">
+                            No transactions recorded for this party in the selected period.
+                          </td>
+                        </tr>
+                      ) : (
+                        ledgerData.rows.map((r: any, idx: number) => {
+                          const isSupplier = activeParty?.type === "Supplier";
 
-                        return (
-                          <tr
-                            key={idx}
-                            className={`hover:bg-slate-50/80 transition-colors ${r.isSummaryRow ? "bg-slate-50/30 text-slate-900" : ""
+                          return (
+                            <tr
+                              key={idx}
+                              className={`hover:bg-slate-50/80 transition-colors ${
+                                r.isSummaryRow ? "bg-slate-50/40 font-medium" : ""
                               }`}
-                          >
-                            <td className="py-3 px-4 whitespace-nowrap text-slate-500 font-mono">
-                              {r.date === "—" ? "-" : r.date}
-                            </td>
-                            <td className="py-3 px-4 font-medium text-slate-900">
-                              {r.voucher}
-                            </td>
-                            <td className="py-3 px-4 text-slate-500 font-mono text-xs">
-                              {r.srNo === "—" ? "-" : r.srNo}
-                            </td>
-                            <td className="py-3 px-4 text-slate-500">
-                              {r.paymentMode === "—" ? "-" : r.paymentMode}
-                            </td>
-                            <td className="py-3 px-4 text-right font-mono font-medium text-slate-700">
-                              {r.credit > 0 ? formatCurrency(r.credit) : "-"}
-                            </td>
-                            <td className="py-3 px-4 text-right font-mono font-medium text-slate-700">
-                              {isOpening || isClosing
-                                ? (r.debit > 0 ? formatCurrency(r.debit) : "₹ 0")
-                                : (r.debit > 0 ? formatCurrency(r.debit) : "-")}
-                            </td>
-                            <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">
-                              {isClosing
-                                ? "-"
-                                : (isOpening && r.balance === 0
+                            >
+                              {/* Date */}
+                              <td className="py-3 px-4 whitespace-nowrap text-slate-600 text-left font-mono">
+                                {r.date}
+                              </td>
+
+                              {/* Voucher */}
+                              <td className="py-3 px-4 font-medium text-slate-900 text-left">
+                                {r.voucher}
+                              </td>
+
+                              {/* Sr No */}
+                              <td className="py-3 px-4 text-slate-600 text-left font-mono">
+                                {r.srNo}
+                              </td>
+
+                              {/* Payment Mode */}
+                              <td className="py-3 px-4 text-slate-600 text-left">
+                                {r.paymentMode}
+                              </td>
+
+                              {/* Credit */}
+                              <td className="py-3 px-4 text-slate-700 text-left font-mono">
+                                {r.isOpening
+                                  ? (r.credit > 0 ? formatTableCurrency(r.credit) : "-")
+                                  : r.isClosing
+                                  ? (r.credit > 0 ? formatTableCurrency(r.credit) : "-")
+                                  : (r.credit > 0 ? formatTableCurrency(r.credit) : "-")}
+                              </td>
+
+                              {/* Debit */}
+                              <td className="py-3 px-4 text-slate-700 text-left font-mono">
+                                {r.isOpening
+                                  ? (r.debit > 0 ? formatTableCurrency(r.debit) : "₹ 0")
+                                  : r.isClosing
+                                  ? (r.debit > 0 ? formatTableCurrency(r.debit) : "-")
+                                  : (r.debit > 0 ? formatTableCurrency(r.debit) : "-")}
+                              </td>
+
+                              {/* Running Balance */}
+                              <td className="py-3 px-4 text-slate-900 text-left font-mono font-medium">
+                                {r.balance === 0
                                   ? "₹ 0"
-                                  : formatCurrency(r.balance))}
-                            </td>
-                            <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
-                              {r.dueDate === "—" || !r.dueDate ? "-" : r.dueDate}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                                  : isSupplier
+                                  ? formatTableCurrency(r.balance, { isLiabilityNegative: true })
+                                  : formatTableCurrency(r.balance)}
+                              </td>
+
+                              {/* Due Date (Overdue by) */}
+                              <td className="py-3 px-4 whitespace-nowrap text-left">
+                                {r.dueStatus === "partially_paid" ? (
+                                  <span className="text-amber-500 font-semibold">{r.dueDate}</span>
+                                ) : r.dueStatus === "paid" ? (
+                                  <span className="text-emerald-600 font-semibold">{r.dueDate}</span>
+                                ) : r.dueStatus === "overdue" ? (
+                                  <span className="text-rose-600 font-semibold">{r.dueDate}</span>
+                                ) : r.dueDate && r.dueDate !== "-" && r.dueDate !== "—" ? (
+                                  <span className="text-slate-600">{r.dueDate}</span>
+                                ) : (
+                                  <span className="text-slate-400">-</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
                     </tbody>
                   </table>
                 </div>

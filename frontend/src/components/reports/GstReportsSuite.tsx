@@ -1026,7 +1026,7 @@ export function GstReportsSuite({
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-full w-full bg-white font-sans pb-24">
+    <div className="flex-1 flex flex-col h-full min-h-0 overflow-y-auto w-full bg-white font-sans pb-24 custom-scrollbar">
       {/* Top Action & Filtering Toolbar matching Reference Screenshots */}
       <header className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-slate-200 px-6 py-3.5 shrink-0 shadow-2xs">
         <div className="flex flex-wrap items-center justify-between gap-3">

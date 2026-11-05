@@ -31,6 +31,105 @@ import * as XLSX from "xlsx";
 import { inventoryApi } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 
+export function extractCleanSrNo(raw: any, fallbackIdx?: number): string {
+  if (!raw || raw === "—" || raw === "-") {
+    return fallbackIdx !== undefined ? String(fallbackIdx) : "-";
+  }
+  const str = String(raw).trim();
+  if (/^\d+$/.test(str)) {
+    return String(parseInt(str, 10));
+  }
+  const matches = str.match(/\d+/g);
+  if (matches && matches.length > 0) {
+    const lastNum = matches[matches.length - 1];
+    const parsed = parseInt(lastNum, 10);
+    return !isNaN(parsed) && parsed > 0 ? String(parsed) : lastNum;
+  }
+  return str.replace(/^[#\-_\s]+/, "") || (fallbackIdx !== undefined ? String(fallbackIdx) : "-");
+}
+
+export function formatCleanPaymentMode(mode: any): string {
+  if (!mode || mode === "—" || mode === "-" || mode === "Immediate" || mode === "Credit Terms" || mode === "Settled") {
+    return "-";
+  }
+  const s = String(mode).toLowerCase().trim();
+  if (s.includes("upi") || s.includes("gpay") || s.includes("phonepe") || s.includes("paytm") || s.includes("qr")) {
+    return "Upi";
+  }
+  if (s.includes("cheque") || s.includes("check")) {
+    return "Cheque";
+  }
+  if (s.includes("bank") || s.includes("neft") || s.includes("rtgs") || s.includes("imps") || s.includes("wire") || s.includes("transfer")) {
+    return "Bank";
+  }
+  if (s.includes("cash")) {
+    return "Cash";
+  }
+  if (s.includes("card") || s.includes("debit") || s.includes("credit card") || s.includes("pos")) {
+    return "Card";
+  }
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+export function formatTableCurrency(
+  val: number | undefined | null,
+  options?: {
+    isLiabilityNegative?: boolean;
+    allowZero?: boolean;
+  }
+): string {
+  if (val === undefined || val === null || isNaN(val)) return "-";
+  if (Math.abs(val) < 0.005) {
+    return options?.allowZero ? "₹ 0" : "-";
+  }
+
+  const absVal = Math.abs(val);
+  const formattedNum = absVal.toLocaleString("en-IN", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: absVal % 1 === 0 ? 0 : 2,
+  });
+
+  const isNeg = options?.isLiabilityNegative ? val > 0 : val < 0;
+  if (isNeg) {
+    return `- ₹ ${formattedNum}`;
+  }
+  return `₹ ${formattedNum}`;
+}
+
+export function getDueDateDisplay(
+  dueDateVal: any,
+  isPaid: boolean,
+  isPartiallyPaid: boolean
+): { text: string; status: "paid" | "partially_paid" | "overdue" | "normal" | "none" } {
+  if (isPaid) {
+    return { text: "Paid", status: "paid" };
+  }
+  if (isPartiallyPaid) {
+    return { text: "Partially Paid", status: "partially_paid" };
+  }
+  if (!dueDateVal || dueDateVal === "—" || dueDateVal === "-") {
+    return { text: "-", status: "none" };
+  }
+  const dueTs = parseSafeDateTimestamp(dueDateVal);
+  if (!dueTs) {
+    return { text: String(dueDateVal), status: "normal" };
+  }
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dDueDate = new Date(dueTs);
+  const dueMidnight = new Date(dDueDate.getFullYear(), dDueDate.getMonth(), dDueDate.getDate()).getTime();
+  const diffDays = Math.round((todayMidnight - dueMidnight) / (24 * 60 * 60 * 1000));
+
+  const formattedDate = formatDisplayDate(dueDateVal);
+  if (diffDays > 0) {
+    return {
+      text: `${formattedDate} (Overdue by ${diffDays} day${diffDays > 1 ? "s" : ""})`,
+      status: "overdue",
+    };
+  }
+  return { text: formattedDate, status: "normal" };
+}
+
 export interface SupplierRecord {
   id: string;
   name: string;
@@ -465,6 +564,7 @@ export function PurchaseStatementSuite({ onBack, initialSupplierName }: Purchase
       credit: number;
       balance: number;
       dueDate: string;
+      dueStatus: "paid" | "partially_paid" | "overdue" | "normal" | "none";
       type: "bill" | "payment" | "debit_note";
       billNumber?: string;
     }
@@ -488,8 +588,7 @@ export function PurchaseStatementSuite({ onBack, initialSupplierName }: Purchase
 
       const pDate = p.payment_date || p.created_at;
       const refNo = p.reference_number || `TXN-${String(p.id || idx + 1000).slice(0, 8).toUpperCase()}`;
-      const billRef = p.bill_number ? ` (#${p.bill_number})` : "";
-      const mode = p.payment_method || "Bank Transfer";
+      const mode = p.payment_method || p.payment_mode || "Bank Transfer";
 
       if (p.bill_number) {
         const key = String(p.bill_number).trim().toUpperCase();
@@ -502,13 +601,14 @@ export function PurchaseStatementSuite({ onBack, initialSupplierName }: Purchase
         timestamp: parseSafeDateTimestamp(pDate) || Date.now(),
         date: formatDisplayDate(pDate),
         rawDate: pDate,
-        voucher: `Payment Out #${refNo}${billRef}`,
-        srNo: refNo,
-        paymentMode: mode,
+        voucher: "Payment Out",
+        srNo: extractCleanSrNo(refNo, idx + 1),
+        paymentMode: formatCleanPaymentMode(mode),
         debit: amt, // Debit reduces supplier liability
         credit: 0,
         balance: 0,
-        dueDate: "—",
+        dueDate: "-",
+        dueStatus: "none",
         type: "payment",
         billNumber: p.bill_number,
       });
@@ -520,57 +620,64 @@ export function PurchaseStatementSuite({ onBack, initialSupplierName }: Purchase
       const bNo = b.bill_number || `BILL-${1000 + idx}`;
       const total = Number(b.total_amount || b.amount || 0);
       const paidOnBill = Number(b.paid_amount || b.amount_paid || 0);
-      const mode = b.payment_mode || (paidOnBill >= total ? "Settled" : "Credit Terms");
-      const dueDate = b.due_date ? formatDisplayDate(b.due_date) : "Immediate";
 
       totPurchases += total;
 
-      // Check overdue status
-      if (b.due_date) {
-        const dueTs = parseSafeDateTimestamp(b.due_date);
-        if (dueTs && dueTs < Date.now() && total > paidOnBill) {
-          overdueAmt += (total - paidOnBill);
-        }
-      }
-
-      // Credit entry: Purchase bill increases liability
-      events.push({
-        timestamp: parseSafeDateTimestamp(bDate) || 0,
-        date: formatDisplayDate(bDate),
-        rawDate: bDate,
-        voucher: b.po_number ? `Purchase Invoice #${bNo} (#${b.po_number})` : `Purchase Invoice #${bNo}`,
-        srNo: b.po_number || `PO-${101 + idx}`,
-        paymentMode: mode,
-        credit: total,
-        debit: 0,
-        balance: 0,
-        dueDate: dueDate,
-        type: "bill",
-        billNumber: bNo,
-      });
-
-      // Upfront payment recorded on bill not covered by explicit Payment Out
+      // Track unallocated upfront payment on bill
       const billKey = String(bNo).trim().toUpperCase();
       const alreadyAllocated = paymentsAllocatedPerBill.get(billKey) || 0;
       const unallocatedPaid = Math.max(0, paidOnBill - alreadyAllocated);
 
       if (unallocatedPaid > 0.05) {
         totPayments += unallocatedPaid;
-        events.push({
-          timestamp: (parseSafeDateTimestamp(bDate) || 0) + 1,
-          date: formatDisplayDate(bDate),
-          rawDate: bDate,
-          voucher: `Payment Out #${bNo} (Bill Settlement)`,
-          srNo: `SETTLE-${201 + idx}`,
-          paymentMode: mode,
-          debit: unallocatedPaid,
-          credit: 0,
-          balance: 0,
-          dueDate: "—",
-          type: "payment",
-          billNumber: bNo,
-        });
       }
+
+      const totalPaidForBill = alreadyAllocated + unallocatedPaid;
+      const remainingOnBill = Math.max(0, total - totalPaidForBill);
+
+      if (remainingOnBill > 0.01 && b.due_date) {
+        const dueTs = parseSafeDateTimestamp(b.due_date);
+        if (dueTs && dueTs < Date.now()) {
+          overdueAmt += remainingOnBill;
+        }
+      }
+
+      let dueDateStr = "-";
+      let dueStatus: "paid" | "partially_paid" | "overdue" | "normal" | "none" = "none";
+
+      if (remainingOnBill <= 0.01) {
+        dueDateStr = "Paid";
+        dueStatus = "paid";
+      } else if (totalPaidForBill > 0.01) {
+        dueDateStr = "Partially Paid";
+        dueStatus = "partially_paid";
+      } else if (b.due_date) {
+        const info = getDueDateDisplay(b.due_date, false, false);
+        dueDateStr = info.text;
+        dueStatus = info.status;
+      }
+
+      // If upfront paid exists, display mode. Else "-"
+      const upfrontMode = unallocatedPaid > 0.01
+        ? formatCleanPaymentMode(b.payment_mode || b.payment_method || "Upi")
+        : "-";
+
+      // Credit entry: Purchase bill increases liability; upfront payment reduces liability on same row
+      events.push({
+        timestamp: parseSafeDateTimestamp(bDate) || 0,
+        date: formatDisplayDate(bDate),
+        rawDate: bDate,
+        voucher: "Purchase Invoices",
+        srNo: extractCleanSrNo(bNo, idx + 1),
+        paymentMode: upfrontMode,
+        credit: total,
+        debit: unallocatedPaid > 0.01 ? unallocatedPaid : 0,
+        balance: 0,
+        dueDate: dueDateStr,
+        dueStatus: dueStatus,
+        type: "bill",
+        billNumber: bNo,
+      });
     });
 
     // Process Vendor Debit Notes (Debit entries)
@@ -584,13 +691,14 @@ export function PurchaseStatementSuite({ onBack, initialSupplierName }: Purchase
         timestamp: parseSafeDateTimestamp(dnDate) || 0,
         date: formatDisplayDate(dnDate),
         rawDate: dnDate,
-        voucher: `Vendor Debit Note #${dnNo}`,
-        srNo: dnNo,
-        paymentMode: dn.notes ? `Adjustment (${dn.notes})` : "Purchase Return",
+        voucher: "Debit Note",
+        srNo: extractCleanSrNo(dnNo, idx + 1),
+        paymentMode: "-",
         debit: amt, // Debit reduces supplier liability
         credit: 0,
         balance: 0,
-        dueDate: "—",
+        dueDate: "-",
+        dueStatus: "none",
         type: "debit_note",
       });
     });
@@ -611,15 +719,17 @@ export function PurchaseStatementSuite({ onBack, initialSupplierName }: Purchase
 
     // Row 1: Opening Balance
     rows.push({
-      date: "—",
+      date: "-",
       voucher: "Opening Balance",
-      srNo: "—",
-      paymentMode: "—",
+      srNo: "-",
+      paymentMode: "-",
       credit: opBal > 0 ? opBal : 0,
       debit: opBal < 0 ? Math.abs(opBal) : 0,
       balance: runningBalance,
-      dueDate: "—",
+      dueDate: "-",
+      dueStatus: "none",
       isSummaryRow: true,
+      isOpening: true,
     });
 
     events.forEach((ev) => {
@@ -636,15 +746,17 @@ export function PurchaseStatementSuite({ onBack, initialSupplierName }: Purchase
     // Final Row: Closing Balance
     const totalPayable = runningBalance > 0 ? Math.round(runningBalance * 100) / 100 : 0;
     rows.push({
-      date: "—",
+      date: "-",
       voucher: "Closing Balance",
-      srNo: "—",
-      paymentMode: "—",
+      srNo: "-",
+      paymentMode: "-",
       credit: totalPayable > 0 ? totalPayable : 0,
       debit: runningBalance < 0 ? Math.abs(runningBalance) : 0,
       balance: runningBalance,
-      dueDate: "—",
+      dueDate: "-",
+      dueStatus: "none",
       isSummaryRow: true,
+      isClosing: true,
     });
 
     return {
@@ -682,18 +794,34 @@ export function PurchaseStatementSuite({ onBack, initialSupplierName }: Purchase
       `Total Purchases: ₹${ledgerData.totalPurchase.toFixed(2)} | Total Paid: ₹${ledgerData.totalPaid.toFixed(2)} | Net Payable: ₹${ledgerData.totalPayable.toFixed(2)} | Overdue: ₹${ledgerData.overdue.toFixed(2)}`,
     ]);
     rows.push([]);
-    rows.push(["Date", "Voucher", "Sr No", "Payment Mode", "Credit (₹)", "Debit (₹)", "Running Balance (₹)", "Due Date / Status"]);
+    rows.push(["Date", "Voucher", "Sr No", "Payment Mode", "Credit (₹)", "Debit (₹)", "Balance (₹)", "Due Date (Overdue by)"]);
 
     (ledgerData.rows || []).forEach((r: any) => {
+      const creditVal = r.isOpening
+        ? (r.credit > 0 ? Number(r.credit.toFixed(2)) : "-")
+        : r.isClosing
+        ? (r.credit > 0 ? Number(r.credit.toFixed(2)) : "-")
+        : (r.credit > 0 ? Number(r.credit.toFixed(2)) : "-");
+
+      const debitVal = r.isOpening
+        ? (r.debit > 0 ? Number(r.debit.toFixed(2)) : "₹ 0")
+        : r.isClosing
+        ? (r.debit > 0 ? Number(r.debit.toFixed(2)) : "-")
+        : (r.debit > 0 ? Number(r.debit.toFixed(2)) : "-");
+
+      const balanceVal = r.balance === 0
+        ? "₹ 0"
+        : formatTableCurrency(r.balance, { isLiabilityNegative: true });
+
       rows.push([
-        r.date === "—" ? "-" : r.date,
+        r.date,
         r.voucher,
-        r.srNo === "—" ? "-" : r.srNo,
-        r.paymentMode === "—" ? "-" : r.paymentMode,
-        r.credit > 0 ? Number(r.credit.toFixed(2)) : "-",
-        r.debit > 0 ? Number(r.debit.toFixed(2)) : "-",
-        Number(r.balance.toFixed(2)),
-        r.dueDate === "—" ? "-" : r.dueDate,
+        r.srNo,
+        r.paymentMode,
+        creditVal,
+        debitVal,
+        balanceVal,
+        r.dueDate,
       ]);
     });
 
@@ -733,7 +861,7 @@ export function PurchaseStatementSuite({ onBack, initialSupplierName }: Purchase
   const exportData = buildExportData();
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+    <div className="flex-1 flex flex-col h-full min-h-0 overflow-y-auto bg-slate-50 custom-scrollbar">
       {/* ──────────────────────────────────────────────────────────────────────────
           TOP ACTION & FILTERING TOOLBAR (EXACT SAME AS PARTY STATEMENT)
       ────────────────────────────────────────────────────────────────────────── */}
@@ -951,7 +1079,7 @@ export function PurchaseStatementSuite({ onBack, initialSupplierName }: Purchase
       {/* ──────────────────────────────────────────────────────────────────────────
           MAIN REPORT BODY: CHRONOLOGICAL DOUBLE-ENTRY TABLE
       ────────────────────────────────────────────────────────────────────────── */}
-      <main className="flex-1 overflow-y-auto p-5">
+      <main className="flex-1 min-h-0 p-5">
         {loading ? (
           <div className="py-24 flex flex-col items-center justify-center text-center">
             <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
@@ -964,17 +1092,17 @@ export function PurchaseStatementSuite({ onBack, initialSupplierName }: Purchase
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-700 font-semibold text-xs">
                   <tr>
-                    <th className="py-3 px-4 font-semibold">Date</th>
-                    <th className="py-3 px-4 font-semibold">Voucher</th>
-                    <th className="py-3 px-4 font-semibold">Sr No</th>
-                    <th className="py-3 px-4 font-semibold">Payment Mode</th>
-                    <th className="py-3 px-4 text-right font-semibold">Credit</th>
-                    <th className="py-3 px-4 text-right font-semibold">Debit</th>
-                    <th className="py-3 px-4 text-right font-semibold">Balance</th>
-                    <th className="py-3 px-4 font-semibold">Due Date (Overdue by)</th>
+                    <th className="py-3 px-4 text-left font-semibold">Date</th>
+                    <th className="py-3 px-4 text-left font-semibold">Voucher</th>
+                    <th className="py-3 px-4 text-left font-semibold">Sr No</th>
+                    <th className="py-3 px-4 text-left font-semibold">Payment Mode</th>
+                    <th className="py-3 px-4 text-left font-semibold">Credit</th>
+                    <th className="py-3 px-4 text-left font-semibold">Debit</th>
+                    <th className="py-3 px-4 text-left font-semibold">Balance</th>
+                    <th className="py-3 px-4 text-left font-semibold">Due Date (Overdue by)</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
+                <tbody className="divide-y divide-slate-100 text-slate-800 font-normal">
                   {ledgerData.rows.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="py-16 text-center text-slate-400 text-xs font-semibold">
@@ -983,64 +1111,71 @@ export function PurchaseStatementSuite({ onBack, initialSupplierName }: Purchase
                     </tr>
                   ) : (
                     ledgerData.rows.map((r: any, idx: number) => {
-                      const isOpening = r.voucher === "Opening Balance";
-                      const isClosing = r.voucher === "Closing Balance";
-
                       return (
                         <tr
                           key={idx}
                           className={`hover:bg-slate-50/80 transition-colors ${
-                            r.isSummaryRow ? "bg-slate-50/30 text-slate-900" : ""
+                            r.isSummaryRow ? "bg-slate-50/40 font-medium" : ""
                           }`}
                         >
                           {/* Date */}
-                          <td className="py-3 px-4 whitespace-nowrap text-slate-500 font-mono">
-                            {r.date === "—" ? "-" : r.date}
+                          <td className="py-3 px-4 whitespace-nowrap text-slate-600 text-left font-mono">
+                            {r.date}
                           </td>
 
                           {/* Voucher */}
-                          <td className="py-3 px-4 font-medium text-slate-900">
+                          <td className="py-3 px-4 font-medium text-slate-900 text-left">
                             {r.voucher}
                           </td>
 
                           {/* Sr No */}
-                          <td className="py-3 px-4 text-slate-500 font-mono text-xs">
-                            {r.srNo === "—" ? "-" : r.srNo}
+                          <td className="py-3 px-4 text-slate-600 text-left font-mono">
+                            {r.srNo}
                           </td>
 
                           {/* Payment Mode */}
-                          <td className="py-3 px-4 text-slate-500">
-                            {r.paymentMode === "—" ? "-" : r.paymentMode}
+                          <td className="py-3 px-4 text-slate-600 text-left">
+                            {r.paymentMode}
                           </td>
 
                           {/* Credit (Bills / Dues to Vendor) */}
-                          <td className="py-3 px-4 text-right font-mono font-medium text-slate-700">
-                            {isOpening || isClosing
-                              ? r.credit > 0
-                                ? formatCurrency(r.credit)
-                                : "₹ 0"
-                              : r.credit > 0
-                              ? formatCurrency(r.credit)
-                              : "-"}
+                          <td className="py-3 px-4 text-slate-700 text-left font-mono">
+                            {r.isOpening
+                              ? (r.credit > 0 ? formatTableCurrency(r.credit) : "-")
+                              : r.isClosing
+                              ? (r.credit > 0 ? formatTableCurrency(r.credit) : "-")
+                              : (r.credit > 0 ? formatTableCurrency(r.credit) : "-")}
                           </td>
 
                           {/* Debit (Payment Out / Payments to Vendor) */}
-                          <td className="py-3 px-4 text-right font-mono font-medium text-slate-700">
-                            {r.debit > 0 ? formatCurrency(r.debit) : "-"}
+                          <td className="py-3 px-4 text-slate-700 text-left font-mono">
+                            {r.isOpening
+                              ? (r.debit > 0 ? formatTableCurrency(r.debit) : "₹ 0")
+                              : r.isClosing
+                              ? (r.debit > 0 ? formatTableCurrency(r.debit) : "-")
+                              : (r.debit > 0 ? formatTableCurrency(r.debit) : "-")}
                           </td>
 
                           {/* Running Balance */}
-                          <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">
-                            {isClosing
-                              ? "-"
-                              : isOpening && r.balance === 0
+                          <td className="py-3 px-4 text-slate-900 text-left font-mono font-medium">
+                            {r.balance === 0
                               ? "₹ 0"
-                              : formatCurrency(r.balance)}
+                              : formatTableCurrency(r.balance, { isLiabilityNegative: true })}
                           </td>
 
-                          {/* Due Date */}
-                          <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
-                            {r.dueDate === "—" || !r.dueDate ? "-" : r.dueDate}
+                          {/* Due Date (Overdue by) */}
+                          <td className="py-3 px-4 whitespace-nowrap text-left">
+                            {r.dueStatus === "partially_paid" ? (
+                              <span className="text-amber-500 font-semibold">{r.dueDate}</span>
+                            ) : r.dueStatus === "paid" ? (
+                              <span className="text-emerald-600 font-semibold">{r.dueDate}</span>
+                            ) : r.dueStatus === "overdue" ? (
+                              <span className="text-rose-600 font-semibold">{r.dueDate}</span>
+                            ) : r.dueDate && r.dueDate !== "-" && r.dueDate !== "—" ? (
+                              <span className="text-slate-600">{r.dueDate}</span>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
                           </td>
                         </tr>
                       );

@@ -1154,7 +1154,7 @@ export function ReportsHub() {
           {/* Active Report View Container */}
           <div className="flex-1 overflow-hidden flex flex-col min-h-0">
             {isGstReport ? (
-              <main className="flex-1 flex flex-col h-full overflow-hidden bg-white">
+              <main className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-white">
                 <GstReportsSuite
                   key={activeReport.id}
                   defaultReport={activeReport.id as GstReportType}
@@ -1162,63 +1162,63 @@ export function ReportsHub() {
                 />
               </main>
             ) : isInventoryReport ? (
-              <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+              <main className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50">
                 <InventoryReportsSuite
                   key={activeReport.id}
                   defaultReport={activeReport.id as InventoryReportType}
                 />
               </main>
             ) : isPartyReport ? (
-              <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+              <main className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50">
                 <CustomerPartyReportsSuite
                   key={activeReport.id}
                   defaultReport={activeReport.id as CustomerReportType}
                 />
               </main>
             ) : isPurchaseStatementReport ? (
-              <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+              <main className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50">
                 <PurchaseStatementSuite
                   onBack={() => setActiveReport(null)}
                 />
               </main>
             ) : isVendorOutstandingReport ? (
-              <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+              <main className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50">
                 <VendorOutstandingSuite
                   onBack={() => setActiveReport(null)}
                 />
               </main>
             ) : isEmployeeSalesReport ? (
-              <main className="flex-1 flex flex-col h-full overflow-hidden bg-white">
+              <main className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-white">
                 <EmployeeSalesReportSuite
                   onBack={() => setActiveReport(null)}
                 />
               </main>
             ) : isPaymentModePurchaseReport ? (
-              <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+              <main className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50">
                 <PaymentModePurchaseReportSuite
                   onBack={() => setActiveReport(null)}
                 />
               </main>
             ) : isPaymentModeReport ? (
-              <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+              <main className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50">
                 <PaymentModeSalesReportSuite
                   onBack={() => setActiveReport(null)}
                 />
               </main>
             ) : isSalesSummaryReport ? (
-              <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+              <main className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50">
                 <SalesSummaryReportSuite
                   onBack={() => setActiveReport(null)}
                 />
               </main>
             ) : isPurchaseSummaryReport ? (
-              <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+              <main className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50">
                 <PurchaseSummaryReportSuite
                   onBack={() => setActiveReport(null)}
                 />
               </main>
             ) : (
-              <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+              <main className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-slate-50">
           {/* Top Action & Filtering Toolbar */}
           <header className="bg-white border-b border-slate-200 px-5 py-3 shrink-0">
             {/* Unified Top Action & Filtering Toolbar */}

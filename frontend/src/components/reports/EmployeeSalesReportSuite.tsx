@@ -308,7 +308,7 @@ export function EmployeeSalesReportSuite({ onBack }: EmployeeSalesReportSuitePro
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-full w-full bg-white text-slate-800 font-sans pb-24">
+    <div className="flex-1 flex flex-col h-full min-h-0 overflow-y-auto w-full bg-white text-slate-800 font-sans pb-24 custom-scrollbar">
       {/* Top Header Row matching screenshot */}
       <header className="sticky top-0 z-20 px-6 py-3.5 border-b border-slate-200 flex items-center justify-between shrink-0 bg-white/95 backdrop-blur-md shadow-2xs">
         {/* Left: Back button + Title + Favourite badge */}

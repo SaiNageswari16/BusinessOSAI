@@ -533,7 +533,7 @@ export function PaymentModeSalesReportSuite({
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-full w-full bg-slate-50 text-slate-800 font-sans pb-24">
+    <div className="flex-1 flex flex-col h-full min-h-0 overflow-y-auto w-full bg-slate-50 text-slate-800 font-sans pb-24 custom-scrollbar">
       {/* ──────────────────────────────────────────────────────────────────────────
           TOP HEADER TOOLBAR
       ────────────────────────────────────────────────────────────────────────── */}
