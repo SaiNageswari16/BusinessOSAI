@@ -46,7 +46,8 @@ import { cn } from "@/lib/utils";
 import { ProcurementShareModal } from "./ProcurementShareModal";
 import { AddVendorModal } from "./AddVendorModal";
 import { BatchSelectorModal } from "../inventory/BatchSelectorModal";
-import { PurchaseInvoiceQuickSettingsModal, loadStoredPurchaseInvoiceSettings, PurchaseInvoiceSettings } from "./PurchaseInvoiceQuickSettingsModal";
+import { PurchaseInvoiceQuickSettingsModal, loadStoredPurchaseInvoiceSettings, saveStoredPurchaseInvoiceSettings, PurchaseInvoiceSettings } from "./PurchaseInvoiceQuickSettingsModal";
+import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "../pos/InvoiceQuickSettingsModal";
 
 export type ProcurementDocType = "PR" | "PO" | "PINV";
 
@@ -199,33 +200,79 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [purchaseSettings, setPurchaseSettings] = useState<PurchaseInvoiceSettings>(() => loadStoredPurchaseInvoiceSettings());
 
+  const computeConfiguredDocNumber = (type: ProcurementDocType, pSettingsOverride?: PurchaseInvoiceSettings): string => {
+    const pCfg = pSettingsOverride || loadStoredPurchaseInvoiceSettings();
+    const invCfg = loadStoredInvoiceSettings();
+    if (type === "PINV") {
+      // Prefer explicitly configured prefix/sequence across PurchaseInvoiceSettings and InvoiceSettings
+      let pfx = pCfg.prefix || invCfg.purchaseInvoicePrefix || "PINV-";
+      if (pfx === "BILL-" && invCfg.purchaseInvoicePrefix && invCfg.purchaseInvoicePrefix !== "BILL-") {
+        // If user set a custom prefix in PrintTemplates, or if pCfg was explicitly saved, pCfg already has it via two-way sync
+        pfx = pCfg.prefix || invCfg.purchaseInvoicePrefix;
+      }
+      const seq = Math.max(1, Number(pCfg.sequenceNumber || invCfg.purchaseInvoiceSequenceNumber || 1));
+      const pad = Number(pCfg.padding || invCfg.purchaseInvoicePadding || 4);
+      const sfx = pCfg.suffix || "";
+      return `${pfx}${String(seq).padStart(pad, "0")}${sfx}`;
+    }
+    if (type === "PO") {
+      const pfx = invCfg.purchaseOrderPrefix || pCfg.poPrefix || "PO-";
+      const seq = Math.max(1, Number(invCfg.purchaseOrderSequenceNumber || 1));
+      const pad = Number(invCfg.purchaseOrderPadding || 4);
+      return `${pfx}${String(seq).padStart(pad, "0")}`;
+    }
+    const prSeq = 1;
+    return `PR-${String(prSeq).padStart(4, "0")}`;
+  };
+
   useEffect(() => {
     procurementApi.getPurchaseInvoiceSettings()
       .then((serverData) => {
         if (serverData && typeof serverData === "object") {
-          setPurchaseSettings((prev) => ({ ...prev, ...serverData }));
+          const currentLocal = loadStoredPurchaseInvoiceSettings();
+          const serverIsDefault = (!serverData.prefix || serverData.prefix === "BILL-") && (!serverData.sequenceNumber || Number(serverData.sequenceNumber) === 1);
+          const localIsCustomized = (currentLocal.prefix && currentLocal.prefix !== "BILL-") || Number(currentLocal.sequenceNumber) > 1;
+          const merged: PurchaseInvoiceSettings = {
+            ...currentLocal,
+            ...serverData,
+            ...(serverIsDefault && localIsCustomized
+              ? {
+                  prefix: currentLocal.prefix,
+                  sequenceNumber: currentLocal.sequenceNumber,
+                  padding: currentLocal.padding,
+                }
+              : {}),
+          };
+          setPurchaseSettings(merged);
+          if (!initialData) {
+            setDocNumber(computeConfiguredDocNumber(docType, merged));
+          }
         }
       })
       .catch(() => {});
-  }, []);
+  }, [docType, initialData]);
 
   useEffect(() => {
     const handleUpdate = (e: any) => {
-      if (e?.detail?.settings) {
-        setPurchaseSettings(e.detail.settings);
-      } else {
-        setPurchaseSettings(loadStoredPurchaseInvoiceSettings());
+      const updated = loadStoredPurchaseInvoiceSettings();
+      setPurchaseSettings(updated);
+      if (!initialData) {
+        setDocNumber(computeConfiguredDocNumber(docType, updated));
       }
     };
     window.addEventListener("bos-purchase-settings-updated", handleUpdate);
     window.addEventListener("bos-purchase-invoice-settings-changed", handleUpdate);
+    window.addEventListener("bos-invoice-settings-updated", handleUpdate);
+    window.addEventListener("bos-invoice-settings-changed", handleUpdate);
     window.addEventListener("storage", handleUpdate);
     return () => {
       window.removeEventListener("bos-purchase-settings-updated", handleUpdate);
       window.removeEventListener("bos-purchase-invoice-settings-changed", handleUpdate);
+      window.removeEventListener("bos-invoice-settings-updated", handleUpdate);
+      window.removeEventListener("bos-invoice-settings-changed", handleUpdate);
       window.removeEventListener("storage", handleUpdate);
     };
-  }, []);
+  }, [docType, initialData]);
 
   const [batches, setBatches] = useState<any[]>([]);
 
@@ -316,7 +363,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
   const { stores, selectedStore, setSelectedStore } = useStoreLocations();
   const [selectedLocation, setSelectedLocation] = useState<string>(() => selectedStore);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
-  const [docNumber, setDocNumber] = useState<string>("");
+  const [docNumber, setDocNumber] = useState<string>(() => computeConfiguredDocNumber(docType));
   const [originalRefNo, setOriginalRefNo] = useState<string>("");
   const [docDate, setDocDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState<string>(
@@ -579,29 +626,9 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             }));
           }
         } else {
-          // Do NOT auto-select the first vendor — leave the placeholder so the user picks a vendor.
-          // Peek the configured NumberSeries so new docs show the user's own prefix/sequence
-          // (Settings → Number Series) instead of a random id. Falls back to a random number if
-          // the peek is unavailable.
-          const moduleMap: Record<string, { m: string; fb: string }> = {
-            PR: { m: "purchase_requests", fb: "PR-" },
-            PO: { m: "purchase_orders", fb: "PO-" },
-            PINV: { m: "purchase_invoices", fb: "PINV-" },
-          };
-          const cfg = moduleMap[docType] || moduleMap["PINV"];
-          let picked = "";
-          try {
-            const peek = await numberSeriesApi.peekNextNumber(cfg.m);
-            if (peek && peek.formatted_number) picked = peek.formatted_number;
-          } catch {
-            picked = "";
-          }
-          if (!picked) {
-            const year = new Date().getFullYear();
-            const randomSeq = Math.floor(1000 + Math.random() * 9000);
-            picked = `${cfg.fb}${year}-${randomSeq}`;
-          }
-          setDocNumber(picked);
+          // Deterministically use the user's configured Purchase Invoice / PO sequence & prefix
+          const configuredNum = computeConfiguredDocNumber(docType);
+          setDocNumber(configuredNum);
         }
       } catch (err) {
         console.error("Error initializing procurement form data:", err);
@@ -1428,6 +1455,24 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           })),
         });
         toast.success(`Purchase Invoice ${docNumber} recorded successfully (Status: ${billStatus})!`);
+      }
+
+      // Advance sequence number by +1 for new documents
+      if (!initialData?.id) {
+        const trailingDigits = docNumber.match(/(\d+)\D*$/);
+        const usedSeq = trailingDigits ? parseInt(trailingDigits[1], 10) : 0;
+        if (docType === "PINV") {
+          const curP = loadStoredPurchaseInvoiceSettings();
+          const nextSeq = usedSeq > 0 ? Math.max(Number(curP.sequenceNumber || 1) + 1, usedSeq + 1) : Number(curP.sequenceNumber || 1) + 1;
+          const updatedP = { ...curP, sequenceNumber: nextSeq };
+          saveStoredPurchaseInvoiceSettings(updatedP);
+          setPurchaseSettings(updatedP);
+          procurementApi.updatePurchaseInvoiceSettings(updatedP).catch(() => {});
+        } else if (docType === "PO") {
+          const curInv = loadStoredInvoiceSettings();
+          const nextPoSeq = usedSeq > 0 ? Math.max(Number(curInv.purchaseOrderSequenceNumber || 1) + 1, usedSeq + 1) : Number(curInv.purchaseOrderSequenceNumber || 1) + 1;
+          saveStoredInvoiceSettings({ ...curInv, purchaseOrderSequenceNumber: nextPoSeq });
+        }
       }
 
       if (onSaved) onSaved();
@@ -4106,6 +4151,12 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
       <PurchaseInvoiceQuickSettingsModal
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
+        onSaved={(newSettings) => {
+          setPurchaseSettings(newSettings);
+          if (!initialData) {
+            setDocNumber(computeConfiguredDocNumber(docType, newSettings));
+          }
+        }}
       />
     </div>
   );

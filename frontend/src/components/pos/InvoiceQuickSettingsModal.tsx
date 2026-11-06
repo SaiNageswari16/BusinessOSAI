@@ -265,6 +265,8 @@ export function loadStoredInvoiceSettings(tenantId?: string, companyId?: string)
   mergeIfConfigured("estimatePrefix", DEFAULT_INVOICE_SETTINGS.estimatePrefix);
   mergeIfConfigured("creditNotePrefix", DEFAULT_INVOICE_SETTINGS.creditNotePrefix);
   mergeIfConfigured("debitNotePrefix", DEFAULT_INVOICE_SETTINGS.debitNotePrefix);
+  mergeIfConfigured("purchaseInvoicePrefix", DEFAULT_INVOICE_SETTINGS.purchaseInvoicePrefix);
+  mergeIfConfigured("purchaseOrderPrefix", DEFAULT_INVOICE_SETTINGS.purchaseOrderPrefix);
   mergeIfConfigured("receiptPrefix", DEFAULT_INVOICE_SETTINGS.receiptPrefix);
   mergeIfConfigured("b2bPrefix", DEFAULT_INVOICE_SETTINGS.b2bPrefix);
   mergeIfConfigured("wholesalePrefix", DEFAULT_INVOICE_SETTINGS.wholesalePrefix);
@@ -344,6 +346,45 @@ export function saveStoredInvoiceSettings(settings: InvoiceSettings, tenantId?: 
     const serialized = JSON.stringify(settings);
     for (const k of allKeys) {
       localStorage.setItem(k, serialized);
+    }
+    // Keep PurchaseInvoiceQuickSettingsModal storage keys in sync when purchase invoice / PO numbering is updated here
+    if (
+      settings.purchaseInvoicePrefix !== undefined ||
+      settings.purchaseInvoiceSequenceNumber !== undefined ||
+      settings.purchaseInvoicePadding !== undefined ||
+      settings.purchaseOrderPrefix !== undefined
+    ) {
+      const purchaseKeys = Array.from(new Set([
+        tid && cid ? `pos_purchase_quick_settings_${tid}_${cid}` : "",
+        tid ? `pos_purchase_quick_settings_${tid}` : "",
+        cid ? `pos_purchase_quick_settings_${cid}` : "",
+        "pos_purchase_quick_settings",
+      ].filter(Boolean)));
+      let existingPurchase: any = {};
+      for (const pk of purchaseKeys) {
+        try {
+          const rawP = localStorage.getItem(pk);
+          if (rawP) {
+            existingPurchase = JSON.parse(rawP);
+            break;
+          }
+        } catch { /* ignore */ }
+      }
+      const syncedPurchase = {
+        ...existingPurchase,
+        ...(settings.purchaseInvoicePrefix ? { prefix: settings.purchaseInvoicePrefix } : {}),
+        ...(settings.purchaseInvoiceSequenceNumber !== undefined ? { sequenceNumber: Math.max(1, Number(settings.purchaseInvoiceSequenceNumber) || 1) } : {}),
+        ...(settings.purchaseInvoicePadding !== undefined ? { padding: Number(settings.purchaseInvoicePadding) || 4 } : {}),
+        ...(settings.purchaseOrderPrefix ? { poPrefix: settings.purchaseOrderPrefix } : {}),
+      };
+      const serializedPurchase = JSON.stringify(syncedPurchase);
+      for (const pk of purchaseKeys) {
+        localStorage.setItem(pk, serializedPurchase);
+      }
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("bos-purchase-settings-updated", { detail: { settings: syncedPurchase, tenantId: tid, companyId: cid } }));
+        window.dispatchEvent(new CustomEvent("bos-purchase-invoice-settings-changed", { detail: syncedPurchase }));
+      }
     }
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("bos-invoice-settings-updated", { detail: { settings, key: primaryKey } }));

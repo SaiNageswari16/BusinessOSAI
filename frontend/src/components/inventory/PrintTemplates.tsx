@@ -70,7 +70,7 @@ import {
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
-import { resolveImageUrl, invoicesApi, inventoryApi, printTemplatesApi, bankApi, taxApi, companiesApi, numberSeriesApi, type TaxCode, BankAccountRecord } from "@/lib/api-client";
+import { resolveImageUrl, invoicesApi, inventoryApi, printTemplatesApi, bankApi, taxApi, companiesApi, numberSeriesApi, procurementApi, type TaxCode, BankAccountRecord } from "@/lib/api-client";
 import { formatDisplayDate } from "@/lib/utils";
 import {
   getActiveBillingGst,
@@ -1519,6 +1519,12 @@ export function PrintTemplates() {
         await syncOne("debit_notes", "", s.debitNotePrefix || "DN-", Number(s.debitNoteSequenceNumber) || 1, Number(s.debitNotePadding) || 4);
         await syncOne("purchase_invoices", "", s.purchaseInvoicePrefix || "PINV-", Number(s.purchaseInvoiceSequenceNumber) || 1, Number(s.purchaseInvoicePadding) || 4);
         await syncOne("purchase_orders", "", s.purchaseOrderPrefix || "PO-", Number(s.purchaseOrderSequenceNumber) || 1, Number(s.purchaseOrderPadding) || 4);
+        await procurementApi.updatePurchaseInvoiceSettings({
+          prefix: s.purchaseInvoicePrefix || "PINV-",
+          sequenceNumber: Math.max(1, Number(s.purchaseInvoiceSequenceNumber) || 1),
+          padding: Number(s.purchaseInvoicePadding) || 4,
+          poPrefix: s.purchaseOrderPrefix || "PO-",
+        } as any, cid).catch(() => { });
       } catch (e) {
         console.warn("Could not sync document number prefixes:", e);
       }

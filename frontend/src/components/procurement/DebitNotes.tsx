@@ -27,6 +27,7 @@ import { useTenant } from "@/contexts/tenant-context";
 import { formatDisplayDate } from "@/lib/utils";
 import { printHtmlInPage } from "@/lib/print-helper";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
+import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "../pos/InvoiceQuickSettingsModal";
 import { renderNoteDocument, resolveNotePrintTemplate } from "@/lib/note-document-renderer";
 import { PaginationControl } from "@/components/ui/PaginationControl";
 
@@ -154,15 +155,11 @@ export function DebitNotes() {
     // Pre-fill with the configured NumberSeries next number (Settings → Credit/Debit Note
     // prefix + sequence) rather than a hard-coded DN-2026-xxxx. Falls back to a locally
     // detected sequence when the peek is unavailable.
-    let dnNum = "";
-    try {
-      const peek = await numberSeriesApi.peekNextNumber("debit_notes");
-      if (peek?.formatted_number) dnNum = peek.formatted_number;
-    } catch { /* fall through */ }
-    if (!dnNum) {
-      const nextSeq = String(notes.length + 1).padStart(4, "0");
-      dnNum = `DN-2026-${nextSeq}`;
-    }
+    const invSettings = loadStoredInvoiceSettings(tenant?.id);
+    const dnPfx = invSettings.debitNotePrefix || "DN-";
+    const dnSeq = Math.max(1, Number(invSettings.debitNoteSequenceNumber || 1));
+    const dnPad = Number(invSettings.debitNotePadding ?? 4);
+    const dnNum = `${dnPfx}${String(dnSeq).padStart(dnPad, "0")}`;
     setDnNo(dnNum);
     setAmount(1000);
     setReasonCategory("Purchase Return / Defective Goods");
@@ -240,6 +237,11 @@ export function DebitNotes() {
         localStorage.setItem(localStorageKey, JSON.stringify([newEntry, ...existing]));
       } catch (e) {}
 
+      const curInv = loadStoredInvoiceSettings(tenant?.id);
+      const trailingDigits = dnNo.trim().match(/(\d+)\D*$/);
+      const usedSeq = trailingDigits ? parseInt(trailingDigits[1], 10) : 0;
+      const nextDnSeq = usedSeq > 0 ? Math.max(Number(curInv.debitNoteSequenceNumber || 1) + 1, usedSeq + 1) : Number(curInv.debitNoteSequenceNumber || 1) + 1;
+      saveStoredInvoiceSettings({ ...curInv, debitNoteSequenceNumber: nextDnSeq }, tenant?.id);
       toast.success(`Vendor Debit Note ${dnNo} generated successfully.`);
       setIsOpen(false);
       window.dispatchEvent(new CustomEvent("bos-tenant-changed"));

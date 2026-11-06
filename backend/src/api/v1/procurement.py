@@ -117,23 +117,25 @@ async def get_purchase_invoice_settings(
         if isinstance(comp_map, dict) and target_cid in comp_map and isinstance(comp_map[target_cid], dict):
             p_settings.update(comp_map[target_cid])
 
-        try:
-            cid_uuid = uuid.UUID(target_cid)
-            ns = await db.scalar(
-                select(NumberSeries).where(
-                    NumberSeries.company_id == cid_uuid,
-                    NumberSeries.module_name.in_(["purchase_invoices", "purchase_invoice", "bills", "bill"])
-                )
+    try:
+        ns = await db.scalar(
+            select(NumberSeries)
+            .where(
+                NumberSeries.tenant_id == ctx.tenant_id,
+                func.lower(NumberSeries.module_name).in_(["purchase_invoices", "purchase_invoice", "bills", "bill"]),
             )
-            if ns:
-                if ns.prefix:
-                    p_settings["prefix"] = ns.prefix
-                if ns.next_number is not None:
-                    p_settings["sequenceNumber"] = ns.next_number
-                if ns.padding is not None:
-                    p_settings["padding"] = ns.padding
-        except Exception:
-            pass
+            .order_by(NumberSeries.updated_at.desc(), NumberSeries.created_at.desc())
+            .limit(1)
+        )
+        if ns:
+            if ns.prefix:
+                p_settings["prefix"] = ns.prefix
+            if ns.current_number is not None:
+                p_settings["sequenceNumber"] = int(ns.current_number) + 1
+            if ns.padding is not None:
+                p_settings["padding"] = ns.padding
+    except Exception:
+        pass
 
     merged = {**DEFAULT_PURCHASE_INVOICE_SETTINGS, **p_settings}
     return merged
@@ -149,6 +151,7 @@ async def update_purchase_invoice_settings(
     """Save purchase invoice settings strictly scoped per organization and company."""
     import copy
     from sqlalchemy.orm.attributes import flag_modified
+    from src.utils.number_series import resolve_valid_company_id
 
     if not ctx.tenant_id:
         raise HTTPException(status_code=400, detail="Active tenant required")
@@ -172,37 +175,35 @@ async def update_purchase_invoice_settings(
             existing_comp_cfg = {}
         p_settings["companies"][target_cid] = {**existing_comp_cfg, **updates}
 
-        try:
-            cid_uuid = uuid.UUID(target_cid)
-            comp = await db.scalar(select(Company).where(Company.id == cid_uuid, Company.tenant_id == ctx.tenant_id))
-            if comp:
-                if payload.prefix or payload.sequenceNumber is not None:
-                    ns_stmt = select(NumberSeries).where(
-                        NumberSeries.company_id == comp.id,
-                        NumberSeries.module_name.in_(["purchase_invoices", "purchase_invoice", "bills", "bill"])
-                    )
-                    ns_list = (await db.execute(ns_stmt)).scalars().all()
-                    if ns_list:
-                        for ns in ns_list:
-                            if payload.prefix:
-                                ns.prefix = payload.prefix
-                            if payload.sequenceNumber is not None:
-                                ns.next_number = payload.sequenceNumber
-                            if payload.padding is not None:
-                                ns.padding = payload.padding
-                    else:
-                        new_ns = NumberSeries(
-                            tenant_id=ctx.tenant_id,
-                            company_id=comp.id,
-                            module_name="purchase_invoices",
-                            prefix=payload.prefix or "BILL-",
-                            next_number=payload.sequenceNumber or 1,
-                            padding=payload.padding or 4,
-                            reset_frequency="never"
-                        )
-                        db.add(new_ns)
-        except Exception as ex:
-            logger.warning(f"Error syncing purchase invoice settings to company {target_cid}: {ex}")
+    try:
+        valid_cid = await resolve_valid_company_id(db, ctx.tenant_id, target_cid or None)
+        if payload.prefix or payload.sequenceNumber is not None or payload.padding is not None:
+            ns_stmt = select(NumberSeries).where(
+                NumberSeries.tenant_id == ctx.tenant_id,
+                func.lower(NumberSeries.module_name).in_(["purchase_invoices", "purchase_invoice", "bills", "bill"]),
+            )
+            ns_list = (await db.execute(ns_stmt)).scalars().all()
+            if ns_list:
+                for ns in ns_list:
+                    if payload.prefix:
+                        ns.prefix = payload.prefix
+                    if payload.sequenceNumber is not None:
+                        ns.current_number = max(0, int(payload.sequenceNumber) - 1)
+                    if payload.padding is not None:
+                        ns.padding = payload.padding
+            elif valid_cid:
+                new_ns = NumberSeries(
+                    tenant_id=ctx.tenant_id,
+                    company_id=valid_cid,
+                    module_name="purchase_invoices",
+                    prefix=payload.prefix or "PINV-",
+                    current_number=max(0, int(payload.sequenceNumber or 1) - 1),
+                    padding=payload.padding or 4,
+                    status="active",
+                )
+                db.add(new_ns)
+    except Exception as ex:
+        logger.warning(f"Error syncing purchase invoice settings to NumberSeries: {ex}")
 
     t_settings["purchase_invoice_settings"] = p_settings
     tenant.settings = t_settings
@@ -2576,6 +2577,13 @@ async def create_vendor_bill(
     )
     if existing_bill:
         b_num = f"{b_num}-{uuid.uuid4().hex[:4].upper()}"
+
+    try:
+        await sync_series_from_document_number(
+            db, ctx.tenant_id, "purchase_invoices", b_num, ctx.active_company_id
+        )
+    except Exception:
+        pass
 
     bill = VendorBill(
         tenant_id=ctx.tenant_id,

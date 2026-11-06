@@ -171,7 +171,7 @@ async def generate_number(
                 exists = await _number_exists(db, tenant_id, candidate, True, False)
                 if not exists:
                     return candidate
-            elif "invoice" in module.lower():
+            elif "invoice" in module.lower() and "purchase" not in module.lower():
                 exists = await _number_exists(db, tenant_id, candidate, False, True)
                 if not exists:
                     return candidate
@@ -192,13 +192,21 @@ async def generate_number(
             clean_prefix = "EST-"
         elif "prof" in module.lower():
             clean_prefix = "PI-"
+        elif "challan" in module.lower() or module.lower() == "dc":
+            clean_prefix = "DC-"
+        elif "purchase_invoice" in module.lower() or "bill" in module.lower():
+            clean_prefix = "PINV-"
+        elif "purchase_order" in module.lower() or module.lower() == "po":
+            clean_prefix = "PO-"
+        elif "purchase_request" in module.lower() or module.lower() == "pr":
+            clean_prefix = "PR-"
         elif "receipt" in module.lower() or "pos" in module.lower():
             clean_prefix = "REC-"
         else:
             clean_prefix = "INV-"
 
     is_receipt = "receipt" in module.lower() or "pos" in module.lower()
-    is_invoice = "invoice" in module.lower()
+    is_invoice = "invoice" in module.lower() and "purchase" not in module.lower()
 
     start_num = 1
     if is_receipt:
@@ -362,19 +370,28 @@ async def peek_next_number(
             clean_prefix = "EST-"
         elif "prof" in module.lower():
             clean_prefix = "PI-"
+        elif "challan" in module.lower() or module.lower() == "dc":
+            clean_prefix = "DC-"
+        elif "purchase_invoice" in module.lower() or "bill" in module.lower():
+            clean_prefix = "PINV-"
+        elif "purchase_order" in module.lower() or module.lower() == "po":
+            clean_prefix = "PO-"
+        elif "purchase_request" in module.lower() or module.lower() == "pr":
+            clean_prefix = "PR-"
         elif "receipt" in module.lower() or "pos" in module.lower():
             clean_prefix = "REC-"
         else:
             clean_prefix = "INV-"
 
+    default_pad = 5 if ("receipt" in module.lower() or "pos" in module.lower()) else 4
     return {
         "series_id": None,
         "module_name": module,
         "prefix": clean_prefix,
         "current_number": 0,
         "next_number": 1,
-        "padding": 5,
-        "formatted_number": f"{clean_prefix}{str(1).zfill(5)}",
+        "padding": default_pad,
+        "formatted_number": f"{clean_prefix}{str(1).zfill(default_pad)}",
         "configured": False,
     }
 

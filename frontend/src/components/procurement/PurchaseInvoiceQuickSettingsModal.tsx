@@ -129,20 +129,80 @@ export function getPurchaseInvoiceSettingsStorageKey(tenantId?: string, companyI
 
 export function loadStoredPurchaseInvoiceSettings(tenantId?: string, companyId?: string): PurchaseInvoiceSettings {
   try {
+    if (typeof window === "undefined") return DEFAULT_PURCHASE_INVOICE_SETTINGS;
     const tid = tenantId || getTenantIdFromStorage();
     const cid = companyId || getCompanyIdFromStorage();
-    const key = getPurchaseInvoiceSettingsStorageKey(tid, cid);
-    let raw = localStorage.getItem(key);
-    if (!raw && tid && cid) {
-      raw = localStorage.getItem(`pos_purchase_quick_settings_${tid}`);
+    const candidateKeys = Array.from(new Set([
+      getPurchaseInvoiceSettingsStorageKey(tid, cid),
+      tid && cid ? `pos_purchase_quick_settings_${tid}_${cid}` : "",
+      tid ? `pos_purchase_quick_settings_${tid}` : "",
+      cid ? `pos_purchase_quick_settings_${cid}` : "",
+      "pos_purchase_quick_settings",
+    ].filter(Boolean)));
+
+    const parsedList: any[] = [];
+    for (const k of candidateKeys) {
+      try {
+        const r = localStorage.getItem(k);
+        if (r) parsedList.push(JSON.parse(r));
+      } catch { /* ignore */ }
     }
-    if (!raw && !tid) {
-      raw = localStorage.getItem("pos_purchase_quick_settings");
+
+    // Also inspect InvoiceQuickSettings keys in case user configured Purchase Invoice (PINV-) in PrintTemplates
+    const invKeys = Array.from(new Set([
+      tid && cid ? `pos_invoice_quick_settings_${tid}_${cid}` : "",
+      tid ? `pos_invoice_quick_settings_${tid}` : "",
+      cid ? `pos_invoice_quick_settings_${cid}` : "",
+      "pos_invoice_quick_settings",
+    ].filter(Boolean)));
+    const invParsedList: any[] = [];
+    for (const ik of invKeys) {
+      try {
+        const r = localStorage.getItem(ik);
+        if (r) invParsedList.push(JSON.parse(r));
+      } catch { /* ignore */ }
     }
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return { ...DEFAULT_PURCHASE_INVOICE_SETTINGS, ...parsed };
+
+    const base: PurchaseInvoiceSettings = {
+      ...DEFAULT_PURCHASE_INVOICE_SETTINGS,
+      ...(parsedList[0] || {}),
+    };
+
+    // Coalesce non-default prefix / sequenceNumber / padding across purchase & invoice settings keys
+    if (!parsedList[0]?.prefix) {
+      const altPfx =
+        parsedList.map((p) => p?.prefix).find((v) => v && String(v).trim() !== "") ||
+        invParsedList.map((p) => p?.purchaseInvoicePrefix).find((v) => v && String(v).trim() !== "");
+      if (altPfx) base.prefix = String(altPfx);
+    } else if (base.prefix === DEFAULT_PURCHASE_INVOICE_SETTINGS.prefix) {
+      const customInvPfx = invParsedList.map((p) => p?.purchaseInvoicePrefix).find((v) => v && String(v).trim() !== "" && String(v).trim() !== "BILL-");
+      const customPurPfx = parsedList.map((p) => p?.prefix).find((v) => v && String(v).trim() !== "" && String(v).trim() !== "BILL-");
+      if (customPurPfx) base.prefix = String(customPurPfx);
+      else if (customInvPfx) base.prefix = String(customInvPfx);
     }
+
+    if (!base.sequenceNumber || Number(base.sequenceNumber) === 1) {
+      const customSeq =
+        parsedList.map((p) => Number(p?.sequenceNumber)).find((v) => v > 1) ||
+        invParsedList.map((p) => Number(p?.purchaseInvoiceSequenceNumber)).find((v) => v > 1);
+      if (customSeq && customSeq > 1) base.sequenceNumber = customSeq;
+    }
+
+    if (!base.padding || Number(base.padding) === 4) {
+      const customPad =
+        parsedList.map((p) => Number(p?.padding)).find((v) => v > 0 && v !== 4) ||
+        invParsedList.map((p) => Number(p?.purchaseInvoicePadding)).find((v) => v > 0 && v !== 4);
+      if (customPad) base.padding = customPad;
+    }
+
+    if (!base.poPrefix || base.poPrefix === "PO-") {
+      const customPoPfx =
+        parsedList.map((p) => p?.poPrefix).find((v) => v && String(v).trim() !== "" && String(v).trim() !== "PO-") ||
+        invParsedList.map((p) => p?.purchaseOrderPrefix).find((v) => v && String(v).trim() !== "" && String(v).trim() !== "PO-");
+      if (customPoPfx) base.poPrefix = String(customPoPfx);
+    }
+
+    return base;
   } catch (err) {
     console.warn("Failed to load purchase invoice settings:", err);
   }
@@ -154,13 +214,44 @@ export function saveStoredPurchaseInvoiceSettings(settings: PurchaseInvoiceSetti
     const tid = tenantId || getTenantIdFromStorage();
     const cid = companyId || getCompanyIdFromStorage();
     const key = getPurchaseInvoiceSettingsStorageKey(tid, cid);
-    localStorage.setItem(key, JSON.stringify(settings));
-    if (tid && key !== `pos_purchase_quick_settings_${tid}`) {
-      localStorage.setItem(`pos_purchase_quick_settings_${tid}`, JSON.stringify(settings));
+    const allPurchaseKeys = Array.from(new Set([
+      key,
+      tid && cid ? `pos_purchase_quick_settings_${tid}_${cid}` : "",
+      tid ? `pos_purchase_quick_settings_${tid}` : "",
+      cid ? `pos_purchase_quick_settings_${cid}` : "",
+      "pos_purchase_quick_settings",
+    ].filter(Boolean)));
+    const serialized = JSON.stringify(settings);
+    for (const pk of allPurchaseKeys) {
+      localStorage.setItem(pk, serialized);
     }
+
+    // Mirror prefix, sequenceNumber, padding, and poPrefix into pos_invoice_quick_settings_* so PrintTemplates stays in sync
+    const invKeys = Array.from(new Set([
+      tid && cid ? `pos_invoice_quick_settings_${tid}_${cid}` : "",
+      tid ? `pos_invoice_quick_settings_${tid}` : "",
+      cid ? `pos_invoice_quick_settings_${cid}` : "",
+      "pos_invoice_quick_settings",
+    ].filter(Boolean)));
+    for (const ik of invKeys) {
+      try {
+        const rawInv = localStorage.getItem(ik);
+        const parsedInv = rawInv ? JSON.parse(rawInv) : {};
+        const updatedInv = {
+          ...parsedInv,
+          ...(settings.prefix ? { purchaseInvoicePrefix: settings.prefix } : {}),
+          ...(settings.sequenceNumber !== undefined ? { purchaseInvoiceSequenceNumber: Math.max(1, Number(settings.sequenceNumber) || 1) } : {}),
+          ...(settings.padding !== undefined ? { purchaseInvoicePadding: Number(settings.padding) || 4 } : {}),
+          ...(settings.poPrefix ? { purchaseOrderPrefix: settings.poPrefix } : {}),
+        };
+        localStorage.setItem(ik, JSON.stringify(updatedInv));
+      } catch { /* ignore */ }
+    }
+
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("bos-purchase-settings-updated", { detail: { settings, key, tenantId: tid, companyId: cid } }));
       window.dispatchEvent(new CustomEvent("bos-purchase-invoice-settings-changed", { detail: settings }));
+      window.dispatchEvent(new CustomEvent("bos-invoice-settings-updated", { detail: { settings: { purchaseInvoicePrefix: settings.prefix, purchaseInvoiceSequenceNumber: settings.sequenceNumber, purchaseInvoicePadding: settings.padding }, key } }));
     }
   } catch (err) {
     console.warn("Failed to save purchase invoice settings:", err);
@@ -193,13 +284,25 @@ export function PurchaseInvoiceQuickSettingsModal({
       const local = loadStoredPurchaseInvoiceSettings(tid, cid);
       setSettings(local);
 
-      // Revalidate from backend API for this active organization
+      // Revalidate from backend API for this active organization, preserving local customized sequence/prefix
       procurementApi.getPurchaseInvoiceSettings(cid)
         .then((serverData) => {
           if (serverData && typeof serverData === "object") {
-            const merged = { ...DEFAULT_PURCHASE_INVOICE_SETTINGS, ...serverData };
+            const currentLocal = loadStoredPurchaseInvoiceSettings(tid, cid);
+            const serverIsDefault = (!serverData.prefix || serverData.prefix === "BILL-") && (!serverData.sequenceNumber || Number(serverData.sequenceNumber) === 1);
+            const localIsCustomized = (currentLocal.prefix && currentLocal.prefix !== "BILL-") || Number(currentLocal.sequenceNumber) > 1;
+            const merged: PurchaseInvoiceSettings = {
+              ...DEFAULT_PURCHASE_INVOICE_SETTINGS,
+              ...serverData,
+              ...(serverIsDefault && localIsCustomized
+                ? {
+                    prefix: currentLocal.prefix,
+                    sequenceNumber: currentLocal.sequenceNumber,
+                    padding: currentLocal.padding,
+                  }
+                : {}),
+            };
             setSettings(merged);
-            saveStoredPurchaseInvoiceSettings(merged, tid, cid);
           }
         })
         .catch((err) => {
