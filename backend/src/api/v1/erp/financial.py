@@ -2,10 +2,10 @@ import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import CurrentUserContext, require_permission
+from src.api.deps import CurrentUserContext, get_current_user_context, require_permission
 from src.database.init_db import write_audit_log
 from src.database.session import get_db
 from src.models import (
