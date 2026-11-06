@@ -33,6 +33,10 @@ class Supplier(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     type: Mapped[str] = mapped_column(String(100), default="Manufacturer") # Manufacturer, Distributor, Service Provider
     products_desc: Mapped[str | None] = mapped_column(Text)
     credit_limit: Mapped[float] = mapped_column(Numeric(15, 2), default=0.0)
+    # Opening/carry-forward balance owed to this supplier from a prior period
+    # (pre-existing payables). Added to outstanding vendor bills to get the
+    # supplier's total payable, so payments & AP reports include it.
+    opening_balance: Mapped[float] = mapped_column(Numeric(15, 2), default=0.0)
     rating: Mapped[float] = mapped_column(Numeric(3, 2), default=5.0)
     status: Mapped[str] = mapped_column(String(50), default="Active") # Active, Inactive
     company_name: Mapped[str | None] = mapped_column(String(150))
