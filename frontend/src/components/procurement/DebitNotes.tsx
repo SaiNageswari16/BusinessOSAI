@@ -27,7 +27,7 @@ import { useTenant } from "@/contexts/tenant-context";
 import { formatDisplayDate } from "@/lib/utils";
 import { printHtmlInPage } from "@/lib/print-helper";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
-import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "../pos/InvoiceQuickSettingsModal";
+import { loadStoredInvoiceSettings, saveStoredInvoiceSettings, syncAndHardResetSequencesFromServer } from "../pos/InvoiceQuickSettingsModal";
 import { renderNoteDocument, resolveNotePrintTemplate } from "@/lib/note-document-renderer";
 import { PaginationControl } from "@/components/ui/PaginationControl";
 
@@ -155,7 +155,8 @@ export function DebitNotes() {
     // Pre-fill with the configured NumberSeries next number (Settings → Credit/Debit Note
     // prefix + sequence) rather than a hard-coded DN-2026-xxxx. Falls back to a locally
     // detected sequence when the peek is unavailable.
-    const invSettings = loadStoredInvoiceSettings(tenant?.id);
+    const synced = await syncAndHardResetSequencesFromServer(tenant?.id).catch(() => null);
+    const invSettings = synced || loadStoredInvoiceSettings(tenant?.id);
     const dnPfx = invSettings.debitNotePrefix || "DN-";
     const dnSeq = Math.max(1, Number(invSettings.debitNoteSequenceNumber || 1));
     const dnPad = Number(invSettings.debitNotePadding ?? 4);

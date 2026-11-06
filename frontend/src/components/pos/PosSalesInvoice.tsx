@@ -83,7 +83,7 @@ import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { getTodayDateString, addDaysToDateString, isValidUUID, cn, formatDisplayDate, isWalkInParty, formatPartyAddress, isInvoiceLineFree } from "@/lib/utils";
 import { DatePickerInput } from "@/components/ui/date-picker-input";
 import { useStoreLocations } from "@/hooks/use-store-locations";
-import { InvoiceQuickSettingsModal, InvoiceSettings, loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
+import { InvoiceQuickSettingsModal, InvoiceSettings, loadStoredInvoiceSettings, saveStoredInvoiceSettings, syncAndHardResetSequencesFromServer } from "./InvoiceQuickSettingsModal";
 import { WordInvoiceStudioModal } from "./WordInvoiceStudioModal";
 import { computeGstBreakdown, checkIsInterstate, extractGstState } from "@/lib/gst-utils";
 import { lookupGstinDetails } from "@/lib/gst-helper";
@@ -674,6 +674,23 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       });
     }
   }, [initialDocType, editingInvoice, activeEditingInvoice, isRecreatingInvoice, fetchNextOrgDocNumber]);
+
+  // Sync organization-wide hard-reset sequences from backend on mount & window focus
+  useEffect(() => {
+    const runServerSequenceSync = () => {
+      syncAndHardResetSequencesFromServer(tenant?.id, currentCompanyId).then((synced) => {
+        if (synced) {
+          setInvoiceSettings(synced);
+          if (!activeEditingInvoice && !editingInvoice && !isRecreatingInvoice) {
+            setInvoiceNumber(getNextSequentialInvoiceNumber(invoiceType, synced));
+          }
+        }
+      }).catch(() => {});
+    };
+    runServerSequenceSync();
+    window.addEventListener("focus", runServerSequenceSync);
+    return () => window.removeEventListener("focus", runServerSequenceSync);
+  }, [tenant?.id, currentCompanyId, invoiceType, activeEditingInvoice, editingInvoice, isRecreatingInvoice, getNextSequentialInvoiceNumber]);
 
   // Listen for bos-invoice-settings-changed event
   useEffect(() => {

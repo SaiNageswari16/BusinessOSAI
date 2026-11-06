@@ -386,12 +386,249 @@ export function saveStoredInvoiceSettings(settings: InvoiceSettings, tenantId?: 
         window.dispatchEvent(new CustomEvent("bos-purchase-invoice-settings-changed", { detail: syncedPurchase }));
       }
     }
+    // Stamp local epoch and push hard-reset to backend so all other users/browsers/systems receive it
+    const localEpoch = Date.now() + 2000;
+    localStorage.setItem(`bos_sequence_reset_epoch_${tid || "default"}`, String(localEpoch));
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("bos-invoice-settings-updated", { detail: { settings, key: primaryKey } }));
+      window.dispatchEvent(new CustomEvent("bos-invoice-settings-updated", { detail: { settings, key: primaryKey, hardReset: true } }));
       window.dispatchEvent(new CustomEvent("bos-invoice-settings-changed", { detail: settings }));
+      pushHardResetSequencesToServer(settings, tid, cid).catch(() => {});
     }
   } catch (err) {
     console.warn("Failed to save invoice quick settings:", err);
+  }
+}
+
+let _isPushingHardReset = false;
+
+export async function pushHardResetSequencesToServer(
+  settings: Partial<InvoiceSettings>,
+  tenantId?: string,
+  companyId?: string
+): Promise<void> {
+  if (typeof window === "undefined" || _isPushingHardReset) return;
+  try {
+    _isPushingHardReset = true;
+    const tid = tenantId || getTenantIdFromStorage();
+    const cid = companyId || getCompanyIdFromStorage();
+    const items: Array<{ module_name: string; prefix?: string; next_number?: number; padding?: number }> = [];
+
+    if (settings.prefix || settings.sequenceNumber !== undefined || settings.padding !== undefined) {
+      items.push({
+        module_name: "invoices",
+        prefix: settings.prefix || "INV-",
+        next_number: Math.max(1, Number(settings.sequenceNumber) || 1),
+        padding: Number(settings.padding) || 4,
+      });
+    }
+    if (settings.quotationPrefix || settings.quotationSequenceNumber !== undefined || settings.quotationPadding !== undefined) {
+      items.push({
+        module_name: "quotations",
+        prefix: settings.quotationPrefix || "QT-",
+        next_number: Math.max(1, Number(settings.quotationSequenceNumber) || 1),
+        padding: Number(settings.quotationPadding) || 4,
+      });
+    }
+    if (settings.proformaPrefix || settings.proformaSequenceNumber !== undefined || settings.proformaPadding !== undefined) {
+      items.push({
+        module_name: "proforma_invoices",
+        prefix: settings.proformaPrefix || "PI-",
+        next_number: Math.max(1, Number(settings.proformaSequenceNumber) || 1),
+        padding: Number(settings.proformaPadding) || 4,
+      });
+    }
+    if (settings.challanPrefix || settings.challanSequenceNumber !== undefined || settings.challanPadding !== undefined) {
+      items.push({
+        module_name: "delivery_challans",
+        prefix: settings.challanPrefix || "DC-",
+        next_number: Math.max(1, Number(settings.challanSequenceNumber) || 1),
+        padding: Number(settings.challanPadding) || 4,
+      });
+    }
+    if (settings.estimatePrefix || settings.estimateSequenceNumber !== undefined || settings.estimatePadding !== undefined) {
+      items.push({
+        module_name: "estimates",
+        prefix: settings.estimatePrefix || "EST-",
+        next_number: Math.max(1, Number(settings.estimateSequenceNumber) || 1),
+        padding: Number(settings.estimatePadding) || 4,
+      });
+    }
+    if (settings.creditNotePrefix || settings.creditNoteSequenceNumber !== undefined || settings.creditNotePadding !== undefined) {
+      items.push({
+        module_name: "credit_notes",
+        prefix: settings.creditNotePrefix || "CN-",
+        next_number: Math.max(1, Number(settings.creditNoteSequenceNumber) || 1),
+        padding: Number(settings.creditNotePadding) || 4,
+      });
+    }
+    if (settings.debitNotePrefix || settings.debitNoteSequenceNumber !== undefined || settings.debitNotePadding !== undefined) {
+      items.push({
+        module_name: "debit_notes",
+        prefix: settings.debitNotePrefix || "DN-",
+        next_number: Math.max(1, Number(settings.debitNoteSequenceNumber) || 1),
+        padding: Number(settings.debitNotePadding) || 4,
+      });
+    }
+    if (settings.purchaseInvoicePrefix || settings.purchaseInvoiceSequenceNumber !== undefined || settings.purchaseInvoicePadding !== undefined) {
+      items.push({
+        module_name: "purchase_invoices",
+        prefix: settings.purchaseInvoicePrefix || "PINV-",
+        next_number: Math.max(1, Number(settings.purchaseInvoiceSequenceNumber) || 1),
+        padding: Number(settings.purchaseInvoicePadding) || 4,
+      });
+    }
+    if (settings.purchaseOrderPrefix || settings.purchaseOrderSequenceNumber !== undefined || settings.purchaseOrderPadding !== undefined) {
+      items.push({
+        module_name: "purchase_orders",
+        prefix: settings.purchaseOrderPrefix || "PO-",
+        next_number: Math.max(1, Number(settings.purchaseOrderSequenceNumber) || 1),
+        padding: Number(settings.purchaseOrderPadding) || 4,
+      });
+    }
+    if (settings.receiptPrefix || settings.receiptSequenceNumber !== undefined || settings.receiptPadding !== undefined) {
+      items.push({
+        module_name: "receipts",
+        prefix: settings.receiptPrefix || "REC-",
+        next_number: Math.max(1, Number(settings.receiptSequenceNumber) || 1),
+        padding: Number(settings.receiptPadding) || 5,
+      });
+    }
+
+    if (items.length > 0) {
+      const res = await numberSeriesApi.hardReset(items, cid || undefined);
+      if (res && res.sequence_reset_epoch) {
+        localStorage.setItem(`bos_sequence_reset_epoch_${tid || "default"}`, String(res.sequence_reset_epoch));
+      }
+    }
+  } catch {
+    // Ignore offline/network errors
+  } finally {
+    _isPushingHardReset = false;
+  }
+}
+
+export async function syncAndHardResetSequencesFromServer(
+  tenantId?: string,
+  companyId?: string
+): Promise<InvoiceSettings | null> {
+  if (typeof window === "undefined") return null;
+  try {
+    const tid = tenantId || getTenantIdFromStorage();
+    const cid = companyId || getCompanyIdFromStorage();
+    const res = await numberSeriesApi.getSyncState(cid || undefined);
+    if (!res || !res.series || Object.keys(res.series).length === 0) return null;
+
+    const epochKey = `bos_sequence_reset_epoch_${tid || "default"}`;
+    const localEpoch = Number(localStorage.getItem(epochKey) || 0);
+    const serverEpoch = Number(res.sequence_reset_epoch || 0);
+
+    // If local client just pushed a newer change within the last 2 seconds, keep local state
+    if (localEpoch > 0 && serverEpoch > 0 && localEpoch > serverEpoch) {
+      return loadStoredInvoiceSettings(tid, cid);
+    }
+
+    const sMap = res.series;
+    const current = loadStoredInvoiceSettings(tid, cid);
+    const updated: InvoiceSettings = { ...current };
+
+    if (sMap.invoices) {
+      if (sMap.invoices.prefix) updated.prefix = sMap.invoices.prefix;
+      if (sMap.invoices.next_number) updated.sequenceNumber = Math.max(1, Number(sMap.invoices.next_number));
+      if (sMap.invoices.padding) updated.padding = Number(sMap.invoices.padding);
+    }
+    if (sMap.quotations) {
+      if (sMap.quotations.prefix) updated.quotationPrefix = sMap.quotations.prefix;
+      if (sMap.quotations.next_number) updated.quotationSequenceNumber = Math.max(1, Number(sMap.quotations.next_number));
+      if (sMap.quotations.padding) updated.quotationPadding = Number(sMap.quotations.padding);
+    }
+    const prof = sMap.proforma || sMap.proforma_invoices;
+    if (prof) {
+      if (prof.prefix) updated.proformaPrefix = prof.prefix;
+      if (prof.next_number) updated.proformaSequenceNumber = Math.max(1, Number(prof.next_number));
+      if (prof.padding) updated.proformaPadding = Number(prof.padding);
+    }
+    const chal = sMap.delivery_challans || sMap.challans;
+    if (chal) {
+      if (chal.prefix) updated.challanPrefix = chal.prefix;
+      if (chal.next_number) updated.challanSequenceNumber = Math.max(1, Number(chal.next_number));
+      if (chal.padding) updated.challanPadding = Number(chal.padding);
+    }
+    if (sMap.estimates) {
+      if (sMap.estimates.prefix) updated.estimatePrefix = sMap.estimates.prefix;
+      if (sMap.estimates.next_number) updated.estimateSequenceNumber = Math.max(1, Number(sMap.estimates.next_number));
+      if (sMap.estimates.padding) updated.estimatePadding = Number(sMap.estimates.padding);
+    }
+    if (sMap.credit_notes) {
+      if (sMap.credit_notes.prefix) updated.creditNotePrefix = sMap.credit_notes.prefix;
+      if (sMap.credit_notes.next_number) updated.creditNoteSequenceNumber = Math.max(1, Number(sMap.credit_notes.next_number));
+      if (sMap.credit_notes.padding) updated.creditNotePadding = Number(sMap.credit_notes.padding);
+    }
+    if (sMap.debit_notes) {
+      if (sMap.debit_notes.prefix) updated.debitNotePrefix = sMap.debit_notes.prefix;
+      if (sMap.debit_notes.next_number) updated.debitNoteSequenceNumber = Math.max(1, Number(sMap.debit_notes.next_number));
+      if (sMap.debit_notes.padding) updated.debitNotePadding = Number(sMap.debit_notes.padding);
+    }
+    if (sMap.purchase_invoices) {
+      if (sMap.purchase_invoices.prefix) updated.purchaseInvoicePrefix = sMap.purchase_invoices.prefix;
+      if (sMap.purchase_invoices.next_number) updated.purchaseInvoiceSequenceNumber = Math.max(1, Number(sMap.purchase_invoices.next_number));
+      if (sMap.purchase_invoices.padding) updated.purchaseInvoicePadding = Number(sMap.purchase_invoices.padding);
+    }
+    if (sMap.purchase_orders) {
+      if (sMap.purchase_orders.prefix) updated.purchaseOrderPrefix = sMap.purchase_orders.prefix;
+      if (sMap.purchase_orders.next_number) updated.purchaseOrderSequenceNumber = Math.max(1, Number(sMap.purchase_orders.next_number));
+      if (sMap.purchase_orders.padding) updated.purchaseOrderPadding = Number(sMap.purchase_orders.padding);
+    }
+    if (sMap.receipts) {
+      if (sMap.receipts.prefix) updated.receiptPrefix = sMap.receipts.prefix;
+      if (sMap.receipts.next_number) updated.receiptSequenceNumber = Math.max(1, Number(sMap.receipts.next_number));
+      if (sMap.receipts.padding) updated.receiptPadding = Number(sMap.receipts.padding);
+    }
+
+    // Write directly to all localStorage keys without triggering a loop back to server
+    const allKeys = Array.from(new Set([
+      getInvoiceSettingsStorageKey(tid, cid),
+      tid && cid ? `pos_invoice_quick_settings_${tid}_${cid}` : "",
+      tid ? `pos_invoice_quick_settings_${tid}` : "",
+      cid ? `pos_invoice_quick_settings_${cid}` : "",
+      "pos_invoice_quick_settings",
+    ].filter(Boolean)));
+    const serialized = JSON.stringify(updated);
+    for (const k of allKeys) {
+      localStorage.setItem(k, serialized);
+    }
+
+    if (sMap.purchase_invoices || sMap.purchase_orders) {
+      const purchaseKeys = Array.from(new Set([
+        tid && cid ? `pos_purchase_quick_settings_${tid}_${cid}` : "",
+        tid ? `pos_purchase_quick_settings_${tid}` : "",
+        cid ? `pos_purchase_quick_settings_${cid}` : "",
+        "pos_purchase_quick_settings",
+      ].filter(Boolean)));
+      for (const pk of purchaseKeys) {
+        try {
+          const rawP = localStorage.getItem(pk);
+          const parsedP = rawP ? JSON.parse(rawP) : {};
+          const syncedP = {
+            ...parsedP,
+            ...(sMap.purchase_invoices?.prefix ? { prefix: sMap.purchase_invoices.prefix } : {}),
+            ...(sMap.purchase_invoices?.next_number ? { sequenceNumber: Math.max(1, Number(sMap.purchase_invoices.next_number)) } : {}),
+            ...(sMap.purchase_invoices?.padding ? { padding: Number(sMap.purchase_invoices.padding) } : {}),
+            ...(sMap.purchase_orders?.prefix ? { poPrefix: sMap.purchase_orders.prefix } : {}),
+          };
+          localStorage.setItem(pk, JSON.stringify(syncedP));
+        } catch { /* ignore */ }
+      }
+      window.dispatchEvent(new CustomEvent("bos-purchase-settings-updated", { detail: { hardReset: true } }));
+    }
+
+    if (serverEpoch > 0) {
+      localStorage.setItem(epochKey, String(serverEpoch));
+    }
+    window.dispatchEvent(new CustomEvent("bos-invoice-settings-updated", { detail: { settings: updated, hardReset: true } }));
+    window.dispatchEvent(new CustomEvent("bos-invoice-settings-changed", { detail: updated }));
+    return updated;
+  } catch {
+    return null;
   }
 }
 

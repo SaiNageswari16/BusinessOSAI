@@ -47,7 +47,7 @@ import { ProcurementShareModal } from "./ProcurementShareModal";
 import { AddVendorModal } from "./AddVendorModal";
 import { BatchSelectorModal } from "../inventory/BatchSelectorModal";
 import { PurchaseInvoiceQuickSettingsModal, loadStoredPurchaseInvoiceSettings, saveStoredPurchaseInvoiceSettings, PurchaseInvoiceSettings } from "./PurchaseInvoiceQuickSettingsModal";
-import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "../pos/InvoiceQuickSettingsModal";
+import { loadStoredInvoiceSettings, saveStoredInvoiceSettings, syncAndHardResetSequencesFromServer } from "../pos/InvoiceQuickSettingsModal";
 
 export type ProcurementDocType = "PR" | "PO" | "PINV";
 
@@ -224,6 +224,23 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
     const prSeq = 1;
     return `PR-${String(prSeq).padStart(4, "0")}`;
   };
+
+  useEffect(() => {
+    const syncHardReset = () => {
+      syncAndHardResetSequencesFromServer().then((synced) => {
+        if (synced) {
+          const freshP = loadStoredPurchaseInvoiceSettings();
+          setPurchaseSettings(freshP);
+          if (!initialData) {
+            setDocNumber(computeConfiguredDocNumber(docType, freshP));
+          }
+        }
+      }).catch(() => {});
+    };
+    syncHardReset();
+    window.addEventListener("focus", syncHardReset);
+    return () => window.removeEventListener("focus", syncHardReset);
+  }, [docType, initialData]);
 
   useEffect(() => {
     procurementApi.getPurchaseInvoiceSettings()

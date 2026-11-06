@@ -469,3 +469,159 @@ async def sync_series_from_document_number(
                 await db.flush()
         except Exception:
             pass
+
+
+async def hard_reset_module_series(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    module: str,
+    prefix: str | None = None,
+    current_number: int | None = None,
+    padding: int | None = None,
+    company_id: uuid.UUID | str | None = None,
+) -> int:
+    """Unconditionally hard-reset all NumberSeries rows for *module* across the tenant and bump sequence_reset_epoch."""
+    import copy
+    from sqlalchemy.orm.attributes import flag_modified
+    from src.models import Tenant
+
+    aliases = get_module_aliases(module)
+    canonical_mod = aliases[0]
+    valid_cid = await resolve_valid_company_id(db, tenant_id, company_id)
+
+    all_rows = (
+        await db.execute(
+            select(NumberSeries).where(
+                NumberSeries.tenant_id == tenant_id,
+                func.lower(NumberSeries.module_name).in_([a.lower() for a in aliases]),
+            )
+        )
+    ).scalars().all()
+
+    final_prefix = prefix
+    final_cur = current_number
+    final_pad = padding
+
+    if all_rows:
+        for row in all_rows:
+            if prefix is not None and str(prefix).strip() != "":
+                row.prefix = str(prefix).strip()
+            if current_number is not None:
+                row.current_number = max(0, int(current_number))
+            if padding is not None and int(padding) > 0:
+                row.padding = int(padding)
+            row.status = "active"
+            final_prefix = final_prefix or row.prefix
+            if final_cur is None:
+                final_cur = row.current_number
+            if final_pad is None:
+                final_pad = row.padding
+    elif valid_cid:
+        default_pfx = prefix or ("PINV-" if "purchase_invoice" in canonical_mod else "PO-" if "purchase_order" in canonical_mod else "INV-")
+        default_cur = max(0, int(current_number)) if current_number is not None else 0
+        default_pad = int(padding) if (padding is not None and int(padding) > 0) else (5 if "receipt" in canonical_mod else 4)
+        new_ns = NumberSeries(
+            tenant_id=tenant_id,
+            company_id=valid_cid,
+            module_name=canonical_mod,
+            prefix=default_pfx,
+            current_number=default_cur,
+            padding=default_pad,
+            status="active",
+        )
+        db.add(new_ns)
+        final_prefix = default_pfx
+        final_cur = default_cur
+        final_pad = default_pad
+
+    epoch = int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000)
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == tenant_id))
+    if tenant:
+        t_settings = copy.deepcopy(tenant.settings or {})
+        t_settings["sequence_reset_epoch"] = epoch
+        canon_map = copy.deepcopy(t_settings.get("canonical_sequences") or {})
+        prev_entry = canon_map.get(canonical_mod) or {}
+        canon_map[canonical_mod] = {
+            "prefix": final_prefix if final_prefix is not None else prev_entry.get("prefix", "INV-"),
+            "next_number": (int(final_cur) + 1) if final_cur is not None else prev_entry.get("next_number", 1),
+            "padding": int(final_pad) if final_pad is not None else prev_entry.get("padding", 4),
+            "reset_epoch": epoch,
+        }
+        t_settings["canonical_sequences"] = canon_map
+
+        # If purchase_invoices was reset, also keep purchase_invoice_settings in Tenant.settings unified
+        if canonical_mod == "purchase_invoices":
+            p_settings = copy.deepcopy(t_settings.get("purchase_invoice_settings") or {})
+            if final_prefix:
+                p_settings["prefix"] = final_prefix
+            if final_cur is not None:
+                p_settings["sequenceNumber"] = int(final_cur) + 1
+            if final_pad is not None:
+                p_settings["padding"] = int(final_pad)
+            if isinstance(p_settings.get("companies"), dict):
+                for cid_key, comp_cfg in p_settings["companies"].items():
+                    if isinstance(comp_cfg, dict):
+                        if final_prefix:
+                            comp_cfg["prefix"] = final_prefix
+                        if final_cur is not None:
+                            comp_cfg["sequenceNumber"] = int(final_cur) + 1
+                        if final_pad is not None:
+                            comp_cfg["padding"] = int(final_pad)
+            t_settings["purchase_invoice_settings"] = p_settings
+
+        tenant.settings = t_settings
+        flag_modified(tenant, "settings")
+
+    await db.flush()
+    return epoch
+
+
+async def get_tenant_canonical_sequences(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    company_id: uuid.UUID | str | None = None,
+) -> dict:
+    """Return the organization-wide authoritative sequence state and reset epoch for all modules."""
+    from src.models import Tenant
+
+    tenant = await db.scalar(select(Tenant).where(Tenant.id == tenant_id))
+    t_settings = (tenant.settings or {}) if tenant else {}
+    epoch = int(t_settings.get("sequence_reset_epoch") or 0)
+    canon_map = t_settings.get("canonical_sequences") or {}
+
+    rows = (
+        await db.execute(
+            select(NumberSeries)
+            .where(
+                NumberSeries.tenant_id == tenant_id,
+                NumberSeries.status == "active",
+            )
+            .order_by(NumberSeries.updated_at.asc(), NumberSeries.created_at.asc())
+        )
+    ).scalars().all()
+
+    series_out: dict[str, dict] = {}
+    for r in rows:
+        aliases = get_module_aliases(r.module_name or "")
+        c_mod = aliases[0]
+        series_out[c_mod] = {
+            "prefix": r.prefix,
+            "next_number": int(r.current_number or 0) + 1,
+            "padding": int(r.padding or 4),
+        }
+
+    # Overlay explicit canonical_sequences entries saved via hard_reset_module_series
+    if isinstance(canon_map, dict):
+        for c_mod, cfg in canon_map.items():
+            if isinstance(cfg, dict):
+                series_out[c_mod] = {
+                    "prefix": cfg.get("prefix") or series_out.get(c_mod, {}).get("prefix") or "INV-",
+                    "next_number": int(cfg.get("next_number") or series_out.get(c_mod, {}).get("next_number") or 1),
+                    "padding": int(cfg.get("padding") or series_out.get(c_mod, {}).get("padding") or 4),
+                }
+
+    return {
+        "sequence_reset_epoch": epoch,
+        "series": series_out,
+    }
+

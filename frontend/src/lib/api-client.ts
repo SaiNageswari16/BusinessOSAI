@@ -1458,6 +1458,19 @@ export const numberSeriesApi = {
     request<NumberSeries>("POST", "/erp/number-series", data),
   update: (id: string, data: Record<string, unknown>) =>
     request<NumberSeries>("PATCH", `/erp/number-series/${id}`, data),
+  getSyncState: (companyId?: string) =>
+    request<{
+      sequence_reset_epoch: number;
+      series: Record<string, { prefix: string; next_number: number; padding: number }>;
+    }>("GET", "/erp/number-series/sync-state", undefined, companyId ? { company_id: companyId } : undefined),
+  hardReset: (
+    items: Array<{ module_name: string; prefix?: string; next_number?: number; current_number?: number; padding?: number }>,
+    companyId?: string
+  ) =>
+    request<{
+      sequence_reset_epoch: number;
+      series: Record<string, { prefix: string; next_number: number; padding: number }>;
+    }>("POST", "/erp/number-series/hard-reset", { items, company_id: companyId }),
   delete: (id: string) => request<void>("DELETE", `/erp/number-series/${id}`),
 };
 

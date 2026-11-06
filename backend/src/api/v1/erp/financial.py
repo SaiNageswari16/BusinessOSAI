@@ -734,6 +734,59 @@ async def create_number_series(
         user_agent=request.headers.get("user-agent"),
     )
     return ns
+@router.get("/number-series/sync-state")
+async def get_number_series_sync_state(
+    company_id: uuid.UUID | None = None,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)] = None,
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+):
+    """Return authoritative organization-wide document prefixes, next sequence numbers, and hard-reset epoch."""
+    from src.utils.number_series import get_tenant_canonical_sequences
+    if not ctx or not ctx.tenant_id:
+        return {"sequence_reset_epoch": 0, "series": {}}
+    active_cid = company_id or ctx.active_company_id
+    return await get_tenant_canonical_sequences(db, ctx.tenant_id, active_cid)
+
+
+@router.post("/number-series/hard-reset")
+async def hard_reset_number_series_batch(
+    payload: dict,
+    ctx: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Hard-reset one or more document number series across the entire organization/tenant for all users."""
+    from src.utils.number_series import hard_reset_module_series, get_tenant_canonical_sequences
+    if not ctx or not ctx.tenant_id:
+        raise HTTPException(status_code=400, detail="Active tenant required")
+
+    items = payload.get("items") or []
+    raw_cid = payload.get("company_id") or ctx.active_company_id
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        mod = str(item.get("module_name") or "").strip()
+        if not mod:
+            continue
+        pfx = item.get("prefix")
+        next_num = item.get("next_number")
+        cur_num = item.get("current_number")
+        if cur_num is None and next_num is not None:
+            cur_num = max(0, int(next_num) - 1)
+        pad = item.get("padding")
+        await hard_reset_module_series(
+            db,
+            ctx.tenant_id,
+            mod,
+            prefix=str(pfx).strip() if pfx is not None else None,
+            current_number=int(cur_num) if cur_num is not None else None,
+            padding=int(pad) if pad is not None else None,
+            company_id=raw_cid,
+        )
+
+    await db.commit()
+    return await get_tenant_canonical_sequences(db, ctx.tenant_id, raw_cid)
+
+
 @router.get("/number-series/next-number")
 async def get_next_number_preview(
     module: str = Query(..., description="Module name e.g. invoices, quotations, credit_notes"),
@@ -789,6 +842,16 @@ async def update_number_series(
         for key, value in updates.items():
             if key in ("prefix", "current_number", "padding", "status") and value is not None:
                 setattr(sib, key, value)
+    from src.utils.number_series import hard_reset_module_series
+    await hard_reset_module_series(
+        db,
+        ctx.tenant_id,
+        ns.module_name,
+        prefix=ns.prefix,
+        current_number=ns.current_number,
+        padding=ns.padding,
+        company_id=ns.company_id or ctx.active_company_id,
+    )
     await db.flush()
 
     await write_audit_log(

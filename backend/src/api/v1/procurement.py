@@ -176,32 +176,17 @@ async def update_purchase_invoice_settings(
         p_settings["companies"][target_cid] = {**existing_comp_cfg, **updates}
 
     try:
-        valid_cid = await resolve_valid_company_id(db, ctx.tenant_id, target_cid or None)
+        from src.utils.number_series import hard_reset_module_series
         if payload.prefix or payload.sequenceNumber is not None or payload.padding is not None:
-            ns_stmt = select(NumberSeries).where(
-                NumberSeries.tenant_id == ctx.tenant_id,
-                func.lower(NumberSeries.module_name).in_(["purchase_invoices", "purchase_invoice", "bills", "bill"]),
+            await hard_reset_module_series(
+                db,
+                ctx.tenant_id,
+                "purchase_invoices",
+                prefix=payload.prefix,
+                current_number=max(0, int(payload.sequenceNumber) - 1) if payload.sequenceNumber is not None else None,
+                padding=payload.padding,
+                company_id=target_cid or None,
             )
-            ns_list = (await db.execute(ns_stmt)).scalars().all()
-            if ns_list:
-                for ns in ns_list:
-                    if payload.prefix:
-                        ns.prefix = payload.prefix
-                    if payload.sequenceNumber is not None:
-                        ns.current_number = max(0, int(payload.sequenceNumber) - 1)
-                    if payload.padding is not None:
-                        ns.padding = payload.padding
-            elif valid_cid:
-                new_ns = NumberSeries(
-                    tenant_id=ctx.tenant_id,
-                    company_id=valid_cid,
-                    module_name="purchase_invoices",
-                    prefix=payload.prefix or "PINV-",
-                    current_number=max(0, int(payload.sequenceNumber or 1) - 1),
-                    padding=payload.padding or 4,
-                    status="active",
-                )
-                db.add(new_ns)
     except Exception as ex:
         logger.warning(f"Error syncing purchase invoice settings to NumberSeries: {ex}")
 

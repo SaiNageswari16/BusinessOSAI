@@ -31,7 +31,7 @@ import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
 import { getTenantIdFromStorage, getCompanyIdFromStorage } from "@/lib/receipt-template-store";
-import { procurementApi } from "@/lib/api-client";
+import { procurementApi, numberSeriesApi } from "@/lib/api-client";
 import { WordInvoiceStudioModal } from "../pos/WordInvoiceStudioModal";
 
 export interface ItemCustomColumn {
@@ -248,10 +248,28 @@ export function saveStoredPurchaseInvoiceSettings(settings: PurchaseInvoiceSetti
       } catch { /* ignore */ }
     }
 
+    const localEpoch = Date.now() + 2000;
+    localStorage.setItem(`bos_sequence_reset_epoch_${tid || "default"}`, String(localEpoch));
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("bos-purchase-settings-updated", { detail: { settings, key, tenantId: tid, companyId: cid } }));
+      window.dispatchEvent(new CustomEvent("bos-purchase-settings-updated", { detail: { settings, key, tenantId: tid, companyId: cid, hardReset: true } }));
       window.dispatchEvent(new CustomEvent("bos-purchase-invoice-settings-changed", { detail: settings }));
-      window.dispatchEvent(new CustomEvent("bos-invoice-settings-updated", { detail: { settings: { purchaseInvoicePrefix: settings.prefix, purchaseInvoiceSequenceNumber: settings.sequenceNumber, purchaseInvoicePadding: settings.padding }, key } }));
+      window.dispatchEvent(new CustomEvent("bos-invoice-settings-updated", { detail: { settings: { purchaseInvoicePrefix: settings.prefix, purchaseInvoiceSequenceNumber: settings.sequenceNumber, purchaseInvoicePadding: settings.padding }, key, hardReset: true } }));
+      numberSeriesApi.hardReset(
+        [
+          {
+            module_name: "purchase_invoices",
+            prefix: settings.prefix || "BILL-",
+            next_number: Math.max(1, Number(settings.sequenceNumber) || 1),
+            padding: Number(settings.padding) || 4,
+          },
+          ...(settings.poPrefix ? [{ module_name: "purchase_orders", prefix: settings.poPrefix }] : []),
+        ],
+        cid || undefined
+      ).then((res) => {
+        if (res && res.sequence_reset_epoch) {
+          localStorage.setItem(`bos_sequence_reset_epoch_${tid || "default"}`, String(res.sequence_reset_epoch));
+        }
+      }).catch(() => {});
     }
   } catch (err) {
     console.warn("Failed to save purchase invoice settings:", err);
