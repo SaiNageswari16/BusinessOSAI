@@ -71,28 +71,30 @@ export function ProcurementShareModal({
   // Prefer the bill's own captured line values (item_overrides) when present — they
   // are the EXACT numbers the user entered on this bill. Fall back to the PO lines
   // only when a bill was created without persisted overrides.
-  const billItems = documentData?.items || [];
-  const overrideItems: any[] = (documentData?.item_overrides && documentData.item_overrides.length > 0)
-    ? documentData.item_overrides.map((ov: any) => ({
-        product_id: ov.product_id,
-        product_name: ov.product_name,
-        quantity: ov.quantity,
-        unit_price: ov.unit_price,
-        tax_percent: ov.tax_percent,
-        hsn_code: ov.hsn_code,
-        sku: ov.sku,
-        uom: ov.uom,
-        batch_number: ov.batch_number,
-        expiry_date: ov.expiry_date,
-        discount_value: ov.discount_value,
-        discount_type: ov.discount_type,
-        is_free: ov.is_free,
-        mrp: ov.mrp,
-        selling_price: ov.selling_price,
-        is_tax_inclusive: ov.is_tax_inclusive,
-      }))
-    : [];
-  const items = overrideItems.length > 0 ? overrideItems : billItems;
+  const items: any[] = React.useMemo(() => {
+    const billItems = documentData?.items || [];
+    const overrideItems: any[] = (documentData?.item_overrides && documentData.item_overrides.length > 0)
+      ? documentData.item_overrides.map((ov: any) => ({
+          product_id: ov.product_id,
+          product_name: ov.product_name,
+          quantity: ov.quantity,
+          unit_price: ov.unit_price,
+          tax_percent: ov.tax_percent,
+          hsn_code: ov.hsn_code,
+          sku: ov.sku,
+          uom: ov.uom,
+          batch_number: ov.batch_number,
+          expiry_date: ov.expiry_date,
+          discount_value: ov.discount_value,
+          discount_type: ov.discount_type,
+          is_free: ov.is_free,
+          mrp: ov.mrp,
+          selling_price: ov.selling_price,
+          is_tax_inclusive: ov.is_tax_inclusive,
+        }))
+      : [];
+    return overrideItems.length > 0 ? overrideItems : billItems;
+  }, [documentData]);
 
   // Sync phone and email when documentData changes
   useEffect(() => {
@@ -102,11 +104,16 @@ export function ProcurementShareModal({
     }
   }, [documentData, supplierPhone, supplierEmail]);
 
-  // Fetch product HSN mapping if missing from any invoice items
+  const hsnFetchedDocKeyRef = React.useRef<string | null>(null);
+
+  // Fetch product HSN mapping at most once per opened document if missing from any invoice items
   useEffect(() => {
-    if (!documentData || !items || items.length === 0) return;
+    if (!isOpen || !documentData || !items || items.length === 0) return;
+    const docKey = String(documentData?.id || docNumber || 'unknown');
+    if (hsnFetchedDocKeyRef.current === docKey) return;
     const missingHsn = items.some((it: any) => !(it.hsn_code || it.hsn || it.hsn_sac || it.product?.hsn_code));
     if (missingHsn) {
+      hsnFetchedDocKeyRef.current = docKey;
       inventoryApi.getProducts({ page_size: 1000 })
         .then((res: any) => {
           const prods = Array.isArray(res) ? res : (res?.items || []);
@@ -124,7 +131,7 @@ export function ProcurementShareModal({
           console.warn('Failed to load inventory products for HSN resolution:', err);
         });
     }
-  }, [documentData, items]);
+  }, [isOpen, documentData, docNumber, items]);
 
   // Build a merged map of per-line values captured at billing time (item_overrides),
   // keyed by BOTH product_id and product_name (lowercased). These are the exact
@@ -645,12 +652,14 @@ export function ProcurementShareModal({
       </div>
 
       {/* PDF Modal with Template Selection */}
-      <FullInvoicePrinter
-        invoice={fullInvoiceData}
-        isOpen={isPdfPrinterOpen}
-        onClose={() => setIsPdfPrinterOpen(false)}
-        autoPrint={false}
-      />
+      {isPdfPrinterOpen && (
+        <FullInvoicePrinter
+          invoice={fullInvoiceData}
+          isOpen={isPdfPrinterOpen}
+          onClose={() => setIsPdfPrinterOpen(false)}
+          autoPrint={false}
+        />
+      )}
     </>
   );
 }

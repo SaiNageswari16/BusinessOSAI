@@ -507,129 +507,161 @@ export async function pushHardResetSequencesToServer(
   }
 }
 
+let _lastSyncTimestamp = 0;
+let _inFlightSyncPromise: Promise<InvoiceSettings | null> | null = null;
+
 export async function syncAndHardResetSequencesFromServer(
   tenantId?: string,
   companyId?: string
 ): Promise<InvoiceSettings | null> {
   if (typeof window === "undefined") return null;
-  try {
-    const tid = tenantId || getTenantIdFromStorage();
-    const cid = companyId || getCompanyIdFromStorage();
-    const res = await numberSeriesApi.getSyncState(cid || undefined);
-    if (!res || !res.series || Object.keys(res.series).length === 0) return null;
+  const now = Date.now();
+  if (_inFlightSyncPromise) return _inFlightSyncPromise;
+  if (now - _lastSyncTimestamp < 2500) return null;
+  _lastSyncTimestamp = now;
 
-    const epochKey = `bos_sequence_reset_epoch_${tid || "default"}`;
-    const localEpoch = Number(localStorage.getItem(epochKey) || 0);
-    const serverEpoch = Number(res.sequence_reset_epoch || 0);
+  _inFlightSyncPromise = (async () => {
+    try {
+      const tid = tenantId || getTenantIdFromStorage();
+      const cid = companyId || getCompanyIdFromStorage();
+      const res = await numberSeriesApi.getSyncState(cid || undefined);
+      if (!res || !res.series || Object.keys(res.series).length === 0) return null;
 
-    // If local client just pushed a newer change within the last 2 seconds, keep local state
-    if (localEpoch > 0 && serverEpoch > 0 && localEpoch > serverEpoch) {
-      return loadStoredInvoiceSettings(tid, cid);
-    }
+      const epochKey = `bos_sequence_reset_epoch_${tid || "default"}`;
+      const localEpoch = Number(localStorage.getItem(epochKey) || 0);
+      const serverEpoch = Number(res.sequence_reset_epoch || 0);
 
-    const sMap = res.series;
-    const current = loadStoredInvoiceSettings(tid, cid);
-    const updated: InvoiceSettings = { ...current };
-
-    if (sMap.invoices) {
-      if (sMap.invoices.prefix) updated.prefix = sMap.invoices.prefix;
-      if (sMap.invoices.next_number) updated.sequenceNumber = Math.max(1, Number(sMap.invoices.next_number));
-      if (sMap.invoices.padding) updated.padding = Number(sMap.invoices.padding);
-    }
-    if (sMap.quotations) {
-      if (sMap.quotations.prefix) updated.quotationPrefix = sMap.quotations.prefix;
-      if (sMap.quotations.next_number) updated.quotationSequenceNumber = Math.max(1, Number(sMap.quotations.next_number));
-      if (sMap.quotations.padding) updated.quotationPadding = Number(sMap.quotations.padding);
-    }
-    const prof = sMap.proforma || sMap.proforma_invoices;
-    if (prof) {
-      if (prof.prefix) updated.proformaPrefix = prof.prefix;
-      if (prof.next_number) updated.proformaSequenceNumber = Math.max(1, Number(prof.next_number));
-      if (prof.padding) updated.proformaPadding = Number(prof.padding);
-    }
-    const chal = sMap.delivery_challans || sMap.challans;
-    if (chal) {
-      if (chal.prefix) updated.challanPrefix = chal.prefix;
-      if (chal.next_number) updated.challanSequenceNumber = Math.max(1, Number(chal.next_number));
-      if (chal.padding) updated.challanPadding = Number(chal.padding);
-    }
-    if (sMap.estimates) {
-      if (sMap.estimates.prefix) updated.estimatePrefix = sMap.estimates.prefix;
-      if (sMap.estimates.next_number) updated.estimateSequenceNumber = Math.max(1, Number(sMap.estimates.next_number));
-      if (sMap.estimates.padding) updated.estimatePadding = Number(sMap.estimates.padding);
-    }
-    if (sMap.credit_notes) {
-      if (sMap.credit_notes.prefix) updated.creditNotePrefix = sMap.credit_notes.prefix;
-      if (sMap.credit_notes.next_number) updated.creditNoteSequenceNumber = Math.max(1, Number(sMap.credit_notes.next_number));
-      if (sMap.credit_notes.padding) updated.creditNotePadding = Number(sMap.credit_notes.padding);
-    }
-    if (sMap.debit_notes) {
-      if (sMap.debit_notes.prefix) updated.debitNotePrefix = sMap.debit_notes.prefix;
-      if (sMap.debit_notes.next_number) updated.debitNoteSequenceNumber = Math.max(1, Number(sMap.debit_notes.next_number));
-      if (sMap.debit_notes.padding) updated.debitNotePadding = Number(sMap.debit_notes.padding);
-    }
-    if (sMap.purchase_invoices) {
-      if (sMap.purchase_invoices.prefix) updated.purchaseInvoicePrefix = sMap.purchase_invoices.prefix;
-      if (sMap.purchase_invoices.next_number) updated.purchaseInvoiceSequenceNumber = Math.max(1, Number(sMap.purchase_invoices.next_number));
-      if (sMap.purchase_invoices.padding) updated.purchaseInvoicePadding = Number(sMap.purchase_invoices.padding);
-    }
-    if (sMap.purchase_orders) {
-      if (sMap.purchase_orders.prefix) updated.purchaseOrderPrefix = sMap.purchase_orders.prefix;
-      if (sMap.purchase_orders.next_number) updated.purchaseOrderSequenceNumber = Math.max(1, Number(sMap.purchase_orders.next_number));
-      if (sMap.purchase_orders.padding) updated.purchaseOrderPadding = Number(sMap.purchase_orders.padding);
-    }
-    if (sMap.receipts) {
-      if (sMap.receipts.prefix) updated.receiptPrefix = sMap.receipts.prefix;
-      if (sMap.receipts.next_number) updated.receiptSequenceNumber = Math.max(1, Number(sMap.receipts.next_number));
-      if (sMap.receipts.padding) updated.receiptPadding = Number(sMap.receipts.padding);
-    }
-
-    // Write directly to all localStorage keys without triggering a loop back to server
-    const allKeys = Array.from(new Set([
-      getInvoiceSettingsStorageKey(tid, cid),
-      tid && cid ? `pos_invoice_quick_settings_${tid}_${cid}` : "",
-      tid ? `pos_invoice_quick_settings_${tid}` : "",
-      cid ? `pos_invoice_quick_settings_${cid}` : "",
-      "pos_invoice_quick_settings",
-    ].filter(Boolean)));
-    const serialized = JSON.stringify(updated);
-    for (const k of allKeys) {
-      localStorage.setItem(k, serialized);
-    }
-
-    if (sMap.purchase_invoices || sMap.purchase_orders) {
-      const purchaseKeys = Array.from(new Set([
-        tid && cid ? `pos_purchase_quick_settings_${tid}_${cid}` : "",
-        tid ? `pos_purchase_quick_settings_${tid}` : "",
-        cid ? `pos_purchase_quick_settings_${cid}` : "",
-        "pos_purchase_quick_settings",
-      ].filter(Boolean)));
-      for (const pk of purchaseKeys) {
-        try {
-          const rawP = localStorage.getItem(pk);
-          const parsedP = rawP ? JSON.parse(rawP) : {};
-          const syncedP = {
-            ...parsedP,
-            ...(sMap.purchase_invoices?.prefix ? { prefix: sMap.purchase_invoices.prefix } : {}),
-            ...(sMap.purchase_invoices?.next_number ? { sequenceNumber: Math.max(1, Number(sMap.purchase_invoices.next_number)) } : {}),
-            ...(sMap.purchase_invoices?.padding ? { padding: Number(sMap.purchase_invoices.padding) } : {}),
-            ...(sMap.purchase_orders?.prefix ? { poPrefix: sMap.purchase_orders.prefix } : {}),
-          };
-          localStorage.setItem(pk, JSON.stringify(syncedP));
-        } catch { /* ignore */ }
+      // If local client just pushed a newer change within the last 2 seconds, keep local state
+      if (localEpoch > 0 && serverEpoch > 0 && localEpoch > serverEpoch) {
+        return null;
       }
-      window.dispatchEvent(new CustomEvent("bos-purchase-settings-updated", { detail: { hardReset: true } }));
-    }
 
-    if (serverEpoch > 0) {
-      localStorage.setItem(epochKey, String(serverEpoch));
+      const sMap = res.series;
+      const current = loadStoredInvoiceSettings(tid, cid);
+      const updated: InvoiceSettings = { ...current };
+
+      if (sMap.invoices) {
+        if (sMap.invoices.prefix) updated.prefix = sMap.invoices.prefix;
+        if (sMap.invoices.next_number) updated.sequenceNumber = Math.max(1, Number(sMap.invoices.next_number));
+        if (sMap.invoices.padding) updated.padding = Number(sMap.invoices.padding);
+      }
+      if (sMap.quotations) {
+        if (sMap.quotations.prefix) updated.quotationPrefix = sMap.quotations.prefix;
+        if (sMap.quotations.next_number) updated.quotationSequenceNumber = Math.max(1, Number(sMap.quotations.next_number));
+        if (sMap.quotations.padding) updated.quotationPadding = Number(sMap.quotations.padding);
+      }
+      const prof = sMap.proforma || sMap.proforma_invoices;
+      if (prof) {
+        if (prof.prefix) updated.proformaPrefix = prof.prefix;
+        if (prof.next_number) updated.proformaSequenceNumber = Math.max(1, Number(prof.next_number));
+        if (prof.padding) updated.proformaPadding = Number(prof.padding);
+      }
+      const chal = sMap.delivery_challans || sMap.challans;
+      if (chal) {
+        if (chal.prefix) updated.challanPrefix = chal.prefix;
+        if (chal.next_number) updated.challanSequenceNumber = Math.max(1, Number(chal.next_number));
+        if (chal.padding) updated.challanPadding = Number(chal.padding);
+      }
+      if (sMap.estimates) {
+        if (sMap.estimates.prefix) updated.estimatePrefix = sMap.estimates.prefix;
+        if (sMap.estimates.next_number) updated.estimateSequenceNumber = Math.max(1, Number(sMap.estimates.next_number));
+        if (sMap.estimates.padding) updated.estimatePadding = Number(sMap.estimates.padding);
+      }
+      if (sMap.credit_notes) {
+        if (sMap.credit_notes.prefix) updated.creditNotePrefix = sMap.credit_notes.prefix;
+        if (sMap.credit_notes.next_number) updated.creditNoteSequenceNumber = Math.max(1, Number(sMap.credit_notes.next_number));
+        if (sMap.credit_notes.padding) updated.creditNotePadding = Number(sMap.credit_notes.padding);
+      }
+      if (sMap.debit_notes) {
+        if (sMap.debit_notes.prefix) updated.debitNotePrefix = sMap.debit_notes.prefix;
+        if (sMap.debit_notes.next_number) updated.debitNoteSequenceNumber = Math.max(1, Number(sMap.debit_notes.next_number));
+        if (sMap.debit_notes.padding) updated.debitNotePadding = Number(sMap.debit_notes.padding);
+      }
+      if (sMap.purchase_invoices) {
+        if (sMap.purchase_invoices.prefix) updated.purchaseInvoicePrefix = sMap.purchase_invoices.prefix;
+        if (sMap.purchase_invoices.next_number) updated.purchaseInvoiceSequenceNumber = Math.max(1, Number(sMap.purchase_invoices.next_number));
+        if (sMap.purchase_invoices.padding) updated.purchaseInvoicePadding = Number(sMap.purchase_invoices.padding);
+      }
+      if (sMap.purchase_orders) {
+        if (sMap.purchase_orders.prefix) updated.purchaseOrderPrefix = sMap.purchase_orders.prefix;
+        if (sMap.purchase_orders.next_number) updated.purchaseOrderSequenceNumber = Math.max(1, Number(sMap.purchase_orders.next_number));
+        if (sMap.purchase_orders.padding) updated.purchaseOrderPadding = Number(sMap.purchase_orders.padding);
+      }
+      if (sMap.receipts) {
+        if (sMap.receipts.prefix) updated.receiptPrefix = sMap.receipts.prefix;
+        if (sMap.receipts.next_number) updated.receiptSequenceNumber = Math.max(1, Number(sMap.receipts.next_number));
+        if (sMap.receipts.padding) updated.receiptPadding = Number(sMap.receipts.padding);
+      }
+
+      const numberingKeys: Array<keyof InvoiceSettings> = [
+        "prefix", "sequenceNumber", "padding",
+        "quotationPrefix", "quotationSequenceNumber", "quotationPadding",
+        "proformaPrefix", "proformaSequenceNumber", "proformaPadding",
+        "challanPrefix", "challanSequenceNumber", "challanPadding",
+        "estimatePrefix", "estimateSequenceNumber", "estimatePadding",
+        "creditNotePrefix", "creditNoteSequenceNumber", "creditNotePadding",
+        "debitNotePrefix", "debitNoteSequenceNumber", "debitNotePadding",
+        "purchaseInvoicePrefix", "purchaseInvoiceSequenceNumber", "purchaseInvoicePadding",
+        "purchaseOrderPrefix", "purchaseOrderSequenceNumber", "purchaseOrderPadding",
+        "receiptPrefix", "receiptSequenceNumber", "receiptPadding",
+      ];
+
+      const hasChanged = numberingKeys.some((k) => current[k] !== updated[k]) || (serverEpoch > 0 && serverEpoch !== localEpoch);
+      if (!hasChanged) {
+        return null;
+      }
+
+      // Write directly to all localStorage keys without triggering a loop back to server
+      const allKeys = Array.from(new Set([
+        getInvoiceSettingsStorageKey(tid, cid),
+        tid && cid ? `pos_invoice_quick_settings_${tid}_${cid}` : "",
+        tid ? `pos_invoice_quick_settings_${tid}` : "",
+        cid ? `pos_invoice_quick_settings_${cid}` : "",
+        "pos_invoice_quick_settings",
+      ].filter(Boolean)));
+      const serialized = JSON.stringify(updated);
+      for (const k of allKeys) {
+        localStorage.setItem(k, serialized);
+      }
+
+      if (sMap.purchase_invoices || sMap.purchase_orders) {
+        const purchaseKeys = Array.from(new Set([
+          tid && cid ? `pos_purchase_quick_settings_${tid}_${cid}` : "",
+          tid ? `pos_purchase_quick_settings_${tid}` : "",
+          cid ? `pos_purchase_quick_settings_${cid}` : "",
+          "pos_purchase_quick_settings",
+        ].filter(Boolean)));
+        for (const pk of purchaseKeys) {
+          try {
+            const rawP = localStorage.getItem(pk);
+            const parsedP = rawP ? JSON.parse(rawP) : {};
+            const syncedP = {
+              ...parsedP,
+              ...(sMap.purchase_invoices?.prefix ? { prefix: sMap.purchase_invoices.prefix } : {}),
+              ...(sMap.purchase_invoices?.next_number ? { sequenceNumber: Math.max(1, Number(sMap.purchase_invoices.next_number)) } : {}),
+              ...(sMap.purchase_invoices?.padding ? { padding: Number(sMap.purchase_invoices.padding) } : {}),
+              ...(sMap.purchase_orders?.prefix ? { poPrefix: sMap.purchase_orders.prefix } : {}),
+            };
+            localStorage.setItem(pk, JSON.stringify(syncedP));
+          } catch { /* ignore */ }
+        }
+        window.dispatchEvent(new CustomEvent("bos-purchase-settings-updated", { detail: { hardReset: true } }));
+      }
+
+      if (serverEpoch > 0) {
+        localStorage.setItem(epochKey, String(serverEpoch));
+      }
+      window.dispatchEvent(new CustomEvent("bos-invoice-settings-updated", { detail: { settings: updated, hardReset: true } }));
+      window.dispatchEvent(new CustomEvent("bos-invoice-settings-changed", { detail: updated }));
+      return updated;
+    } catch {
+      return null;
+    } finally {
+      _inFlightSyncPromise = null;
     }
-    window.dispatchEvent(new CustomEvent("bos-invoice-settings-updated", { detail: { settings: updated, hardReset: true } }));
-    window.dispatchEvent(new CustomEvent("bos-invoice-settings-changed", { detail: updated }));
-    return updated;
-  } catch {
-    return null;
-  }
+  })();
+
+  return _inFlightSyncPromise;
 }
 
 interface InvoiceQuickSettingsModalProps {
@@ -665,10 +697,11 @@ export function InvoiceQuickSettingsModal({
   const [registeredBankAccounts, setRegisteredBankAccounts] = useState<BankAccountRecord[]>([]);
 
   useEffect(() => {
+    if (!isOpen) return;
     bankApi.listBankAccounts({ page: 1, page_size: 50 }).then((res) => {
       if (res?.items) setRegisteredBankAccounts(res.items);
     }).catch(() => {});
-  }, []);
+  }, [isOpen]);
 
   const [gstForm, setGstForm] = useState({
     trade_name: "",

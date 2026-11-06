@@ -666,14 +666,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     if (activeEditingInvoice || editingInvoice || isRecreatingInvoice) return;
     if (initialDocType) {
       setInvoiceType(initialDocType);
-      // Use the DB-aware next-number (authoritative NumberSeries row) rather than a
-      // bare localStorage scan, so a poisoned pos_saved_invoices* record cannot
-      // inflate the sequence. Falls back to the local scan automatically.
       fetchNextOrgDocNumber(initialDocType).then((nextNum) => {
         setInvoiceNumber(nextNum);
       });
     }
-  }, [initialDocType, editingInvoice, activeEditingInvoice, isRecreatingInvoice, fetchNextOrgDocNumber]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialDocType, editingInvoice, activeEditingInvoice, isRecreatingInvoice]);
 
   // Sync organization-wide hard-reset sequences from backend on mount & window focus
   useEffect(() => {
@@ -690,7 +688,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     runServerSequenceSync();
     window.addEventListener("focus", runServerSequenceSync);
     return () => window.removeEventListener("focus", runServerSequenceSync);
-  }, [tenant?.id, currentCompanyId, invoiceType, activeEditingInvoice, editingInvoice, isRecreatingInvoice, getNextSequentialInvoiceNumber]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenant?.id, currentCompanyId, invoiceType, activeEditingInvoice, editingInvoice, isRecreatingInvoice]);
 
   // Listen for bos-invoice-settings-changed event
   useEffect(() => {
@@ -10829,36 +10828,38 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       )}
 
       {/* Full A4 Printable Invoice Modal */}
-      <FullInvoicePrinter
-        invoice={fullInvoiceModalData}
-        isOpen={isFullInvoiceOpen}
-        onClose={() => {
-          setIsFullInvoiceOpen(false);
-          if (navigateOnCloseToHistory) {
-            setNavigateOnCloseToHistory(false);
-            if (pendingSavedRecord && onSaved) {
-              onSaved(pendingSavedRecord);
-            } else {
-              try {
-                if (pendingTargetTab === "crm_quotations") {
-                  navigate({ to: "/crm", search: { tab: "quotations" } as any });
-                } else {
-                  navigate({ to: "/pos", search: { tab: pendingTargetTab || "sales_history" } as any });
+      {isFullInvoiceOpen && (
+        <FullInvoicePrinter
+          invoice={fullInvoiceModalData}
+          isOpen={isFullInvoiceOpen}
+          onClose={() => {
+            setIsFullInvoiceOpen(false);
+            if (navigateOnCloseToHistory) {
+              setNavigateOnCloseToHistory(false);
+              if (pendingSavedRecord && onSaved) {
+                onSaved(pendingSavedRecord);
+              } else {
+                try {
+                  if (pendingTargetTab === "crm_quotations") {
+                    navigate({ to: "/crm", search: { tab: "quotations" } as any });
+                  } else {
+                    navigate({ to: "/pos", search: { tab: pendingTargetTab || "sales_history" } as any });
+                  }
+                } catch (navErr) {
+                  console.warn("Navigation to history tab error:", navErr);
                 }
-              } catch (navErr) {
-                console.warn("Navigation to history tab error:", navErr);
               }
             }
-          }
-        }}
-        autoPrint={autoPrintFullInvoice}
-        customTemplate={{
-          bankDetails: getSelectedBankDetailsString(),
-          fields: {
-            showBankDetails: Boolean(selectedBankAccountId && getSelectedBankDetailsString())
-          }
-        }}
-      />
+          }}
+          autoPrint={autoPrintFullInvoice}
+          customTemplate={{
+            bankDetails: getSelectedBankDetailsString(),
+            fields: {
+              showBankDetails: Boolean(selectedBankAccountId && getSelectedBankDetailsString())
+            }
+          }}
+        />
+      )}
 
       {/* Thermal Receipt In-App Preview & Direct Print Modal */}
       <ThermalReceiptPreviewModal
@@ -11591,10 +11592,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
 
       {/* MS Word-Style Visual Invoice Designer Studio Modal */}
-      <WordInvoiceStudioModal
-        isOpen={isWordStudioOpen}
-        onClose={() => setIsWordStudioOpen(false)}
-      />
+      {isWordStudioOpen && (
+        <WordInvoiceStudioModal
+          isOpen={isWordStudioOpen}
+          onClose={() => setIsWordStudioOpen(false)}
+        />
+      )}
 
       {/* Central Stock Alert Modal (Zero Stock / Low Stock / Excess Qty) */}
       <StockAlertModal

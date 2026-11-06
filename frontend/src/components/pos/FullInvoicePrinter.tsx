@@ -323,12 +323,13 @@ export function FullInvoicePrinter({
   const [fetchedBankAccounts, setFetchedBankAccounts] = useState<any[]>([]);
 
   useEffect(() => {
+    if (!isOpen) return;
     bankApi.listBankAccounts({ page: 1, page_size: 20 }).then((res) => {
       if (res?.items && Array.isArray(res.items) && res.items.length > 0) {
         setFetchedBankAccounts(res.items);
       }
     }).catch(() => {});
-  }, [tenant?.id]);
+  }, [isOpen, tenant?.id]);
   const [isPurchaseSettingsOpen, setIsPurchaseSettingsOpen] = useState(false);
   const [isSalesSettingsOpen, setIsSalesSettingsOpen] = useState(false);
   const [isWordStudioOpen, setIsWordStudioOpen] = useState(false);
@@ -383,6 +384,7 @@ export function FullInvoicePrinter({
   };
 
   useEffect(() => {
+    if (!isOpen) return;
     const handlePurchaseUpdate = (e: any) => {
       if (e?.detail?.settings) {
         setPurchaseSettings(e.detail.settings);
@@ -396,16 +398,12 @@ export function FullInvoicePrinter({
     window.addEventListener('bos-purchase-settings-updated', handlePurchaseUpdate);
     window.addEventListener('bos-purchase-invoice-settings-changed', handlePurchaseUpdate);
     window.addEventListener('bos-invoice-settings-changed', handleSalesUpdate);
-    window.addEventListener('storage', handlePurchaseUpdate);
-    window.addEventListener('storage', handleSalesUpdate);
     return () => {
       window.removeEventListener('bos-purchase-settings-updated', handlePurchaseUpdate);
       window.removeEventListener('bos-purchase-invoice-settings-changed', handlePurchaseUpdate);
       window.removeEventListener('bos-invoice-settings-changed', handleSalesUpdate);
-      window.removeEventListener('storage', handlePurchaseUpdate);
-      window.removeEventListener('storage', handleSalesUpdate);
     };
-  }, [tenant?.id]);
+  }, [isOpen, tenant?.id]);
 
   const handleSendWhatsApp = async () => {
     if (!invoice) return;
@@ -688,12 +686,10 @@ export function FullInvoicePrinter({
       window.addEventListener('print_templates_updated', loadTemplates);
       window.addEventListener('bos_invoice_template_changed', loadTemplates);
       window.addEventListener('bos-tenant-changed', loadTemplates);
-      window.addEventListener('storage', loadTemplates);
       return () => {
         window.removeEventListener('print_templates_updated', loadTemplates);
         window.removeEventListener('bos_invoice_template_changed', loadTemplates);
         window.removeEventListener('bos-tenant-changed', loadTemplates);
-        window.removeEventListener('storage', loadTemplates);
       };
     }
   }, [isOpen, tenant?.id, tenant?.name, invoice?.invoice_number, invoice?.print_template_id, invoice?.template_id]);
@@ -3190,68 +3186,76 @@ export function FullInvoicePrinter({
   return createPortal(
     <>
       {modalJSX}
-      <PdfTemplateOverlayModal
-        isOpen={isPdfOverlayModalOpen}
-        onClose={() => setIsPdfOverlayModalOpen(false)}
-        onSaved={(newTplId) => {
-          setSelectedTemplateId(newTplId);
-          setManualTemplatePick(true);
-          try {
-            const storageKey = getTenantTemplatesKey(tenant?.id);
-            const saved = localStorage.getItem(storageKey);
-            if (saved) {
-              const list = JSON.parse(saved);
-              if (Array.isArray(list)) {
-                setAvailableTemplates(list.filter((t: any) => t.category === 'invoices'));
-              }
-            }
-          } catch {}
-        }}
-      />
-      <PurchaseInvoiceQuickSettingsModal
-        isOpen={isPurchaseSettingsOpen}
-        onClose={() => setIsPurchaseSettingsOpen(false)}
-      />
-      <InvoiceQuickSettingsModal
-        isOpen={isSalesSettingsOpen}
-        onClose={() => setIsSalesSettingsOpen(false)}
-        settings={salesSettings}
-        onSave={(newSettings) => {
-          saveStoredInvoiceSettings(newSettings, tenant?.id);
-          setSalesSettings(loadStoredInvoiceSettings(tenant?.id));
-        }}
-      />
-      <WordInvoiceStudioModal
-        isOpen={isWordStudioOpen}
-        onClose={() => {
-          setIsWordStudioOpen(false);
-          // Studio saves dispatch "print_templates_updated" — re-resolve so the
-          // preview instantly reflects the just-edited active template.
-          setAvailableTemplates((prev) => {
+      {isPdfOverlayModalOpen && (
+        <PdfTemplateOverlayModal
+          isOpen={isPdfOverlayModalOpen}
+          onClose={() => setIsPdfOverlayModalOpen(false)}
+          onSaved={(newTplId) => {
+            setSelectedTemplateId(newTplId);
+            setManualTemplatePick(true);
             try {
               const storageKey = getTenantTemplatesKey(tenant?.id);
               const saved = localStorage.getItem(storageKey);
               if (saved) {
                 const list = JSON.parse(saved);
                 if (Array.isArray(list)) {
-                  const invTpls = list.filter((t: any) => t.category === 'invoices' || t.docType === 'invoice' || t.wordConfig);
-                  if (invTpls.length > 0) return invTpls;
+                  setAvailableTemplates(list.filter((t: any) => t.category === 'invoices'));
                 }
               }
             } catch {}
-            return prev;
-          });
-        }}
-        docMode={isPurchaseDoc ? 'purchase' : 'sales'}
-        // Hand the studio the EXACT active template object for this doc
-        // category (with wordConfig/columns/fields/texts/customFields) so its
-        // save writes back into the in-use template, not a default clone.
-        initialTemplate={template}
-        docCategory={docCategory}
-        onSaved={(tplConfig) => {
-          setSelectedTemplateId(tplConfig?.id || 'tpl-word-default');
-        }}
-      />
+          }}
+        />
+      )}
+      {isPurchaseSettingsOpen && (
+        <PurchaseInvoiceQuickSettingsModal
+          isOpen={isPurchaseSettingsOpen}
+          onClose={() => setIsPurchaseSettingsOpen(false)}
+        />
+      )}
+      {isSalesSettingsOpen && (
+        <InvoiceQuickSettingsModal
+          isOpen={isSalesSettingsOpen}
+          onClose={() => setIsSalesSettingsOpen(false)}
+          settings={salesSettings}
+          onSave={(newSettings) => {
+            saveStoredInvoiceSettings(newSettings, tenant?.id);
+            setSalesSettings(loadStoredInvoiceSettings(tenant?.id));
+          }}
+        />
+      )}
+      {isWordStudioOpen && (
+        <WordInvoiceStudioModal
+          isOpen={isWordStudioOpen}
+          onClose={() => {
+            setIsWordStudioOpen(false);
+            // Studio saves dispatch "print_templates_updated" — re-resolve so the
+            // preview instantly reflects the just-edited active template.
+            setAvailableTemplates((prev) => {
+              try {
+                const storageKey = getTenantTemplatesKey(tenant?.id);
+                const saved = localStorage.getItem(storageKey);
+                if (saved) {
+                  const list = JSON.parse(saved);
+                  if (Array.isArray(list)) {
+                    const invTpls = list.filter((t: any) => t.category === 'invoices' || t.docType === 'invoice' || t.wordConfig);
+                    if (invTpls.length > 0) return invTpls;
+                  }
+                }
+              } catch {}
+              return prev;
+            });
+          }}
+          docMode={isPurchaseDoc ? 'purchase' : 'sales'}
+          // Hand the studio the EXACT active template object for this doc
+          // category (with wordConfig/columns/fields/texts/customFields) so its
+          // save writes back into the in-use template, not a default clone.
+          initialTemplate={template}
+          docCategory={docCategory}
+          onSaved={(tplConfig) => {
+            setSelectedTemplateId(tplConfig?.id || 'tpl-word-default');
+          }}
+        />
+      )}
     </>,
     document.body
   );
