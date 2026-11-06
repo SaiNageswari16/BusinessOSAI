@@ -1816,7 +1816,8 @@ class WhitebooksService:
             v2 = cfg.get(flat_key)
             if v2 is not None and str(v2).strip() != "":
                 return str(v2).strip()
-            if is_test_explicit:
+            # If explicit test and tenant left client_id/secret empty, allow fallback to platform gateway defaults
+            if is_test_explicit and k in ('username', 'password', 'gstin'):
                 return None
             return env_fallback
 

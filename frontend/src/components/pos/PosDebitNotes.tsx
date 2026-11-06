@@ -23,6 +23,7 @@ import { invoicesApi } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
 import { useCurrency } from "@/hooks/use-currency";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
+import { renderNoteDocument, resolveNotePrintTemplate } from "@/lib/note-document-renderer";
 import { printHtmlInPage } from "@/lib/print-helper";
 import { PosSalesInvoice } from "./PosSalesInvoice";
 import { PaginationControl } from "@/components/ui/PaginationControl";
@@ -122,135 +123,61 @@ export function PosDebitNotes() {
     const orgEmail = activeBillingGst?.email || (tenant as any)?.settings?.email || "billing@businessos.ai";
     const orgGstin = activeBillingGst?.gstin || (tenant as any)?.settings?.gstin || (tenant as any)?.tax_id || "";
 
-    const lines = note.lines || note.items || [];
+    // Honor the user's selected "debit_note" print template (if any) via the
+    // shared note-document-renderer; otherwise fall back to the clean default
+    // layout built from the active billing GST branding. No crash either way.
+    const template = resolveNotePrintTemplate("debit_note", tenant?.id);
+
+    const lines: Array<Record<string, any>> = note.lines || note.items || [];
     const total = Number(note.total || note.total_amount || 0);
     const cgst = Number(note.cgst_amount || 0);
     const sgst = Number(note.sgst_amount || 0);
     const igst = Number(note.igst_amount || 0);
     const subtotal = Number(note.subtotal || total - (cgst + sgst + igst));
+    const reasonForNote = note.order_number || (note as any).note_reason || "Price Correction / Supplementary";
+    const originalRef = note.reference_number || (note as any).original_invoice_ref || "Supplementary Billing";
+    const remarks = note.notes ? `${t("Remarks / Reason", "Remarks / Reason")}: ${note.notes}` : "";
 
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Debit Note - ${note.invoice_number || note.id} - ${orgName}</title>
-          <style>
-            @page { size: A4 portrait; margin: 12mm 15mm; }
-            * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-            body { background: #ffffff; color: #0f172a; padding: 16px; font-size: 9.5pt; line-height: 1.5; }
-            .container { max-width: 740px; margin: 0 auto; }
-            .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #d97706; padding-bottom: 14px; margin-bottom: 20px; }
-            .org-box { display: flex; align-items: center; gap: 12px; }
-            .org-box h1 { font-size: 16pt; font-weight: 900; color: #0f172a; }
-            .org-box p { font-size: 8.5pt; color: #64748b; }
-            .badge-box { text-align: right; }
-            .badge-tag { display: inline-block; background: #d97706; color: #ffffff; font-size: 9pt; font-weight: 800; padding: 4px 12px; border-radius: 6px; text-transform: uppercase; }
-            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; background: #fffbeb; padding: 12px 16px; border-radius: 8px; border: 1px solid #fde68a; margin-bottom: 20px; font-size: 8.5pt; }
-            .info-grid h4 { font-size: 8pt; text-transform: uppercase; color: #92400e; font-weight: 800; margin-bottom: 4px; }
-            .info-grid p { font-size: 9pt; font-weight: 600; color: #0f172a; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 9pt; }
-            th { background: #f8fafc; padding: 8px 12px; border: 1px solid #cbd5e1; text-align: left; font-weight: 800; color: #1e293b; }
-            td { padding: 8px 12px; border: 1px solid #e2e8f0; }
-            .total-box { display: flex; justify-content: flex-end; margin-bottom: 24px; }
-            .total-card { width: 280px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; }
-            .total-row { display: flex; justify-content: space-between; font-size: 9pt; font-weight: 600; margin-bottom: 6px; }
-            .grand-total { border-top: 1.5px solid #b45309; padding-top: 6px; margin-top: 6px; font-size: 11pt; font-weight: 900; color: #b45309; }
-            .note-box { background: #f8fafc; border-left: 3px solid #d97706; padding: 10px 14px; font-size: 8pt; color: #475569; margin-bottom: 20px; }
-            .footer { text-align: center; font-size: 7.5pt; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px; }
-            @media print { body { padding: 0; } }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <div class="org-box">
-                ${orgLogo ? `<img src="${orgLogo}" alt="${orgName}" style="max-height: 48px; max-width: 140px; object-fit: contain;" />` : `<div style="width: 42px; height: 42px; border-radius: 8px; background: #d97706; color: white; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 13pt;">DN</div>`}
-                <div>
-                  <h1>${orgName}</h1>
-                  <p>${orgAddress}</p>
-                  <p>Ph: ${orgPhone} • Email: ${orgEmail}${orgGstin ? ` • GSTIN: ${orgGstin}` : ""}</p>
-                </div>
-              </div>
-              <div class="badge-box">
-                <span class="badge-tag">GST Debit Note</span>
-                <p style="font-size: 8.5pt; color: #64748b; margin-top: 4px;">Supplementary / Difference</p>
-              </div>
-            </div>
-
-            <div class="info-grid">
-              <div>
-                <h4>${t("Billed To (Customer)", "Billed To (Customer)")}</h4>
-                <p><strong>${note.customer_name || "Valued Customer"}</strong></p>
-                <p>${note.customer_phone ? `Phone: ${note.customer_phone}` : ""}</p>
-                <p>${note.customer_gstin ? `GSTIN: ${note.customer_gstin}` : ""}</p>
-                <p>${note.billing_address || ""}</p>
-              </div>
-              <div>
-                <h4>${t("Debit Note Details", "Debit Note Details")}</h4>
-                <p>Note Number: <strong>${note.invoice_number || note.id}</strong></p>
-                <p>Date of Issue: <strong>${note.invoice_date || new Date().toISOString().slice(0, 10)}</strong></p>
-                <p>Original Invoice Ref: <strong>${note.reference_number || (note as any).original_invoice_ref || "Supplementary Billing"}</strong></p>
-                <p>Reason for Note: <strong>${note.order_number || (note as any).note_reason || "Price Correction / Supplementary"}</strong></p>
-              </div>
-            </div>
-
-            <table>
-              <thead>
-                <tr>
-                  <th style="width: 35px;">#</th>
-                  <th>Supplementary Charge / Goods Description</th>
-                  <th style="width: 80px; text-align: center;">HSN/SAC</th>
-                  <th style="width: 60px; text-align: right;">Qty</th>
-                  <th style="width: 90px; text-align: right;">Rate</th>
-                  <th style="width: 60px; text-align: right;">Tax %</th>
-                  <th style="width: 100px; text-align: right;">Debit Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${lines.length > 0 ? lines.map((l: any, idx: number) => `
-                  <tr>
-                    <td>${idx + 1}</td>
-                    <td><strong>${l.product_name || l.name || "Supplementary Item"}</strong></td>
-                    <td style="text-align: center;">${l.hsn_code || "—"}</td>
-                    <td style="text-align: right;">${l.quantity || 1}</td>
-                    <td style="text-align: right;">${currency.symbol}${(Number(l.unit_price) || 0).toFixed(2)}</td>
-                    <td style="text-align: right;">${l.tax_rate || 0}%</td>
-                    <td style="text-align: right;"><strong>${currency.symbol}${((Number(l.unit_price) || 0) * (Number(l.quantity) || 1)).toFixed(2)}</strong></td>
-                  </tr>
-                `).join("") : `
-                  <tr>
-                    <td>1</td>
-                    <td>Supplementary Debit Adjustment</td>
-                    <td style="text-align: center;">—</td>
-                    <td style="text-align: right;">1</td>
-                    <td style="text-align: right;">${currency.symbol}${total.toFixed(2)}</td>
-                    <td style="text-align: right;">0%</td>
-                    <td style="text-align: right;"><strong>${currency.symbol}${total.toFixed(2)}</strong></td>
-                  </tr>
-                `}
-              </tbody>
-            </table>
-
-            <div class="total-box">
-              <div class="total-card">
-                <div class="total-row"><span>Taxable Value:</span><span>${currency.symbol}${subtotal.toFixed(2)}</span></div>
-                ${cgst > 0 ? `<div class="total-row"><span>CGST:</span><span>+${currency.symbol}${cgst.toFixed(2)}</span></div>` : ""}
-                ${sgst > 0 ? `<div class="total-row"><span>SGST:</span><span>+${currency.symbol}${sgst.toFixed(2)}</span></div>` : ""}
-                ${igst > 0 ? `<div class="total-row"><span>IGST:</span><span>+${currency.symbol}${igst.toFixed(2)}</span></div>` : ""}
-                <div class="total-row grand-total"><span>Total Debit Amount:</span><span>${currency.symbol}${total.toFixed(2)}</span></div>
-              </div>
-            </div>
-
-            ${note.notes ? `<div class="note-box"><strong>Remarks / Reason:</strong> ${note.notes}</div>` : ""}
-
-            <div class="footer">
-              <p>This is a computer-generated GST Debit Note issued in compliance with Section 34 of the CGST Act, 2017.</p>
-              <p>The above supplementary debit amount has been charged to the customer receivable account.</p>
-            </div>
-          </div>
-        </body>
-      </html>
-    `;
+    const html = renderNoteDocument(
+      "debit_note",
+      {
+        note_number: note.invoice_number || note.id,
+        amount: total,
+        party: note.customer_name || "Valued Customer",
+        party_phone: note.customer_phone,
+        party_gstin: note.customer_gstin,
+        party_address: note.billing_address,
+        reference_no: originalRef,
+        reference_label: "Original Invoice Ref",
+        reason_for_note: reasonForNote,
+        reason: remarks || undefined,
+        date_iso: note.invoice_date,
+        lines: lines.length > 0 ? lines : undefined,
+        subtotal: subtotal > 0 ? subtotal : undefined,
+        tax: { cgst, sgst, igst },
+      },
+      {
+        name: orgName,
+        gstin: orgGstin,
+        address: orgAddress,
+        phone: orgPhone,
+        email: orgEmail,
+        logo_url: orgLogo || null,
+        upi_vpa: activeBillingGst?.upi_vpa || null,
+        bank_name: activeBillingGst?.bank_name || null,
+        bank_account_number: activeBillingGst?.bank_account_number || null,
+        bank_ifsc: activeBillingGst?.bank_ifsc || null,
+        signature_url: activeBillingGst?.signature_url || null,
+        terms_and_conditions: activeBillingGst?.terms_and_conditions || null,
+        currency_symbol: currency.symbol,
+      },
+      template,
+      {
+        texts: {
+          partyTitle: t("Billed To (Customer)", "Billed To (Customer)"),
+        },
+      }
+    );
 
     printHtmlInPage(html, 300);
   };

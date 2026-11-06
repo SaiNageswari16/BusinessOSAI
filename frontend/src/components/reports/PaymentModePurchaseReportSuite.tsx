@@ -7,6 +7,8 @@ import {
   Search,
   Calendar as CalendarIcon,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   RefreshCw,
   FileSpreadsheet,
   FileText,
@@ -69,6 +71,10 @@ export function PaymentModePurchaseReportSuite({
   const [downloadMenuOpen, setDownloadMenuOpen] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [reportData, setReportData] = useState<any>(null);
+
+  // Pagination state
+  const [pageSize, setPageSize] = useState<number>(25);
+  const [currentPage, setCurrentPage] = useState<number>(1);
 
   // Initialize date range based on preset
   useEffect(() => {
@@ -183,6 +189,7 @@ export function PaymentModePurchaseReportSuite({
         const cashBills: any[] = [];
         const upiBills: any[] = [];
         const bankBills: any[] = [];
+        const chequeBills: any[] = [];
         const creditBills: any[] = [];
         const activeBills: any[] = [];
 
@@ -216,12 +223,15 @@ export function PaymentModePurchaseReportSuite({
           } else if (payMethods.includes("upi") || payMethods.includes("qr") || payMethods.includes("gpay")) {
             cat = "upi";
             catLabel = "UPI / QR";
-          } else if (payMethods.includes("bank") || payMethods.includes("card") || payMethods.includes("neft") || payMethods.includes("rtgs") || payMethods.includes("cheque") || payMethods.includes("online")) {
+          } else if (payMethods.includes("cheque") || payMethods.includes("check")) {
+            cat = "cheque";
+            catLabel = "Cheque";
+          } else if (payMethods.includes("bank") || payMethods.includes("card") || payMethods.includes("neft") || payMethods.includes("rtgs") || payMethods.includes("online")) {
             cat = "bank";
             catLabel = "Bank Transfer";
           } else if (paid > 0.01) {
             cat = "bank";
-            catLabel = "Bank Transfer";
+            catLabel = "Bank / NEFT";
           }
 
           const billItem = {
@@ -244,6 +254,7 @@ export function PaymentModePurchaseReportSuite({
           activeBills.push(billItem);
           if (cat === "cash") cashBills.push(billItem);
           else if (cat === "upi") upiBills.push(billItem);
+          else if (cat === "cheque") chequeBills.push(billItem);
           else if (cat === "bank") bankBills.push(billItem);
           else creditBills.push(billItem);
         });
@@ -279,6 +290,10 @@ export function PaymentModePurchaseReportSuite({
         const bankPaid = bankBills.reduce((s, b) => s + b.paid_amount, 0);
         const bankDues = bankBills.reduce((s, b) => s + b.pending_amount, 0);
 
+        const chequeTot = chequeBills.reduce((s, b) => s + b.total_amount, 0);
+        const chequePaid = chequeBills.reduce((s, b) => s + b.paid_amount, 0);
+        const chequeDues = chequeBills.reduce((s, b) => s + b.pending_amount, 0);
+
         const creditTot = creditBills.reduce((s, b) => s + b.total_amount, 0);
         const creditPaid = creditBills.reduce((s, b) => s + b.paid_amount, 0);
         const creditDues = creditBills.reduce((s, b) => s + b.pending_amount, 0);
@@ -301,6 +316,9 @@ export function PaymentModePurchaseReportSuite({
             bank_total: bankTot,
             bank_count: bankBills.length,
             bank_pct: grandTotal > 0 ? Math.round((bankTot / grandTotal) * 1000) / 10 : 0,
+            cheque_total: chequeTot,
+            cheque_count: chequeBills.length,
+            cheque_pct: grandTotal > 0 ? Math.round((chequeTot / grandTotal) * 1000) / 10 : 0,
             credit_total: creditTot,
             credit_count: creditBills.length,
             credit_pct: grandTotal > 0 ? Math.round((creditTot / grandTotal) * 1000) / 10 : 0,
@@ -342,6 +360,17 @@ export function PaymentModePurchaseReportSuite({
               dues_amount: bankDues,
               dues_invoices_count: bankBills.filter((b) => b.pending_amount > 0.01).length,
               average_ticket: bankBills.length > 0 ? Math.round((bankTot / bankBills.length) * 100) / 100 : 0,
+            },
+            {
+              mode_key: "cheque",
+              payment_mode: "Cheque Payouts",
+              invoices_count: chequeBills.length,
+              percentage_share: grandTotal > 0 ? Math.round((chequeTot / grandTotal) * 1000) / 10 : 0,
+              total_billed: chequeTot,
+              collected_amount: chequePaid,
+              dues_amount: chequeDues,
+              dues_invoices_count: chequeBills.filter((b) => b.pending_amount > 0.01).length,
+              average_ticket: chequeBills.length > 0 ? Math.round((chequeTot / chequeBills.length) * 100) / 100 : 0,
             },
             {
               mode_key: "credit",
@@ -393,6 +422,9 @@ export function PaymentModePurchaseReportSuite({
     bank_total: 0,
     bank_count: 0,
     bank_pct: 0,
+    cheque_total: 0,
+    cheque_count: 0,
+    cheque_pct: 0,
     credit_total: 0,
     credit_count: 0,
     credit_pct: 0,
@@ -414,6 +446,8 @@ export function PaymentModePurchaseReportSuite({
       list = list.filter((b) => b.category === "upi");
     } else if (activeModeTab === "bank") {
       list = list.filter((b) => b.category === "bank");
+    } else if (activeModeTab === "cheque") {
+      list = list.filter((b) => b.category === "cheque");
     } else if (activeModeTab === "credit") {
       list = list.filter((b) => b.category === "credit");
     } else if (activeModeTab === "dues") {
@@ -433,6 +467,34 @@ export function PaymentModePurchaseReportSuite({
         (b.payment_mode_raw && b.payment_mode_raw.toLowerCase().includes(q))
     );
   }, [detailedBills, searchQuery, activeModeTab]);
+
+  // Reset pagination when filter criteria change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, activeModeTab, startDate, endDate, datePreset, pageSize]);
+
+  // Paginated Bills
+  const totalBillsCount = filteredBills.length;
+  const totalPages = pageSize === 0 ? 1 : Math.max(1, Math.ceil(totalBillsCount / (pageSize || 25)));
+
+  const paginatedBills = useMemo(() => {
+    if (pageSize === 0) return filteredBills;
+    const start = (currentPage - 1) * pageSize;
+    return filteredBills.slice(start, start + pageSize);
+  }, [filteredBills, currentPage, pageSize]);
+
+  // Aggregate totals for the currently filtered bills
+  const filteredTotals = useMemo(() => {
+    return filteredBills.reduce(
+      (acc, b) => {
+        acc.total += Number(b.total_amount || 0);
+        acc.paid += Number(b.paid_amount || 0);
+        acc.pending += Number(b.pending_amount || 0);
+        return acc;
+      },
+      { total: 0, paid: 0, pending: 0 }
+    );
+  }, [filteredBills]);
 
   // Excel Export
   const handleExportExcel = () => {
@@ -699,7 +761,7 @@ export function PaymentModePurchaseReportSuite({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full min-h-0 overflow-y-auto w-full bg-slate-50 text-slate-800 font-sans pb-24 custom-scrollbar">
+    <div className="flex-1 flex flex-col h-full min-h-0 overflow-y-auto w-full bg-slate-50 text-slate-800 font-sans pb-28 custom-scrollbar">
       {/* ──────────────────────────────────────────────────────────────────────────
           TOP HEADER TOOLBAR
       ────────────────────────────────────────────────────────────────────────── */}
@@ -816,7 +878,7 @@ export function PaymentModePurchaseReportSuite({
       {/* ──────────────────────────────────────────────────────────────────────────
           MAIN CONTENT AREA
       ────────────────────────────────────────────────────────────────────────── */}
-      <div className="flex-1 px-6 py-5 flex flex-col gap-5">
+      <div className="px-6 py-6 flex flex-col gap-6">
         {/* 1. FILTER BAR */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2.5">
@@ -875,7 +937,7 @@ export function PaymentModePurchaseReportSuite({
         </div>
 
         {/* 2. SUMMARY KPI STAT CARDS */}
-        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
           {/* Card 1: Total Purchase Bills */}
           <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs hover:border-blue-200 hover:shadow-xs transition-all">
             <div className="flex items-center justify-between text-slate-500 mb-2">
@@ -974,7 +1036,29 @@ export function PaymentModePurchaseReportSuite({
             </div>
           </div>
 
-          {/* Card 6: Credit / Payables */}
+          {/* Card 6: Cheque */}
+          <div
+            onClick={() => setActiveModeTab(activeModeTab === "cheque" ? "all" : "cheque")}
+            className={`bg-white p-4 rounded-2xl border shadow-2xs hover:shadow-xs transition-all cursor-pointer ${
+              activeModeTab === "cheque"
+                ? "border-teal-500 ring-2 ring-teal-500/20 bg-teal-50/20"
+                : "border-slate-200/90 hover:border-teal-200"
+            }`}
+          >
+            <div className="flex items-center justify-between text-slate-500 mb-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider">Cheque</span>
+              <CreditCard className="w-4 h-4 text-teal-600" />
+            </div>
+            <div className="text-2xl font-black text-teal-600">
+              {formatCurrency(summary.cheque_total)}
+            </div>
+            <div className="text-[11px] text-slate-500 font-medium mt-1">
+              {summary.cheque_count} {summary.cheque_count === 1 ? "Bill" : "Bills"}
+              {summary.total_bills > 0 && ` (${summary.cheque_pct}%)`}
+            </div>
+          </div>
+
+          {/* Card 7: Credit / Payables */}
           <div
             onClick={() => setActiveModeTab(activeModeTab === "credit" ? "all" : "credit")}
             className={`bg-white p-4 rounded-2xl border shadow-2xs hover:shadow-xs transition-all cursor-pointer ${
@@ -1067,7 +1151,7 @@ export function PaymentModePurchaseReportSuite({
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-50 text-slate-500 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
+                <tr className="sticky top-0 bg-slate-50/95 backdrop-blur-xs text-slate-600 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200 z-10 shadow-2xs">
                   <th className="py-3 px-4">Payment Mode / Category</th>
                   <th className="py-3 px-4 text-center">Bills Count</th>
                   <th className="py-3 px-4 text-center">% Share</th>
@@ -1098,6 +1182,8 @@ export function PaymentModePurchaseReportSuite({
                               ? "bg-purple-500"
                               : row.mode_key === "bank"
                               ? "bg-sky-500"
+                              : row.mode_key === "cheque"
+                              ? "bg-teal-500"
                               : "bg-pink-500"
                           }`}
                         ></span>
@@ -1118,6 +1204,8 @@ export function PaymentModePurchaseReportSuite({
                                   ? "bg-purple-500"
                                   : row.mode_key === "bank"
                                   ? "bg-sky-500"
+                                  : row.mode_key === "cheque"
+                                  ? "bg-teal-500"
                                   : "bg-pink-500"
                               }`}
                               style={{ width: `${Math.min(100, row.percentage_share)}%` }}
@@ -1186,6 +1274,7 @@ export function PaymentModePurchaseReportSuite({
                 { id: "cash", label: "Cash Payouts", count: summary.cash_count },
                 { id: "upi", label: "UPI Payouts", count: summary.upi_count },
                 { id: "bank", label: "Bank / NEFT", count: summary.bank_count },
+                { id: "cheque", label: "Cheque Payouts", count: summary.cheque_count },
                 { id: "credit", label: "Credit / Payables", count: summary.credit_count },
                 { id: "dues", label: "Payables Only", count: summary.dues_count },
                 { id: "debit_notes", label: "Debit Notes", count: summary.debit_notes_count },
@@ -1219,7 +1308,7 @@ export function PaymentModePurchaseReportSuite({
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-50/80 text-slate-500 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
+                <tr className="sticky top-0 bg-slate-50/95 backdrop-blur-xs text-slate-600 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200 z-10 shadow-2xs">
                   <th className="py-3 px-4">Date</th>
                   <th className="py-3 px-4">Bill / Ref #</th>
                   <th className="py-3 px-4">Vendor & Contact</th>
@@ -1238,15 +1327,15 @@ export function PaymentModePurchaseReportSuite({
                       Loading live vendor payment records...
                     </td>
                   </tr>
-                ) : filteredBills.length === 0 ? (
+                ) : paginatedBills.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-12 text-center text-slate-400">
                       No purchase records found matching your filters.
                     </td>
                   </tr>
                 ) : (
-                  filteredBills.map((b) => (
-                    <tr key={b.id} className="hover:bg-slate-50/80 transition-colors">
+                  paginatedBills.map((b) => (
+                    <tr key={b.id} className="hover:bg-indigo-50/25 transition-colors">
                       <td className="py-3 px-4 whitespace-nowrap text-slate-500 font-mono text-[11px]">
                         {b.date || "—"}
                       </td>
@@ -1275,6 +1364,8 @@ export function PaymentModePurchaseReportSuite({
                               ? "bg-purple-50 text-purple-700 border border-purple-200"
                               : b.category === "bank"
                               ? "bg-sky-50 text-sky-700 border border-sky-200"
+                              : b.category === "cheque"
+                              ? "bg-teal-50 text-teal-700 border border-teal-200"
                               : b.category === "debit_note"
                               ? "bg-amber-50 text-amber-700 border border-amber-200"
                               : "bg-pink-50 text-pink-700 border border-pink-200"
@@ -1320,37 +1411,96 @@ export function PaymentModePurchaseReportSuite({
             </table>
           </div>
 
-          {/* Table Summary Footer */}
-          <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3 text-xs font-semibold text-slate-600">
-            <span>
-              Showing {filteredBills.length} of {detailedBills.length} Total Vendor Bills
-            </span>
-            <div className="flex items-center gap-4">
+          {/* Table Summary & Pagination Controls */}
+          <div className="px-5 py-3.5 border-t border-slate-200/90 bg-slate-50/70 flex flex-wrap items-center justify-between gap-4 text-xs font-semibold text-slate-600">
+            {/* Left: Showing count & Rows per page */}
+            <div className="flex items-center gap-3">
               <span>
-                Total Procurement:{" "}
+                Showing{" "}
+                <strong className="text-slate-900 font-bold">
+                  {totalBillsCount === 0
+                    ? 0
+                    : (currentPage - 1) * (pageSize || totalBillsCount) + 1}
+                </strong>{" "}
+                to{" "}
+                <strong className="text-slate-900 font-bold">
+                  {pageSize === 0
+                    ? totalBillsCount
+                    : Math.min(currentPage * pageSize, totalBillsCount)}
+                </strong>{" "}
+                of{" "}
+                <strong className="text-slate-900 font-bold">
+                  {totalBillsCount}
+                </strong>{" "}
+                Vendor Bills
+              </span>
+
+              <div className="flex items-center gap-1.5 ml-2">
+                <span className="text-slate-400 font-medium text-[11px]">Rows:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="h-7 px-2 text-xs font-bold rounded-lg border border-slate-200 bg-white text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                >
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={0}>All</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Middle: Active Filter Grand Totals */}
+            <div className="hidden lg:flex items-center gap-4 text-xs">
+              <span>
+                Procurement:{" "}
                 <strong className="text-slate-900 font-black">
-                  {formatCurrency(
-                    filteredBills.reduce((acc, x) => acc + (x.total_amount || 0), 0)
-                  )}
+                  {formatCurrency(filteredTotals.total)}
                 </strong>
               </span>
               <span>
                 Paid Out:{" "}
                 <strong className="text-emerald-600 font-black">
-                  {formatCurrency(
-                    filteredBills.reduce((acc, x) => acc + (x.paid_amount || 0), 0)
-                  )}
+                  {formatCurrency(filteredTotals.paid)}
                 </strong>
               </span>
               <span>
-                Pending Payables:{" "}
+                Pending:{" "}
                 <strong className="text-rose-600 font-black">
-                  {formatCurrency(
-                    filteredBills.reduce((acc, x) => acc + (x.pending_amount || 0), 0)
-                  )}
+                  {formatCurrency(filteredTotals.pending)}
                 </strong>
               </span>
             </div>
+
+            {/* Right: Pagination Navigation */}
+            {pageSize > 0 && totalPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Prev</span>
+                </button>
+
+                <div className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-700">
+                  Page <span className="text-indigo-600">{currentPage}</span> of{" "}
+                  {totalPages}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Next</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

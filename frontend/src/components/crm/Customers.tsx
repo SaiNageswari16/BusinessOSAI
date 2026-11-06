@@ -42,7 +42,7 @@ import {
 import { usePincodeLookup } from "@/hooks/use-pincode-lookup";
 import { AiCallingModal } from "./AiCallingModal";
 import { crmCallsApi, type CRMCallLog } from "@/lib/api-client";
-import { downloadCustomersTemplateExcel } from "@/lib/crm-excel-utils";
+import { downloadCustomersTemplateExcel, downloadCustomersExportExcel } from "@/lib/crm-excel-utils";
 import { BulkImportCustomersModal } from "./BulkImportCustomersModal";
 import { CustomerLedgerModal } from "./CustomerLedgerModal";
 import { CustomerMasterDetailView } from "./CustomerMasterDetailView";
@@ -105,6 +105,7 @@ const blankCustomer: Record<string, unknown> = {
   date_of_birth: "",
   anniversary_date: "",
   gender: "",
+  age: "",
   preferred_language: "English",
   credit_limit: 0,
   outstanding_balance: 0,
@@ -253,6 +254,38 @@ export function Customers() {
     }
   };
 
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportAll = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const pageSize = 500;
+      const all: CrmCustomer[] = [];
+      let page = 1;
+      // Fetch every customer server-side (paged) so the export is complete,
+      // independent of the currently loaded/searched table.
+      for (;;) {
+        const res = await crmCustomersApi.list(page, pageSize, search || undefined);
+        all.push(...(res.items || []));
+        const fetched = (res.items || []).length;
+        if (fetched < pageSize || all.length >= (res.total ?? 0)) break;
+        page += 1;
+        if (page > 200) break; // hard safety cap
+      }
+      if (all.length === 0) {
+        toast.warning("No customers found to export");
+        return;
+      }
+      downloadCustomersExportExcel(all as unknown as Array<Record<string, unknown>>);
+      toast.success(`Exported ${all.length} customers to Excel`);
+    } catch {
+      toast.error("Failed to export customers");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   useEffect(() => {
     void load();
     const handleTenantChange = () => {
@@ -386,6 +419,7 @@ export function Customers() {
       date_of_birth: customer.date_of_birth || "",
       anniversary_date: customer.anniversary_date || "",
       gender: customer.gender || "",
+      age: customer.age != null ? String(customer.age) : "",
       preferred_language: customer.preferred_language || "English",
       credit_limit: customer.credit_limit,
       outstanding_balance: customer.outstanding_balance ?? 0,
@@ -508,6 +542,7 @@ export function Customers() {
         date_of_birth: form.date_of_birth || null,
         anniversary_date: form.anniversary_date || null,
         gender: form.gender || null,
+        age: form.age !== "" && form.age != null ? Number(form.age) || null : null,
         preferred_language: form.preferred_language || null,
         credit_limit: Number(form.credit_limit) || 0,
         outstanding_balance:
@@ -636,6 +671,31 @@ export function Customers() {
               <Input label="Alternate Phone" value={form.alternate_phone as string} onChange={(v) => setForm({ ...form, alternate_phone: v })} />
               <Input label="WhatsApp Number" value={form.whatsapp_number as string} onChange={(v) => setForm({ ...form, whatsapp_number: v })} />
               <Select label="Gender" value={form.gender as string} onChange={(v) => setForm({ ...form, gender: v })} options={["", ...GENDERS]} />
+              <Input
+                label="Date of Birth"
+                type="date"
+                value={form.date_of_birth as string}
+                onChange={(v) => {
+                  // Auto-suggest age from DOB (user can still override in the Age field)
+                  let ageStr = form.age as string;
+                  if (v) {
+                    const dob = new Date(v);
+                    const now = new Date();
+                    let age = now.getFullYear() - dob.getFullYear();
+                    const m = now.getMonth() - dob.getMonth();
+                    if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age -= 1;
+                    if (age >= 0) ageStr = String(age);
+                  }
+                  setForm({ ...form, date_of_birth: v, age: ageStr });
+                }}
+              />
+              <Input
+                label="Age"
+                type="number"
+                value={String(form.age ?? "")}
+                onChange={(v) => setForm({ ...form, age: v })}
+                placeholder="Auto from DOB"
+              />
             </div>
           </FieldSection>
 
@@ -856,7 +916,6 @@ export function Customers() {
           {/* Personal */}
           <FieldSection label="Personal">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Input label="Date of Birth" type="date" value={form.date_of_birth as string} onChange={(v) => setForm({ ...form, date_of_birth: v })} />
               <Input label="Anniversary Date" type="date" value={form.anniversary_date as string} onChange={(v) => setForm({ ...form, anniversary_date: v })} />
               <Select label="Preferred Language" value={form.preferred_language as string} onChange={(v) => setForm({ ...form, preferred_language: v })} options={["English", "Hindi", "Tamil", "Telugu", "Kannada", "Malayalam"]} />
             </div>
@@ -948,6 +1007,24 @@ export function Customers() {
               >
                 <Download className="size-3.5 text-primary" />
                 {t("Sample Excel", "Sample Excel")}
+              </button>
+              <button
+                onClick={handleExportAll}
+                disabled={exporting}
+                className="flex items-center gap-1.5 px-3 h-8 bg-sky-500/10 hover:bg-sky-500/15 border border-sky-500/20 rounded-xl text-xs font-bold text-sky-700 dark:text-sky-400 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Download ALL customer data as Excel (includes Gender, DOB, Age, balances, GST, etc.)"
+              >
+                {exporting ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin text-sky-600" />
+                    {t("Exporting…", "Exporting…")}
+                  </>
+                ) : (
+                  <>
+                    <Download className="size-3.5 text-sky-600" />
+                    {t("Export All", "Export All")}
+                  </>
+                )}
               </button>
               <button
                 onClick={() => setShowBulkImport(true)}

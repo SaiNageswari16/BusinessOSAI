@@ -3,10 +3,10 @@ import { useI18n } from "@/contexts/i18n-context";
 import { createPortal } from 'react-dom';
 import { Printer, X, Download, FileText, CheckCircle2, Upload, Sparkles, MessageCircle, Mail, Send, Loader2, Sliders, Settings } from 'lucide-react';
 import { toast } from "sonner";
-import { getActiveInvoicePrintTemplate, setActiveInvoicePrintTemplate, GLOBAL_INVOICE_TEMPLATES, getActiveBillingGst, getOrgPaymentQrSettings, getOrgSignatureSettings, getTenantTemplatesKey, getTenantIdFromStorage, getTenantDefaultsKey } from '../../lib/receipt-template-store';
+import { getActiveInvoicePrintTemplate, getActiveInvoicePrintTemplateForCategory, setActiveInvoicePrintTemplate, setActiveInvoicePrintTemplateForCategory, GLOBAL_INVOICE_TEMPLATES, getActiveBillingGst, getOrgPaymentQrSettings, getOrgSignatureSettings, getTenantTemplatesKey, getTenantIdFromStorage, getTenantDefaultsKey, getActiveDocTemplateId } from '../../lib/receipt-template-store';
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
-import { companiesApi, invoicesApi, printTemplatesApi, resolveImageUrl } from "@/lib/api-client";
+import { companiesApi, invoicesApi, printTemplatesApi, resolveImageUrl, bankApi } from "@/lib/api-client";
 import { formatDisplayDate, isWalkInParty, formatPartyAddress, isInvoiceLineFree } from "@/lib/utils";
 import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
 import { MargPharmaTemplate } from './invoice-templates/MargPharmaTemplate';
@@ -18,16 +18,22 @@ import { PdfStationeryOverlayTemplate } from './invoice-templates/PdfStationeryO
 import { WordInvoiceDocument } from './invoice-templates/WordInvoiceDocument';
 import { PdfTemplateOverlayModal } from './PdfTemplateOverlayModal';
 import { computeGstBreakdown, extractGstState, INDIAN_GST_STATES } from '@/lib/gst-utils';
-import { InvoiceQuickSettingsModal, loadStoredInvoiceSettings } from './InvoiceQuickSettingsModal';
+import { InvoiceQuickSettingsModal, loadStoredInvoiceSettings, saveStoredInvoiceSettings } from './InvoiceQuickSettingsModal';
 import { PurchaseInvoiceQuickSettingsModal, loadStoredPurchaseInvoiceSettings, PurchaseInvoiceSettings } from '../procurement/PurchaseInvoiceQuickSettingsModal';
 import { WordInvoiceStudioModal } from './WordInvoiceStudioModal';
 import { RealBarcodeSvg } from '@/lib/barcode-svg';
-import { safeSetItem } from '@/lib/safe-storage';
+import { CustomerExtrasBlock } from './invoice-templates/CustomerExtrasBlock';
+import { safeGetItem, safeSetItem } from '@/lib/safe-storage';
+import { resolveInvoiceTexts, resolveInvoiceRenderer, docTitleFor, docNoLabelFor, docDateLabelFor, detectDocCategory, type InvoiceTexts, type PartyLayoutType } from '@/lib/invoice-template-config';
+import { type PaymentQrContext } from './invoice-templates/PaymentQrBlock';
 
 export const isThermalReceiptId = (id: string | null | undefined): boolean => {
   if (!id) return false;
   const s = String(id).toLowerCase().trim();
-  return s === 'thermal' || s === 'pos' || s.startsWith('tpl-thm-') || s.includes('thermal') || s.includes('receipt');
+  // "a4" is a sentinel meaning "default A4 print, no specific template" — it
+  // must never be treated as a real template id, or the user's active
+  // per-category selection gets shadowed by a synthesized Word fallback.
+  return s === 'thermal' || s === 'pos' || s === 'a4' || s.startsWith('tpl-thm-') || s.includes('thermal') || s.includes('receipt');
 };
 
 const BUILTIN_INVOICE_OPTIONS = [
@@ -255,18 +261,44 @@ export function FullInvoicePrinter({
         }
         return 'tpl-word-default';
       }
+
+      // 1. Honor non-default stamped template on invoice
+      const rawSpecific =
+        invoice?.print_template_id ||
+        invoice?.template_id ||
+        invoice?.templateId ||
+        (invoice as any)?.custom_fields?.print_template_id ||
+        (invoice as any)?.custom_fields?.template_id;
+      if (rawSpecific && !isThermalReceiptId(rawSpecific) && rawSpecific !== 'tpl-word-default') {
+        return rawSpecific;
+      }
+
+      // 2. Resolve per-document category active template (Quotation, Proforma, Challan, Estimate, etc.)
+      const docCategory = detectDocCategory(invoice);
+      const activeCompanyId = localStorage.getItem('bos_active_company_id');
+      const categoryActiveId = getActiveInvoicePrintTemplateForCategory(
+        docCategory,
+        tid,
+        activeCompanyId || undefined
+      );
+      if (categoryActiveId && !isThermalReceiptId(categoryActiveId)) {
+        return categoryActiveId;
+      }
+
       const defaultsKey = getTenantDefaultsKey(tid);
-      // Workspace-scoped default keys only — never the unsuffixed global fallback
       const userActiveDefaultsRaw = tid ? localStorage.getItem(defaultsKey) : null;
       let userActiveInvoiceId: string | null = null;
       if (userActiveDefaultsRaw) {
         try {
           const parsed = JSON.parse(userActiveDefaultsRaw);
-          userActiveInvoiceId = parsed.invoices || parsed.invoice || null;
+          userActiveInvoiceId = (docCategory !== 'invoice' && parsed[docCategory])
+            ? parsed[docCategory]
+            : (parsed.invoices || parsed.invoice || null);
         } catch {}
       }
       const savedTplId =
         userActiveInvoiceId ||
+        getActiveDocTemplateId(docCategory, tid, activeCompanyId || undefined) ||
         (tid ? localStorage.getItem(`bos_active_invoice_template_id_${tid}`) : null);
 
       if (savedTplId && !isThermalReceiptId(savedTplId)) {
@@ -275,12 +307,28 @@ export function FullInvoicePrinter({
     } catch {}
     return 'tpl-word-default';
   });
+  // Set when the user picks a template manually in this modal. A manual pick is
+  // explicit and must win over the auto-resolved per-category slot; when it is
+  // NOT set, the per-category slot (which follows the master when linked, or the
+  // user's own assignment when overridden) drives the print instead of the
+  // master invoice template. This is what fixes "same master template shown for
+  // quotation / proforma / estimate".
+  const [manualTemplatePick, setManualTemplatePick] = useState(false);
   const [fetchedReviewUrl, setFetchedReviewUrl] = useState<string | null>(null);
   const [invoiceCopyType, setInvoiceCopyType] = useState<string>(invoice?.copy_type || 'ORIGINAL FOR RECIPIENT');
   const [isPdfOverlayModalOpen, setIsPdfOverlayModalOpen] = useState(false);
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
-  const [liveCompanyData, setLiveCompanyData] = useState<any>(null);
+    const [liveCompanyData, setLiveCompanyData] = useState<any>(null);
+  const [fetchedBankAccounts, setFetchedBankAccounts] = useState<any[]>([]);
+
+  useEffect(() => {
+    bankApi.listBankAccounts({ page: 1, page_size: 20 }).then((res) => {
+      if (res?.items && Array.isArray(res.items) && res.items.length > 0) {
+        setFetchedBankAccounts(res.items);
+      }
+    }).catch(() => {});
+  }, [tenant?.id]);
   const [isPurchaseSettingsOpen, setIsPurchaseSettingsOpen] = useState(false);
   const [isSalesSettingsOpen, setIsSalesSettingsOpen] = useState(false);
   const [isWordStudioOpen, setIsWordStudioOpen] = useState(false);
@@ -469,8 +517,10 @@ export function FullInvoicePrinter({
   useEffect(() => {
     const loadTemplates = () => {
       try {
+        // Tenant-suffixed template list only — the unsuffixed global key holds
+        // templates from other tenants and must not shadow this workspace.
         const storageKey = getTenantTemplatesKey(tenant?.id);
-        const saved = localStorage.getItem(storageKey) || localStorage.getItem('businessos_print_templates_v1');
+        const saved = safeGetItem(storageKey);
         if (saved) {
           const list = JSON.parse(saved);
           if (Array.isArray(list)) {
@@ -490,6 +540,9 @@ export function FullInvoicePrinter({
           (invoice as any)?.custom_fields?.template_id;
         const invoiceSpecificTplId = isThermalReceiptId(rawInvoiceSpecificTplId) ? undefined : rawInvoiceSpecificTplId;
 
+        const docCategory = detectDocCategory(invoice);
+        const activeCompanyId = typeof window !== 'undefined' ? localStorage.getItem('bos_active_company_id') : undefined;
+
         // Fetch organization templates saved in database for multi-user synchronization across same tenant
         printTemplatesApi.getTemplates('invoices').then((res) => {
           if (res?.templates && Array.isArray(res.templates) && res.templates.length > 0) {
@@ -500,20 +553,17 @@ export function FullInvoicePrinter({
                 prev.forEach((t) => map.set(t.id, t));
                 backendInvTpls.forEach((t: any) => map.set(t.id, { ...(map.get(t.id) || {}), ...t }));
                 const merged = Array.from(map.values());
-                try {
-                  const storageKey = getTenantTemplatesKey(tenant?.id);
-                  localStorage.setItem(storageKey, JSON.stringify(merged));
-                } catch {}
+                // Quota-safe + tenant-scoped write (dedupes/caps the list).
+                safeSetItem(getTenantTemplatesKey(tenant?.id), JSON.stringify(merged));
                 return merged;
               });
             }
           }
-          if (res?.active_map?.invoices && !invoiceSpecificTplId && !isThermalReceiptId(res.active_map.invoices)) {
-            // The ACTIVATED template must win over the built-in default so the
-            // same template shows up everywhere; only a deliberate non-default
-            // user pick keeps the override.
+          // Only update if backend has a slot matching THIS category (or master for 'invoice')
+          const activeBackendTpl = res?.active_map?.[docCategory] || (docCategory === 'invoice' ? res?.active_map?.invoices : undefined);
+          if (activeBackendTpl && !invoiceSpecificTplId && !isThermalReceiptId(activeBackendTpl)) {
             setSelectedTemplateId((prev) =>
-              !prev || isThermalReceiptId(prev) || prev === 'tpl-word-default' ? res.active_map.invoices : prev
+              !prev || isThermalReceiptId(prev) || prev === 'tpl-word-default' ? activeBackendTpl : prev
             );
           }
         }).catch(() => {});
@@ -537,25 +587,33 @@ export function FullInvoicePrinter({
           return;
         }
 
-        // 2. Otherwise restore active selected template across sessions/logins
-        const userActiveDefaultsRaw =
-          localStorage.getItem(`user_active_print_templates_v1_${tenant?.id}`) ||
-          localStorage.getItem('user_active_print_templates_v1');
+        // Category-specific active template resolution
+        const categorySaved = getActiveInvoicePrintTemplateForCategory(
+          docCategory,
+          tenant?.id,
+          activeCompanyId || undefined
+        );
+
+        const userActiveDefaultsRaw = safeGetItem(getTenantDefaultsKey(tenant?.id));
         let userActiveInvoiceId: string | null = null;
         if (userActiveDefaultsRaw) {
           try {
             const parsed = JSON.parse(userActiveDefaultsRaw);
-            userActiveInvoiceId = parsed.invoices || parsed.invoice || null;
+            userActiveInvoiceId = (docCategory !== 'invoice' && parsed[docCategory])
+              ? parsed[docCategory]
+              : (parsed.invoices || parsed.invoice || null);
           } catch {}
         }
 
         const savedTplId =
+          categorySaved ||
           userActiveInvoiceId ||
-          localStorage.getItem(`bos_active_invoice_template_id_${tenant?.id}`);
+          getActiveDocTemplateId(docCategory, tenant?.id, activeCompanyId || undefined) ||
+          getActiveInvoicePrintTemplate(tenant?.id)?.id ||
+          null;
 
         if (savedTplId && !isThermalReceiptId(savedTplId)) {
           setSelectedTemplateId(savedTplId);
-          invoicesApi.setActivePrintTemplate(savedTplId).catch(() => {});
         } else {
           invoicesApi.getActivePrintTemplate().then((res) => {
             if (res?.active_template?.id && !isThermalReceiptId(res.active_template.id)) {
@@ -662,14 +720,42 @@ export function FullInvoicePrinter({
     (invoice as any)?.custom_fields?.template_id;
   const invoiceSpecificTplId = isThermalReceiptId(rawInvoiceSpecificTplId) ? undefined : rawInvoiceSpecificTplId;
 
-  // Honor the ACTIVATED template from Print & Document Templates so the same
-  // template is used everywhere — only a real user pick (or an invoice-stamped
-  // template) overrides it; the silent built-in default no longer wins.
-  const activatedId = activeMasterTemplate?.id && activeMasterTemplate.id !== 'tpl-word-default' ? activeMasterTemplate.id : activeMasterTemplate?.id;
-  const targetTplId =
-    (selectedTemplateId && selectedTemplateId !== 'tpl-word-default' && !isThermalReceiptId(selectedTemplateId))
+  // Per-category template slots: if the user has chosen a template specifically
+  // for this document's category (quotation, proforma, estimate, credit/debit
+  // note), that one wins; otherwise the invoice slot's active template is used —
+  // so every document always renders through exactly one chosen design.
+  const docCategory = detectDocCategory(invoice);
+  const categoryActiveTemplateId =
+    getActiveInvoicePrintTemplateForCategory(docCategory, tenant?.id || getTenantIdFromStorage()) ?? undefined;
+
+  // Only a real (non-default, non-sentinel) master pick counts; a bare
+  // 'tpl-word-default' stub means "no explicit master" and falls through.
+  const activatedId =
+    activeMasterTemplate?.id && activeMasterTemplate.id !== 'tpl-word-default' && !isThermalReceiptId(activeMasterTemplate.id)
+      ? activeMasterTemplate.id
+      : undefined;
+  // Resolution order (highest wins):
+  //  1. A MANUAL pick in this modal (manualTemplatePick) — explicit intent.
+  //  2. The per-category slot: linked → follows master, overridden → that
+  //     category's own template. THIS IS THE USER'S LIVE CHOICE — it always
+  //     wins over any stamp baked into an old invoice record, so re-assigning
+  //     a category in Print & Document Templates takes effect immediately.
+  //  3. A stamp on THIS invoice (custom_fields.print_template_id) — honored
+  //     ONLY as a fallback when the user has NO active template for the
+  //     category at all (categoryActiveTemplateId === null), so an old
+  //     explicit pin still beats the built-in default. Sentinels ('a4',
+  //     thermal ids) never count.
+  //  4. The active master invoice template, else the built-in default.
+  const provisionalTarget = manualTemplatePick
+    ? ((selectedTemplateId && selectedTemplateId !== 'tpl-word-default' && !isThermalReceiptId(selectedTemplateId))
       ? selectedTemplateId
-      : (invoiceSpecificTplId || activatedId || 'tpl-word-default');
+      : (categoryActiveTemplateId || activatedId || 'tpl-word-default'))
+    : (categoryActiveTemplateId || activatedId || 'tpl-word-default');
+  const effectiveSpecificId =
+    categoryActiveTemplateId
+      ? undefined
+      : (invoiceSpecificTplId && invoiceSpecificTplId !== provisionalTarget ? invoiceSpecificTplId : undefined);
+  const targetTplId = effectiveSpecificId || provisionalTarget;
 
   // 1. Direct match by ID in availableTemplates
   let resolvedTpl = availableTemplates.find((t) => t.id === targetTplId || t.themeName === targetTplId);
@@ -783,20 +869,45 @@ export function FullInvoicePrinter({
     ...(isWalkInParty(invoice) ? { showPartyBalance: false } : {}),
   };
 
-  const theme =
-    template.themeName ||
-    (template.name?.toLowerCase().includes('marg') || template.id?.includes('marg') ? 'marg_pharma' :
-     template.name?.toLowerCase().includes('fmcg') || template.id?.includes('fmcg') ? 'fmcg_distributor' :
-     template.name?.toLowerCase().includes('parle') || template.id?.includes('parle') ? 'parle_teal' :
-     (template.name?.toLowerCase().includes('gst tally') || template.name?.toLowerCase().includes('gst-tally') || template.id?.includes('gst-tally')) ? 'gst_tally' :
-     template.name?.toLowerCase().includes('agri') || template.id?.includes('agri') || template.name?.toLowerCase().includes('seed') || template.id?.includes('seed') ? 'agri_seeds' :
-     template.name?.toLowerCase().includes('luxury') || template.id?.includes('luxury') ? 'luxury' :
-     template.name?.toLowerCase().includes('tally') || template.id?.includes('tally') ? 'tally' :
-     template.name?.toLowerCase().includes('adv') || template.id?.includes('adv') ? 'adv_gst' :
-     template.name?.toLowerCase().includes('billbook') || template.id?.includes('billbook') ? 'billbook' :
-     template.name?.toLowerCase().includes('modern') || template.id?.includes('modern') ? 'modern' :
-     template.name?.toLowerCase().includes('god') || template.id?.includes('god') ? 'culture_god' :
-     'stylish');
+  // Single source of truth for "which engine renders this template" — the same
+  // resolver the designer's Live Preview uses, so preview and print can no
+  // longer disagree on routing.
+  const { renderer: sharedRenderer, theme } = resolveInvoiceRenderer(template);
+
+  // Fully-editable text/label layer: theme defaults < per-template `texts` override.
+  // Every theme reads its visible words from here so user-edited labels apply
+  // everywhere (print, PDF, email, WhatsApp) without touching layout code.
+  const texts: InvoiceTexts = resolveInvoiceTexts(template, theme);
+
+  // Doc-type-aware document title + number/date label. Driven by the shared
+  // resolver so a proforma prints "PROFORMA INVOICE" / "Proforma No", a
+  // quotation prints "TAX QUOTATION / ESTIMATE" / "Quote No", etc. — and the
+  // template's own `texts` overrides always win (the "clutter removal" +
+  // doc-type-aware title goal).
+  const resolvedDocTitle = docTitleFor(invoice, texts, template);
+  const resolvedDocNoLabel = docNoLabelFor(invoice, texts);
+  const resolvedDocDateLabel = docDateLabelFor(invoice, texts);
+
+  const resolvedPartyLayout: PartyLayoutType = (
+    customTemplate?.partyLayout ||
+    customTemplate?.party?.layout ||
+    template?.partyLayout ||
+    template?.party?.layout ||
+    (template?.wordConfig as any)?.partyLayout ||
+    'layout_1'
+  ) as PartyLayoutType;
+
+  const resolvedColumns =
+    customTemplate?.columns ||
+    customTemplate?.itemTable?.columns ||
+    template?.columns ||
+    template?.itemTable?.columns ||
+    (template?.wordConfig as any)?.columns;
+
+  const resolvedCustomFields =
+    customTemplate?.customFields ||
+    template?.customFields ||
+    (template?.wordConfig as any)?.customFields;
 
   const isMargPharma = theme === 'marg_pharma';
   const isFmcg = theme === 'fmcg_distributor';
@@ -809,18 +920,10 @@ export function FullInvoicePrinter({
     template?.isPdfStationeryOverlay === true ||
     Boolean(template?.pdfBackgroundDataUrl)
   );
-  const isWordTemplate = Boolean(
-    template?.wordConfig ||
-    template?.id?.startsWith('tpl-word-') ||
-    template?.id?.startsWith('tpl-inv-global-') ||
-    targetTplId === 'tpl-word-default' ||
-    targetTplId?.startsWith('tpl-word-') ||
-    targetTplId?.startsWith('tpl-inv-global-') ||
-    theme === 'word_studio' ||
-    template?.themeName === 'word_studio' ||
-    template?.themeName?.startsWith('global_') ||
-    (template as any)?.isWordTemplate
-  );
+  // Driven by the shared resolver above: named replica themes keep their own
+  // design even when a Word Studio save attached a `wordConfig`, and only
+  // genuinely Word-studio templates route to the Word engine.
+  const isWordTemplate = sharedRenderer === 'word';
   const isCustomReplica = isWordTemplate || isMargPharma || isFmcg || isParle || isAgriSeeds || isGstTally || isPdfOverlay;
 
 
@@ -1092,6 +1195,10 @@ export function FullInvoicePrinter({
       if (b.upi_id) parts.push(`UPI: ${b.upi_id}`);
       return parts.join(" | ");
     }
+    if (fetchedBankAccounts.length > 0 && fetchedBankAccounts[0]) {
+      const b = fetchedBankAccounts[0];
+      return `Bank: ${b.bank_name || b.name} | A/C: ${b.account_number || ""} | IFSC: ${b.ifsc_code || ""}`;
+    }
     if (liveCompanyData?.bank_details && String(liveCompanyData.bank_details).trim().length > 3) return liveCompanyData.bank_details;
     if (liveCompanyData?.bank_name && (liveCompanyData?.bank_account_number || liveCompanyData?.account_number)) {
       return `Bank: ${liveCompanyData.bank_name} | A/C: ${liveCompanyData.bank_account_number || liveCompanyData.account_number} | IFSC: ${liveCompanyData.bank_ifsc || liveCompanyData.ifsc_code || ''} ${liveCompanyData.bank_branch || liveCompanyData.branch_name ? `| Branch: ${liveCompanyData.bank_branch || liveCompanyData.branch_name}` : ''}`;
@@ -1245,27 +1352,54 @@ export function FullInvoicePrinter({
   );
   const balanceDue = isPaidInFull ? 0 : Math.max(0, grandTotal - amountReceived);
 
+  // The per-template "UPI QR" option (f.showQR) must actually gate printing.
+  // Pre-fix this only honored the org-level setting, so unchecking the QR on a
+  // template was silently ignored. Now: org default, template option, and the
+  // per-invoice flag all agree.
   const shouldPrintPaymentQr = Boolean(
     invoice.print_payment_qr !== false &&
-    paymentQrSettings.enabled
+    f.showQR !== false
   );
 
-  const resolvedUpiVpa = (invoice.upi_vpa || paymentQrSettings.vpa || activeBillingGst?.upi_vpa || '').trim();
+  const resolvedUpiVpa = (
+    invoice.upi_vpa ||
+    (template as any)?.upiId ||
+    paymentQrSettings.vpa ||
+    activeBillingGst?.upi_vpa ||
+    ''
+  ).trim();
+
+  const customQrImage = (template as any)?.customQrUrl || (paymentQrSettings.type === 'custom_image' ? paymentQrSettings.customImageUrl : null);
+  const hasValidUpi = Boolean(resolvedUpiVpa && resolvedUpiVpa.includes('@'));
+  const hasRealQrSource = Boolean(customQrImage || hasValidUpi);
+
   const targetAmount = balanceDue > 0 ? balanceDue : grandTotal;
-  const upiIntentUrl = resolvedUpiVpa
+  const upiIntentUrl = hasValidUpi
     ? buildUpiPayUrl({
         vpa: resolvedUpiVpa,
-        payeeName: paymentQrSettings.payeeName || dynamicStoreName,
+        payeeName: (template as any)?.payeeName || paymentQrSettings.payeeName || dynamicStoreName,
         amount: targetAmount,
         invoiceNumber: invoice.invoice_number || invoice.quote_number || 'INV',
       })
     : '';
 
-  const paymentQrSrc = shouldPrintPaymentQr
-    ? (paymentQrSettings.type === 'custom_image' && paymentQrSettings.customImageUrl
-        ? paymentQrSettings.customImageUrl
+  const paymentQrSrc = shouldPrintPaymentQr && hasRealQrSource
+    ? (customQrImage
+        ? customQrImage
         : (upiIntentUrl ? generateQRCodeSVG(upiIntentUrl, 160) : ''))
     : '';
+
+  // Shared payment-QR context handed to every theme so the QR block renders
+  // consistently and stays gated by the same option instead of hard-coded per
+  // theme. Themes with no dedicated QR slot render this in their footer.
+  const paymentQr: PaymentQrContext = {
+    enabled: shouldPrintPaymentQr && Boolean(paymentQrSrc),
+    src: paymentQrSrc,
+    vpa: resolvedUpiVpa,
+    targetAmount,
+    balanceDue,
+    isPaidInFull,
+  };
 
   const handlePrint = () => {
     const container = printContainerRef.current;
@@ -1303,7 +1437,7 @@ export function FullInvoicePrinter({
         <!DOCTYPE html>
         <html>
           <head>
-            <title>${(invoice?.doc_type === 'quotation' || invoice?.invoice_type === 'QUOTATION' || String(invoice?.invoice_number || '').toUpperCase().startsWith('QT-')) ? 'Tax Quotation' : (invoice?.doc_type === 'estimate' || invoice?.invoice_type === 'ESTIMATE_NON_GST' || String(invoice?.invoice_number || '').toUpperCase().startsWith('EST-')) ? 'Tax Estimate' : 'Tax Invoice'} - ${invoice?.invoice_number || 'Document'}</title>
+            <title>${resolvedDocTitle} - ${invoice?.invoice_number || 'Document'}</title>
             <meta charset="utf-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1.0" />
             <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1311,9 +1445,25 @@ export function FullInvoicePrinter({
             <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
             ${styles}
             <style>
+              /* @page keeps a small printer-safety margin; the sheet
+                 (tpl-sheet-full, min-h = printable area) fills that area exactly
+                 and its footer pins to the bottom — so the invoice no longer
+                 floats at ~75% of the page with blank space below. */
               @page {
-                size: ${selectedPaperSize === 'A5' ? `A5 ${selectedOrientation}` : 'A4 portrait'} !important;
-                margin: ${selectedPaperSize === 'A5' ? '2.5mm 3.5mm' : '4mm 6mm'} !important;
+                size: ${selectedPaperSize === 'A5' ? `A5 ${selectedOrientation}` : `A4 ${selectedOrientation}`} !important;
+                margin: ${
+                  (() => {
+                    const m = template?.margins || template?.style?.margins;
+                    if (selectedPaperSize === 'A5') {
+                      if (m === 'compact') return '1.5mm 2.5mm';
+                      if (m === 'spacious') return '4mm 5mm';
+                      return '2.5mm 3.5mm';
+                    }
+                    if (m === 'compact') return '2mm 4mm';
+                    if (m === 'spacious') return '8mm 10mm';
+                    return '4mm 6mm';
+                  })()
+                } !important;
               }
               * {
                 -webkit-print-color-adjust: exact !important;
@@ -1394,7 +1544,12 @@ export function FullInvoicePrinter({
                 display: table-footer-group !important;
               }
               /* Kill template min-heights so content flows instead of forcing a 2nd page */
-              #a4-invoice-printable-area [class*="min-h-"] { min-height: 0 !important; }
+              /* Zero min-heights so long content paginates instead of forcing a
+                 2nd page — BUT full-page sheets (.tpl-sheet-full: GST Tally /
+                 Marg / FMCG / Parle / Agri) keep their exact A4/A5 page height
+                 so the sheet fills the whole page and its footer pins to the
+                 bottom, instead of collapsing to ~75% with blank space. */
+              #a4-invoice-printable-area [class*="min-h-"]:not(.tpl-sheet-full) { min-height: 0 !important; }
               .print\\:hidden, .no-print {
                 display: none !important;
                 visibility: hidden !important;
@@ -1413,23 +1568,15 @@ export function FullInvoicePrinter({
           </head>
           <body><div id="a4-invoice-portal">${invoiceHtml}</div><!--
             <script>
-              // Fit-to-page: if content is taller than the printable area, zoom
-              // the invoice down so it prints on a single page.
+              // NOTE: no fit-to-page zoom scaling anymore. An old version shrank
+              // the document uniformly when it was slightly taller than one page
+              // (zoom = printableH / contentH) which left the invoice as a small
+              // ~75% block floating on the A4 page. Now: content at natural 100%
+              // width always; if it overflows the page it paginates normally.
               window.addEventListener('load', function () {
                 try {
                   var area = document.getElementById('a4-invoice-printable-area');
-                  if (!area) return;
-                  var printableH = ${selectedPaperSize === 'A5' ? (selectedOrientation === 'landscape' ? 530 : 760) : 1080}; // A4/A5 printable height @96dpi minus margins
-                  var contentH = area.scrollHeight;
-                  if (contentH > printableH + 8) {
-                    if (contentH <= printableH * 1.08) {
-                      area.style.zoom = String(printableH / contentH);
-                    } else {
-                      area.style.zoom = "1";
-                    }
-                    var scale = null;
-                    if (scale) area.style.zoom = String(scale);
-                  }
+                  if (area) area.style.zoom = '1';
                 } catch (e) {}
               });
             </script>
@@ -1469,7 +1616,7 @@ export function FullInvoicePrinter({
     <>
       <style>{`
         @media print {
-          @page { size: ${selectedPaperSize === 'A5' ? `A5 ${selectedOrientation}` : 'A4 portrait'} !important; margin: ${selectedPaperSize === 'A5' ? '2.5mm 3.5mm' : '4mm 6mm'} !important; }
+          @page { size: ${selectedPaperSize === 'A5' ? `A5 ${selectedOrientation}` : `A4 ${selectedOrientation}`} !important; margin: ${selectedPaperSize === 'A5' ? '2.5mm 3.5mm' : '4mm 6mm'} !important; }
           html, body { width: 100% !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; background: #ffffff !important; color: #000000 !important; overflow: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           body > *:not(#a4-invoice-portal), #root, header, nav, footer, .no-print, [data-no-print] { display: none !important; visibility: hidden !important; }
           #a4-invoice-portal { display: block !important; visibility: visible !important; position: static !important; width: 100% !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; background: #ffffff !important; color: #000000 !important; overflow: visible !important; }
@@ -1479,7 +1626,9 @@ export function FullInvoicePrinter({
           #a4-invoice-printable-area > *:last-child { margin-bottom: 0 !important; padding-bottom: 0 !important; }
           #a4-invoice-printable-area * { visibility: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           tr { page-break-inside: avoid !important; break-inside: avoid !important; }
-          #a4-invoice-printable-area [class*="min-h-"] { min-height: 0 !important; }
+          /* Full-page sheets (.tpl-sheet-full) keep their exact A4/A5 page height;
+             everything else zeroes so long content paginates. */
+          #a4-invoice-printable-area [class*="min-h-"]:not(.tpl-sheet-full) { min-height: 0 !important; }
           .grid { display: grid !important; }
           .grid-cols-2 { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
           .grid-cols-3 { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
@@ -1505,15 +1654,7 @@ export function FullInvoicePrinter({
               </div>
               <div>
                 <h3 className="font-bold text-sm text-white flex items-center gap-2">
-                  {invoice?.header_title
-                    ? `${invoice.header_title} (A4 Format)`
-                    : (invoice?.doc_type === 'quotation' || invoice?.invoice_type === 'QUOTATION' || String(invoice?.invoice_number || '').toUpperCase().startsWith('QT-'))
-                    ? 'TAX QUOTATION / ESTIMATE (A4 Format)'
-                    : (invoice?.doc_type === 'estimate' || invoice?.invoice_type === 'ESTIMATE_NON_GST' || String(invoice?.invoice_number || '').toUpperCase().startsWith('EST-'))
-                    ? 'TAX ESTIMATE / ESTIMATE (A4 Format)'
-                    : (invoice?.doc_type === 'proforma' || invoice?.invoice_type === 'proforma' || invoice?.invoice_type === 'PROFORMA')
-                    ? 'Proforma Invoice Preview (A4 Format)'
-                    : 'Tax Invoice Preview (A4 Format)'}
+                  {(invoice?.header_title || resolvedDocTitle) + (isPurchaseDoc ? '' : ' (A4 Format)')}
                   <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30">
                     {dynamicStoreName}
                   </span>
@@ -1524,6 +1665,7 @@ export function FullInvoicePrinter({
                     onChange={(e) => {
                       const newTplId = e.target.value;
                       setSelectedTemplateId(newTplId);
+                      setManualTemplatePick(true);
                       if (isPurchaseDoc) {
                         const tid = tenant?.id || 'default';
                         localStorage.setItem(`bos_active_purchase_template_id_${tid}`, newTplId);
@@ -1531,9 +1673,19 @@ export function FullInvoicePrinter({
                         toast.success("Applied purchase invoice template!");
                         return;
                       }
-                      setActiveInvoicePrintTemplate(newTplId, tenant?.id);
-                      invoicesApi.setActivePrintTemplate(newTplId).catch(() => {});
-                      printTemplatesApi.setActiveTemplate(newTplId, 'invoices').catch(() => {});
+                      const tid = tenant?.id || getTenantIdFromStorage() || 'default';
+                      const cid = typeof window !== 'undefined' ? localStorage.getItem('bos_active_company_id') : undefined;
+                      const docCategory = detectDocCategory(invoice);
+                      if (docCategory !== 'invoice') {
+                        // Persist to document category slot without clobbering master tax invoice
+                        setActiveInvoicePrintTemplateForCategory(newTplId, docCategory, tid, cid || undefined);
+                        toast.success(`Applied ${docCategory.replace('_', ' ').toUpperCase()} template!`);
+                      } else {
+                        setActiveInvoicePrintTemplate(newTplId, tid);
+                        invoicesApi.setActivePrintTemplate(newTplId).catch(() => {});
+                        printTemplatesApi.setActiveTemplate(newTplId, 'invoices').catch(() => {});
+                        toast.success("Applied sales invoice template across system!");
+                      }
                       if (invoice) {
                         invoice.print_template_id = newTplId;
                         invoice.template_id = newTplId;
@@ -1833,6 +1985,8 @@ export function FullInvoicePrinter({
                   dynamicBank={dynamicBank}
                   currency={currency}
                   f={f}
+                  texts={texts}
+                  paymentQr={paymentQr}
                   template={template}
                   paperSize={selectedPaperSize}
                   orientation={selectedOrientation}
@@ -1850,6 +2004,8 @@ export function FullInvoicePrinter({
                   dynamicBank={dynamicBank}
                   currency={currency}
                   f={f}
+                  texts={texts}
+                  paymentQr={paymentQr}
                   template={template}
                 />
               ) : isMargPharma ? (
@@ -1862,8 +2018,12 @@ export function FullInvoicePrinter({
                   dynamicEmail={dynamicEmail}
                   sellerGstin={sellerGstin}
                   sellerStateCode={sellerStateCode}
+                  dynamicBank={dynamicBank}
                   currency={currency}
                   f={f}
+                  texts={texts}
+                  paymentQr={paymentQr}
+                  template={template}
                   paperSize={selectedPaperSize}
                   orientation={selectedOrientation}
                 />
@@ -1877,8 +2037,12 @@ export function FullInvoicePrinter({
                   dynamicEmail={dynamicEmail}
                   sellerGstin={sellerGstin}
                   sellerStateCode={sellerStateCode}
+                  dynamicBank={dynamicBank}
                   currency={currency}
                   f={f}
+                  texts={texts}
+                  paymentQr={paymentQr}
+                  template={template}
                   paperSize={selectedPaperSize}
                   orientation={selectedOrientation}
                 />
@@ -1892,8 +2056,12 @@ export function FullInvoicePrinter({
                   dynamicEmail={dynamicEmail}
                   sellerGstin={sellerGstin}
                   sellerStateCode={sellerStateCode}
+                  dynamicBank={dynamicBank}
                   currency={currency}
                   f={f}
+                  texts={texts}
+                  paymentQr={paymentQr}
+                  template={template}
                   paperSize={selectedPaperSize}
                   orientation={selectedOrientation}
                 />
@@ -1910,6 +2078,9 @@ export function FullInvoicePrinter({
                   dynamicBank={dynamicBank}
                   currency={currency}
                   f={f}
+                  texts={texts}
+                  paymentQr={paymentQr}
+                  template={template}
                   paperSize={selectedPaperSize}
                   orientation={selectedOrientation}
                 />
@@ -1926,8 +2097,14 @@ export function FullInvoicePrinter({
                   dynamicBank={dynamicBank}
                   currency={currency}
                   f={f}
+                  texts={texts}
+                  paymentQr={paymentQr}
+                  template={template}
                   paperSize={selectedPaperSize}
                   orientation={selectedOrientation}
+                  partyLayout={resolvedPartyLayout}
+                  columns={resolvedColumns}
+                  customFields={resolvedCustomFields}
                 />
               ) : (
                 <>
@@ -1988,24 +2165,14 @@ export function FullInvoicePrinter({
                         </span>
                       </div>
                       <h1 className="text-xl font-black tracking-tight uppercase" style={{ color: primaryColor }}>
-                        {invoice.header_title || (
-                          (invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? 'TAX QUOTATION / ESTIMATE' :
-                          (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? 'TAX ESTIMATE / ESTIMATE' :
-                          (invoice.doc_type === 'proforma' || invoice.invoice_type?.toLowerCase() === 'proforma' || invoice.invoice_type === 'PROFORMA' || String(invoice.invoice_number || '').toUpperCase().startsWith('PI-')) ? 'PROFORMA INVOICE' :
-                          (template.headerTitle || 'TAX INVOICE')
-                        )}
+                        {resolvedDocTitle}
                       </h1>
                       <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 inline-block text-right mt-0.5">
                         <p className="text-xs font-bold text-slate-900">
-                          {(invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? 'Quote No:' :
-                           (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? 'Estimate No:' :
-                           (invoice.doc_type === 'proforma' || invoice.invoice_type?.toLowerCase() === 'proforma' || invoice.invoice_type === 'PROFORMA' || String(invoice.invoice_number || '').toUpperCase().startsWith('PI-')) ? 'Proforma No:' :
-                           'Invoice No:'} {invoice.invoice_number || ((invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION') ? '#QTN' : (invoice.doc_type === 'proforma' || invoice.invoice_type?.toLowerCase() === 'proforma' || invoice.invoice_type === 'PROFORMA') ? '#PI' : '#INV')}
+                          {resolvedDocNoLabel}: {invoice.invoice_number || ((invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION') ? '#QTN' : (invoice.doc_type === 'proforma' || invoice.invoice_type?.toLowerCase() === 'proforma' || invoice.invoice_type === 'PROFORMA') ? '#PI' : '#INV')}
                         </p>
                         <p className="text-[11px] text-slate-600 font-medium">
-                          {(invoice.doc_type === 'quotation' || invoice.invoice_type === 'QUOTATION' || String(invoice.invoice_number || '').toUpperCase().startsWith('QT-')) ? 'Quote Date:' :
-                           (invoice.doc_type === 'estimate' || invoice.invoice_type === 'ESTIMATE_NON_GST' || String(invoice.invoice_number || '').toUpperCase().startsWith('EST-')) ? 'Estimate Date:' :
-                           'Date:'} {formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date())}
+                          {resolvedDocDateLabel}: {formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date())}
                         </p>
                         {invoice.eway_bill_number && (
                           <div className="mt-1 px-2 py-0.5 bg-emerald-50 border border-emerald-300 rounded text-emerald-800 text-[10px] font-mono font-bold text-right">
@@ -2121,6 +2288,9 @@ export function FullInvoicePrinter({
                                 {invoice.customerEmail && <p className="text-[10px] text-slate-600">Email: {invoice.customerEmail}</p>}
                                 {invoice.customerGST && <p className="text-[10px] font-bold text-slate-800">GSTIN: {invoice.customerGST}</p>}
                                 {invoice.customerPan && <p className="text-[10px] font-semibold text-slate-700">PAN: {invoice.customerPan}</p>}
+                                {/* Customer personal details forwarded from the
+                                    print payload (gender / DOB / age). */}
+                                <CustomerExtrasBlock invoice={invoice} texts={texts} className="text-slate-600 mt-1" />
                               </div>
 
                               {/* 2. Shipped To Column (Always clearly displayed) */}
@@ -2282,8 +2452,8 @@ export function FullInvoicePrinter({
                     );
                   })()}
 
-                  {/* Line Items Table */}
-                  {(() => {
+                  {/* Line Items Table — hidden when the template disables it */}
+                  {f.showItemTable !== false && (() => {
                     const hasProcurementColumns = isPurchaseDoc || items.some((it) =>
                       Boolean(it.uom || it.expiry_date || (it as any).exp_date || (it as any).expDate || Number(it.mrp || 0) > 0 || Number(it.selling_price || 0) > 0)
                     );
@@ -2733,10 +2903,14 @@ export function FullInvoicePrinter({
                     </div>
                   )}
 
-                  {/* Totals & Bank Details */}
+                  {/* Totals & Bank Details — block visibility honors the
+                      template's field toggles (showBankDetails / showQR /
+                      showPaymentDetails / showTerms) so disabled elements
+                      don't clutter the printed document. */}
+                  {(f.showTotals !== false || f.showBankDetails !== false || f.showQR !== false || f.showTerms !== false || hasRealBank) && (
                   <div className="grid grid-cols-12 gap-4 print:gap-2 pt-1 print:pt-0.5 z-10 relative">
                     <div className="col-span-7 space-y-3">
-                      {hasRealBank && (
+                      {f.showBankDetails !== false && hasRealBank && (
                         <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-0.5">
                           <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
                             Bank & Wire Transfer Details
@@ -2790,12 +2964,14 @@ export function FullInvoicePrinter({
                         )}
                       </div>
 
+                      {f.showTerms !== false && (
                       <div className="space-y-0.5">
                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Terms & Conditions</span>
                         <p className="text-[9px] text-slate-500 whitespace-pre-line leading-relaxed">
                           {invoice?.terms || activeBillingGst?.terms_and_conditions || template.termsText || '1. Goods once sold will not be taken back.\n2. All disputes subject to local jurisdiction.'}
                         </p>
                       </div>
+                      )}
 
                       {showGoogleReview && googleReviewUrl && (
                         <div className="flex items-center gap-3 p-2.5 bg-amber-50/70 border border-amber-200/90 rounded-xl print:border-slate-300">
@@ -2956,6 +3132,7 @@ export function FullInvoicePrinter({
                       )}
                     </div>
                   </div>
+                  )}
 
                   {/* Signature & Footer */}
                   {(() => {
@@ -3018,6 +3195,7 @@ export function FullInvoicePrinter({
         onClose={() => setIsPdfOverlayModalOpen(false)}
         onSaved={(newTplId) => {
           setSelectedTemplateId(newTplId);
+          setManualTemplatePick(true);
           try {
             const storageKey = getTenantTemplatesKey(tenant?.id);
             const saved = localStorage.getItem(storageKey);
@@ -3037,11 +3215,39 @@ export function FullInvoicePrinter({
       <InvoiceQuickSettingsModal
         isOpen={isSalesSettingsOpen}
         onClose={() => setIsSalesSettingsOpen(false)}
+        settings={salesSettings}
+        onSave={(newSettings) => {
+          saveStoredInvoiceSettings(newSettings, tenant?.id);
+          setSalesSettings(loadStoredInvoiceSettings(tenant?.id));
+        }}
       />
       <WordInvoiceStudioModal
         isOpen={isWordStudioOpen}
-        onClose={() => setIsWordStudioOpen(false)}
+        onClose={() => {
+          setIsWordStudioOpen(false);
+          // Studio saves dispatch "print_templates_updated" — re-resolve so the
+          // preview instantly reflects the just-edited active template.
+          setAvailableTemplates((prev) => {
+            try {
+              const storageKey = getTenantTemplatesKey(tenant?.id);
+              const saved = localStorage.getItem(storageKey);
+              if (saved) {
+                const list = JSON.parse(saved);
+                if (Array.isArray(list)) {
+                  const invTpls = list.filter((t: any) => t.category === 'invoices' || t.docType === 'invoice' || t.wordConfig);
+                  if (invTpls.length > 0) return invTpls;
+                }
+              }
+            } catch {}
+            return prev;
+          });
+        }}
         docMode={isPurchaseDoc ? 'purchase' : 'sales'}
+        // Hand the studio the EXACT active template object for this doc
+        // category (with wordConfig/columns/fields/texts/customFields) so its
+        // save writes back into the in-use template, not a default clone.
+        initialTemplate={template}
+        docCategory={docCategory}
         onSaved={(tplConfig) => {
           setSelectedTemplateId(tplConfig?.id || 'tpl-word-default');
         }}

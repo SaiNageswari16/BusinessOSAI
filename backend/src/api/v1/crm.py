@@ -1892,6 +1892,9 @@ async def bulk_import_customers(
             status=item.status or "Active",
             address=item.address,
             gst_number=item.gst_number,
+            gender=(item.gender or None),
+            date_of_birth=item.date_of_birth or None,
+            age=(int(item.age) if item.age is not None and item.age != "" else None),
             owner_user_id=owner_id,
         )
         db.add(cust)

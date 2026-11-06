@@ -19,6 +19,12 @@ import { useTenant } from '@/contexts/tenant-context';
 import { inventoryApi } from '@/lib/api-client';
 import { FullInvoicePrinter, FullInvoiceData } from '../pos/FullInvoicePrinter';
 import { getActiveBillingGst } from '@/lib/receipt-template-store';
+import {
+  renderPurchaseDocument,
+  resolvePurchasePrintTemplate,
+  getNoteCompanyInfo,
+} from '@/lib/purchase-document-renderer';
+import { printHtmlInPage } from '@/lib/print-helper';
 import { formatDisplayDate } from '@/lib/utils';
 
 interface ProcurementShareModalProps {
@@ -406,6 +412,52 @@ export function ProcurementShareModal({
     toast.success('Copied to clipboard!');
   };
 
+  // A4 print that respects the user's selected template for the purchase_invoice
+  // / purchase_order document category (Print & Document Templates strip). The
+  // "View / Print PDF" tab above renders via FullInvoicePrinter's own engine;
+  // this path uses the shared purchase-document renderer so both stay in sync
+  // with the per-category template slots (falling back to the billing-GST
+  // branded layout when no template is selected).
+  const handlePrintDocument = () => {
+    try {
+      const kind = docType === 'PO' ? 'purchase_order' : 'purchase_invoice';
+      const template = resolvePurchasePrintTemplate(kind, tenant?.id);
+      const company = getNoteCompanyInfo(tenant?.id, {
+        currency_symbol: currency?.symbol || '₹',
+        logo_url: orgLogo,
+      });
+      const poRef = String(documentData?.po_number || documentData?.request_number || '').trim();
+      const grnRef = String(documentData?.grn_number || documentData?.grn_reference || '').trim();
+      const printHtml = renderPurchaseDocument(kind, {
+        doc_number: docNumber,
+        date_iso: documentData?.bill_date || documentData?.order_date || documentData?.created_at || undefined,
+        due_date: documentData?.due_date || documentData?.delivery_date || undefined,
+        status: paymentStatus,
+        terms: documentData?.terms || documentData?.notes || undefined,
+        supplier_name: supplierName,
+        supplier_phone: supplierPhone,
+        supplier_email: supplierEmail,
+        supplier_gstin: supplierGst || undefined,
+        supplier_pan: supplierPan || undefined,
+        supplier_address: supplierAddress || undefined,
+        po_reference: kind === 'purchase_invoice' ? poRef || undefined : undefined,
+        grn_reference: kind === 'purchase_invoice' ? grnRef || undefined : undefined,
+        items,
+        subtotal: Number(documentData?.subtotal || 0),
+        tax_amount: Number(documentData?.tax_amount || 0),
+        discount_amount: Number(documentData?.discount_amount || 0),
+        round_off: documentData?.round_off,
+        grand_total: totalAmount,
+        amount_paid: paidAmount,
+      }, company, template);
+      printHtmlInPage(printHtml, 300);
+      toast.success(`Printing ${docTitle} (${kind})`);
+    } catch (e) {
+      console.warn('Failed to print purchase document:', e);
+      toast.error('Could not prepare the print layout.');
+    }
+  };
+
   // Safe early exit for render ONLY after all hooks are executed
   if (!isOpen || !documentData) return null;
 
@@ -569,6 +621,15 @@ export function ProcurementShareModal({
                 className="text-xs rounded-xl font-bold"
               >
                 Close
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handlePrintDocument}
+                className="text-xs rounded-xl font-bold gap-1.5"
+              >
+                <Printer className="size-3.5 text-teal-600" /> Print A4
               </Button>
               <Button
                 type="button"

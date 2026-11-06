@@ -30,6 +30,24 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
   const fontFamilyChoice = activeTemplate?.thermalFontFamily || activeTemplate?.fontFamily || 'monospace';
   const dividerStyle = activeTemplate?.dividerStyle || 'dashed';
 
+  // ── Master-linked label resolution ──────────────────────────────────────
+  // The master (A4 invoice) designer can push its `texts` / `customTexts` word
+  // overrides, signature & stamp, and payment-QR settings down to this receipt
+  // (syncMasterInvoiceToReceivers). Reading them here means the 80mm/58mm
+  // receipt stays linked to the master template: rename a word on the master
+  // and the receipt's matching label follows, without the receipt layout
+  // changing. Anything not synced falls back to the receipt's own default.
+  const linkedTexts: Record<string, any> = {
+    ...((activeTemplate as any)?.texts || {}),
+    ...((activeTemplate as any)?.customTexts || {}),
+  };
+  const L = (key: string, fallback: string): string =>
+    linkedTexts[key] && String(linkedTexts[key]).trim() ? String(linkedTexts[key]) : fallback;
+
+  // Synced signature / stamp (master overrides win over the receipt's own).
+  const syncedSignatureUrl = (activeTemplate as any)?.signatureUrl || activeGst?.signature_url || '';
+  const syncedStampUrl = (activeTemplate as any)?.stampUrl || activeGst?.stamp_url || '';
+
   const fontFam =
     fontFamilyChoice === 'sans-serif'
       ? "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
@@ -567,12 +585,12 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
         </div>
 
         <div class="flex-between" style="font-size: 10px; font-weight: bold; margin-top: 4px;">
-          ${f.showInvoiceNumber !== false ? `<span>${isQuotationDoc ? 'QUOTE' : isEstimateDoc ? 'EST' : isProformaDoc ? 'PI' : 'INV'}: #${invoiceNum}</span>` : '<span></span>'}
-          ${f.showInvoiceDate !== false ? `<span>${isQuotationDoc ? 'QUOTE DATE' : isEstimateDoc ? 'EST DATE' : 'DATE'}: ${invoiceDate}</span>` : '<span></span>'}
+          ${f.showInvoiceNumber !== false ? `<span>${L(isQuotationDoc ? 'quoteNoLabel' : isEstimateDoc ? 'estimateNoLabel' : isProformaDoc ? 'proformaNoLabel' : 'invoiceNoLabel', isQuotationDoc ? 'QUOTE' : isEstimateDoc ? 'EST' : isProformaDoc ? 'PI' : 'INV')}: #${invoiceNum}</span>` : '<span></span>'}
+          ${f.showInvoiceDate !== false ? `<span>${L(isQuotationDoc ? 'quoteDateLabel' : isEstimateDoc ? 'estimateDateLabel' : 'invoiceDateLabel', isQuotationDoc ? 'QUOTE DATE' : isEstimateDoc ? 'EST DATE' : 'DATE')}: ${invoiceDate}</span>` : '<span></span>'}
         </div>
 
         <div class="flex-between" style="font-size: 9.5px; font-weight: 600; margin-bottom: 3px;">
-          ${f.showCashier !== false ? `<span>CASHIER: ${cashierRep}</span>` : '<span></span>'}
+          ${f.showCashier !== false ? `<span>${L('cashierLabel', 'CASHIER')}: ${cashierRep}</span>` : '<span></span>'}
           ${f.showTime !== false ? `<span>TIME: ${invoiceTime}</span>` : '<span></span>'}
         </div>
 
@@ -587,10 +605,10 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
 
         ${f.showCustomerDetails !== false ? `
           <div style="border-top: 1px dashed #000; padding-top: 3px; margin-top: 3px; font-size: 10px;">
-            <p style="font-weight: bold;">CUSTOMER: ${customerName}</p>
-            ${(f.showCustomerPhone !== false && customerPhone) ? `<p style="font-weight: 600;">MOB: ${customerPhone}</p>` : ''}
-            ${(f.showCustomerGstin !== false && customerGstin) ? `<p style="font-weight: 600;">GSTIN: ${customerGstin}</p>` : ''}
-            ${(f.showCustomerAddress !== false && customerAddress) ? `<p style="font-weight: 500; font-size: 9.5px;">ADDR: ${customerAddress}</p>` : ''}
+            <p style="font-weight: bold;">${L('partyTitle', 'CUSTOMER')}: ${customerName}</p>
+            ${(f.showCustomerPhone !== false && customerPhone) ? `<p style="font-weight: 600;">${L('phoneLabel', 'MOB')}: ${customerPhone}</p>` : ''}
+            ${(f.showCustomerGstin !== false && customerGstin) ? `<p style="font-weight: 600;">${L('gstinLabel', 'GSTIN')}: ${customerGstin}</p>` : ''}
+            ${(f.showCustomerAddress !== false && customerAddress) ? `<p style="font-weight: 500; font-size: 9.5px;">${L('addressLabel', 'ADDR')}: ${customerAddress}</p>` : ''}
           </div>
         ` : ''}
 
@@ -613,13 +631,13 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
         <div style="font-size: 10px; font-weight: bold;">
           ${f.showOverallQty !== false ? `
             <div class="flex-between" style="font-weight: 900; font-size: 10.5px;">
-              <span>TOTAL ITEMS / BILLED QTY:</span>
+              <span>${L('totalBilledQtyLabel', 'TOTAL ITEMS / BILLED QTY')}:</span>
               <span>${rawItems.length} Items / ${totalQty} Units</span>
             </div>
           ` : ''}
           ${f.showSubtotal !== false ? `
             <div class="flex-between">
-              <span>SUBTOTAL:</span>
+              <span>${L('subtotalLabel', 'SUBTOTAL')}:</span>
               <span>₹${rawSubtotal.toFixed(2)}</span>
             </div>
           ` : ''}
@@ -643,21 +661,21 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
           ${f.showTaxBreakdown !== false ? `
             <div style="border-top: 1px dotted #000; margin-top: 2px; padding-top: 2px;">
               <div class="flex-between" style="font-size: 9.5px;">
-                <span>Taxable Amount:</span>
+                <span>${L('taxableLabel', 'Taxable Amount')}:</span>
                 <span>₹${taxableSubtotal.toFixed(2)}</span>
               </div>
               ${hasGst ? (isInterstate ? `
                 <div class="flex-between" style="font-size: 9.5px;">
-                  <span>IGST Tax:</span>
+                  <span>${L('igstLabel', 'IGST Tax')}:</span>
                   <span>₹${igstAmount.toFixed(2)}</span>
                 </div>
               ` : `
                 <div class="flex-between" style="font-size: 9.5px;">
-                  <span>Central GST (CGST):</span>
+                  <span>${L('cgstLabel', 'Central GST (CGST)')}:</span>
                   <span>₹${cgstAmount.toFixed(2)}</span>
                 </div>
                 <div class="flex-between" style="font-size: 9.5px;">
-                  <span>State GST (SGST):</span>
+                  <span>${L('sgstLabel', 'State GST (SGST)')}:</span>
                   <span>₹${sgstAmount.toFixed(2)}</span>
                 </div>
               `) : `
@@ -667,13 +685,13 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
                 </div>
               `}
               <div class="flex-between" style="font-size: 9.5px; font-weight: 900;">
-                <span>Total Tax (GST):</span>
+                <span>${L('totalTaxLabel', 'Total Tax (GST)')}:</span>
                 <span>₹${totalTax.toFixed(2)}</span>
               </div>
             </div>
           ` : ''}
           <div class="flex-between" style="font-size: 14px; font-weight: 900; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin-top: 3px;">
-            <span>NET PAYABLE:</span>
+            <span>${L('grandTotalLabel', 'NET PAYABLE')}:</span>
             <span style="font-size: 16px;">₹${grandTotal.toFixed(2)}</span>
           </div>
         </div>
@@ -692,7 +710,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
         ${f.showPaymentMode !== false ? `
           <div style="border-top: 1px dotted #000; padding-top: 3px; margin-top: 3px; font-size: 10px; font-weight: bold;">
             <div class="flex-between">
-              <span>PAID VIA:</span>
+              <span>${L('paymentModeLabel', 'PAID VIA')}:</span>
               <span>${inv.payment_mode || inv.payment_method || 'CASH'} (COMPLETED)</span>
             </div>
             ${inv.split_payments && typeof inv.split_payments === 'object' && Object.keys(inv.split_payments).length > 1 ? `
@@ -702,12 +720,12 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
             ` : ''}
             </div>
             <div class="flex-between">
-              <span>AMOUNT RECEIVED:</span>
+              <span>${L('receivedAmountLabel', 'AMOUNT RECEIVED')}:</span>
               <span>₹${amountReceived.toFixed(2)}</span>
             </div>
             ${amountReceived > grandTotal ? `
               <div class="flex-between">
-                <span>CHANGE RETURNED:</span>
+                <span>${L('changeLabel', 'CHANGE RETURNED')}:</span>
                 <span>₹${(amountReceived - grandTotal).toFixed(2)}</span>
               </div>
             ` : ''}
@@ -717,7 +735,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
         <!-- Customer Ledger Balance (registered customers only — walk-ins pay in full) -->
         ${!isWalkInReceipt && f.showPartyBalance !== false ? `
           <div class="flex-between" style="border-top: 1px dotted #000; padding-top: 3px; font-size: 9.5px; font-weight: bold; margin-top: 2px;">
-            <span>CUSTOMER LEDGER OUTSTANDING:</span>
+            <span>${L('outstandingLabel', 'CUSTOMER LEDGER OUTSTANDING')}:</span>
             <span>₹${balanceDue.toFixed(2)}</span>
           </div>
         ` : ''}
@@ -726,7 +744,7 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
         ${showPaymentQR && paymentQrSvg ? `
           <div class="qr-section">
             <img src="${paymentQrSvg}" alt="QR Code" class="qr-img" style="width: 90px; height: 90px; object-fit: contain;" />
-            <div style="font-size: 9.5px; font-weight: 900; text-transform: uppercase; margin-top: 2px; text-align: center;">${qrLabelText}</div>
+            <div style="font-size: 9.5px; font-weight: 900; text-transform: uppercase; margin-top: 2px; text-align: center;">${L('scanToPayLabel', qrLabelText)}</div>
             <div style="font-size: 8.5px; font-family: monospace; text-align: center;">${qrSubLabelText}</div>
           </div>
         ` : ''}
@@ -744,19 +762,19 @@ export function generateThermalReceiptHtml(inv: any, templateOverride?: any, ten
         <!-- Digital Signature & Company Stamp -->
         ${f.showSignature !== false ? `
           <div style="border-top: 1px dashed #000; padding-top: 6px; margin-top: 6px; display: flex; justify-content: space-between; align-items: flex-end;">
-            ${(f.showStamp !== false && activeTemplate?.stampUrl) ? `
+            ${(f.showStamp !== false && syncedStampUrl) ? `
               <div style="max-height: 48px; max-width: 64px;">
-                <img src="${activeTemplate.stampUrl}" alt="Stamp" style="max-height: 48px; max-width: 64px; object-fit: contain; filter: grayscale(100%) contrast(200%);" />
+                <img src="${syncedStampUrl}" alt="Stamp" style="max-height: 48px; max-width: 64px; object-fit: contain; filter: grayscale(100%) contrast(200%);" />
               </div>
             ` : '<div></div>'}
             <div style="text-align: right;">
-              ${activeTemplate?.signatureUrl ? `
+              ${syncedSignatureUrl ? `
                 <div style="margin-bottom: 2px; display: flex; justify-content: flex-end;">
-                  <img src="${activeTemplate.signatureUrl}" alt="Signature" style="max-height: 32px; max-width: 100px; object-fit: contain; filter: grayscale(100%) contrast(200%);" />
+                  <img src="${syncedSignatureUrl}" alt="Signature" style="max-height: 32px; max-width: 100px; object-fit: contain; filter: grayscale(100%) contrast(200%);" />
                 </div>
               ` : ''}
-              <p style="font-size: 9px; font-weight: bold;">${activeTemplate?.signatoryLabel || `For ${storeName}`}</p>
-              <p style="font-size: 8px; font-weight: 600; text-transform: uppercase;">Authorized Signatory</p>
+              <p style="font-size: 9px; font-weight: bold;">${activeTemplate?.signatoryLabel || L('forLabel', `For ${storeName}`)}</p>
+              <p style="font-size: 8px; font-weight: 600; text-transform: uppercase;">${L('signatureTitle', 'Authorized Signatory')}</p>
             </div>
           </div>
         ` : ''}

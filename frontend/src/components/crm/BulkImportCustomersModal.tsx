@@ -204,6 +204,9 @@ export function BulkImportCustomersModal({
                         <th className="p-2 font-semibold">Email</th>
                         <th className="p-2 font-semibold">Type</th>
                         <th className="p-2 font-semibold">GSTIN</th>
+                        <th className="p-2 font-semibold">Gender</th>
+                        <th className="p-2 font-semibold">DOB</th>
+                        <th className="p-2 font-semibold">Age</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/50">
@@ -219,6 +222,9 @@ export function BulkImportCustomersModal({
                             </span>
                           </td>
                           <td className="p-2 font-mono text-[11px] text-muted-foreground">{c.gst_number || "—"}</td>
+                          <td className="p-2 text-muted-foreground">{c.gender || "—"}</td>
+                          <td className="p-2 text-muted-foreground">{c.date_of_birth || "—"}</td>
+                          <td className="p-2 text-muted-foreground">{c.age != null ? c.age : "—"}</td>
                         </tr>
                       ))}
                     </tbody>

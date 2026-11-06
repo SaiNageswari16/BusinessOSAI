@@ -454,6 +454,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const isTaxInv = type === "TAX_INVOICE";
     const isProforma = type === "PROFORMA";
     const isQuotation = type === "QUOTATION";
+    const isChallan = type === "DELIVERY_CHALLAN" || (type as string) === "CHALLAN";
     const effectiveTier = targetTier || pricingMode;
 
     // 1. Identify valid Tax Invoice Prefix (strictly ignore PI-, QT-, CN-, DN-, EST-)
@@ -469,7 +470,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     // 2. Scan saved invoices in localStorage to detect dominant active tax invoice prefix if needed
     let detectedExistingTaxPrefix: string | null = null;
     let highestActive = 0;
-    let detectedPadding = isTaxInv ? (s.padding ?? 4) : isProforma ? (s.proformaPadding ?? 4) : (s.quotationPadding ?? 4);
+    let detectedPadding = isTaxInv ? (s.padding ?? 4) : isProforma ? (s.proformaPadding ?? 4) : isQuotation ? (s.quotationPadding ?? 4) : isChallan ? (s.challanPadding ?? 4) : 4;
 
     let prefix = "INV-";
     try {
@@ -536,6 +537,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       } else if (isProforma) {
         const pPfx = s.proformaPrefix || activeGst?.proforma_prefix || getDocPrefix("PROFORMA", tenant?.id) || "PI";
         prefix = pPfx.endsWith("-") ? pPfx : `${pPfx}-`;
+      } else if (isChallan) {
+        const cPfx = s.challanPrefix || activeGst?.challan_prefix || getDocPrefix("DELIVERY_CHALLAN", tenant?.id) || "DC";
+        prefix = cPfx.endsWith("-") ? cPfx : `${cPfx}-`;
       } else {
         const otherPfx = getDocPrefix(type, tenant?.id) || "DOC";
         prefix = otherPfx.endsWith("-") ? otherPfx : `${otherPfx}-`;
@@ -543,7 +547,31 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       const suffix = isTaxInv ? (s.suffix || "") : "";
 
-      // Second pass: extract max sequence matching the selected prefix
+      // Second pass: extract max sequence matching the selected prefix.
+      // IMPORTANT: only count records of the SAME document type. The saved
+      // invoice array also holds receipts / quotations / proformas / estimates /
+      // credit-debit notes (they all share pos_saved_invoices*). Without this
+      // filter a receipt-shaped number with the same leading prefix (or a legacy
+      // epoch-millisecond number that parses to a plausible <50000 value) would
+      // inflate the tax-invoice sequence to something like 39158.
+      const recInvType = (r: any) =>
+        String(r?.invoice_type || r?.doc_type || "").toUpperCase();
+      const isSameDocType = (r: any) => {
+        const rt = recInvType(r);
+        if (isTaxInv) {
+          // Tax invoices only — exclude receipts, quotations, proformas,
+          // estimates, credit/debit notes, and any explicitly non-invoice type.
+          if (rt && rt !== "TAX_INVOICE" && rt !== "INVOICE" && rt !== "SALES_INVOICE") return false;
+          const n = String(r?.invoice_number || "").trim().toUpperCase();
+          if (/^(REC|POS|QT|PI|EST|CN|DN|SR)/.test(n)) return false; // receipt/other-doc-shaped
+          return true;
+        }
+        if (isQuotation) return rt === "" || rt === "QUOTATION" || rt === "QUOTE";
+        if (isProforma) return rt === "" || rt === "PROFORMA" || rt === "PROFORMA_INVOICE";
+        if (isChallan) return rt === "CHALLAN" || rt === "DELIVERY_CHALLAN" || rt === "DELIVERY_NOTE";
+        return true; // other doc types (credit/debit/estimate) — keep lenient
+      };
+
       keysToScan.forEach((k) => {
         const rawSaved = localStorage.getItem(k);
         if (rawSaved) {
@@ -556,6 +584,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                 seenScanned.add(invNum);
                 // Ignore cancelled invoices so they do not block sequence
                 if (inv.status === "cancelled" || inv.payment_status === "Cancelled") return;
+                if (!isSameDocType(inv)) return;
                 if (prefix && invNum.startsWith(prefix)) {
                   const remainder = suffix && invNum.endsWith(suffix)
                     ? invNum.slice(prefix.length, invNum.length - suffix.length)
@@ -566,7 +595,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                     const num = parseInt(digitStr, 10);
                     if (!isNaN(num) && num > 0) {
                       matchedNums.push(num);
-                      if (digitStr.length > detectedPadding && num < 50000) {
+                      if (digitStr.length > detectedPadding && num < 100000000) {
                         detectedPadding = digitStr.length;
                       }
                     }
@@ -578,7 +607,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         }
       });
 
-      const normalNums = matchedNums.filter((n) => n < 50000);
+      const normalNums = matchedNums.filter((n) => n < 100000000);
       if (normalNums.length > 0) {
         highestActive = Math.max(...normalNums);
       } else {
@@ -586,12 +615,26 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       }
 
       const configuredMinSeq = isTaxInv
-        ? (effectiveTier === "B2B" ? (s.b2bSequenceNumber || 1) : (effectiveTier === "Wholesale" ? (s.wholesaleSequenceNumber || 1) : (s.b2cSequenceNumber || s.sequenceNumber || 1)))
+        ? (s.separateB2BSequenceEnabled
+          ? (effectiveTier === "B2B" ? (s.b2bSequenceNumber || 1) : (effectiveTier === "Wholesale" ? (s.wholesaleSequenceNumber || 1) : (s.b2cSequenceNumber || s.sequenceNumber || 1)))
+          : (s.sequenceNumber || 1))
         : isProforma
           ? (s.proformaSequenceNumber || 1)
-          : (s.quotationSequenceNumber || 1);
+          : isQuotation
+            ? (s.quotationSequenceNumber || 1)
+            // Credit / Debit / Estimate notes: use their OWN configured
+            // sequence instead of borrowing quotationSequenceNumber.
+            : (type === "CREDIT_NOTE" ? (s.creditNoteSequenceNumber || 1)
+              : type === "DEBIT_NOTE" ? (s.debitNoteSequenceNumber || 1)
+              : type === "ESTIMATE_NON_GST" ? (s.estimateSequenceNumber || 1)
+              : isChallan ? (s.challanSequenceNumber || 1)
+              : (s.quotationSequenceNumber || 1));
 
       let targetSeq = configuredMinSeq;
+      if (highestActive > 0) {
+        targetSeq = Math.max(configuredMinSeq, highestActive + 1);
+      }
+      // Real sequence: proceed from the maximum of user-configured floor and existing highest sequence + 1
       if (highestActive > 0) {
         targetSeq = Math.max(configuredMinSeq, highestActive + 1);
       }
@@ -689,19 +732,29 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       DEBIT_NOTE: "debit_notes",
     };
     const modName = moduleMap[type] || "invoices";
-    let orgPrefix = getOrgDocumentPrefix(type, tenant?.id);
-    if (type === "TAX_INVOICE" && (orgPrefix.toUpperCase().startsWith("PI-") || orgPrefix.toUpperCase().startsWith("QT-"))) {
-      orgPrefix = "INV";
-    }
+    // Prefer the user-configured prefix (from Settings / Number Series) over a stale
+    // backend row. The locally-computed localSeqNum already carries the correct prefix,
+    // so only trust the backend peek when it resolves to the SAME prefix — otherwise a
+    // previously auto-initialized "INV-" series row would silently win and the user's
+    // configured prefix (e.g. "SVB/26-27-") would never be applied.
+    const localPrefix = localSeqNum.replace(/\d+$/g, "").replace(/[-/]+\s*$/, "") || null;
 
     try {
-      const peek = await numberSeriesApi.peekNextNumber(modName, activeCompId, orgPrefix);
+      const peek = await numberSeriesApi.peekNextNumber(modName, activeCompId, localPrefix || undefined);
       if (peek?.formatted_number && peek?.configured && peek?.current_number > 0) {
-        const peekNum = String(peek.formatted_number).toUpperCase();
-        if (type === "TAX_INVOICE" && (peekNum.startsWith("PI-") || peekNum.startsWith("QT-"))) {
+        const peekNum = String(peek.formatted_number).trim();
+        if (type === "TAX_INVOICE" && (peekNum.toUpperCase().startsWith("PI-") || peekNum.toUpperCase().startsWith("QT-"))) {
           return localSeqNum;
         }
-        return peek.formatted_number;
+        // Prefix mismatch guard: if the configured prefix is known and the backend
+        // returned a number under a DIFFERENT prefix, keep the local one.
+        if (localPrefix && localPrefix.length > 1) {
+          const peekPrefix = peekNum.replace(/\d+$/g, "").replace(/[-/]+\s*$/, "");
+          if (peekPrefix && peekPrefix.toLowerCase() !== localPrefix.toLowerCase()) {
+            return localSeqNum;
+          }
+        }
+        return peekNum;
       }
     } catch (e) { }
 
@@ -709,11 +762,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   }, [currentCompanyId, getNextSequentialInvoiceNumber, invoiceSettings, tenant?.id]);
 
   const handleRegenerateInvoiceNumber = useCallback((type: DocumentType = invoiceType, explicitSettings?: InvoiceSettings) => {
-    const s = explicitSettings || invoiceSettings || loadStoredInvoiceSettings();
-    const nextNum = getNextSequentialInvoiceNumber(type, s);
-    setInvoiceNumber(nextNum);
-    toast.info(`Generated ${getDocTitle(type)} number: ${nextNum}`);
-  }, [getNextSequentialInvoiceNumber, invoiceSettings, invoiceType]);
+    // Prefer the authoritative backend NumberSeries number so a poisoned
+    // pos_saved_invoices* record cannot inflate the sequence; fall back to the
+    // local scan (fetchNextOrgDocNumber does that automatically).
+    fetchNextOrgDocNumber(type, explicitSettings).then((nextNum) => {
+      setInvoiceNumber(nextNum);
+      toast.info(`Generated ${getDocTitle(type)} number: ${nextNum}`);
+    });
+  }, [fetchNextOrgDocNumber, invoiceType]);
 
   const handleInvoiceTypeChange = useCallback((newType: DocumentType) => {
     const prevType = invoiceType;
@@ -721,31 +777,36 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
     if ((prevType === "QUOTATION" || invoiceNumber.toUpperCase().startsWith("QT")) && newType === "TAX_INVOICE") {
       const oldQuoteNum = invoiceNumber;
-      const nextNum = getNextSequentialInvoiceNumber("TAX_INVOICE");
-      setInvoiceNumber(nextNum);
-      toast.success(`Converted Quotation ${oldQuoteNum} to Tax Invoice #${nextNum}`);
+      fetchNextOrgDocNumber("TAX_INVOICE").then((nextNum) => {
+        setInvoiceNumber(nextNum);
+        toast.success(`Converted Quotation ${oldQuoteNum} to Tax Invoice #${nextNum}`);
+      });
       setNotes((prev) => prev ? `${prev}\nConverted from Quotation #${oldQuoteNum}` : `Converted from Quotation #${oldQuoteNum}`);
     } else if ((prevType === "PROFORMA" || invoiceNumber.toUpperCase().startsWith("PI")) && newType === "TAX_INVOICE") {
       const oldProformaNum = invoiceNumber;
-      const nextNum = getNextSequentialInvoiceNumber("TAX_INVOICE");
-      setInvoiceNumber(nextNum);
-      toast.success(`Converted Proforma ${oldProformaNum} to Tax Invoice #${nextNum}`);
+      fetchNextOrgDocNumber("TAX_INVOICE").then((nextNum) => {
+        setInvoiceNumber(nextNum);
+        toast.success(`Converted Proforma ${oldProformaNum} to Tax Invoice #${nextNum}`);
+      });
       setNotes((prev) => prev ? `${prev}\nConverted from Proforma #${oldProformaNum}` : `Converted from Proforma #${oldProformaNum}`);
     } else if (!activeEditingInvoice && !editingInvoice && !isRecreatingInvoice) {
-      const nextNum = getNextSequentialInvoiceNumber(newType);
-      setInvoiceNumber(nextNum);
+      fetchNextOrgDocNumber(newType).then((nextNum) => setInvoiceNumber(nextNum));
     }
-  }, [activeEditingInvoice, editingInvoice, isRecreatingInvoice, getNextSequentialInvoiceNumber, invoiceNumber, invoiceType]);
+  }, [activeEditingInvoice, editingInvoice, isRecreatingInvoice, fetchNextOrgDocNumber, invoiceNumber, invoiceType]);
 
   // Sync initialDocType changes
   useEffect(() => {
     if (activeEditingInvoice || editingInvoice || isRecreatingInvoice) return;
     if (initialDocType) {
       setInvoiceType(initialDocType);
-      const nextNum = getNextSequentialInvoiceNumber(initialDocType);
-      setInvoiceNumber(nextNum);
+      // Use the DB-aware next-number (authoritative NumberSeries row) rather than a
+      // bare localStorage scan, so a poisoned pos_saved_invoices* record cannot
+      // inflate the sequence. Falls back to the local scan automatically.
+      fetchNextOrgDocNumber(initialDocType).then((nextNum) => {
+        setInvoiceNumber(nextNum);
+      });
     }
-  }, [initialDocType, editingInvoice, activeEditingInvoice, isRecreatingInvoice, getNextSequentialInvoiceNumber]);
+  }, [initialDocType, editingInvoice, activeEditingInvoice, isRecreatingInvoice, fetchNextOrgDocNumber]);
 
   // Listen for bos-invoice-settings-changed event
   useEffect(() => {
@@ -764,8 +825,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         };
         setInvoiceSettings(merged);
         if (!activeEditingInvoice && !editingInvoice && !isRecreatingInvoice) {
-          const nextNum = getNextSequentialInvoiceNumber(invoiceType, merged);
-          setInvoiceNumber(nextNum);
+          // DB-aware next number so a stale localStorage record can't inflate it.
+          fetchNextOrgDocNumber(invoiceType, merged).then((nextNum) => setInvoiceNumber(nextNum));
         }
       }
     };
@@ -773,7 +834,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     return () => {
       window.removeEventListener("bos-invoice-settings-changed", handleSettingsChanged);
     };
-  }, [editingInvoice, activeEditingInvoice, isRecreatingInvoice, getNextSequentialInvoiceNumber, invoiceType]);
+  }, [editingInvoice, activeEditingInvoice, isRecreatingInvoice, fetchNextOrgDocNumber, invoiceType]);
 
   // GST Type: intra-state (CGST + SGST) or inter-state (IGST)
   const [gstType, setGstType] = useState<"cgst_sgst" | "igst">("cgst_sgst");
@@ -2017,7 +2078,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               const digitsMatch = remainder.match(/\d+$/);
               if (digitsMatch) {
                 const parsed = parseInt(digitsMatch[0], 10);
-                if (!isNaN(parsed) && parsed > 0 && parsed < 50000) {
+                if (!isNaN(parsed) && parsed > 0 && parsed < 100000000) {
                   maxRemoteSeq = Math.max(maxRemoteSeq, parsed);
                 }
               }
@@ -2033,7 +2094,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               const digitsMatch = remainder.match(/\d+$/);
               if (digitsMatch) {
                 const parsed = parseInt(digitsMatch[0], 10);
-                if (!isNaN(parsed) && parsed > 0 && parsed < 50000) {
+                if (!isNaN(parsed) && parsed > 0 && parsed < 100000000) {
                   maxRemoteSeq = Math.max(maxRemoteSeq, parsed);
                 }
               }
@@ -2052,7 +2113,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             const digitsMatch = remainder.match(/\d+$/);
             if (digitsMatch) {
               const parsed = parseInt(digitsMatch[0], 10);
-              if (!isNaN(parsed) && parsed > 0 && parsed < 50000) {
+              if (!isNaN(parsed) && parsed > 0 && parsed < 100000000) {
                 maxRemoteQuoteSeq = Math.max(maxRemoteQuoteSeq, parsed);
               }
             }
@@ -4307,6 +4368,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       customerEmail: customerObj?.email || '',
       customerCompany: customerObj?.company || customerObj?.company_name || '',
       customerGST: selectedBillingAddress?.gst_number || customerObj?.gst_number || '',
+      customerGender: customerObj?.gender || '',
+      customerDOB: customerObj?.date_of_birth || '',
+      customerAge: customerObj?.age ?? null,
       customerAddress: formatPartyAddress(selectedBillingAddress) || formatPartyAddress(customerObj) || customerObj?.address || '',
       customerBillingAddress: formatPartyAddress(selectedBillingAddress) || formatPartyAddress({ ...customerObj, address: customerObj?.billing_address || customerObj?.address }) || '',
       customerShippingAddress: formatPartyAddress(selectedDeliveryAddress) || formatPartyAddress({ ...customerObj, street: customerObj?.shipping_address, address: customerObj?.shipping_address }) || formatPartyAddress(selectedBillingAddress) || formatPartyAddress(customerObj) || '',
@@ -4867,6 +4931,11 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           ...invoiceCustomFieldValues,
           print_template_id: currentTemplateId,
           template_id: currentTemplateId,
+          // Persist customer personal details so re-prints + email/WhatsApp PDFs
+          // still show them (only when the customer has them)
+          customer_gender: customer?.gender || null,
+          customer_dob: customer?.date_of_birth || null,
+          customer_age: customer?.age ?? null,
         },
         customer_id: lockedParty
           ? (lockedParty.id && isValidUUID(lockedParty.id) ? lockedParty.id : null)
@@ -5015,6 +5084,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         customerBillingAddress: formattedBillingAddress,
         customerShippingAddress: formattedShippingAddress,
         customerGST: selectedBillingAddress?.gst_number || customer?.gst_number || "",
+        customerGender: customer?.gender || "",
+        customerDOB: customer?.date_of_birth || "",
+        customerAge: customer?.age ?? null,
         customerState: selectedDeliveryAddress?.state || selectedBillingAddress?.state || customer?.state || "",
         billing_state: selectedBillingAddress?.state || customer?.state || "",
         shipping_state: selectedDeliveryAddress?.state || selectedBillingAddress?.state || customer?.state || "",
@@ -5333,6 +5405,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         }
 
         const sfx = isTaxInv ? (s.suffix || "") : "";
+        const isChallanDoc = invoiceType === "DELIVERY_CHALLAN" || (invoiceType as string) === "CHALLAN";
         let nextSeq = (
           isTaxInv
             ? (s.sequenceNumber || 1)
@@ -5340,7 +5413,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               ? (s.quotationSequenceNumber || 1)
               : isProformaDoc
                 ? (s.proformaSequenceNumber || 1)
-                : 1
+                : isChallanDoc
+                  ? (s.challanSequenceNumber || 1)
+                  : 1
         ) + 1;
 
         if (savedNum && savedNum.startsWith(pfx)) {
@@ -5350,7 +5425,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           const digitsMatch = remainder.match(/\d+$/);
           if (digitsMatch) {
             const parsed = parseInt(digitsMatch[0], 10);
-            if (!isNaN(parsed) && parsed < 50000) {
+            if (!isNaN(parsed) && parsed < 100000000) {
               nextSeq = parsed + 1;
             }
           }
@@ -5361,6 +5436,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           ...(isTaxInv ? { sequenceNumber: nextSeq } : {}),
           ...(isQuoteDoc ? { quotationSequenceNumber: nextSeq } : {}),
           ...(isProformaDoc ? { proformaSequenceNumber: nextSeq } : {}),
+          ...(isChallanDoc ? { challanSequenceNumber: nextSeq } : {}),
         };
         saveStoredInvoiceSettings(updatedSettings);
         setInvoiceSettings(updatedSettings);
@@ -5576,7 +5652,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           const digitsMatch = remainder.match(/\d+$/);
           if (digitsMatch) {
             const parsed = parseInt(digitsMatch[0], 10);
-            if (!isNaN(parsed) && parsed > 0 && parsed < 50000) {
+            if (!isNaN(parsed) && parsed > 0 && parsed < 100000000) {
               nextQuoteSeq = Math.max(nextQuoteSeq, parsed + 1);
             }
           }
@@ -5828,12 +5904,14 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               <span>🎨 Word Designer</span>
             </button>
 
-            {/* Quick Settings Button */}
+            {/* Template & Document Settings */}
             <button
               type="button"
-              onClick={() => setIsQuickSettingsOpen(true)}
+              onClick={() => {
+                navigate({ to: "/inventory", search: { tab: "print_templates" } as any });
+              }}
               className="px-2.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs shrink-0"
-              title="Quick Settings (Prefix & Sequence, Custom Fields, Item Columns)"
+              title="Print & Document Templates Settings (Columns, QR, Bank, Branding)"
             >
               <Settings className="size-3.5 text-indigo-600" />
               <span className="hidden sm:inline">{t("common.settings", "Settings")}</span>
@@ -11387,23 +11465,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         </div>
       )}
 
-      {/* Quick Settings Modal */}
-      <InvoiceQuickSettingsModal
-        isOpen={isQuickSettingsOpen}
-        onClose={() => setIsQuickSettingsOpen(false)}
-        settings={invoiceSettings}
-        onSave={(newSettings, updatedGstDetails) => {
-          setInvoiceSettings(newSettings);
-          saveStoredInvoiceSettings(newSettings);
-          if (!editingInvoice && !activeEditingInvoice && !isRecreatingInvoice) {
-            const nextNum = getNextSequentialInvoiceNumber(invoiceType, newSettings);
-            setInvoiceNumber(nextNum);
-          }
-          if (updatedGstDetails?.terms_and_conditions) {
-            setTermsAndConditions(updatedGstDetails.terms_and_conditions);
-          }
-        }}
-      />
+
 
       {/* MS Word-Style Visual Invoice Designer Studio Modal */}
       <WordInvoiceStudioModal

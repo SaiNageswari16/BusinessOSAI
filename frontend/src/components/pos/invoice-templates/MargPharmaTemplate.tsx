@@ -4,6 +4,20 @@ import type { FullInvoiceData } from '../FullInvoicePrinter';
 import { numberToIndianWords } from '@/lib/number-to-words';
 import { formatDisplayDate, isInvoiceLineFree } from '@/lib/utils';
 import { getOrgSignatureSettings, getActiveBillingGst } from '@/lib/receipt-template-store';
+import {
+  resolveInvoiceTexts,
+  docTitleFor,
+  docNoLabelFor,
+  docDateLabelFor,
+  type InvoiceTexts,
+  resolveTemplateColumns,
+  type NormalizedTemplateColumn,
+  cellValueForColumn,
+  resolveCustomFieldRows,
+} from '@/lib/invoice-template-config';
+import { generateQRCodeSVG } from '@/lib/qr-generator';
+import { PaymentQrBlock, type PaymentQrContext } from './PaymentQrBlock';
+import { CustomerExtrasBlock } from './CustomerExtrasBlock';
 
 interface TemplateProps {
   invoice: FullInvoiceData;
@@ -14,8 +28,12 @@ interface TemplateProps {
   dynamicEmail: string;
   sellerGstin: string;
   sellerStateCode: string;
+  dynamicBank?: string;
   currency: { symbol: string; code: string };
   f?: any;
+  texts?: InvoiceTexts;
+  paymentQr?: PaymentQrContext;
+  template?: any;
   paperSize?: 'A4' | 'A5';
   orientation?: 'portrait' | 'landscape';
 }
@@ -29,12 +47,24 @@ export function MargPharmaTemplate({
   dynamicEmail,
   sellerGstin,
   sellerStateCode,
+  dynamicBank,
   currency,
   f = {},
+  texts,
+  paymentQr,
+  template,
   paperSize = 'A4',
   orientation = 'portrait',
 }: TemplateProps) {
   const { t } = useI18n();
+  const texts_ = texts || resolveInvoiceTexts(template, 'marg_pharma');
+  const templateColumns: NormalizedTemplateColumn[] = resolveTemplateColumns(template, (template as any)?.columns, f, texts_);
+  const customRows = resolveCustomFieldRows(template, invoice, f);
+  const showTaxSplitMarg = f?.showTaxSplit !== false;
+  const colAlignClassM = (col: NormalizedTemplateColumn) =>
+    col.align === 'left' ? 'text-left' : col.align === 'right' ? 'text-right' : 'text-center';
+  const colWidthStyleM = (col: NormalizedTemplateColumn) =>
+    col.widthPercent ? { width: col.widthPercent + '%' } : undefined;
   const isA5 = paperSize === 'A5';
   const items = invoice.items || [];
   const grandTotal = Number(invoice.grand_total || invoice.total_amount || 0);
@@ -91,6 +121,125 @@ export function MargPharmaTemplate({
 
   const formattedDate = formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date());
 
+  // ── MARG unified cell "plan" ─────────────────────────────────────────────
+  // The item table = user-driven DATA columns (templateColumns) interleaved
+  // with MARG's decorative theme chrome (a static image column, the Mfr "—" and
+  // Pack "1*1" columns, and the 4-column per-line CGST/SGST tax-split block).
+  // One plan drives the thead, every item row, AND the blank filler rows so the
+  // vertical ledger borders always line up.
+
+  type MargToken =
+    | { kind: 'data'; col: NormalizedTemplateColumn }
+    | { kind: 'img' }
+    | { kind: 'mfr' }
+    | { kind: 'pack' }
+    | { kind: 'tax'; n: 0 | 1 | 2 | 3 };
+
+  const buildMargCells = (): MargToken[] => {
+    const plan: MargToken[] = [];
+    const qtyIdx = templateColumns.findIndex((c) => c.fieldKey === 'quantity');
+    const mfrPackAnchor = qtyIdx >= 0 ? qtyIdx : Math.min(1, templateColumns.length - 1);
+    const amtIdx = templateColumns.findIndex((c) => c.fieldKey === 'total_amount');
+    const showTax = f?.showTaxSplit !== false;
+    templateColumns.forEach((col, i) => {
+      if (f?.showProductImage && i === 0) plan.push({ kind: 'img' });
+      if (showTax && i === amtIdx) {
+        plan.push({ kind: 'tax', n: 0 }, { kind: 'tax', n: 1 }, { kind: 'tax', n: 2 }, { kind: 'tax', n: 3 });
+      }
+      plan.push({ kind: 'data', col });
+      if (i === mfrPackAnchor) {
+        plan.push({ kind: 'mfr' }, { kind: 'pack' });
+      }
+    });
+    if (showTax && amtIdx < 0) {
+      plan.push({ kind: 'tax', n: 0 }, { kind: 'tax', n: 1 }, { kind: 'tax', n: 2 }, { kind: 'tax', n: 3 });
+    }
+    return plan;
+  };
+  const margCells: MargToken[] = buildMargCells();
+
+  const margCellLabel = (tok: MargToken): React.ReactNode => {
+    switch (tok.kind) {
+      case 'img': return texts_.imgLabel;
+      case 'mfr': return texts_.mfrLabel;
+      case 'pack': return texts_.packLabel;
+      case 'tax':
+        return tok.n === 0 ? texts_.sgstCol : tok.n === 2 ? texts_.cgstCol : texts_.totTaxLabel;
+      case 'data': return tok.col.headerTitle;
+    }
+  };
+  const margCellAlign = (tok: MargToken): string => {
+    switch (tok.kind) {
+      case 'img': case 'mfr': case 'pack': return 'text-center';
+      case 'tax': return 'text-right';
+      case 'data': return colAlignClassM(tok.col);
+    }
+  };
+
+  interface MargCtx {
+    item: any; idx: number; qty: number; mrp: number; displayRate: number;
+    disc: number; lineTotal: number; halfTax: number; taxVal: number; taxRate: number;
+  }
+  // Rich compound cell renderer for MARG data columns (FREE badge, Pri/Sec
+  // sub-lines, tax-split) — falls back to the generic resolver for custom keys.
+  const renderMargItemCell = (col: NormalizedTemplateColumn, ctx: MargCtx): React.ReactNode => {
+    const { item, idx, qty, mrp, displayRate, disc, lineTotal, halfTax, taxVal, taxRate } = ctx;
+    switch (col.fieldKey) {
+      case 'sno':
+        return <span className="font-sans">{idx + 1}.</span>;
+      case 'description':
+        return (
+          <>
+            <span className="font-sans font-bold">{item.product_name || 'Goods'}{isInvoiceLineFree(item) ? ' [FREE]' : ''}</span>
+            {f?.showItemDescription !== false && (item.custom_note || item.description || item.notes) && (
+              <span className="text-[8.5px] text-gray-600 block mt-0.5 font-normal leading-tight">
+                {item.custom_note || item.description || item.notes}
+              </span>
+            )}
+            {f?.showSKU && <span className="text-[7px] text-slate-500 block font-normal">SKU: {item.hsn_code || 'PH-01'}</span>}
+          </>
+        );
+      case 'quantity':
+        return (
+          <>
+            <div>{qty} {item.selected_uom || item.uom || ''}</div>
+            {item.secondary_uom && (
+              <span className="block text-[7px] font-black text-gray-600">
+                {item.selected_uom === item.secondary_uom ? 'Sec' : 'Pri'}
+              </span>
+            )}
+          </>
+        );
+      case 'unit_price':
+        return <span>{displayRate.toFixed(2)}</span>;
+      case 'selling_price':
+        return <span>{(mrp > 0 ? mrp : displayRate).toFixed(2)}</span>;
+      case 'mrp':
+        return <span>{mrp.toFixed(2)}</span>;
+      case 'discount':
+        return <span>{disc > 0 ? disc.toFixed(2) : '0.00'}</span>;
+      case 'total_amount':
+        return <span className="font-bold">{lineTotal.toFixed(2)}</span>;
+      case 'tax_rate':
+        return <span>{taxRate}%</span>;
+      case 'expiry_date':
+        return [item.mfg_date, item.exp_date].filter(Boolean).join(' / ') || '—';
+      default:
+        return cellValueForColumn(col, item, invoice).text;
+    }
+  };
+  const margCellValue = (tok: MargToken, ctx: MargCtx): React.ReactNode => {
+    switch (tok.kind) {
+      case 'img': return <span className="text-[10px]">💊</span>;
+      case 'mfr': return <span className="font-sans">—</span>;
+      case 'pack': return <span className="font-sans">1*1</span>;
+      case 'tax':
+        // n:0 SGST % (halfTax) · n:1 SGST amt (taxVal) · n:2 CGST % · n:3 CGST amt
+        return (tok.n === 0 || tok.n === 2 ? ctx.halfTax : ctx.taxVal).toFixed(2);
+      case 'data': return renderMargItemCell(tok.col, ctx);
+    }
+  };
+
   const isQuotation =
     invoice.doc_type === "quotation" ||
     invoice.invoice_type === "QUOTATION" ||
@@ -100,12 +249,18 @@ export function MargPharmaTemplate({
     invoice.doc_type === "estimate" ||
     invoice.invoice_type === "ESTIMATE_NON_GST" ||
     String(invoice.invoice_number || "").toUpperCase().startsWith("EST-");
-  const docHeaderTitle = invoice.header_title || (isEstimate ? "TAX ESTIMATE" : isQuotation ? "TAX QUOTATION / ESTIMATE" : t("GST INVOICE", "GST INVOICE"));
-  const docNumLabel = isEstimate ? "Estimate No" : isQuotation ? "Quote No" : "Invoice No";
-  const docDateLabel = isEstimate ? "Estimate Date" : isQuotation ? "Quote Date" : "Invoice Date";
+  const docHeaderTitle = docTitleFor(invoice, texts_, template);
+  const docNumLabel = docNoLabelFor(invoice, texts_);
+  const docDateLabel = docDateLabelFor(invoice, texts_);
 
+  // Full-page sheet (mm = print-physical, matches @page): A4 289mm,
+  // A4-land 202mm, A5 205mm, A5-land 143mm. `tpl-sheet-full` exempts this
+  // from the print rule that zeroes min-heights (the ~75% sheet bug).
+  const sheetMinH = isA5
+    ? (orientation === 'landscape' ? 'min-h-[143mm]' : 'min-h-[205mm]')
+    : (orientation === 'landscape' ? 'min-h-[202mm]' : 'min-h-[289mm]');
   return (
-    <div className={`w-full bg-transparent text-black font-sans ${isA5 ? 'text-[8.5px] leading-tight p-0.5' : 'text-[11px] leading-tight'} border border-black/40 rounded-md selection:bg-none`}>
+    <div className={`w-full bg-transparent text-black font-sans ${isA5 ? 'text-[8.5px] leading-tight p-0.5' : 'text-[11px] leading-tight'} border border-black/40 rounded-md selection:bg-none flex flex-col tpl-sheet-full ${sheetMinH}`}>
       {/* ─── TOP 3-BOX HEADER ─── */}
       <div className="grid grid-cols-12 border-b-2 border-black">
         {/* Left Box: Seller */}
@@ -137,7 +292,7 @@ export function MargPharmaTemplate({
             <div>
               <h1 className="text-base font-black text-blue-900 tracking-wider">{docHeaderTitle}</h1>
               <span className="text-[9px] font-extrabold text-blue-900 tracking-wider uppercase block mb-1 border border-blue-300 bg-blue-500/10 px-1 py-0.5 rounded">
-                {invoice.copy_type || "ORIGINAL FOR RECIPIENT"}
+                {invoice.copy_type || texts_.copyTag}
               </span>
             </div>
 
@@ -146,21 +301,32 @@ export function MargPharmaTemplate({
                 <tr className="border-b border-black">
                   <td className="p-0.5 font-sans font-bold border-r border-black w-18">{docNumLabel}</td>
                   <td className="p-0.5 font-bold border-r border-black">{invoice.invoice_number || (isQuotation ? 'QT-0001' : 'A000002')}</td>
-                  <td className="p-0.5 font-sans font-bold border-r border-black">Order / PO No.<br />Order Date</td>
+                  <td className="p-0.5 font-sans font-bold border-r border-black">{texts_.poNumberLabel}<br />{texts_.orderDateLabel}</td>
                   <td className="p-0.5 border-r border-black font-bold">{invoice.po_number || invoice.order_number || '-'}<br />{invoice.po_date ? formatDisplayDate(invoice.po_date) : formattedDate}</td>
-                  <td className="p-0.5 font-sans font-bold border-r border-black">Cases / Mode</td>
+                  <td className="p-0.5 font-sans font-bold border-r border-black">{texts_.casesModeLabel}</td>
                   <td className="p-0.5">{invoice.payment_method || '0'}</td>
                 </tr>
                 <tr>
-                  <td className="p-0.5 font-sans font-bold border-r border-black">{docDateLabel}<br />Due Date</td>
+                  <td className="p-0.5 font-sans font-bold border-r border-black">{docDateLabel}<br />{texts_.dueDateLabel}</td>
                   <td className="p-0.5 border-r border-black">{formattedDate}<br />{formatDisplayDate(invoice.due_date || invoice.invoice_date || new Date())}</td>
-                  <td className="p-0.5 font-sans font-bold border-r border-black">e-Way Bill / LR<br />Vehicle No</td>
+                  <td className="p-0.5 font-sans font-bold border-r border-black">{texts_.ewayBillLabel}<br />{texts_.vehicleNoLabel}</td>
                   <td className="p-0.5 border-r border-black font-bold text-[7.5px]">{invoice.eway_bill_number ? `EWB: ${invoice.eway_bill_number}` : '-'}<br />{invoice.vehicle_number || '-'}</td>
-                  <td className="p-0.5 font-sans font-bold border-r border-black">Transport</td>
+                  <td className="p-0.5 font-sans font-bold border-r border-black">{texts_.transportLabel}</td>
                   <td className="p-0.5 text-[7.5px] truncate max-w-[70px]">{invoice.transporter_name || invoice.driver_phone || 'Road'}</td>
                 </tr>
               </tbody>
             </table>
+
+            {customRows.length > 0 && (
+              <div className="mt-1 text-[7.5px] font-mono space-y-0.5">
+                {customRows.map((row, rIdx) => (
+                  <p key={rIdx} className="leading-tight">
+                    <span className="font-sans font-bold">{row.label} : </span>
+                    <span className="font-bold">{row.value}</span>
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -168,28 +334,29 @@ export function MargPharmaTemplate({
         {f?.showCustomerDetails !== false && (
           <div className={`${f?.showCompanyDetails === false && f?.showInvoiceDetails === false ? 'col-span-12' : f?.showCompanyDetails === false || f?.showInvoiceDetails === false ? 'col-span-6' : 'col-span-4'} p-2.5 flex flex-col justify-between`}>
             <div>
-              <span className="text-[10px] font-bold underline block mb-0.5">Party Name :</span>
+              <span className="text-[10px] font-bold underline block mb-0.5">{texts_.partyTitle} :</span>
               <h3 className="font-bold text-xs uppercase text-blue-950">
                 {invoice.customerName || invoice.customerCompany || 'CASH CUSTOMER'}
               </h3>
-              <p className="text-[10px] text-gray-800 leading-snug mt-0.5">
-                <span className="font-bold text-gray-900">Bill To: </span>{invoice.customerBillingAddress || invoice.customerAddress || '-'}
+              <p className="text-[10px] text-gray-800 leading-snug">
+                <span className="font-bold text-gray-900">{texts_.addressLabel} : </span>{invoice.customerBillingAddress || invoice.customerAddress || '-'}
               </p>
               <p className="text-[9.5px] text-indigo-900 leading-snug mt-0.5 font-medium">
-                <span className="font-bold text-indigo-950">Ship To: </span>{invoice.customerShippingAddress || invoice.customerBillingAddress || invoice.customerAddress || 'Same as Bill To'}
+                <span className="font-bold text-indigo-950">{texts_.shipToTitle} : </span>{invoice.customerShippingAddress || invoice.customerBillingAddress || invoice.customerAddress || 'Same as Bill To'}
               </p>
               {f?.showPartyBalance && (
-                <p className="text-[9px] font-bold text-red-600 mt-0.5">Outstanding: {currency.symbol}14,200.00</p>
+                <p className="text-[9px] font-bold text-red-600 mt-0.5">{texts_.outstandingLabel}: {currency.symbol}{Number(invoice.party_previous_balance ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
               )}
               {invoice.customerPhone && (
                 <p className="text-[10px] text-gray-800 mt-0.5">
-                  PHONE. : <span className="font-mono">{invoice.customerPhone}</span>
+                  {texts_.phoneLabel} : <span className="font-mono">{invoice.customerPhone}</span>
                 </p>
               )}
+              <CustomerExtrasBlock invoice={invoice} texts={texts_} className="mt-0.5 text-gray-800" />
             </div>
             {invoice.customerGST && (
               <p className="text-[10px] font-bold mt-1">
-                PARTY GSTIN : <span className="font-mono">{invoice.customerGST}</span>
+                {texts_.partyGstinLabel} : <span className="font-mono">{invoice.customerGST}</span>
               </p>
             )}
           </div>
@@ -202,25 +369,30 @@ export function MargPharmaTemplate({
           <table className="w-full border-collapse text-[10px]">
             <thead>
               <tr className="bg-black/10 border-b border-black font-bold text-center">
-                <th className="py-1 px-1 border-r border-black w-7">S.</th>
-                {f?.showProductImage && <th className="py-1 px-1 border-r border-black w-8">Img</th>}
-                <th className="py-1 px-1 border-r border-black w-10">Qty.</th>
-                <th className="py-1 px-1 border-r border-black w-10">Mfr</th>
-                <th className="py-1 px-1 border-r border-black w-12">Pack</th>
-                <th className="py-1 px-2 border-r border-black text-left">Product Name</th>
-                {f?.showHSN !== false && <th className="py-1 px-1 border-r border-black w-14">HSN</th>}
-                {f?.showMRP !== false && <th className="py-1 px-1 border-r border-black w-14 text-right">M.R.P</th>}
-                <th className="py-1 px-1 border-r border-black w-14 text-right">Rate</th>
-                <th className="py-1 px-1 border-r border-black w-10 text-right">Dis%</th>
-                {f?.showTaxSplit !== false && (
-                  <>
-                    <th className="py-1 px-1 border-r border-black w-10 text-right">SGST%</th>
-                    <th className="py-1 px-1 border-r border-black w-14 text-right">Value</th>
-                    <th className="py-1 px-1 border-r border-black w-10 text-right">CGST%</th>
-                    <th className="py-1 px-1 border-r border-black w-14 text-right">Value</th>
-                  </>
-                )}
-                <th className="py-1 px-2 text-right w-20">Total</th>
+                {margCells.map((tok, ti) => {
+                  const isLast = ti === margCells.length - 1;
+                  const alignCls = margCellAlign(tok);
+                  let widthCls = '';
+                  let style: React.CSSProperties | undefined;
+                  if (tok.kind === 'data') {
+                    if (ti === 0) widthCls = 'w-7';
+                    if (tok.col.fieldKey === 'description') widthCls = '';
+                    style = colWidthStyleM(tok.col);
+                  } else if (tok.kind === 'img') {
+                    widthCls = 'w-8';
+                  } else if (tok.kind === 'tax') {
+                    widthCls = 'w-14';
+                  }
+                  return (
+                    <th
+                      key={ti}
+                      className={`py-1 px-1 ${isLast ? '' : 'border-r border-black'} ${alignCls} ${tok.kind === 'data' && tok.col.fieldKey === 'description' ? 'text-left font-bold px-2' : ''} ${widthCls}`}
+                      style={style}
+                    >
+                      {margCellLabel(tok)}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 font-mono">
@@ -250,71 +422,30 @@ export function MargPharmaTemplate({
                   displayRate = rate;
                 }
 
+                const ctx = { item, idx, qty, mrp, displayRate, disc, lineTotal, halfTax, taxVal, taxRate };
                 return (
                   <tr key={idx} className="border-b border-gray-200">
-                    <td className="p-1 text-center border-r border-black font-sans">{idx + 1}.</td>
-                    {f?.showProductImage && (
-                      <td className="p-1 text-center border-r border-black">
-                        <span className="text-[10px]">💊</span>
-                      </td>
-                    )}
-                    <td className="p-1 text-center font-bold border-r border-black">
-                      <div>{qty} {item.selected_uom || item.uom || ''}</div>
-                      {item.secondary_uom && (
-                        <span className="block text-[7px] font-black text-gray-600">
-                          {item.selected_uom === item.secondary_uom ? "Sec" : "Pri"}
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-1 text-center border-r border-black font-sans">—</td>
-                    <td className="p-1 text-center border-r border-black font-sans">1*1</td>
-                    <td className="p-1 border-r border-black font-sans font-bold text-left">
-                      <span>{item.product_name || 'Goods'}{isInvoiceLineFree(item) ? ' [FREE]' : ''}</span>
-                      {f?.showItemDescription !== false && (item.custom_note || item.description || item.notes) && (
-                        <span className="text-[8.5px] text-gray-600 block mt-0.5 font-normal leading-tight">
-                          {item.custom_note || item.description || item.notes}
-                        </span>
-                      )}
-                      {f?.showSKU && <span className="text-[7px] text-slate-500 block font-normal">SKU: {item.hsn_code || 'PH-01'}</span>}
-                    </td>
-                    {f?.showHSN !== false && <td className="p-1 text-center border-r border-black">{item.hsn_code || '123456'}</td>}
-                    {f?.showMRP !== false && <td className="p-1 text-right border-r border-black">{mrp.toFixed(2)}</td>}
-                    <td className="p-1 text-right border-r border-black">{displayRate.toFixed(2)}</td>
-                    <td className="p-1 text-right border-r border-black">{disc > 0 ? disc.toFixed(2) : '0.00'}</td>
-                    {f?.showTaxSplit !== false && (
-                      <>
-                        <td className="p-1 text-right border-r border-black">{halfTax.toFixed(2)}</td>
-                        <td className="p-1 text-right border-r border-black">{taxVal.toFixed(2)}</td>
-                        <td className="p-1 text-right border-r border-black">{halfTax.toFixed(2)}</td>
-                        <td className="p-1 text-right border-r border-black">{taxVal.toFixed(2)}</td>
-                      </>
-                    )}
-                    <td className="p-1 text-right font-bold">{lineTotal.toFixed(2)}</td>
+                    {margCells.map((tok, ti) => {
+                      const isLast = ti === margCells.length - 1;
+                      let cls = `p-1 ${isLast ? '' : 'border-r border-black'} ${margCellAlign(tok)}`;
+                      if (tok.kind === 'tax') cls += ' font-mono';
+                      else if (tok.kind === 'data' && tok.col.fieldKey === 'description') cls += ' font-sans font-bold text-left px-2';
+                      else if (tok.kind === 'data' && tok.col.fieldKey === 'sno') cls += ' font-sans';
+                      return (
+                        <td key={ti} className={cls}>
+                          {margCellValue(tok, ctx)}
+                        </td>
+                      );
+                    })}
                   </tr>
                 );
               })}
               {/* Blank filler rows to maintain vertical MARG ledger columns */}
               {Array.from({ length: Math.max(0, 5 - items.length) }).map((_, i) => (
                 <tr key={`fill-${i}`} className="h-6 border-b border-gray-100">
-                  <td className="border-r border-black"></td>
-                  {f?.showProductImage && <td className="border-r border-black"></td>}
-                  <td className="border-r border-black"></td>
-                  <td className="border-r border-black"></td>
-                  <td className="border-r border-black"></td>
-                  <td className="border-r border-black"></td>
-                  {f?.showHSN !== false && <td className="border-r border-black"></td>}
-                  {f?.showMRP !== false && <td className="border-r border-black"></td>}
-                  <td className="border-r border-black"></td>
-                  <td className="border-r border-black"></td>
-                  {f?.showTaxSplit !== false && (
-                    <>
-                      <td className="border-r border-black"></td>
-                      <td className="border-r border-black"></td>
-                      <td className="border-r border-black"></td>
-                      <td className="border-r border-black"></td>
-                    </>
-                  )}
-                  <td></td>
+                  {margCells.map((_, ti) => (
+                    <td key={ti} className={`p-1 ${ti === margCells.length - 1 ? '' : 'border-r border-black'}`}></td>
+                  ))}
                 </tr>
               ))}
             </tbody>
@@ -322,8 +453,8 @@ export function MargPharmaTemplate({
         </div>
       )}
 
-      {/* ─── BOTTOM TAX SLAB MATRIX & TOTALS ─── */}
-      <div className="grid grid-cols-12 border-t-2 border-black">
+      {/* ─── BOTTOM TAX SLAB MATRIX & TOTALS (group pinned to page bottom) ─── */}
+      <div className="grid grid-cols-12 border-t-2 border-black mt-auto">
         {/* Left Side: Tax Matrix */}
         <div className="col-span-8 p-1.5 border-r-2 border-black flex flex-col justify-between">
           {f?.showTaxSplit !== false && (
@@ -331,12 +462,12 @@ export function MargPharmaTemplate({
               <thead>
                 <tr className="bg-black/10 border-b border-black font-bold font-sans">
                   <th className="p-0.5 border-r border-black">CLASS</th>
-                  <th className="p-0.5 border-r border-black">TOTAL</th>
+                  <th className="p-0.5 border-r border-black">{texts_.grossAmtLabel}</th>
                   <th className="p-0.5 border-r border-black">SCHEME</th>
-                  <th className="p-0.5 border-r border-black">DISCOUNT</th>
-                  <th className="p-0.5 border-r border-black">SGST</th>
-                  <th className="p-0.5 border-r border-black">CGST</th>
-                  <th className="p-0.5">TOTAL GST</th>
+                  <th className="p-0.5 border-r border-black">{texts_.discAmtLabel}</th>
+                  <th className="p-0.5 border-r border-black">{texts_.sgstLabel}</th>
+                  <th className="p-0.5 border-r border-black">{texts_.cgstLabel}</th>
+                  <th className="p-0.5">{texts_.totalTaxLabel}</th>
                 </tr>
               </thead>
               <tbody>
@@ -366,7 +497,7 @@ export function MargPharmaTemplate({
 
           <div className="mt-2 text-[10px]">
             <p className="font-bold text-blue-950 font-sans">{numberToIndianWords(grandTotal)}</p>
-            <p className="text-[9px] text-gray-600 uppercase font-sans mt-0.5">MSG: THANKS CUSTOMER</p>
+            <p className="text-[9px] text-gray-600 uppercase font-sans mt-0.5">{texts_.msgLabel}: {texts_.thankYouLabel}</p>
           </div>
         </div>
 
@@ -412,7 +543,7 @@ export function MargPharmaTemplate({
         <div className="col-span-7 border-r border-gray-300 pr-2 space-y-0.5 text-[9px] text-gray-700">
           {f?.showTerms !== false && (
             <>
-              <span className="font-bold underline text-black">Terms & Conditions</span>
+              <span className="font-bold underline text-black">{texts_.termsLabel}</span>
               <p>1. Goods once sold will not be taken back or exchanged.</p>
               <p>2. All disputes subject to local Jurisdiction only.</p>
               <p>3. Bills not paid due date will attract 24% interest.</p>
@@ -420,8 +551,26 @@ export function MargPharmaTemplate({
           )}
           {f?.showPaymentDetails !== false && (
             <p className="text-[8px] font-mono text-gray-600 mt-1">
-              Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003
+              {dynamicBank || `${texts_.bankDetailsLabel}: —`}
             </p>
+          )}
+          {paymentQr && (
+            <div className="mt-1.5">
+              <PaymentQrBlock paymentQr={paymentQr} texts={texts_} currency={currency} compact />
+            </div>
+          )}
+          {Boolean(template?.googleReviewUrl && (template as any)?.showGoogleReviewQR !== false) && (
+            <div className="flex items-center gap-2 p-1.5 bg-amber-50/80 border border-amber-300 rounded-lg w-fit mt-1.5">
+              <img
+                src={generateQRCodeSVG(template.googleReviewUrl, 56)}
+                alt="Google Review QR"
+                className="size-8 object-contain bg-white p-0.5 rounded border border-amber-200"
+              />
+              <div className="text-[7.5px] leading-tight text-amber-900">
+                <span className="font-extrabold block text-amber-950">⭐ Rate Us on Google</span>
+                <span>Scan to review our service</span>
+              </div>
+            </div>
           )}
         </div>
         {f?.showSignature !== false && (

@@ -4,6 +4,20 @@ import type { FullInvoiceData } from '../FullInvoicePrinter';
 import { numberToIndianWords } from '@/lib/number-to-words';
 import { formatDisplayDate } from '@/lib/utils';
 import { getOrgSignatureSettings, getActiveBillingGst } from '@/lib/receipt-template-store';
+import {
+  resolveInvoiceTexts,
+  docTitleFor,
+  docNoLabelFor,
+  docDateLabelFor,
+  type InvoiceTexts,
+  resolveTemplateColumns,
+  type NormalizedTemplateColumn,
+  cellValueForColumn,
+  resolveCustomFieldRows,
+} from '@/lib/invoice-template-config';
+import { generateQRCodeSVG } from '@/lib/qr-generator';
+import { PaymentQrBlock, type PaymentQrContext } from './PaymentQrBlock';
+import { CustomerExtrasBlock } from './CustomerExtrasBlock';
 
 interface TemplateProps {
   invoice: FullInvoiceData;
@@ -14,8 +28,12 @@ interface TemplateProps {
   dynamicEmail?: string;
   sellerGstin: string;
   sellerStateCode: string;
+  dynamicBank?: string;
   currency: { symbol: string; code: string };
   f?: any;
+  texts?: InvoiceTexts;
+  paymentQr?: PaymentQrContext;
+  template?: any;
   paperSize?: 'A4' | 'A5';
   orientation?: 'portrait' | 'landscape';
 }
@@ -28,13 +46,81 @@ export function FmcgDistributorTemplate({
   dynamicPhone,
   sellerGstin,
   sellerStateCode,
+  dynamicBank,
   currency,
   f = {},
+  texts,
+  paymentQr,
+  template,
   paperSize = 'A4',
   orientation = 'portrait',
 }: TemplateProps) {
   const { t } = useI18n();
   const items = invoice.items || [];
+  const texts_ = texts || resolveInvoiceTexts(template, 'fmcg_distributor');
+  const templateColumns: NormalizedTemplateColumn[] = resolveTemplateColumns(template, (template as any)?.columns, f, texts_);
+  const customRows = resolveCustomFieldRows(template, invoice, f);
+  const showTaxSplitFmcg = f?.showTaxSplit !== false;
+  const fmcgColAlign = (col: NormalizedTemplateColumn) =>
+    col.align === 'left' ? 'text-left' : col.align === 'right' ? 'text-right' : 'text-center';
+  const fmcgColWidth = (col: NormalizedTemplateColumn) =>
+    col.widthPercent ? { width: col.widthPercent + '%' } : undefined;
+
+  type FmcgToken = { kind: 'img' } | { kind: 'data'; col: NormalizedTemplateColumn };
+  // FMCG plan: static image column (when enabled) + user-driven data columns.
+  // sno / description / img row-span the 2nd (tax-split) header row.
+  const fmcgCells: FmcgToken[] = [
+    ...(f?.showProductImage ? [{ kind: 'img' as const }] : []),
+    ...templateColumns.map((col) => ({ kind: 'data' as const, col })),
+  ];
+  const fmcgRowSpans = (tok: FmcgToken) =>
+    showTaxSplitFmcg && (tok.kind === 'img' || tok.col.fieldKey === 'sno' || tok.col.fieldKey === 'description');
+  const fmcgNonSpans = fmcgCells.filter((tok) => !fmcgRowSpans(tok));
+  const FMCG_SUB_LABELS = ['Taxable Amt', 'CGST %', 'CGST Amt', 'SGST %', 'SGST Amt'];
+
+  const renderFmcgCell = (tok: FmcgToken, ctx: { it: any; idx: number; qty: number; mrp: number; displayRate: number; disc: number; netAmount: number; taxableAmt: number; taxVal: number; halfTax: number; taxRate: number }): React.ReactNode => {
+    if (tok.kind === 'img') return <span className="text-[9px]">📦</span>;
+    const { it, idx, qty, mrp, displayRate, disc, netAmount, taxableAmt, taxVal, halfTax, taxRate } = ctx;
+    switch (tok.col.fieldKey) {
+      case 'sno': return idx + 1;
+      case 'description':
+        return (
+          <>
+            <span className="font-sans font-bold">{it.product_name || 'Item'}</span>
+            {f?.showItemDescription !== false && (it.custom_note || it.description || it.notes) && (
+              <span className="text-[7.5px] text-gray-600 block mt-0.5 font-normal leading-tight">
+                {it.custom_note || it.description || it.notes}
+              </span>
+            )}
+            {f?.showSKU && <span className="text-[6.5px] text-slate-500 block">SKU: {it.hsn_code || 'FMCG-01'}</span>}
+          </>
+        );
+      case 'uom':
+        return (
+          <span className="font-bold">
+            {it.selected_uom || it.uom || 'PAC'}
+            {it.secondary_uom && (
+              <span className="block text-[6.5px] font-black text-gray-500">
+                {it.selected_uom === it.secondary_uom ? 'Sec' : 'Pri'}
+              </span>
+            )}
+          </span>
+        );
+      case 'mrp': return mrp.toFixed(2);
+      case 'unit_price':
+      case 'selling_price': return displayRate.toFixed(2);
+      case 'quantity': return qty.toFixed(2);
+      case 'gross_amount': return taxableAmt.toFixed(2);
+      case 'free_qty': return '0.00';
+      case 'discount': return disc > 0 ? disc.toFixed(2) : '0.00';
+      case 'tax_rate': return taxRate ? `${taxRate}%` : '0.00';
+      case 'cgst': return halfTax.toFixed(2);
+      case 'sgst': return halfTax.toFixed(2);
+      case 'igst': return taxVal.toFixed(2);
+      case 'total_amount': return netAmount.toFixed(2);
+      default: return cellValueForColumn(tok.col, it, invoice).text;
+    }
+  };
   const grandTotal = Number(invoice.grand_total || invoice.total_amount || 0);
   const isA5 = paperSize === 'A5';
 
@@ -50,7 +136,8 @@ export function FmcgDistributorTemplate({
   const totalSgst = Number(invoice.sgst_amount || totalTax / 2);
 
   const formattedDate = formatDisplayDate(invoice.invoice_date || invoice.created_at || new Date());
-  const panNumber = sellerGstin && sellerGstin.length >= 12 ? sellerGstin.slice(2, 12) : 'AAOFM2891F';
+  const activeGstAny = activeGst as any;
+  const panNumber = activeGstAny?.pan || (sellerGstin && sellerGstin.length >= 12 ? sellerGstin.slice(2, 12) : '');
 
   const isQuotation =
     invoice.doc_type === "quotation" ||
@@ -61,12 +148,22 @@ export function FmcgDistributorTemplate({
     invoice.doc_type === "estimate" ||
     invoice.invoice_type === "ESTIMATE_NON_GST" ||
     String(invoice.invoice_number || "").toUpperCase().startsWith("EST-");
-  const docTitle = invoice.header_title || (isEstimate ? "TAX ESTIMATE / ESTIMATE" : isQuotation ? "TAX QUOTATION / ESTIMATE" : (invoice.documentTitle || "TAX INVOICE"));
-  const docNumLabel = isEstimate ? "Estimate No. : " : isQuotation ? "Quote No. : " : "Invoice No. : ";
-  const docDateLabel = isEstimate ? "Estimate Date: " : isQuotation ? "Quote Date: " : "Invoice Date: ";
+  const docTitle = docTitleFor(invoice, texts_, template);
+  const docNumLabel = `${docNoLabelFor(invoice, texts_)} : `;
+  const docDateLabel = `${docDateLabelFor(invoice, texts_)}: `;
 
+  // Full-page sheet height so the template fills the whole A4/A5 page and the
+  // footer pins to the bottom (no ~75% sheet with blank space below).
+  // Exact printable-area heights @96dpi (page − @page margins), so the sheet
+  // fills the page with zero overflow to a 2nd page.
+  // Full-page sheet (mm = print-physical, matches @page): A4 289mm,
+  // A4-land 202mm, A5 205mm, A5-land 143mm. `tpl-sheet-full` exempts this
+  // from the print rule that zeroes min-heights (the ~75% sheet bug).
+  const sheetMinH = isA5
+    ? (orientation === 'landscape' ? 'min-h-[143mm]' : 'min-h-[205mm]')
+    : (orientation === 'landscape' ? 'min-h-[202mm]' : 'min-h-[289mm]');
   return (
-    <div className={`w-full bg-transparent text-black font-sans ${isA5 ? 'text-[8px] leading-tight p-0.5' : 'text-[10px] leading-tight p-1'} border border-black/40 rounded-md selection:bg-none`}>
+    <div className={`w-full bg-transparent text-black font-sans ${isA5 ? 'text-[8px] leading-tight p-0.5' : 'text-[10px] leading-tight p-1'} border border-black/40 rounded-md selection:bg-none flex flex-col tpl-sheet-full ${sheetMinH}`}>
       {/* ─── TOP TITLE BAR ─── */}
       <div className={`flex justify-between items-center ${isA5 ? 'text-[7.5px] pb-0.5 mb-0.5 px-0.5' : 'text-[9px] pb-0.5 mb-1 px-1'} font-bold border-b border-black`}>
         <span className="font-extrabold uppercase text-blue-900 border border-black/60 px-1 py-0.2 rounded bg-black/5">
@@ -88,28 +185,51 @@ export function FmcgDistributorTemplate({
                 {dynamicStoreName}
               </h1>
             </div>
-            <p className={`${isA5 ? 'text-[7.5px]' : 'text-[9px]'} text-gray-700 leading-tight mt-0.5`}>
-              {dynamicAddress || 'PLOT NO - N-2, INDUSTRIAL ESTATE, State : 29-Karnataka'}
-            </p>
-            <p className={`${isA5 ? 'text-[7.5px]' : 'text-[9px]'} text-gray-700`}>CIN: U74999KA2026PTC123456</p>
+            {dynamicAddress && (
+              <p className={`${isA5 ? 'text-[7.5px]' : 'text-[9px]'} text-gray-700 leading-tight mt-0.5`}>
+                {dynamicAddress}
+              </p>
+            )}
+            {(activeGst as any)?.cin && (
+              <p className={`${isA5 ? 'text-[7.5px]' : 'text-[9px]'} text-gray-700`}>CIN: {(activeGst as any).cin}</p>
+            )}
           </div>
 
           <div className={`col-span-5 text-right font-mono ${isA5 ? 'text-[7.5px] space-y-0' : 'text-[9px] space-y-0.5'}`}>
-            <p className="font-bold">GSTIN: <span className="font-extrabold">{sellerGstin || '29AAOFM2891F1ZT'}</span></p>
-            {dynamicPhone && <p>Phone: {dynamicPhone}</p>}
-            <p>PAN: <span className="font-bold">{panNumber}</span></p>
+            <p className="font-bold">{texts_.gstinLabel}: <span className="font-extrabold">{sellerGstin || '—'}</span></p>
+            {dynamicPhone && <p>{texts_.phoneLabel}: {dynamicPhone}</p>}
+            {panNumber && <p>PAN: <span className="font-bold">{panNumber}</span></p>}
           </div>
         </div>
       )}
 
       {/* ─── META BAR ─── */}
       {f?.showInvoiceDetails !== false && (
-        <div className={`grid grid-cols-5 border-b border-black ${isA5 ? 'text-[7.5px] py-0.5 px-0.5' : 'text-[9px] py-1 px-1'} font-mono bg-black/5`}>
+        <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-black ${isA5 ? 'text-[7.5px] py-0.5 px-0.5' : 'text-[9px] py-1 px-1'} font-mono bg-black/5`}>
           <div><span className="font-sans font-bold">{docNumLabel}</span>{invoice.invoice_number || (isQuotation ? 'QT-0001' : 'B/26-27/010451')}</div>
           <div><span className="font-sans font-bold">{docDateLabel}</span>{formattedDate}</div>
-          <div><span className="font-sans font-bold">PO / Order Ref: </span>{invoice.po_number || invoice.order_number || 'DMS'}</div>
-          <div><span className="font-sans font-bold">Pymt Mode: </span>{invoice.payment_method || 'Cash'}</div>
-          <div><span className="font-sans font-bold">e-Way Bill: </span>{invoice.eway_bill_number || 'NA'}</div>
+          {f?.showPoNumber !== false && (
+            <div><span className="font-sans font-bold">PO / Order Ref: </span>{invoice.po_number || invoice.order_number || '-'}</div>
+          )}
+          {f?.showPaymentDetails !== false && (
+            <div><span className="font-sans font-bold">Pymt Mode: </span>{invoice.payment_method || 'Cash'}</div>
+          )}
+          {f?.showEwayBill !== false && (
+            <div><span className="font-sans font-bold">e-Way Bill: </span>{invoice.eway_bill_number || '-'}</div>
+          )}
+          {f?.showVehicleNumber !== false && invoice.vehicle_number && (
+            <div><span className="font-sans font-bold">Vehicle No: </span>{invoice.vehicle_number}</div>
+          )}
+          {f?.showChallanNumber !== false && invoice.challan_number && (
+            <div><span className="font-sans font-bold">Challan No: </span>{invoice.challan_number}</div>
+          )}
+          {customRows.length > 0 && (
+            <div className={`flex flex-wrap items-center gap-x-4 gap-y-0.5 ${isA5 ? '' : ''}`}>
+              {customRows.map((row, rIdx) => (
+                <div key={rIdx}><span className="font-sans font-bold">{row.label}: </span><span className="font-bold">{row.value}</span></div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -121,7 +241,7 @@ export function FmcgDistributorTemplate({
             <p>Address : {invoice.customerBillingAddress || invoice.customerAddress || '-'}</p>
             <p className="font-mono font-bold">GSTIN : {invoice.customerGST || 'UNREGISTERED'}</p>
             {f?.showPartyBalance && (
-              <p className="text-[7.5px] font-bold text-red-600">Outstanding Balance: {currency.symbol}14,200.00</p>
+              <p className="text-[7.5px] font-bold text-red-600">{texts_.outstandingLabel}: {currency.symbol}{Number(invoice.party_previous_balance ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
             )}
             <div className={`grid grid-cols-2 ${isA5 ? 'text-[7px]' : 'text-[8px]'} pt-0.5`}>
               <p>State : {invoice.customerState || invoice.shipping_state || invoice.billing_state || `${sellerStateCode || '36'}`}</p>
@@ -129,6 +249,7 @@ export function FmcgDistributorTemplate({
               <p>Vehicle : {invoice.vehicle_number || '-'}</p>
               <p>Cust Contact: {invoice.customerPhone || '-'}</p>
             </div>
+            <CustomerExtrasBlock invoice={invoice} texts={texts_} className="text-gray-800" />
           </div>
 
           <div className={`${isA5 ? 'p-0.5' : 'p-1'} space-y-0.5`}>
@@ -151,32 +272,32 @@ export function FmcgDistributorTemplate({
           <table className={`w-full border-collapse ${isA5 ? 'text-[7px]' : 'text-[8px]'} font-mono`}>
             <thead>
               <tr className="border-b border-black font-sans font-bold text-center bg-black/5">
-                <th className="p-0.5 border-r border-black w-5" rowSpan={2}>#</th>
-                {f?.showProductImage && <th className="p-0.5 border-r border-black w-7" rowSpan={2}>Img</th>}
-                <th className="p-0.5 border-r border-black text-left" rowSpan={2}>
-                  Item Name
-                  {f?.showHSN !== false && <><br/><span className="font-normal text-[7px]">HSN | Qty in SUOM</span></>}
-                </th>
-                <th className="p-0.5 border-r border-black">UOM</th>
-                {f?.showMRP !== false && <th className="p-0.5 border-r border-black">MRP</th>}
-                <th className="p-0.5 border-r border-black">Rate</th>
-                <th className="p-0.5 border-r border-black">Qty</th>
-                <th className="p-0.5 border-r border-black">GrossAmt</th>
-                <th className="p-0.5 border-r border-black">Free</th>
-                <th className="p-0.5 border-r border-black">Disc%</th>
-                <th className="p-0.5 border-r border-black">Disc.Amt</th>
-                {f?.showTaxSplit !== false && <th className="p-0.5 border-r border-black">Tot.Tax</th>}
-                <th className="p-0.5 text-right">Amount</th>
+                {fmcgCells.map((tok, ti) => {
+                  const span = fmcgRowSpans(tok);
+                  const isLast = ti === fmcgCells.length - 1;
+                  const cls = `p-0.5 ${isLast ? '' : 'border-r border-black'} ${tok.kind === 'data' ? fmcgColAlign(tok.col) : 'text-center'} ${span ? '' : 'border-b border-black/40'}`;
+                  if (span) {
+                    return (
+                      <th key={ti} className={cls} rowSpan={showTaxSplitFmcg ? 2 : 1}>
+                        {tok.kind === 'img' ? texts_.imgLabel : (
+                          <>
+                            {tok.col.headerTitle}
+                            {f?.showHSN !== false && <><br /><span className="font-normal text-[7px]">{texts_.colHsn} | Qty in SUOM</span></>}
+                          </>
+                        )}
+                      </th>
+                    );
+                  }
+                  return <th key={ti} className={cls} style={tok.kind === 'data' ? fmcgColWidth(tok.col) : undefined}>{tok.kind === 'data' ? tok.col.headerTitle : texts_.imgLabel}</th>;
+                })}
               </tr>
-              {f?.showTaxSplit !== false && (
+              {showTaxSplitFmcg && (
                 <tr className="border-b border-black font-sans font-semibold text-center bg-black/[0.03] text-[7px]">
-                  <th className="p-0.5 border-r border-black">Taxable Amt</th>
-                  <th className="p-0.5 border-r border-black">CGST %</th>
-                  <th className="p-0.5 border-r border-black">CGST Amt</th>
-                  <th className="p-0.5 border-r border-black">SGST %</th>
-                  <th className="p-0.5 border-r border-black">SGST Amt</th>
-                  <th className="p-0.5 border-r border-black" colSpan={f?.showMRP !== false ? 5 : 4}></th>
-                  <th></th>
+                  {fmcgNonSpans.map((tok, ni) => (
+                    <th key={ni} className={`p-0.5 ${ni < fmcgNonSpans.length - 1 ? 'border-r border-black' : ''}`}>
+                      {FMCG_SUB_LABELS[ni] || ''}
+                    </th>
+                  ))}
                 </tr>
               )}
             </thead>
@@ -207,53 +328,37 @@ export function FmcgDistributorTemplate({
                   displayRate = rate;
                 }
                 const totalTaxAmt = taxVal * 2;
-                const grossAmt = taxableAmt;
+                const ctx = { it, idx, qty, mrp, displayRate, disc, netAmount, taxableAmt, taxVal, halfTax, taxRate };
+                const subRowValue = (ni: number): React.ReactNode => {
+                  if (ni === 0) return <span className="text-left text-[7px]">{f?.showHSN !== false ? (it.hsn_code || '19053100') : ''} | {(qty * 0.1).toFixed(3)}KG</span>;
+                  const sub = [taxableAmt.toFixed(2), halfTax.toFixed(2), taxVal.toFixed(2), halfTax.toFixed(2), taxVal.toFixed(2)];
+                  return sub[ni - 1] ?? totalTaxAmt.toFixed(2);
+                };
 
                 return (
                   <React.Fragment key={idx}>
                     <tr className="border-t border-gray-200">
-                      <td className="p-0.5 text-center border-r border-black" rowSpan={f?.showTaxSplit !== false ? 2 : 1}>{idx + 1}</td>
-                      {f?.showProductImage && (
-                        <td className="p-0.5 text-center border-r border-black" rowSpan={f?.showTaxSplit !== false ? 2 : 1}>
-                          <span className="text-[9px]">📦</span>
-                        </td>
-                      )}
-                      <td className="p-0.5 font-sans font-bold border-r border-black text-left">
-                        <span>{it.product_name || 'Item'}</span>
-                        {f?.showItemDescription !== false && (it.custom_note || it.description || it.notes) && (
-                          <span className="text-[7.5px] text-gray-600 block mt-0.5 font-normal leading-tight">
-                            {it.custom_note || it.description || it.notes}
-                          </span>
-                        )}
-                        {f?.showSKU && <span className="text-[6.5px] text-slate-500 block">SKU: {it.hsn_code || 'FMCG-01'}</span>}
-                      </td>
-                      <td className="p-0.5 text-center border-r border-black font-bold">
-                        {it.selected_uom || it.uom || 'PAC'}
-                        {it.secondary_uom && (
-                          <span className="block text-[6.5px] font-black text-gray-500">
-                            {it.selected_uom === it.secondary_uom ? "Sec" : "Pri"}
-                          </span>
-                        )}
-                      </td>
-                      {f?.showMRP !== false && <td className="p-0.5 text-right border-r border-black">{mrp.toFixed(2)}</td>}
-                      <td className="p-0.5 text-right border-r border-black">{displayRate.toFixed(2)}</td>
-                      <td className="p-0.5 text-right border-r border-black font-bold">{qty.toFixed(2)}</td>
-                      <td className="p-0.5 text-right border-r border-black">{grossAmt.toFixed(2)}</td>
-                      <td className="p-0.5 text-center border-r border-black">0.00</td>
-                      <td className="p-0.5 text-right border-r border-black">{disc > 0 ? '5.00' : '0.00'}</td>
-                      <td className="p-0.5 text-right border-r border-black">{disc.toFixed(2)}</td>
-                      {f?.showTaxSplit !== false && <td className="p-0.5 text-right border-r border-black">{totalTaxAmt.toFixed(2)}</td>}
-                      <td className="p-0.5 text-right font-bold">{netAmount.toFixed(2)}</td>
+                      {fmcgCells.map((tok, ti) => {
+                        const isLast = ti === fmcgCells.length - 1;
+                        const span = fmcgRowSpans(tok);
+                        let cls = `p-0.5 ${isLast ? '' : 'border-r border-black'} ${tok.kind === 'data' ? fmcgColAlign(tok.col) : 'text-center'}`;
+                        if (tok.kind === 'data' && tok.col.fieldKey === 'description') cls += ' font-sans font-bold text-left';
+                        else if (tok.kind === 'data' && (tok.col.fieldKey === 'quantity' || tok.col.fieldKey === 'uom')) cls += ' font-bold';
+                        else if (tok.kind === 'data' && tok.col.fieldKey === 'total_amount') cls += ' font-bold';
+                        return (
+                          <td key={ti} className={cls} rowSpan={span ? (showTaxSplitFmcg ? 2 : 1) : undefined}>
+                            {renderFmcgCell(tok, ctx)}
+                          </td>
+                        );
+                      })}
                     </tr>
-                    {f?.showTaxSplit !== false && (
+                    {showTaxSplitFmcg && (
                       <tr className="border-b border-gray-300 text-gray-600 bg-black/[0.02]">
-                        <td className="p-0.5 border-r border-black text-left text-[7px]">{f?.showHSN !== false ? (it.hsn_code || '19053100') : ''} | {(qty * 0.1).toFixed(3)}KG</td>
-                        <td className="p-0.5 text-right border-r border-black">{taxableAmt.toFixed(2)}</td>
-                        <td className="p-0.5 text-right border-r border-black">{halfTax.toFixed(2)}</td>
-                        <td className="p-0.5 text-right border-r border-black">{taxVal.toFixed(2)}</td>
-                        <td className="p-0.5 text-right border-r border-black">{halfTax.toFixed(2)}</td>
-                        <td className="p-0.5 text-right border-r border-black">{taxVal.toFixed(2)}</td>
-                        <td className="p-0.5 border-r border-black" colSpan={f?.showMRP !== false ? 5 : 4}></td>
+                        {fmcgNonSpans.map((tok, ni) => (
+                          <td key={ni} className={`p-0.5 ${ni < fmcgNonSpans.length - 1 ? 'border-r border-black' : ''} ${tok.kind === 'data' ? fmcgColAlign(tok.col) : 'text-center'}`}>
+                            {subRowValue(ni)}
+                          </td>
+                        ))}
                       </tr>
                     )}
                   </React.Fragment>
@@ -321,8 +426,8 @@ export function FmcgDistributorTemplate({
         </div>
       )}
 
-      {/* ─── FSSAI STATUTORY DECLARATION, TERMS & SIGNATURE ─── */}
-      <div className="grid grid-cols-12 p-1.5 text-[8px]">
+      {/* ─── FSSAI STATUTORY DECLARATION, TERMS & SIGNATURE (pinned to page bottom) ─── */}
+      <div className="grid grid-cols-12 p-1.5 text-[8px] mt-auto">
         <div className="col-span-8 pr-2 space-y-0.5 text-gray-700">
           {f?.showTerms !== false && (
             <>
@@ -334,10 +439,15 @@ export function FmcgDistributorTemplate({
               </p>
             </>
           )}
-          {f?.showPaymentDetails !== false && (
+          {f?.showPaymentDetails !== false && dynamicBank && (
             <p className="text-[7.5px] font-mono text-gray-600 mt-1">
-              Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003
+              {texts_.bankDetailsLabel}: {dynamicBank}
             </p>
+          )}
+          {paymentQr && (
+            <div className="mt-1.5">
+              <PaymentQrBlock paymentQr={paymentQr} texts={texts_} currency={currency} compact />
+            </div>
           )}
         </div>
         {f?.showSignature !== false && (

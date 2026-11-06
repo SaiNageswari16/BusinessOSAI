@@ -1523,7 +1523,7 @@ export function ReceiptTemplates() {
                     alt="UPI QR Code"
                     className="mx-auto block p-1 bg-white border border-black h-24 w-24 object-contain"
                   />
-                  <p className="text-[9px] font-bold mt-0.5">{paymentQrForm.upi_vpa || 'merchant@upi'}</p>
+                  <p className="text-[9px] font-bold mt-0.5">{paymentQrForm.upi_vpa || ''}</p>
                 </div>
               )}
 

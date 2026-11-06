@@ -14,6 +14,10 @@ import {
   Copy,
   Trash2,
   Star,
+  FileMinus,
+  FileOutput,
+  ClipboardList,
+  ShoppingCart,
   Eye,
   Settings,
   Sparkles,
@@ -37,9 +41,6 @@ import {
   RotateCcw,
   Save,
   Download,
-  ZoomIn,
-  ZoomOut,
-  ChevronLeft,
   ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
@@ -51,9 +52,6 @@ import {
   HeartHandshake,
   Image as ImageIcon,
   Plus,
-  PlusCircle,
-  HelpCircle,
-  ShieldCheck,
   Search,
   CheckCheck,
   ArrowUp,
@@ -67,28 +65,41 @@ import {
   Table as TableIcon,
   Columns,
   RefreshCw,
-  RefreshCcw,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useTenant } from "@/contexts/tenant-context";
-import { resolveImageUrl, invoicesApi, inventoryApi, printTemplatesApi, bankApi, BankAccountRecord } from "@/lib/api-client";
+import { resolveImageUrl, invoicesApi, inventoryApi, printTemplatesApi, bankApi, taxApi, companiesApi, numberSeriesApi, type TaxCode, BankAccountRecord } from "@/lib/api-client";
 import { formatDisplayDate } from "@/lib/utils";
 import {
   getActiveBillingGst,
   saveBarcodeTemplate,
   setActiveBarcodeTemplate,
   saveActiveReceiptTemplate,
-  getActiveReceiptTemplate,
-  syncPrintTemplatesFromBackend,
-  RECEIPT_THEME_PRESETS,
   GLOBAL_INVOICE_TEMPLATES,
   CURATED_BUILTIN_TEMPLATE_IDS,
   DEPRECATED_BUILTIN_TEMPLATE_IDS,
   setActiveInvoicePrintTemplate,
-  type ReceiptTemplate,
+  setActiveInvoicePrintTemplateForCategory,
+  getActiveInvoicePrintTemplateForCategory,
+  setInvoiceCategoryLinked,
+  isInvoiceCategoryUnlinked,
+  syncMasterInvoiceToReceivers,
+  setActiveBillingGst,
+  getOrgSignatureSettings,
+  setOrgSignatureSettings,
+  setOrgPaymentQrSettings,
+  setOrgDocumentPrefixes,
 } from "@/lib/receipt-template-store";
+// Defensive: these two helpers are being added in a parallel workstream —
+// import them via a namespace so a missing export falls back to safeSetItem
+// / a no-op instead of crashing the page.
+import * as receiptTemplateStore from "@/lib/receipt-template-store";
+import { safeSetItem, safeGetItem, safeRemoveItem, compressImageForStorage } from "@/lib/safe-storage";
+import { INVOICE_DOC_CATEGORIES, type InvoiceDocCategory, type InvoiceTexts, TEXT_LABEL_GROUPS, resolveInvoiceTexts, resolveInvoiceRenderer, resolveInvoiceThemeName, FREEFORM_FIELD_BIND_OPTIONS, PARTY_LAYOUT_OPTIONS } from "@/lib/invoice-template-config";
+import { getOrgPaymentQrSettings } from "@/lib/receipt-template-store";
+import type { PaymentQrContext } from "@/components/pos/invoice-templates/PaymentQrBlock";
 import { triggerThermalPrint } from "@/lib/print-helper";
 import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
 import { MargPharmaTemplate } from "@/components/pos/invoice-templates/MargPharmaTemplate";
@@ -114,7 +125,6 @@ import {
   printBarcodePopup,
   generateBarcodeLabelHtml,
   type BarcodeElementBlock,
-  type ProductBarcodeLike,
 } from "@/lib/barcode-svg";
 import type { FullInvoiceData } from "@/components/pos/FullInvoicePrinter";
 
@@ -133,12 +143,18 @@ const FONT_FAMILIES = [
 
 export type DocumentType =
   | "invoice"
+  | "quotation"
+  | "proforma"
   | "thermal"
   | "barcode"
   | "qrcode"
   | "pricetag"
   | "challan"
-  | "custom";
+  | "custom"
+  | "credit_note"
+  | "debit_note"
+  | "purchase_invoice"
+  | "purchase_order";
 
 export interface PrintTemplate {
   id: string;
@@ -162,6 +178,13 @@ export interface PrintTemplate {
   cin?: string;
   pan?: string;
   email?: string;
+  sellerStateCode?: string;
+  bankName?: string;
+  accountNumber?: string;
+  ifscCode?: string;
+  branchName?: string;
+  accountHolderName?: string;
+  stampAlign?: "left" | "center" | "right";
   footerText?: string;
   termsText?: string;
   termsAndConditionsText?: string;
@@ -190,6 +213,7 @@ export interface PrintTemplate {
   showStamp?: boolean;
   showSignature?: boolean;
   showGoogleReviewQR?: boolean;
+  payeeName?: string;
 
   // Thermal Dynamic Custom Fields & Columns
   customFields?: Array<{ id: string; name: string; value?: string; enabled: boolean }>;
@@ -269,9 +293,19 @@ export interface PrintTemplate {
     showShipTo?: boolean;
     showPlaceOfSupply?: boolean;
     showPartyPhone?: boolean;
+    showPartyEmail?: boolean;
     showPartyGstin?: boolean;
     showPartyDlNumber?: boolean;
+    showPartyDl?: boolean;
+    showCustomerDl?: boolean;
+    showDlNumber?: boolean;
     showPartyPan?: boolean;
+    showContactPerson?: boolean;
+    showCustomerEmail?: boolean;
+    showCustomerPhone?: boolean;
+    showCustomerGstin?: boolean;
+    showCustomerPan?: boolean;
+    showDeclaration?: boolean;
     showItemIndex?: boolean;
     showItemQty?: boolean;
     showItemRate?: boolean;
@@ -288,6 +322,7 @@ export interface PrintTemplate {
     showReceivedAmount?: boolean;
     showBalanceAmount?: boolean;
     showSecondaryUnit?: boolean;
+    showAmountInWords?: boolean;
   };
   createdAt: string;
 }
@@ -333,9 +368,19 @@ const DEFAULT_ELEMENT_TOGGLES = {
   showShipTo: true,
   showPlaceOfSupply: true,
   showPartyPhone: true,
+  showPartyEmail: true,
   showPartyGstin: true,
-  showPartyDlNumber: false,
-  showPartyPan: false,
+  showPartyDlNumber: true,
+  showPartyDl: true,
+  showCustomerDl: true,
+  showDlNumber: true,
+  showPartyPan: true,
+  showContactPerson: true,
+  showCustomerEmail: true,
+  showCustomerPhone: true,
+  showCustomerGstin: true,
+  showCustomerPan: true,
+  showDeclaration: true,
   showItemIndex: true,
   showItemQty: true,
   showItemRate: true,
@@ -485,10 +530,6 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     primaryColor: "#e11d48",
     fontFamily: "Inter, sans-serif",
     headerTitle: "TAX INVOICE",
-    storeName: "Smart Pharma & Medical",
-    storeAddress: "Plot 32, Medical Zone, Hyderabad",
-    storePhone: "911166969600",
-    gstin: "36DYHPR6361D1Z6",
     themeName: "marg_pharma",
     fields: { ...DEFAULT_ELEMENT_TOGGLES, showHSN: true, showTaxSplit: true },
     createdAt: new Date().toISOString(),
@@ -506,10 +547,6 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     primaryColor: "#059669",
     fontFamily: "Inter, sans-serif",
     headerTitle: "DISTRIBUTION INVOICE",
-    storeName: "Smart FMCG & Wholesale",
-    storeAddress: "Industrial Estate, Karnataka",
-    storePhone: "9999999999",
-    gstin: "29AAOFM2891F1ZT",
     themeName: "fmcg_distributor",
     fields: { ...DEFAULT_ELEMENT_TOGGLES, showHSN: true, showTaxSplit: true },
     createdAt: new Date().toISOString(),
@@ -527,10 +564,6 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     primaryColor: "#0f766e",
     fontFamily: "Inter, sans-serif",
     headerTitle: "RETAIL TAX INVOICE",
-    storeName: "Parle Smart Supermarket",
-    storeAddress: "Jyothinagar, Telangana",
-    storePhone: "9849344919",
-    gstin: "36AAACH694G1Z4",
     themeName: "parle_teal",
     fields: { ...DEFAULT_ELEMENT_TOGGLES },
     createdAt: new Date().toISOString(),
@@ -548,7 +581,6 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     primaryColor: "#0284c7",
     fontFamily: "Inter, sans-serif",
     headerTitle: "TAX INVOICE",
-    storeName: "Smart Bazaar Enterprise",
     themeName: "pdf_overlay",
     fields: { ...DEFAULT_ELEMENT_TOGGLES },
     createdAt: new Date().toISOString(),
@@ -566,10 +598,6 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     primaryColor: "#15803d",
     fontFamily: "Inter, sans-serif",
     headerTitle: "AGRI SEEDS TAX INVOICE",
-    storeName: "Smart Agri Seeds & Fertilizers",
-    storeAddress: "Mandi Road, Proddatur, AP",
-    storePhone: "9849344919",
-    gstin: "37AAFCOE694G1Z4",
     themeName: "agri_seeds",
     fields: { ...DEFAULT_ELEMENT_TOGGLES, showHSN: true },
     createdAt: new Date().toISOString(),
@@ -601,7 +629,7 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     thankYouNote: "THANK YOU! VISIT AGAIN",
     termsText: "1. Goods once sold will not be taken back. 2. Subject to local jurisdiction only.",
     declarationText: "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.",
-    upiId: "9849344919@okaxis",
+    upiId: "",
     googleReviewUrl: "https://g.page/r/smart-bazaar/review",
     customFields: [
       { id: "cf-1", name: "DL No", value: "20B/21B-87654", enabled: true },
@@ -667,7 +695,7 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     footerText: "Save Paper, Save Trees!",
     thankYouNote: "Thank You! Visit Again!",
     termsText: "E. & O.E. All disputes subject to local jurisdiction.",
-    upiId: "9849344919@okaxis",
+    upiId: "",
     customFields: [
       { id: "cf-1", name: "Counter No", value: "POS-01", enabled: true },
     ],
@@ -698,7 +726,7 @@ const INITIAL_TEMPLATES: PrintTemplate[] = [
     storePhone: "9849344919",
     gstin: "37AAFCOE694G1Z4",
     termsText: "Subject to Andhra Pradesh jurisdiction only.",
-    upiId: "9849344919@okaxis",
+    upiId: "",
     themeName: "simple",
     fields: { ...DEFAULT_ELEMENT_TOGGLES, showTaxSplit: true, showHSN: true, showTerms: true },
     createdAt: new Date().toISOString(),
@@ -966,6 +994,20 @@ const DOCUMENT_TYPES_CONFIG: Array<{
       icon: FileText,
     },
     {
+      type: "quotation",
+      category: "invoices",
+      label: "Quotation",
+      subtitle: "Price Quote / Estimate",
+      icon: FileText,
+    },
+    {
+      type: "proforma",
+      category: "invoices",
+      label: "Proforma Invoice",
+      subtitle: "Preliminary Commercial Invoice",
+      icon: FileText,
+    },
+    {
       type: "thermal",
       category: "thermal",
       label: "Thermal Receipt",
@@ -1001,6 +1043,34 @@ const DOCUMENT_TYPES_CONFIG: Array<{
       icon: Truck,
     },
     {
+      type: "credit_note",
+      category: "invoices",
+      label: "Credit Note",
+      subtitle: "Sales refund adjustment",
+      icon: FileMinus,
+    },
+    {
+      type: "debit_note",
+      category: "invoices",
+      label: "Debit Note",
+      subtitle: "Charge to customer or vendor",
+      icon: FileOutput,
+    },
+    {
+      type: "purchase_invoice",
+      category: "invoices",
+      label: "Purchase Invoice",
+      subtitle: "Vendor bill (GRN-verified)",
+      icon: ShoppingCart,
+    },
+    {
+      type: "purchase_order",
+      category: "invoices",
+      label: "Purchase Order",
+      subtitle: "Outbound PO to supplier",
+      icon: ClipboardList,
+    },
+    {
       type: "custom",
       category: "custom",
       label: "Custom Document",
@@ -1008,6 +1078,126 @@ const DOCUMENT_TYPES_CONFIG: Array<{
       icon: FilePlus2,
     },
   ];
+
+// ── Per-document-category slot definitions ───────────────────────────────
+// The A4 document family keeps a clean separation: each type resolves to its
+// OWN chosen template. "challan" is a local DocumentType (delivery challan);
+// the invoice config library only knows invoice/quotation/proforma/estimate,
+// so challan + custom document use local fallbacks instead of the config API.
+type A4SlotKey =
+  | "invoice"
+  | "quotation"
+  | "proforma"
+  | "estimate"
+  | "challan"
+  | "credit_note"
+  | "debit_note"
+  | "purchase_invoice"
+  | "purchase_order"
+  | "custom";
+const A4_SLOT_KEYS: A4SlotKey[] = [
+  "invoice", "quotation", "proforma", "estimate", "challan",
+  "credit_note", "debit_note", "purchase_invoice", "purchase_order", "custom",
+];
+const A4_SLOT_LABELS: Record<A4SlotKey, string> = {
+  invoice: "TAX INVOICE",
+  quotation: "QUOTATION",
+  proforma: "PROFORMA",
+  estimate: "ESTIMATE",
+  challan: "CHALLAN",
+  credit_note: "CREDIT NOTE",
+  debit_note: "DEBIT NOTE",
+  purchase_invoice: "PURCHASE INVOICE",
+  purchase_order: "PURCHASE ORDER",
+  custom: "CUSTOM",
+};
+// The live-preview sample title / number prefix per slot, so each doc type's
+// preview + print reflects its own identity (never silently the tax invoice's).
+const A4_SLOT_PREVIEWS: Record<A4SlotKey, { title: string; noPrefix: string }> = {
+  invoice: { title: "TAX INVOICE", noPrefix: "INV-" },
+  quotation: { title: "QUOTATION", noPrefix: "QT-" },
+  proforma: { title: "PROFORMA INVOICE", noPrefix: "PI-" },
+  estimate: { title: "ESTIMATE", noPrefix: "EST-" },
+  challan: { title: "DELIVERY CHALLAN", noPrefix: "DC-" },
+  credit_note: { title: "CREDIT NOTE", noPrefix: "CN-" },
+  debit_note: { title: "DEBIT NOTE", noPrefix: "DN-" },
+  purchase_invoice: { title: "PURCHASE INVOICE", noPrefix: "PINV-" },
+  purchase_order: { title: "PURCHASE ORDER", noPrefix: "PO-" },
+  custom: { title: "CUSTOM DOCUMENT", noPrefix: "CD-" },
+};
+// The clickable slots in the doc-type strip.
+const A4_STRIP_SLOTS: Array<{ key: A4SlotKey; label: string }> = [
+  { key: "invoice", label: "Tax Invoice" },
+  { key: "quotation", label: "Quotation" },
+  { key: "proforma", label: "Proforma" },
+  { key: "estimate", label: "Estimate" },
+  { key: "challan", label: "Challan" },
+  { key: "credit_note", label: "Credit Note" },
+  { key: "debit_note", label: "Debit Note" },
+  { key: "purchase_invoice", label: "Purchase Invoice" },
+  { key: "purchase_order", label: "Purchase Order" },
+  { key: "custom", label: "Custom Document" },
+];
+// Resolve the slot key for the current sidebar doc type.
+function slotKeyForDocType(docType: DocumentType): A4SlotKey {
+  if (docType === "quotation") return "quotation";
+  if (docType === "proforma") return "proforma";
+  if (docType === "challan") return "challan";
+  if (docType === "credit_note") return "credit_note";
+  if (docType === "debit_note") return "debit_note";
+  if (docType === "purchase_invoice") return "purchase_invoice";
+  if (docType === "purchase_order") return "purchase_order";
+  if (docType === "custom") return "custom";
+  return "invoice";
+}
+
+// The note / purchase doc types (credit_note, debit_note, purchase_invoice,
+// purchase_order) render through the A4 invoice template engine — same slot
+// family as "invoice". Used to treat them as invoices everywhere the A4
+// template set resolves. A type predicate so call sites narrow `selectedDocType`
+// on both the true and false branches.
+function isInvoicesFamilyDocType(
+  docType: DocumentType
+): docType is "invoice" | "quotation" | "proforma" | "credit_note" | "debit_note" | "purchase_invoice" | "purchase_order" {
+  return (
+    docType === "invoice" ||
+    docType === "quotation" ||
+    docType === "proforma" ||
+    docType === "credit_note" ||
+    docType === "debit_note" ||
+    docType === "purchase_invoice" ||
+    docType === "purchase_order"
+  );
+}
+
+// Defensive accessors for the parallel-workstream storage helpers. They are
+// imported from the same module namespace; if not yet landed we fall back to
+// safeSetItem (quota-safe raw write) and a no-op purge.
+function savePrintTemplateSafe(tpl: any): void {
+  const fn = (receiptTemplateStore as any).savePrintTemplateSafe;
+  if (typeof fn === "function") {
+    fn(tpl);
+    return;
+  }
+  // Minimal fallback: persist a single template into the tenant-scoped list.
+  try {
+    const tid = (typeof receiptTemplateStore.getTenantIdFromStorage === "function"
+      ? receiptTemplateStore.getTenantIdFromStorage()
+      : "") || "default";
+    const key = `businessos_print_templates_v1_${tid}`;
+    const raw = safeGetItem(key);
+    let list: any[] = [];
+    try { list = raw ? JSON.parse(raw) : []; } catch { list = []; }
+    if (!Array.isArray(list)) list = [];
+    const idx = list.findIndex((t: any) => t && (t.id === tpl.id || t.name === tpl.name));
+    if (idx >= 0) list[idx] = tpl; else list.push(tpl);
+    safeSetItem(key, JSON.stringify(list));
+  } catch { /* ignore quota / serialization issues */ }
+}
+function purgeStalePrintTemplates(): void {
+  const fn = (receiptTemplateStore as any).purgeStalePrintTemplates;
+  if (typeof fn === "function") fn();
+}
 
 const COLOR_SWATCHES = [
   { label: "Indigo", value: "#4f46e5" },
@@ -1196,7 +1386,11 @@ export function PrintTemplates() {
 
   // Navigation / Selection State
   const [selectedDocType, setSelectedDocType] = useState<DocumentType>("invoice");
+  // Per-document-type template slot (drives the A4 doc-type strip + live preview).
+  const [selectedA4Slot, setSelectedA4Slot] = useState<A4SlotKey>("invoice");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+  // Re-render trigger for invoice-category link/unlink state changes.
+  const [invoiceCatLinkVersion, setInvoiceCatLinkVersion] = useState(0);
   const [activeEditorTab, setActiveEditorTab] = useState<"design" | "content" | "branding" | "settings">("design");
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [isTemplateStoreModalOpen, setIsTemplateStoreModalOpen] = useState(false);
@@ -1208,11 +1402,218 @@ export function PrintTemplates() {
   const [isThermalFullViewOpen, setIsThermalFullViewOpen] = useState<boolean>(false);
   const [isInvoiceSettingsModalOpen, setIsInvoiceSettingsModalOpen] = useState(false);
   const [liveInvoiceSettings, setLiveInvoiceSettings] = useState<InvoiceSettings>(() => loadStoredInvoiceSettings(tenant?.id));
-  const [settingsActiveSubTab, setSettingsActiveSubTab] = useState<"numbering" | "columns" | "bank_qr" | "tax_terms" | "barcode">("numbering");
+  const [settingsActiveSubTab, setSettingsActiveSubTab] = useState<
+    "numbering" | "columns" | "bank_qr" | "tax_terms" | "credit_debit" | "tax_finance" | "barcode"
+  >("numbering");
+
+  // Org-level Payment QR + Signature/Stamp + Tax slab editor local state.
+  const [orgPaymentQr, setOrgPaymentQr] = useState<any>(() => getOrgPaymentQrSettings(tenant?.id));
+  const [orgSignature, setOrgSignature] = useState<any>(() => getOrgSignatureSettings(tenant?.id));
+  const [orgSignatureAlignment, setOrgSignatureAlignment] = useState<"left" | "center" | "right">(() => (getOrgSignatureSettings(tenant?.id) as any).signatureAlignment || "right");
+  const [orgReviewEnabled, setOrgReviewEnabled] = useState<boolean>(() => getActiveBillingGst(tenant?.id)?.google_review_enabled !== false);
+  const [orgReviewUrl, setOrgReviewUrl] = useState<string>(() => getActiveBillingGst(tenant?.id)?.google_review_url || "");
+  const [taxSlabs, setTaxSlabs] = useState<TaxCode[]>([]);
+  const [newTaxRate, setNewTaxRate] = useState<string>("");
+  const [newTaxName, setNewTaxName] = useState<string>("");
+  const [isAddingTaxSlab, setIsAddingTaxSlab] = useState(false);
+
+  // Refresh org-level payment QR / signature / review caches when tenant changes.
+  useEffect(() => {
+    setOrgPaymentQr(getOrgPaymentQrSettings(tenant?.id));
+    const sig = getOrgSignatureSettings(tenant?.id);
+    setOrgSignature(sig);
+    setOrgSignatureAlignment((sig as any).signatureAlignment || "right");
+    const gst = getActiveBillingGst(tenant?.id);
+    setOrgReviewEnabled(gst?.google_review_enabled !== false);
+    setOrgReviewUrl(gst?.google_review_url || "");
+  }, [tenant?.id]);
+
+  // Load active GST tax slabs for the Tax & GST sub-tab.
+  useEffect(() => {
+    if (settingsActiveSubTab === "tax_finance") {
+      taxApi.listTaxCodes({ tax_type: "gst", is_active: true } as any)
+        .then((res: any) => {
+          const items = res?.items || (Array.isArray(res) ? res : []);
+          setTaxSlabs(items);
+        })
+        .catch((err) => console.warn("Could not load tax slabs:", err));
+    }
+  }, [settingsActiveSubTab, tenant?.id]);
 
   useEffect(() => {
     setLiveInvoiceSettings(loadStoredInvoiceSettings(tenant?.id));
   }, [tenant?.id]);
+
+  // ── Keep every numbering source in agreement with the panel's configured prefixes ──
+  // This panel is the single control center for document prefixes. Whenever the
+  // user edits one, sync the OTHER two authoritative layers that downstream code
+  // (POS, backend document-number generation) actually reads, so a configured
+  // prefix like "SVB/26-27-" is never shadowed by a stale "INV-" default:
+  //   1. the org document-prefix store (getOrgDocumentPrefix, read by POS fallback)
+  //   2. the backend NumberSeries row (the authoritative number source of truth)
+  const s = liveInvoiceSettings;
+  const seqRef = React.useRef<string>("");
+  useEffect(() => {
+    const key = [s.prefix, s.sequenceNumber, s.quotationPrefix, s.proformaPrefix, s.estimatePrefix,
+      s.creditNotePrefix, s.debitNotePrefix, s.purchaseInvoicePrefix, s.purchaseOrderPrefix,
+      s.receiptPrefix].join("|");
+    if (seqRef.current === key) return;
+    seqRef.current = key;
+    const tid = tenant?.id;
+    if (!tid) return;
+    // 1. Org document-prefix store (debounced so typing a prefix doesn't fire a request
+    // per keystroke — only flushes when the value settles).
+    const t = setTimeout(async () => {
+      try {
+        setOrgDocumentPrefixes({
+          invoice_prefix: s.prefix || "INV-",
+          quotation_prefix: s.quotationPrefix || "QT-",
+          proforma_prefix: s.proformaPrefix || "PI-",
+          estimate_prefix: s.estimatePrefix || "EST-",
+          credit_note_prefix: s.creditNotePrefix || "CN-",
+          debit_note_prefix: s.debitNotePrefix || "DN-",
+          purchase_invoice_prefix: s.purchaseInvoicePrefix || "PINV-",
+          purchase_order_prefix: s.purchaseOrderPrefix || "PO-",
+          receipt_prefix: s.receiptPrefix || "REC-",
+        }, tid);
+
+        // 2. Backend NumberSeries rows (authoritative). Reuse the exact module names the
+        //    POS quick-settings modal syncs, so the two UIs stay consistent.
+        const cid = (typeof localStorage !== "undefined" && localStorage.getItem("bos_active_company_id")) || undefined;
+        const seriesRes = await numberSeriesApi.list(1, 100, cid);
+        const seriesList: any[] = (seriesRes as any)?.items || (seriesRes as any)?.data || [];
+        const findSeries = (m: string) => seriesList.find((x: any) => x.module_name?.toLowerCase() === m)
+          || seriesList.find((x: any) => x.module_name?.toLowerCase().includes(m));
+        const syncOne = async (module: string, fallbackModule: string, prefix: string, seq: number, padding: number) => {
+          const existing = findSeries(module) || (fallbackModule ? findSeries(fallbackModule) : undefined);
+          const cur = Math.max(0, seq - 1);
+          if (existing) {
+            await numberSeriesApi.update(existing.id, { prefix, current_number: cur, padding }).catch(() => { });
+          } else {
+            await numberSeriesApi.create({ company_id: cid, module_name: module, prefix, current_number: cur, padding, status: "active" }).catch(() => { });
+          }
+        };
+        await syncOne("invoices", "invoice", s.prefix || "INV-", Number(s.sequenceNumber) || 1, Number(s.padding) || 4);
+        await syncOne("quotations", "", s.quotationPrefix || "QT-", Number(s.quotationSequenceNumber) || 1, Number(s.quotationPadding) || 4);
+        await syncOne("proforma_invoices", "proforma", s.proformaPrefix || "PI-", Number(s.proformaSequenceNumber) || 1, Number(s.proformaPadding) || 4);
+      await syncOne("delivery_challans", "challan", s.challanPrefix || "DC-", Number(s.challanSequenceNumber) || 1, Number(s.challanPadding) || 4);
+        await syncOne("estimates", "", s.estimatePrefix || "EST-", Number(s.estimateSequenceNumber) || 1, Number(s.estimatePadding) || 4);
+        await syncOne("receipts", "receipt", s.receiptPrefix || "REC-", Number(s.receiptSequenceNumber) || 1, Number(s.receiptPadding) || 5);
+        await syncOne("credit_notes", "", s.creditNotePrefix || "CN-", Number(s.creditNoteSequenceNumber) || 1, Number(s.creditNotePadding) || 4);
+        await syncOne("debit_notes", "", s.debitNotePrefix || "DN-", Number(s.debitNoteSequenceNumber) || 1, Number(s.debitNotePadding) || 4);
+        await syncOne("purchase_invoices", "", s.purchaseInvoicePrefix || "PINV-", Number(s.purchaseInvoiceSequenceNumber) || 1, Number(s.purchaseInvoicePadding) || 4);
+        await syncOne("purchase_orders", "", s.purchaseOrderPrefix || "PO-", Number(s.purchaseOrderSequenceNumber) || 1, Number(s.purchaseOrderPadding) || 4);
+      } catch (e) {
+        console.warn("Could not sync document number prefixes:", e);
+      }
+    }, 600);
+    return () => clearTimeout(t);
+  }, [s, tenant?.id]);
+
+  // Org-level save handlers (mirror InvoiceQuickSettingsModal persistence).
+  const saveOrgPaymentQr = () => {
+    setOrgPaymentQrSettings({
+      payment_qr_enabled: Boolean(orgPaymentQr?.enabled),
+      payment_qr_type: orgPaymentQr?.type || "dynamic_upi",
+      payment_qr_custom_image_url: orgPaymentQr?.customImageUrl || null,
+      upi_vpa: (orgPaymentQr?.vpa || "").trim() || null,
+      upi_payee_name: (orgPaymentQr?.payeeName || "").trim() || null,
+      bank_name: (orgPaymentQr?.bankName || "").trim() || null,
+      bank_account_number: (orgPaymentQr?.accountNumber || "").trim() || null,
+      bank_ifsc: (orgPaymentQr?.ifsc || "").trim() || null,
+    }, tenant?.id);
+    toast.success("Payment QR & bank settings saved & applied.");
+  };
+
+  const saveOrgSignature = () => {
+    setOrgSignatureSettings({
+      signature_url: orgSignature?.signatureUrl || null,
+      stamp_url: orgSignature?.stampUrl || null,
+      signature_title: (orgSignature?.signatureTitle || "").trim() || null,
+      signature_company_name: (orgSignature?.signatureCompanyName || "").trim() || null,
+      show_digital_signature: orgSignature?.showDigitalSignature !== false,
+      show_digital_stamp: orgSignature?.showDigitalStamp !== false,
+      signature_alignment: orgSignatureAlignment,
+    }, tenant?.id);
+    toast.success("Signature & stamp settings saved & applied.");
+  };
+
+  const saveOrgReviewSettings = () => {
+    const active = getActiveBillingGst(tenant?.id) || ({ gstin: "", trade_name: "Organization", legal_name: "Organization", state_code: "29", state_name: "State", address: "" } as any);
+    setActiveBillingGst({
+      ...active,
+      google_review_enabled: orgReviewEnabled,
+      google_review_url: (orgReviewUrl || "").trim() || null,
+    } as any, tenant?.id);
+    toast.success("Google Review QR settings saved & applied.");
+  };
+
+  const handleCreateTaxSlab = async () => {
+    const rateNum = parseFloat(newTaxRate);
+    if (isNaN(rateNum) || rateNum < 0) {
+      toast.error("Please enter a valid tax rate percentage.");
+      return;
+    }
+    setIsAddingTaxSlab(true);
+    try {
+      await taxApi.createTaxCode({
+        code: `GST_${rateNum}%`,
+        name: newTaxName.trim() || `GST ${rateNum}%`,
+        rate: rateNum,
+        tax_type: "gst",
+        is_inclusive: false,
+        is_active: true,
+      } as any);
+      toast.success(`GST Slab ${rateNum}% created successfully!`);
+      const updated: any = await taxApi.listTaxCodes({ tax_type: "gst" } as any);
+      setTaxSlabs(updated?.items || (Array.isArray(updated) ? updated : []));
+      setNewTaxRate("");
+      setNewTaxName("");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to create tax slab.");
+    } finally {
+      setIsAddingTaxSlab(false);
+    }
+  };
+
+  // One-time cleanup of stale / duplicate stored print templates on mount.
+  useEffect(() => {
+    purgeStalePrintTemplates();
+  }, []);
+
+  // Re-render on any template-list change (Word Studio saves, backend sync,
+  // other components persisting print templates) — no page reload needed.
+  const [templateStoreVersion, setTemplateStoreVersion] = useState(0);
+  useEffect(() => {
+    const refreshFromStorage = () => {
+      try {
+        const raw = safeGetItem(`businessos_print_templates_v1_${tenantId}`) || safeGetItem("businessos_print_templates_v1");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setTemplates((prev) => {
+              const map = new Map<string, PrintTemplate>();
+              prev.forEach((t) => map.set(t.id, t));
+              parsed.forEach((t: any) => {
+                if (t && t.id && !map.has(t.id)) map.set(t.id, t as PrintTemplate);
+              });
+              return pruneLegacyTemplates(Array.from(map.values()));
+            });
+          }
+        }
+      } catch { }
+      // Bump version so the live preview + strip recompute fresh state.
+      setTemplateStoreVersion((v) => v + 1);
+    };
+    window.addEventListener("print_templates_updated", refreshFromStorage);
+    window.addEventListener("print-templates-updated", refreshFromStorage);
+    window.addEventListener("storage", refreshFromStorage);
+    return () => {
+      window.removeEventListener("print_templates_updated", refreshFromStorage);
+      window.removeEventListener("print-templates-updated", refreshFromStorage);
+      window.removeEventListener("storage", refreshFromStorage);
+    };
+  }, [tenantId]);
 
   useEffect(() => {
     const handleUpdate = () => {
@@ -1229,8 +1630,8 @@ export function PrintTemplates() {
   // Template Storage with automatic migration & normalization
   const [templates, setTemplates] = useState<PrintTemplate[]>(() => {
     if (typeof window !== "undefined") {
-      const saved = localStorage.getItem(`businessos_print_templates_v1_${tenantId}`) ||
-        localStorage.getItem(`businessos_print_templates_v1`);
+      const saved = safeGetItem(`businessos_print_templates_v1_${tenantId}`) ||
+        safeGetItem(`businessos_print_templates_v1`);
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
@@ -1306,7 +1707,7 @@ export function PrintTemplates() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(() => {
     const activeUserTplId = userActiveDefaults[selectedDocType] || (selectedDocType === "invoice" ? userActiveDefaults.invoices : selectedDocType === "thermal" ? userActiveDefaults.thermal : selectedDocType === "barcode" ? userActiveDefaults.barcodes : undefined);
     const candidateList = (templates || []).filter((t) => {
-      if (selectedDocType === "invoice") {
+      if (isInvoicesFamilyDocType(selectedDocType)) {
         return (t.category === "invoices" || t.docType === "invoice" || (!t.docType && !t.category)) && t.category !== "thermal" && t.docType !== "thermal" && t.category !== "barcodes";
       }
       if (selectedDocType === "thermal") return t.category === "thermal" || t.docType === "thermal";
@@ -1329,7 +1730,7 @@ export function PrintTemplates() {
   // Filter & sort templates strictly for current selected category/doctype
   const currentCategoryTemplates = React.useMemo(() => {
     const list = (templates || []).filter((t) => {
-      if (selectedDocType === "invoice") {
+      if (isInvoicesFamilyDocType(selectedDocType)) {
         return (t.category === "invoices" || t.docType === "invoice" || (!t.docType && !t.category)) && t.category !== "thermal" && t.docType !== "thermal" && t.category !== "barcodes";
       }
       if (selectedDocType === "thermal") {
@@ -1353,7 +1754,7 @@ export function PrintTemplates() {
       return t.docType === selectedDocType || t.category === selectedDocType;
     });
 
-    if (selectedDocType === "invoice") {
+    if (isInvoicesFamilyDocType(selectedDocType)) {
       const builtinIds = new Set(INITIAL_TEMPLATES.map((t) => t.id));
       const globalIds = new Set((GLOBAL_INVOICE_TEMPLATES as any[]).map((g) => g.id));
       const globalOrder = new Map<string, number>(
@@ -1377,42 +1778,173 @@ export function PrintTemplates() {
     return list;
   }, [templates, selectedDocType, userActiveDefaults, selectedTemplateId]);
 
-  // When selectedDocType changes, pick the active/default template for that category
-  useEffect(() => {
+  // ── Per-document-category template slot resolution ─────────────────────
+  // The four config-known slots (invoice/quotation/proforma/estimate) use the
+  // shared receipt-template-store category API. "challan" and "custom" keep
+  // their own device-local active keys (falling back to the master invoice
+  // template when unlinked) so they can display & print their OWN chosen
+  // template instead of silently using the tax invoice's.
+  // Both slots live in the shared ACTIVE_DOC_TEMPLATE_KEYS family (see
+  // receipt-template-store) so they can never diverge from the invoice-family
+  // slots. Tenant-scoped only — legacy unsuffixed global keys are purged.
+  // Clearing wipes EVERY key family for the slot (dedicated + category-slot +
+  // link-pin) so a re-linked slot falls back to master with no stale value.
+  const clearDocTemplateSlot = (slot: string, tid?: string) => {
+    try {
+      const t = tid || receiptTemplateStore.getTenantIdFromStorage();
+      const cid = typeof localStorage !== "undefined" ? localStorage.getItem("bos_active_company_id") || "" : "";
+      // 1. Dedicated per-category key family (ACTIVE_DOC_TEMPLATE_KEYS).
+      receiptTemplateStore.safeRemoveTenantDocTemplateId(slot, t);
+      // 2. Invoice-category slot + link-pin families (mirrors the store's
+      //    getInvoiceCategoryActiveKey / getInvoiceCategoryLinkKey shapes).
+      safeRemoveItem(`bos_active_invoice_category_template_${t}_${slot}`);
+      if (cid) safeRemoveItem(`bos_active_invoice_category_template_${t}_${slot}_${cid}`);
+      safeRemoveItem(`bos_invoice_category_link_${t}_${slot}`);
+      if (cid) safeRemoveItem(`bos_invoice_category_link_${t}_${slot}_${cid}`);
+      window.dispatchEvent(new Event("storage"));
+    } catch { }
+  };
+
+  const getChallanSlotActiveId = (): string | null => {
+    try {
+      return receiptTemplateStore.getActiveDocTemplateId("challan", tenantId) || null;
+    } catch { return null; }
+  };
+  const setChallanSlotActiveId = (id: string | null) => {
+    try {
+      if (id) {
+        receiptTemplateStore.setActiveDocTemplateId("challan", id, tenantId);
+      } else {
+        clearDocTemplateSlot("challan", tenantId);
+      }
+    } catch { }
+  };
+  const getCustomSlotActiveId = (): string | null => {
+    try {
+      return receiptTemplateStore.getActiveDocTemplateId("custom", tenantId) || null;
+    } catch { return null; }
+  };
+  const setCustomSlotActiveId = (id: string | null) => {
+    try {
+      if (id) {
+        receiptTemplateStore.setActiveDocTemplateId("custom", id, tenantId);
+      } else {
+        clearDocTemplateSlot("custom", tenantId);
+      }
+    } catch { }
+  };
+  const masterInvoiceTemplateId = (): string | null =>
+    getActiveInvoicePrintTemplateForCategory("invoice" as InvoiceDocCategory, tenantId) ||
+    userActiveDefaults.invoice || userActiveDefaults.invoices ||
+    null;
+  const masterNameForSlot = (id: string | null): string =>
+    id ? (currentCategoryTemplates.find((x: any) => x.id === id)?.name || "Master invoice template") : "Master invoice template";
+
+  // Resolve the active template id for a doc-type slot. For linked slots the
+  // result follows the master invoice template; for unlinked slots it returns
+  // the pinned per-category template. Returns null when nothing resolves so
+  // the editor can fall back to a sensible default.
+  const resolveA4SlotActiveId = (slot: A4SlotKey): string | null => {
+    if (slot === "invoice") return masterInvoiceTemplateId();
+    if (slot === "challan") return getChallanSlotActiveId() ?? masterInvoiceTemplateId();
+    if (slot === "custom") return getCustomSlotActiveId() ?? masterInvoiceTemplateId();
+    // invoice-family slots from the config library
+    const direct = getActiveInvoicePrintTemplateForCategory(slot as InvoiceDocCategory, tenantId);
+    return direct ?? masterInvoiceTemplateId();
+  };
+  // True when the slot has pinned its own template (OVERRIDE).
+  const isA4SlotOverridden = (slot: A4SlotKey): boolean => {
+    if (slot === "invoice") return false;
+    if (slot === "challan") return Boolean(getChallanSlotActiveId());
+    if (slot === "custom") return Boolean(getCustomSlotActiveId());
+    return isInvoiceCategoryUnlinked(slot as InvoiceDocCategory, tenantId);
+  };
+  // Pin a template as this slot's own override.
+  const pinA4SlotTemplate = (slot: A4SlotKey, templateId: string) => {
+    if (slot === "challan") { setChallanSlotActiveId(templateId); return; }
+    if (slot === "custom") { setCustomSlotActiveId(templateId); return; }
+    if (slot === "invoice") {
+      setActiveInvoicePrintTemplate(templateId, tenantId);
+      invoicesApi.setActivePrintTemplate(templateId).catch(() => { });
+      return;
+    }
+    // Unlink + pin this category so it stops following the master.
+    setInvoiceCategoryLinked(slot as InvoiceDocCategory, false, templateId, tenantId);
+    setActiveInvoicePrintTemplateForCategory(templateId, slot as InvoiceDocCategory, tenantId);
+  };
+  // Re-link a slot back to the master invoice template.
+  const relinkA4SlotToMaster = (slot: A4SlotKey) => {
+    if (slot === "challan") { setChallanSlotActiveId(null); return; }
+    if (slot === "custom") { setCustomSlotActiveId(null); return; }
+    setInvoiceCategoryLinked(slot as InvoiceDocCategory, true, undefined, tenantId);
+  };
+
+  // Selecting a doc-type slot loads that type's OWN template into the editor +
+  // preview. Called from the doc-type strip (and kept in sync with the sidebar).
+  const handleSelectA4Slot = (slot: A4SlotKey) => {
+    setSelectedA4Slot(slot);
+    // invoice/quotation/proforma/estimate + note/purchase types all live in the
+    // invoice A4 template set (distinguished by the doc-type slot);
+    // challan/custom map to their own separate template sets.
+    const docTypeForSlot: DocumentType =
+      slot === "challan" ? "challan"
+        : slot === "quotation" ? "quotation"
+          : slot === "proforma" ? "proforma"
+            : slot === "custom" ? "custom"
+              : slot === "credit_note" ? "credit_note"
+                : slot === "debit_note" ? "debit_note"
+                  : slot === "purchase_invoice" ? "purchase_invoice"
+                    : slot === "purchase_order" ? "purchase_order"
+                      : "invoice";
+    setSelectedDocType(docTypeForSlot);
+    const isInvoicesSet = !["challan", "custom", "thermal", "barcode", "qrcode", "pricetag"].includes(slot);
+    const s: string = slot;
+    const list = (templates || []).filter((t) => isInvoicesSet ? (t.category === "invoices" || t.docType === "invoice" || (!t.docType && !t.category)) && t.category !== "thermal" && t.docType !== "thermal" && t.category !== "barcodes" : t.category === s || t.docType === s);
+    const resolved = resolveA4SlotActiveId(slot);
+    const match =
+      (resolved && list.find((t) => t.id === resolved)) ||
+      list.find((t) => t.isDefault) ||
+      list[0] ||
+      INITIAL_TEMPLATES.find((t) => t.category === "invoices" || t.docType === "invoice") ||
+      INITIAL_TEMPLATES[0];
+    setSelectedTemplateId(match.id);
+  };
+
+  // Synchronous document selection from sidebar ensuring template ID and slot stay in sync
+  const handleSelectSidebarDocType = (docType: DocumentType) => {
+    setSelectedDocType(docType);
+    const slot = slotKeyForDocType(docType);
+    setSelectedA4Slot(slot);
+
     const list = (templates || []).filter((t) => {
-      if (selectedDocType === "invoice") {
+      if (isInvoicesFamilyDocType(docType)) {
         return (t.category === "invoices" || t.docType === "invoice" || (!t.docType && !t.category)) && t.category !== "thermal" && t.docType !== "thermal" && t.category !== "barcodes";
       }
-      if (selectedDocType === "thermal") {
-        return t.category === "thermal" || t.docType === "thermal";
-      }
-      if (selectedDocType === "barcode") {
-        return t.category === "barcodes" || t.docType === "barcode";
-      }
-      if (selectedDocType === "qrcode") {
-        return t.category === "qrcodes" || t.docType === "qrcode";
-      }
-      if (selectedDocType === "pricetag") {
-        return t.category === "pricetag" || t.docType === "pricetag";
-      }
-      if (selectedDocType === "challan") {
-        return t.category === "challan" || t.docType === "challan";
-      }
-      if (selectedDocType === "custom") {
-        return t.category === "custom" || t.docType === "custom";
-      }
-      return t.docType === selectedDocType || t.category === selectedDocType;
+      if (docType === "thermal") return t.category === "thermal" || t.docType === "thermal";
+      if (docType === "barcode") return t.category === "barcodes" || t.docType === "barcode";
+      if (docType === "qrcode") return t.category === "qrcodes" || t.docType === "qrcode";
+      if (docType === "pricetag") return t.category === "pricetag" || t.docType === "pricetag";
+      if (docType === "challan") return t.category === "challan" || t.docType === "challan";
+      if (docType === "custom") return t.category === "custom" || t.docType === "custom";
+      return t.docType === docType || t.category === docType;
     });
 
-    const activeUserTplId = userActiveDefaults[selectedDocType] || (selectedDocType === "invoice" ? userActiveDefaults.invoices : selectedDocType === "thermal" ? userActiveDefaults.thermal : selectedDocType === "barcode" ? userActiveDefaults.barcodes : undefined);
+    const activeUserTplId =
+      docType === "barcode" ? (userActiveDefaults.barcode || userActiveDefaults.barcodes)
+      : docType === "thermal" ? userActiveDefaults.thermal
+      : isInvoicesFamilyDocType(docType) ? (resolveA4SlotActiveId(slot) || userActiveDefaults.invoice || userActiveDefaults.invoices)
+      : userActiveDefaults[docType];
+
     const match =
       (activeUserTplId && list.find((t) => t.id === activeUserTplId)) ||
       list.find((t) => t.isDefault) ||
       list[0] ||
-      INITIAL_TEMPLATES.find((t) => selectedDocType === "invoice" ? (t.category === "invoices" || t.docType === "invoice") : t.docType === selectedDocType) ||
-      INITIAL_TEMPLATES[0];
-    setSelectedTemplateId(match.id);
-  }, [selectedDocType]);
+      INITIAL_TEMPLATES.find((t) => isInvoicesFamilyDocType(docType) ? (t.category === "invoices" || t.docType === "invoice") : t.docType === docType);
+
+    if (match) {
+      setSelectedTemplateId(match.id);
+    }
+  };
 
   // Fetch DB print templates from backend on mount so all users see organization templates
   useEffect(() => {
@@ -1585,61 +2117,63 @@ export function PrintTemplates() {
     (activeTemplate?.gstin && !isDummyGstin(activeTemplate.gstin) ? activeTemplate.gstin : '') ||
     '';
 
-  // Persist templates to localStorage and backend database
+  // Persist templates to safe localStorage + the receipt-template-store active
+  // setters + the backend database. No raw localStorage.setItem in this file.
   const persistTemplates = (newTemplates: PrintTemplate[]) => {
     setTemplates(newTemplates);
     const currentActive =
       newTemplates.find((t) => t.id === selectedTemplateId) ||
       newTemplates.find((t) => t.id === activeTemplate?.id) ||
       activeTemplate;
+    // The template list is stored once, quota-safe (dedupe + prune + base64 strip).
+    safeSetItem(`businessos_print_templates_v1_${tenantId}`, JSON.stringify(newTemplates));
+    safeSetItem(`businessos_print_templates_v1`, JSON.stringify(newTemplates));
+
+    const isInvoice = isInvoicesFamilyDocType(selectedDocType) || selectedDocType === "challan" || currentActive?.category === "invoices" || currentActive?.docType === "invoice";
+    const isBarcode = (selectedDocType === "barcode" || currentActive?.category === "barcodes" || currentActive?.docType === "barcode") && !isInvoice;
+    const isThermal = (selectedDocType === "thermal" || currentActive?.category === "thermal" || currentActive?.docType === "thermal") && !isBarcode && !isInvoice;
+
+    const nextDefaults = {
+      ...userActiveDefaults,
+      ...(isInvoice ? { [selectedDocType]: currentActive.id, invoices: currentActive.id, invoice: currentActive.id } : {}),
+      ...(isBarcode ? { [selectedDocType]: currentActive.id, barcodes: currentActive.id, barcode: currentActive.id } : {}),
+      ...(isThermal ? { [selectedDocType]: currentActive.id, thermal: currentActive.id } : {}),
+    };
+    setUserActiveDefaults(nextDefaults);
+    safeSetItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextDefaults));
+    safeSetItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
+
     try {
-      localStorage.setItem(`businessos_print_templates_v1_${tenantId}`, JSON.stringify(newTemplates));
-      localStorage.setItem(`businessos_print_templates_v1`, JSON.stringify(newTemplates));
-      if (selectedDocType === "invoice" || currentActive?.category === "invoices" || currentActive?.docType === "invoice") {
-        const nextDefaults = {
-          ...userActiveDefaults,
-          [selectedDocType]: currentActive.id,
-          invoices: currentActive.id,
-          invoice: currentActive.id,
-        };
-        setUserActiveDefaults(nextDefaults);
-        localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextDefaults));
-        localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
-        localStorage.setItem(`bos_active_invoice_template_id_${tenantId}`, currentActive.id);
-        localStorage.setItem("bos_active_invoice_template_id", currentActive.id);
-        localStorage.setItem("bos_default_inv_template_id", currentActive.id);
-        invoicesApi.setActivePrintTemplate(currentActive.id).catch(() => { });
+      if (isInvoice) {
+        // Master invoice slot goes through the shared store setter (which
+        // already handles the per-tenant key, default flags, backend + events).
+        setActiveInvoicePrintTemplate(currentActive.id, tenantId);
+        // When the user is editing a non-master doc-type (quotation / proforma /
+        // estimate / challan / custom), pin that slot's active key so the exact
+        // template they designed is the one that prints for that document type.
+        const slot = slotKeyForDocType(selectedDocType);
+        if (slot !== "invoice") pinA4SlotTemplate(slot, currentActive.id);
         printTemplatesApi.setActiveTemplate(currentActive.id, "invoices").catch(() => { });
-      } else if (selectedDocType === "barcode" || currentActive?.category === "barcodes" || currentActive?.docType === "barcode") {
-        const nextDefaults = {
-          ...userActiveDefaults,
-          [selectedDocType]: currentActive.id,
-          barcodes: currentActive.id,
-          barcode: currentActive.id,
-        };
-        setUserActiveDefaults(nextDefaults);
-        localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextDefaults));
-        localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
-        localStorage.setItem("bos_active_barcode_template_id", currentActive.id);
+        // Persist the full template object (wordConfig, columns, texts, QR...).
+        savePrintTemplateSafe(currentActive);
+        // Propagate master-invoice edits down to the receipt + barcode templates
+        // so the whole template family stays consistent (labels, signature,
+        // custom fields, payment-QR, branding).
+        syncMasterInvoiceToReceivers(currentActive, tenantId);
+      } else if (isBarcode) {
+        setActiveBarcodeTemplate(currentActive.id, tenantId);
         printTemplatesApi.setActiveTemplate(currentActive.id, "barcodes").catch(() => { });
-      } else if (selectedDocType === "thermal" || currentActive?.category === "thermal" || currentActive?.docType === "thermal") {
-        const nextDefaults = {
-          ...userActiveDefaults,
-          [selectedDocType]: currentActive.id,
-          thermal: currentActive.id,
-        };
-        setUserActiveDefaults(nextDefaults);
-        localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextDefaults));
-        localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
-        localStorage.setItem(`bos_active_receipt_template_id_${tenantId}`, currentActive.id);
-        localStorage.setItem("bos_active_receipt_template_id", currentActive.id);
+        savePrintTemplateSafe(currentActive);
+      } else if (isThermal) {
+        saveActiveReceiptTemplate(currentActive as any, tenantId);
         printTemplatesApi.setActiveTemplate(currentActive.id, "thermal").catch(() => { });
+        savePrintTemplateSafe(currentActive);
       }
 
       // Persist to backend PostgreSQL DB for the organization
       if (currentActive) {
-        const category = (selectedDocType === "barcode" || currentActive.category === "barcodes") ? "barcodes" : (selectedDocType === "thermal" || currentActive.category === "thermal") ? "thermal" : "invoices";
-        printTemplatesApi.saveTemplate(currentActive, Boolean(currentActive.isDefault)).catch(() => { });
+        const category = isBarcode ? "barcodes" : isThermal ? "thermal" : "invoices";
+        printTemplatesApi.saveTemplate(currentActive as any, Boolean(currentActive.isDefault)).catch(() => { });
       }
 
       window.dispatchEvent(new CustomEvent("print_templates_updated", { detail: { template: currentActive } }));
@@ -1707,7 +2241,223 @@ export function PrintTemplates() {
     persistTemplates(updatedTemplates);
   };
 
+  const updateTemplateProperties = (props: Partial<PrintTemplate> & Record<string, any>) => {
+    const updatedTemplates = templates.map((t) =>
+      t.id === activeTemplate.id ? { ...t, ...props } : t
+    );
+    persistTemplates(updatedTemplates);
+  };
+
+  const handlePartyToggle = (key: string, checked: boolean) => {
+    const curFields: any = { ...(activeTemplate?.fields || DEFAULT_ELEMENT_TOGGLES) };
+    const curParty: any = { ...((activeTemplate as any)?.party || {}) };
+    const curBillTo: any = { ...(curParty.billTo || {}) };
+    const curShipTo: any = { ...(curParty.shipTo || {}) };
+
+    if (key === "showBillTo") {
+      curFields.showBillTo = checked;
+      curFields.showCustomerDetails = checked;
+      curBillTo.showCompanyName = checked;
+    } else if (key === "showShipTo") {
+      curFields.showShipTo = checked;
+      curShipTo.showShippingAddress = checked;
+    } else if (key === "showPartyPhone") {
+      curFields.showPartyPhone = checked;
+      curFields.showCustomerPhone = checked;
+      curBillTo.showPhone = checked;
+    } else if (key === "showPartyEmail") {
+      curFields.showPartyEmail = checked;
+      curFields.showCustomerEmail = checked;
+      curBillTo.showEmail = checked;
+    } else if (key === "showPartyGstin") {
+      curFields.showPartyGstin = checked;
+      curFields.showCustomerGstin = checked;
+      curBillTo.showGstin = checked;
+    } else if (key === "showPartyPan") {
+      curFields.showPartyPan = checked;
+      curFields.showCustomerPan = checked;
+      curBillTo.showPan = checked;
+    } else if (key === "showPartyDlNumber") {
+      curFields.showPartyDlNumber = checked;
+      curFields.showPartyDl = checked;
+      curFields.showCustomerDl = checked;
+      curFields.showDlNumber = checked;
+      curBillTo.showDlNumber = checked;
+    } else if (key === "showPlaceOfSupply") {
+      curFields.showPlaceOfSupply = checked;
+    } else if (key === "showPartyBalance") {
+      curFields.showPartyBalance = checked;
+      curBillTo.showPartyBalance = checked;
+    } else if (key === "showContactPerson") {
+      curFields.showContactPerson = checked;
+      curBillTo.showContactPerson = checked;
+    }
+
+    curParty.billTo = curBillTo;
+    curParty.shipTo = curShipTo;
+
+    updateTemplateProperties({
+      fields: curFields,
+      party: curParty,
+    });
+  };
+
+  const isPartyFieldChecked = (key: string): boolean => {
+    const f: any = activeTemplate?.fields || {};
+    const party: any = (activeTemplate as any)?.party || {};
+    const billTo: any = party.billTo || {};
+    const shipTo: any = party.shipTo || {};
+
+    switch (key) {
+      case "showBillTo":
+        return f.showBillTo !== false && f.showCustomerDetails !== false && billTo.showCompanyName !== false;
+      case "showShipTo":
+        return f.showShipTo !== false && shipTo.showShippingAddress !== false;
+      case "showPartyPhone":
+        return f.showCustomerPhone !== false && f.showPartyPhone !== false && billTo.showPhone !== false;
+      case "showPartyEmail":
+        return f.showCustomerEmail !== false && f.showPartyEmail !== false && billTo.showEmail !== false;
+      case "showPartyGstin":
+        return f.showCustomerGstin !== false && f.showPartyGstin !== false && billTo.showGstin !== false;
+      case "showPartyPan":
+        return f.showCustomerPan !== false && f.showPartyPan !== false && billTo.showPan !== false;
+      case "showPartyDlNumber":
+        return f.showDlNumber !== false && f.showPartyDl !== false && f.showCustomerDl !== false && f.showPartyDlNumber !== false && billTo.showDlNumber !== false;
+      case "showPlaceOfSupply":
+        return f.showPlaceOfSupply !== false;
+      case "showPartyBalance":
+        return f.showPartyBalance !== false && billTo.showPartyBalance !== false;
+      case "showContactPerson":
+        return f.showContactPerson !== false && billTo.showContactPerson !== false;
+      default:
+        return f[key] !== false;
+    }
+  };
+
+  // A4 columns manager — edits the active template's `columns` array directly
+  // (enabled toggle, header rename, alignment, reorder) so the live preview +
+  // print path pick up the exact column set the user designed.
+  const getA4Columns = (): any[] => {
+    const tpl: any = activeTemplate;
+    if (Array.isArray(tpl?.columns) && tpl.columns.length > 0) return tpl.columns;
+    if (tpl?.wordConfig && Array.isArray(tpl.wordConfig.columns) && tpl.wordConfig.columns.length > 0) return tpl.wordConfig.columns;
+    if (tpl?.body && Array.isArray(tpl.body.columns) && tpl.body.columns.length > 0) return tpl.body.columns;
+    return DEFAULT_WORD_COLUMNS;
+  };
+  const updateA4Columns = (updater: (cols: any[]) => any[]) => {
+    const current = getA4Columns();
+    const next = updater(current);
+    const updatedTemplates = templates.map((t) => {
+      if (t.id !== activeTemplate.id) return t;
+      const anyT: any = t;
+      const nextT: any = { ...t };
+      // Keep every column store in sync so the renderer's resolver sees the same set.
+      nextT.columns = next.map((c: any) => ({ ...c }));
+      if (anyT.wordConfig) {
+        nextT.wordConfig = { ...anyT.wordConfig, columns: next.map((c: any) => ({ ...c })) };
+      }
+      if (anyT.body) {
+        nextT.body = {
+          ...anyT.body,
+          columns: next
+            .filter((c: any) => c.enabled !== false)
+            .map((c: any) => ({ key: c.fieldKey, label: c.headerTitle, width: c.widthPercent ? `${c.widthPercent}%` : undefined, align: c.align, visible: true })),
+        };
+      }
+      // Mirror custom columns into customItemColumns (used by thermal + label UIs).
+      nextT.customItemColumns = next.filter((c: any) => c.isCustom).map((c: any) => ({
+        id: c.id,
+        name: c.headerTitle,
+        label: c.headerTitle,
+        key: c.fieldKey,
+        enabled: c.enabled !== false,
+      }));
+      return nextT;
+    });
+    persistTemplates(updatedTemplates);
+  };
+  const addA4StandardColumn = (fieldKey: string) => {
+    updateA4Columns((cols) => {
+      if (cols.some((c: any) => (c.fieldKey || c.key) === fieldKey)) return cols;
+      const defaults: Record<string, any> = {
+        sno: { headerTitle: "S.No", align: "center", widthPercent: 5 },
+        description: { headerTitle: "Description", align: "left", widthPercent: 24 },
+        hsn: { headerTitle: "HSN/SAC", align: "center", widthPercent: 9 },
+        batch: { headerTitle: "Batch", align: "left", widthPercent: 9 },
+        expiry_date: { headerTitle: "Mfg/Exp", align: "left", widthPercent: 9 },
+        uom: { headerTitle: "UOM", align: "center", widthPercent: 6 },
+        tax_rate: { headerTitle: "GST %", align: "center", widthPercent: 6 },
+        cgst: { headerTitle: "CGST", align: "right", widthPercent: 6 },
+        sgst: { headerTitle: "SGST", align: "right", widthPercent: 6 },
+        igst: { headerTitle: "IGST", align: "right", widthPercent: 6 },
+        unit_price: { headerTitle: "Rate", align: "right", widthPercent: 10 },
+        selling_price: { headerTitle: "SP", align: "right", widthPercent: 9 },
+        mrp: { headerTitle: "MRP", align: "right", widthPercent: 9 },
+        discount: { headerTitle: "Disc", align: "right", widthPercent: 7 },
+        quantity: { headerTitle: "Qty", align: "center", widthPercent: 6 },
+        total_amount: { headerTitle: "Amount", align: "right", widthPercent: 12 },
+      };
+      const d = defaults[fieldKey] || { headerTitle: fieldKey, align: "left" as const };
+      return [...cols, { id: `col_${fieldKey}`, fieldKey, headerTitle: d.headerTitle, align: d.align, widthPercent: d.widthPercent, enabled: true }];
+    });
+  };
+  const addA4CustomColumn = (name: string, source: "static" | "item_field" | "customer_field", value: string) => {
+    updateA4Columns((cols) => {
+      const colId = `custom_col_${Date.now()}`;
+      const newCol: any = {
+        id: colId,
+        fieldKey: colId,
+        headerTitle: name || "Custom Column",
+        align: "left" as const,
+        widthPercent: 10,
+        enabled: true,
+        isCustom: true,
+        source: source || "static",
+        customSourceField: value || "",
+        staticValue: source === "static" ? value || "" : undefined,
+      };
+      // `updateA4Columns` also rewrites customItemColumns, so the value source
+      // (static / item field / customer field) reaches the renderers too.
+      return [...cols, newCol];
+    });
+    toast.success(`Custom column "${name || "Custom"}" added`);
+  };
+  // A4 dispatch / shipping field toggles + default values, written into the
+  // template's `fields` toggles and `dispatchDefaults` so preview & print honor them.
+  const setA4FieldToggle = (key: string, value: boolean) => {
+    const curFields: any = { ...DEFAULT_ELEMENT_TOGGLES, ...((activeTemplate as any)?.fields || {}) };
+    curFields[key] = value;
+    updateTemplateProperty("fields", curFields as any);
+  };
+  const setA4DispatchDefault = (key: string, value: string) => {
+    const anyTpl: any = activeTemplate;
+    const nextDefaults = { ...(anyTpl.dispatchDefaults || {}), [key]: value };
+    updateTemplateProperty("dispatchDefaults" as any, nextDefaults);
+  };
+
+  // Texts / labels updater — persists editable words into `template.texts` so
+  // every A4 theme (print, PDF, email, WhatsApp) picks up user-edited labels.
+  const updateTemplateTexts = (key: string, value: string) => {
+    const updatedTemplates = templates.map((t) =>
+      t.id === activeTemplate.id
+        ? { ...t, texts: { ...(t as any).texts || {}, [key]: value } }
+        : t
+    );
+    persistTemplates(updatedTemplates);
+  };
+  const resolvedInvoiceTexts = React.useMemo(
+    () => resolveInvoiceTexts(activeTemplate, activeTemplate.themeName || "gst_tally"),
+    [activeTemplate]
+  );
+  const activeTemplateTexts: Record<string, string> = (activeTemplate as any).texts || {};
+
   const [selectedThemeStoreId, setSelectedThemeStoreId] = useState<string | null>(activeTemplate.decorativeThemeId || null);
+
+  // A4 Content tab — "Add Column" picker form state
+  const [colAddOpen, setColAddOpen] = useState(false);
+  const [newCustomName, setNewCustomName] = useState("");
+  const [newCustomSource, setNewCustomSource] = useState<"static" | "item_field" | "customer_field">("static");
+  const [newCustomValue, setNewCustomValue] = useState("");
 
   // Barcode In-Page Studio State & Handlers
   const [selectedBarcodeElementKey, setSelectedBarcodeElementKey] = useState<string>("el_product_name");
@@ -2004,7 +2754,7 @@ export function PrintTemplates() {
     setSelectedTemplateId(tpl.id);
     const isThermal = (selectedDocType === "thermal" || tpl.docType === "thermal" || tpl.category === "thermal") && selectedDocType !== "invoice" && selectedDocType !== "barcode" && selectedDocType !== "qrcode" && selectedDocType !== "pricetag" && selectedDocType !== "challan" && selectedDocType !== "custom";
     const isBarcode = (selectedDocType === "barcode" || tpl.docType === "barcode" || tpl.category === "barcodes") && selectedDocType !== "invoice" && selectedDocType !== "thermal" && selectedDocType !== "challan";
-    const isInvoice = (selectedDocType === "invoice" || selectedDocType === "challan" || tpl.category === "invoices" || tpl.docType === "invoice") && !isThermal && !isBarcode;
+    const isInvoice = (isInvoicesFamilyDocType(selectedDocType) || selectedDocType === "challan" || tpl.category === "invoices" || tpl.docType === "invoice") && !isThermal && !isBarcode;
 
     const nextUserActive = {
       ...userActiveDefaults,
@@ -2016,21 +2766,23 @@ export function PrintTemplates() {
     };
     setUserActiveDefaults(nextUserActive);
     try {
-      localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextUserActive));
-      localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextUserActive));
+      safeSetItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextUserActive));
+      safeSetItem(`user_active_print_templates_v1`, JSON.stringify(nextUserActive));
 
       if (isInvoice) {
-        localStorage.setItem(`bos_active_invoice_template_id_${tenantId}`, tpl.id);
-        localStorage.setItem("bos_active_invoice_template_id", tpl.id);
-        localStorage.setItem("bos_default_inv_template_id", tpl.id);
-        invoicesApi.setActivePrintTemplate(tpl.id).catch(() => { });
+        // Master invoice slot via the shared store setter (also writes the
+        // tenant-scoped key + syncs the backend).
+        setActiveInvoicePrintTemplate(tpl.id, tenantId);
+        // Pin the current doc-type slot to this template so each document type
+        // displays & prints its OWN chosen design (never the master's by accident).
+        const slot = slotKeyForDocType(selectedDocType);
+        if (slot !== "invoice") pinA4SlotTemplate(slot, tpl.id);
         printTemplatesApi.setActiveTemplate(tpl.id, "invoices").catch(() => { });
       } else if (isThermal) {
-        localStorage.setItem(`bos_active_receipt_template_id_${tenantId}`, tpl.id);
-        localStorage.setItem("bos_active_receipt_template_id", tpl.id);
+        saveActiveReceiptTemplate(tpl as any, tenantId);
         printTemplatesApi.setActiveTemplate(tpl.id, "thermal").catch(() => { });
       } else if (isBarcode) {
-        localStorage.setItem("bos_active_barcode_template_id", tpl.id);
+        setActiveBarcodeTemplate(tpl.id, tenantId);
         printTemplatesApi.setActiveTemplate(tpl.id, "barcodes").catch(() => { });
       }
       window.dispatchEvent(new CustomEvent("print_templates_updated", { detail: { template: tpl } }));
@@ -2041,17 +2793,19 @@ export function PrintTemplates() {
     toast.info(`Switched to "${tpl.name}" layout`);
   };
 
-  // Thermal Dedicated Input Refs
+  // Dedicated Input Refs
   const thermalLogoInputRef = useRef<HTMLInputElement>(null);
   const thermalSigInputRef = useRef<HTMLInputElement>(null);
   const thermalStampInputRef = useRef<HTMLInputElement>(null);
   const thermalQrInputRef = useRef<HTMLInputElement>(null);
+  const watermarkImageInputRef = useRef<HTMLInputElement>(null);
 
   // Thermal Custom Header Fields Handlers
   const handleAddThermalCustomField = (name: string = "New Field", value: string = "") => {
     const newField = {
       id: `cf-${Date.now()}`,
       name: name || "Custom Field",
+      label: name || "Custom Field",
       value: value || "",
       enabled: true,
     };
@@ -2060,7 +2814,7 @@ export function PrintTemplates() {
     toast.success(`Header field "${newField.name}" added`);
   };
 
-  const handleUpdateThermalCustomField = (id: string, updates: Partial<{ name: string; value: string; enabled: boolean }>) => {
+  const handleUpdateThermalCustomField = (id: string, updates: Partial<{ name: string; value: string; enabled: boolean; label?: string; bindKey?: string; source?: string }>) => {
     const currentList = activeTemplate.customFields || [];
     const nextList = currentList.map((f) => (f.id === id ? { ...f, ...updates } : f));
     updateTemplateProperty("customFields" as any, nextList);
@@ -2190,9 +2944,9 @@ export function PrintTemplates() {
   };
 
   // Thermal & Invoice Image Upload Handler
-  const handleThermalImageUpload = (
+  const handleThermalImageUpload = async (
     fileOrEvent: React.ChangeEvent<HTMLInputElement> | File,
-    targetProp: 'logoUrl' | 'signatureUrl' | 'stampUrl' | 'customQrUrl'
+    targetProp: 'logoUrl' | 'signatureUrl' | 'stampUrl' | 'customQrUrl' | 'watermarkImage'
   ) => {
     let file: File | undefined;
     if (fileOrEvent instanceof File) {
@@ -2205,21 +2959,37 @@ export function PrintTemplates() {
       toast.error("Image file size should be less than 2MB");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUrl = e.target?.result as string;
+    try {
+      const dataUrl = await compressImageForStorage(file, { maxWidth: 500, maxHeight: 300, quality: 0.85 });
+      if (!dataUrl) {
+        toast.error("Failed to process image");
+        return;
+      }
       updateTemplateProperty(targetProp as any, dataUrl);
       if (targetProp === 'logoUrl') updateTemplateProperty("fields", { ...(activeTemplate?.fields || DEFAULT_ELEMENT_TOGGLES), showLogo: true });
       if (targetProp === 'signatureUrl') {
         updateTemplateProperty("showSignature" as any, true);
         updateTemplateProperty("fields", { ...(activeTemplate?.fields || DEFAULT_ELEMENT_TOGGLES), showSignature: true });
+        try {
+          const curSig = getOrgSignatureSettings(tenantId) || {};
+          setOrgSignatureSettings({ ...curSig, signatureUrl: dataUrl, showDigitalSignature: true }, tenantId);
+        } catch { }
       }
       if (targetProp === 'stampUrl') {
         updateTemplateProperty("showStamp" as any, true);
+        try {
+          const curSig = getOrgSignatureSettings(tenantId) || {};
+          setOrgSignatureSettings({ ...curSig, stampUrl: dataUrl, showDigitalStamp: true }, tenantId);
+        } catch { }
+      }
+      if (targetProp === 'watermarkImage') {
+        updateTemplateProperty("watermarkType" as any, "image");
+        updateTemplateProperty("showWatermark", true);
       }
       toast.success("Image updated successfully");
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      toast.error("Error processing image file");
+    }
   };
 
   // Sync with CoreERP Org Setup
@@ -2315,7 +3085,7 @@ export function PrintTemplates() {
       const finalPhone = corePhone || activeTemplate.storePhone || "";
       const finalEmail = coreEmail || activeTemplate.storeEmail || "";
       const finalLogo = coreLogo || activeTemplate.logoUrl;
-      const finalUpi = coreUpi || activeTemplate.upiId || "9849344919@okaxis";
+      const finalUpi = coreUpi || activeTemplate.upiId || "";
       const finalGoogleReview = coreGoogleReview || activeTemplate.googleReviewUrl;
 
       const updated = templates.map((t) => {
@@ -2471,7 +3241,7 @@ export function PrintTemplates() {
     const targetTpl = updated.find((t) => t.id === tplId) || activeTemplate;
     const isThermal = (selectedDocType === "thermal" || targetTpl.category === "thermal" || targetTpl.docType === "thermal") && selectedDocType !== "invoice" && selectedDocType !== "barcode" && selectedDocType !== "qrcode" && selectedDocType !== "pricetag" && selectedDocType !== "challan" && selectedDocType !== "custom";
     const isBarcode = (selectedDocType === "barcode" || targetTpl.category === "barcodes" || targetTpl.docType === "barcode") && selectedDocType !== "invoice" && selectedDocType !== "thermal" && selectedDocType !== "challan";
-    const isInvoice = (selectedDocType === "invoice" || selectedDocType === "challan" || targetTpl.category === "invoices" || targetTpl.docType === "invoice") && !isThermal && !isBarcode;
+    const isInvoice = (isInvoicesFamilyDocType(selectedDocType) || selectedDocType === "challan" || targetTpl.category === "invoices" || targetTpl.docType === "invoice") && !isThermal && !isBarcode;
     const category = isBarcode ? "barcodes" : isThermal ? "thermal" : "invoices";
     try {
       await printTemplatesApi.setActiveTemplate(tplId, category);
@@ -2480,22 +3250,13 @@ export function PrintTemplates() {
       console.warn("Backend setActiveTemplate error:", e);
     }
     if (isInvoice) {
-      try {
-        localStorage.setItem(`bos_active_invoice_template_id_${tenantId}`, tplId);
-        localStorage.setItem("bos_active_invoice_template_id", tplId);
-        localStorage.setItem("bos_default_inv_template_id", tplId);
-        setActiveInvoicePrintTemplate(tplId, tenantId);
-        invoicesApi.setActivePrintTemplate(tplId).catch(() => { });
-      } catch { }
+      // The shared store setter writes the tenant-scoped active key, clears
+      // defaults, syncs the backend and fires change events.
+      setActiveInvoicePrintTemplate(tplId, tenantId);
     } else if (isThermal) {
-      try {
-        localStorage.setItem(`bos_active_receipt_template_id_${tenantId}`, tplId);
-        localStorage.setItem("bos_active_receipt_template_id", tplId);
-      } catch { }
+      saveActiveReceiptTemplate(targetTpl as any, tenantId);
     } else if (isBarcode) {
-      try {
-        localStorage.setItem("bos_active_barcode_template_id", tplId);
-      } catch { }
+      setActiveBarcodeTemplate(tplId, tenantId);
     }
     window.dispatchEvent(new CustomEvent("print_templates_updated", { detail: { template: targetTpl } }));
     window.dispatchEvent(new CustomEvent("bos_invoice_template_changed", { detail: { templateId: tplId } }));
@@ -2508,7 +3269,7 @@ export function PrintTemplates() {
   const handleSetActiveForMe = (tplId: string) => {
     const isThermal = (selectedDocType === "thermal" || activeTemplate.category === "thermal" || activeTemplate.docType === "thermal") && selectedDocType !== "invoice" && selectedDocType !== "barcode" && selectedDocType !== "qrcode" && selectedDocType !== "pricetag" && selectedDocType !== "challan" && selectedDocType !== "custom";
     const isBarcode = (selectedDocType === "barcode" || activeTemplate.category === "barcodes" || activeTemplate.docType === "barcode") && selectedDocType !== "invoice" && selectedDocType !== "thermal" && selectedDocType !== "challan";
-    const isInvoice = (selectedDocType === "invoice" || selectedDocType === "challan" || activeTemplate.category === "invoices" || activeTemplate.docType === "invoice") && !isThermal && !isBarcode;
+    const isInvoice = (isInvoicesFamilyDocType(selectedDocType) || selectedDocType === "challan" || activeTemplate.category === "invoices" || activeTemplate.docType === "invoice") && !isThermal && !isBarcode;
 
     const nextDefaults = {
       ...userActiveDefaults,
@@ -2520,20 +3281,16 @@ export function PrintTemplates() {
     };
     setUserActiveDefaults(nextDefaults);
     try {
-      localStorage.setItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextDefaults));
-      localStorage.setItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
+      safeSetItem(`user_active_print_templates_v1_${tenantId}`, JSON.stringify(nextDefaults));
+      safeSetItem(`user_active_print_templates_v1`, JSON.stringify(nextDefaults));
       if (isInvoice) {
-        localStorage.setItem(`bos_active_invoice_template_id_${tenantId}`, tplId);
-        localStorage.setItem("bos_active_invoice_template_id", tplId);
-        localStorage.setItem("bos_default_inv_template_id", tplId);
-        invoicesApi.setActivePrintTemplate(tplId).catch(() => { });
+        setActiveInvoicePrintTemplate(tplId, tenantId);
         printTemplatesApi.setActiveTemplate(tplId, "invoices").catch(() => { });
       } else if (isThermal) {
-        localStorage.setItem(`bos_active_receipt_template_id_${tenantId}`, tplId);
-        localStorage.setItem("bos_active_receipt_template_id", tplId);
+        saveActiveReceiptTemplate(activeTemplate as any, tenantId);
         printTemplatesApi.setActiveTemplate(tplId, "thermal").catch(() => { });
       } else if (isBarcode) {
-        localStorage.setItem("bos_active_barcode_template_id", tplId);
+        setActiveBarcodeTemplate(tplId, tenantId);
         printTemplatesApi.setActiveTemplate(tplId, "barcodes").catch(() => { });
       }
       window.dispatchEvent(new CustomEvent("print_templates_updated", { detail: { template: activeTemplate } }));
@@ -2668,8 +3425,7 @@ export function PrintTemplates() {
         customFields: (activeTemplate as any).customFields || [],
         customItemColumns: (activeTemplate as any).customItemColumns || [],
       });
-      localStorage.setItem("bos_active_receipt_template_id", activeTemplate.id);
-      localStorage.setItem(`bos_active_receipt_template_id_${tenantId}`, activeTemplate.id);
+      // The receipt store setter already persists the active receipt key.
     }
     try {
       await printTemplatesApi.saveTemplate(activeTemplate as any, Boolean(activeTemplate.isDefault));
@@ -2679,6 +3435,23 @@ export function PrintTemplates() {
     }
     window.dispatchEvent(new CustomEvent("bos_receipt_template_changed", { detail: { templateId: activeTemplate.id } }));
     toast.success(`Template "${activeTemplate.name}" saved to organization cloud!`);
+  };
+
+  // Wipe ALL saved templates for this organization (device-side) and reload
+  // from a clean slate. The database copy is cleared separately
+  // (backend/reset_print_templates.py); this clears the browser's cached lists
+  // so nothing stale re-merges on load.
+  const handleResetAllTemplates = () => {
+    if (!window.confirm("Reset ALL print templates for this organization?\n\nThis clears every saved template, custom field, and your active-template selections from this browser and reloads the app. This cannot be undone from the app (a database backup was written before the reset).")) return;
+    try {
+      receiptTemplateStore.resetAllPrintTemplatesForTenant(tenant?.id);
+      toast.success("Cleared all local templates — reloading a clean slate…");
+    } catch (e) {
+      console.error("Reset all templates failed:", e);
+    }
+    // Give the storage removal a beat to flush, then reload so the app re-fetches
+    // from the (already-cleared) backend and re-seeds built-in defaults only.
+    setTimeout(() => window.location.reload(), 300);
   };
 
   // Reset current template to defaults
@@ -2756,8 +3529,21 @@ export function PrintTemplates() {
     toast.success("Opening system print / PDF export dialog...");
   };
 
-  const isBarcodeTemplate = selectedDocType === "barcode" || (selectedDocType !== "invoice" && selectedDocType !== "thermal" && selectedDocType !== "qrcode" && selectedDocType !== "pricetag" && selectedDocType !== "challan" && selectedDocType !== "custom" && (activeTemplate?.category === "barcodes" || activeTemplate?.docType === "barcode"));
-  const isThermalTemplate = selectedDocType === "thermal" || (selectedDocType !== "invoice" && selectedDocType !== "barcode" && selectedDocType !== "qrcode" && selectedDocType !== "pricetag" && selectedDocType !== "challan" && selectedDocType !== "custom" && (activeTemplate?.category === "thermal" || activeTemplate?.docType === "thermal"));
+  const isThermalTemplate =
+    selectedDocType === "thermal" ||
+    activeTemplate?.category === "thermal" ||
+    activeTemplate?.docType === "thermal";
+
+  const isBarcodeTemplate =
+    selectedDocType === "barcode" ||
+    selectedDocType === "pricetag" ||
+    selectedDocType === "qrcode" ||
+    activeTemplate?.category === "barcodes" ||
+    activeTemplate?.category === "pricetag" ||
+    activeTemplate?.category === "qrcodes" ||
+    activeTemplate?.docType === "barcode" ||
+    activeTemplate?.docType === "pricetag" ||
+    activeTemplate?.docType === "qrcode";
 
   return (
     <div className="flex flex-col gap-3.5 lg:h-[calc(100vh-130px)] lg:max-h-[calc(100vh-130px)] min-h-[580px] text-foreground lg:overflow-hidden pb-4 lg:pb-0">
@@ -2805,6 +3591,15 @@ export function PrintTemplates() {
           </button>
 
           <button
+            onClick={handleResetAllTemplates}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition-all shadow-xs cursor-pointer active:scale-95"
+            title="Wipe all saved templates for this organization (device + database) and start from a clean slate"
+          >
+            <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+            Reset All
+          </button>
+
+          <button
             onClick={handleSaveTemplate}
             className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-xs font-bold shadow-xs shadow-indigo-500/20 transition-all cursor-pointer active:scale-95"
           >
@@ -2839,7 +3634,7 @@ export function PrintTemplates() {
                 return (
                   <button
                     key={doc.type}
-                    onClick={() => setSelectedDocType(doc.type)}
+                    onClick={() => handleSelectSidebarDocType(doc.type)}
                     title={`${doc.label} (${count} templates)`}
                     className={`relative w-9 h-9 flex items-center justify-center rounded-xl border transition-all cursor-pointer ${isActive
                       ? "bg-indigo-600 text-white border-indigo-600 shadow-sm scale-105"
@@ -2873,7 +3668,8 @@ export function PrintTemplates() {
 
             <div className="space-y-3 flex-1 min-h-0 lg:overflow-y-auto custom-scrollbar pr-1 pt-2">
               {([
-                { title: "Documents", types: ["invoice", "challan", "custom"] },
+                { title: "Documents", types: ["invoice", "challan", "quotation", "proforma", "custom"] },
+                { title: "Procurement & Notes", types: ["credit_note", "debit_note", "purchase_invoice", "purchase_order"] },
                 { title: "POS Receipts", types: ["thermal"] },
                 { title: "Labels & Tags", types: ["barcode", "qrcode", "pricetag"] },
               ] as const).map((group) => (
@@ -2890,7 +3686,7 @@ export function PrintTemplates() {
                     return (
                       <button
                         key={doc.type}
-                        onClick={() => setSelectedDocType(doc.type)}
+                        onClick={() => handleSelectSidebarDocType(doc.type)}
                         className={`w-full flex items-center justify-between p-2 rounded-xl border transition-all text-left cursor-pointer ${isActive
                           ? "border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 shadow-sm"
                           : "border-border/60 bg-card hover:bg-muted/40 hover:border-border text-foreground"
@@ -2994,43 +3790,6 @@ export function PrintTemplates() {
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
-                {(selectedDocType === "invoice" || activeTemplate.category === "invoices" || activeTemplate.docType === "invoice") && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsWordStudioBlank(true);
-                        setIsWordStudioOpen(true);
-                      }}
-                      title="Design an invoice completely from scratch on an empty Word document sheet with smart building blocks"
-                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 text-white text-[11px] font-black shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
-                    >
-                      <PlusCircle className="h-3.5 w-3.5 text-emerald-200" />
-                      <span>+ Blank Word Canvas</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsWordStudioBlank(false);
-                        setIsWordStudioOpen(true);
-                      }}
-                      title="Open Visual Word-Style Studio to fully customize this invoice template (custom fields, columns, branding & layout)"
-                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 hover:from-indigo-700 hover:to-blue-700 text-white text-[11px] font-black shadow-md shadow-indigo-600/20 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
-                    >
-                      <Sparkles className="h-3.5 w-3.5 text-amber-300 animate-pulse" />
-                      <span>Word Designer Studio</span>
-                    </button>
-                  </>
-                )}
-                {!activeTemplate.isDefault && (
-                  <button
-                    onClick={() => handleSetOrgDefault(activeTemplate.id)}
-                    title="Make Organization Master Default"
-                    className="px-2 py-1 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-primary text-[10px] font-semibold cursor-pointer"
-                  >
-                    Make Org Default
-                  </button>
-                )}
                 {userActiveDefaults[selectedDocType] !== activeTemplate.id && (
                   <button
                     onClick={() => handleSetActiveForMe(activeTemplate.id)}
@@ -3058,6 +3817,88 @@ export function PrintTemplates() {
                 )}
               </div>
             </div>
+
+            {/* ── A4 DOCUMENT-TYPE SEPARATION STRIP ── */}
+            {(selectedDocType === "invoice" || activeTemplate.category === "invoices" || activeTemplate.docType === "invoice") && (
+              <div className="space-y-2.5 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                <div className="flex items-center gap-1.5">
+                  <Layers className="h-3.5 w-3.5 text-primary" />
+                  <h3 className="text-xs font-black tracking-tight text-foreground">{t("Template by Document Type", "Template by Document Type")}</h3>
+                  <span className="text-[10px] font-semibold text-muted-foreground ml-auto">
+                    Each type keeps its OWN chosen design across save, print, PDF, email &amp; WhatsApp.
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {A4_STRIP_SLOTS.map(({ key: slot, label }) => {
+                    const isActiveSlot = selectedA4Slot === slot && slotKeyForDocType(selectedDocType) === slot;
+                    const overridden = isA4SlotOverridden(slot);
+                    const masterId = masterInvoiceTemplateId();
+                    const resolvedId = resolveA4SlotActiveId(slot) || masterId || activeTemplate.id;
+                    const resolvedName = currentCategoryTemplates.find((x: any) => x.id === resolvedId)?.name || masterNameForSlot(masterId);
+                    const isMasterSlot = slot === "invoice";
+                    // ACTIVE FOR ME badge: master slot when the active template is the
+                    // master invoice template; otherwise only when this slot's resolved
+                    // template matches what is loaded in the editor.
+                    const isLoaded = activeTemplate.id === resolvedId;
+                    return (
+                      <div
+                        key={slot}
+                        className={`rounded-xl border p-2.5 space-y-1.5 transition-all cursor-pointer ${isActiveSlot ? "border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40 ring-1 ring-indigo-500/40" : "border-border/70 bg-card hover:border-indigo-300 hover:bg-muted/30"}`}
+                        onClick={() => handleSelectA4Slot(slot)}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-black uppercase tracking-wide text-foreground">{label}</span>
+                          <div className="flex items-center gap-1">
+                            {overridden && (
+                              <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 shrink-0">OVERRIDE</span>
+                            )}
+                            {isMasterSlot && (
+                              <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-primary/15 text-primary shrink-0">MASTER</span>
+                            )}
+                            {!overridden && !isMasterSlot && isLoaded && (
+                              <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-600 dark:text-teal-400 shrink-0">ACTIVE FOR ME</span>
+                            )}
+                          </div>
+                        </div>
+                        <select
+                          value={resolvedId}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            const nextId = e.target.value;
+                            if (!nextId) return;
+                            pinA4SlotTemplate(slot, nextId);
+                            setInvoiceCatLinkVersion((v) => v + 1);
+                            handleSelectA4Slot(slot);
+                          }}
+                          className="w-full text-[11px] font-semibold border border-border rounded-lg bg-background px-2 py-1.5 text-foreground cursor-pointer focus:ring-2 focus:ring-primary/40"
+                        >
+                          {currentCategoryTemplates.map((tpl: any) => (
+                            <option key={tpl.id} value={tpl.id}>{tpl.name}</option>
+                          ))}
+                        </select>
+                        {!isMasterSlot && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              relinkA4SlotToMaster(slot);
+                              setInvoiceCatLinkVersion((v) => v + 1);
+                            }}
+                            className={`w-full flex items-center justify-center gap-1.5 text-[10px] font-bold rounded-lg px-2 py-1 border cursor-pointer transition-colors ${overridden
+                              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
+                              : "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20"}`}
+                            title={overridden ? "Re-link this document type to the master invoice template" : "Re-link to master"}
+                          >
+                            {overridden ? "↩️ Re-link to master" : "Linked to master"}
+                          </button>
+                        )}
+                        <p className="text-[9px] text-muted-foreground leading-tight truncate">{resolvedName}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* ── TAB 1: DESIGN (Option 1: Backgrounds & Colors & ThemeStore + Option 2: Page Template & Table Format) ── */}
             {activeEditorTab === "design" && isThermalTemplate ? (
@@ -3228,11 +4069,19 @@ export function PrintTemplates() {
                     Pick a starting layout — every field, column and element can still be fully customized in the tabs below.
                   </p>
 
-                  {buildTemplateGroups(currentCategoryTemplates, selectedDocType).map((group) => (
+                  {(() => {
+                    // Compact card picker: show at most 4 cards; everything else
+                    // lives in the full gallery modal so the tab stays clean.
+                    const groups = buildTemplateGroups(currentCategoryTemplates, selectedDocType);
+                    const visible = groups.map((g) => ({ ...g, items: g.items.slice(0, 4) }));
+                    const total = groups.reduce((n, g) => n + g.items.length, 0);
+                    return (
+                    <>
+                  {visible.map((group) => (
                     <div key={group.title} className="space-y-2">
                       <div className="flex items-center gap-2">
                         <span className="text-[9.5px] font-black uppercase tracking-wider text-muted-foreground">{group.title}</span>
-                        <span className="text-[9px] font-bold text-indigo-500/80 bg-indigo-500/10 rounded-full px-1.5 py-0.1">{group.items.length}</span>
+                        <span className="text-[9px] font-bold text-indigo-500/80 bg-indigo-500/10 rounded-full px-1.5 py-0.1">{total}</span>
                         <div className="h-px flex-1 bg-border/50" />
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -3279,39 +4128,110 @@ export function PrintTemplates() {
                       </div>
                     </div>
                   ))}
+                    </>
+                  );
+                })()}
                 </div>
 
-                {/* ═══ SECTION 2: CUSTOMIZATION STUDIO (Word / PDF / duplicate) ═══ */}
-                {(selectedDocType === "invoice" || activeTemplate.category === "invoices" || activeTemplate.docType === "invoice") && (
-                  <div className="space-y-3 p-4 bg-card border border-border/70 rounded-2xl">
+                {/* ═══ SECTION 2: ONE BUTTON ROW (Word canvas / designer / org default) ═══ */}
+                {(isInvoicesFamilyDocType(selectedDocType) || selectedDocType === "challan" || activeTemplate.category === "invoices" || activeTemplate.docType === "invoice") && (
+                  <div className="space-y-2 p-4 bg-card border border-border/70 rounded-2xl">
                     <div className="flex items-center gap-1.5">
                       <Sparkles className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                      <h3 className="text-xs font-black tracking-tight text-foreground">Customization Studio</h3>
+                      <h3 className="text-xs font-black tracking-tight text-foreground">{t("Design Tools", "Design Tools")}</h3>
                     </div>
-                    <p className="text-[10.5px] text-muted-foreground -mt-1.5">Blank Word canvas or full Word-Designer freedom — unlimited custom fields (PO, E-Way, Vehicle No), reorderable sections & columns.</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSetOrgDefault(activeTemplate.id)}
+                        className="w-full px-3 py-2.5 rounded-xl border border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-950/50 font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                      >
+                        <CheckCircle2 className="size-3.5" /> {t("Make Org Default", "Make Org Default")}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => { setIsWordStudioBlank(true); setIsWordStudioOpen(true); }}
-                        className="px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                      >
-                        <PlusCircle className="size-3.5" /> Blank Word Canvas
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setIsWordStudioBlank(false); setIsWordStudioOpen(true); }}
-                        className="px-3 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                      >
-                        <PenTool className="size-3.5" /> Open Word Designer
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDuplicateTemplate(activeTemplate)}
-                        className="px-3 py-2.5 rounded-xl border border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-950/50 font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                      >
-                        <Copy className="size-3.5" /> Duplicate & Edit
-                      </button>
+                {/* ═══ SECTION: 3 PARTY LAYOUT SELECTOR CARDS ═══ */}
+                {(!isThermalTemplate && !isBarcodeTemplate) && (
+                  <div className="space-y-3 p-4 bg-card border border-border/70 rounded-2xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <LayoutGrid className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                        <h3 className="text-xs font-black tracking-tight text-foreground">Party Details Layout</h3>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground font-semibold">3 Header Styles</span>
+                    </div>
+                    <p className="text-[10.5px] text-muted-foreground -mt-1.5">
+                      Choose how Bill To, Ship To, and Company details are partitioned in the invoice header.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {PARTY_LAYOUT_OPTIONS.map((layout) => {
+                        const currentLayout = (activeTemplate as any)?.party?.layout || (activeTemplate as any)?.partyLayout || "layout_1";
+                        const isSelected = currentLayout === layout.id;
+                        return (
+                          <button
+                            key={layout.id}
+                            type="button"
+                            onClick={() => {
+                              const updated = templates.map((t) =>
+                                t.id === activeTemplate.id
+                                  ? {
+                                      ...t,
+                                      partyLayout: layout.id as any,
+                                      party: { ...((t as any).party || {}), layout: layout.id as any },
+                                    }
+                                  : t
+                              );
+                              persistTemplates(updated);
+                            }}
+                            className={`relative flex flex-col justify-between p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                              isSelected
+                                ? "border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 ring-1 ring-indigo-500/40 shadow-xs"
+                                : "border-border/60 bg-background hover:border-indigo-300 hover:bg-muted/30"
+                            }`}
+                          >
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className={`text-[11px] font-bold ${isSelected ? "text-indigo-700 dark:text-indigo-300" : "text-foreground"}`}>
+                                  {layout.title}
+                                </span>
+                                {isSelected && <Check className="h-3.5 w-3.5 text-indigo-600 shrink-0 stroke-[3]" />}
+                              </div>
+                              {layout.badge && (
+                                <span className="inline-block text-[8px] font-black px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                                  {layout.badge}
+                                </span>
+                              )}
+                              <p className="text-[9.5px] text-muted-foreground leading-snug">
+                                {layout.description}
+                              </p>
+                            </div>
+                            {/* Wireframe preview */}
+                            <div className="mt-2.5 pt-2 border-t border-border/40">
+                              {layout.id === "layout_1" && (
+                                <div className="grid grid-cols-2 gap-1 h-7">
+                                  <div className="border border-dashed border-indigo-300 dark:border-indigo-800 rounded bg-indigo-50/50 dark:bg-indigo-950/20 flex items-center justify-center text-[7px] font-mono text-muted-foreground">Bill To</div>
+                                  <div className="border border-dashed border-indigo-300 dark:border-indigo-800 rounded bg-indigo-50/50 dark:bg-indigo-950/20 flex items-center justify-center text-[7px] font-mono text-muted-foreground">Ship To</div>
+                                </div>
+                              )}
+                              {layout.id === "layout_2" && (
+                                <div className="grid grid-cols-3 gap-1 h-7">
+                                  <div className="border border-dashed border-indigo-300 dark:border-indigo-800 rounded bg-indigo-50/50 dark:bg-indigo-950/20 flex items-center justify-center text-[6px] font-mono text-muted-foreground">Seller</div>
+                                  <div className="border border-dashed border-indigo-300 dark:border-indigo-800 rounded bg-indigo-50/50 dark:bg-indigo-950/20 flex items-center justify-center text-[6px] font-mono text-muted-foreground">Meta</div>
+                                  <div className="border border-dashed border-indigo-300 dark:border-indigo-800 rounded bg-indigo-50/50 dark:bg-indigo-950/20 flex items-center justify-center text-[6px] font-mono text-muted-foreground">Party</div>
+                                </div>
+                              )}
+                              {layout.id === "layout_3" && (
+                                <div className="flex flex-col gap-0.5 h-7">
+                                  <div className="border border-dashed border-indigo-300 dark:border-indigo-800 rounded bg-indigo-50/50 dark:bg-indigo-950/20 flex-1 flex items-center justify-center text-[7px] font-mono text-muted-foreground">Bill To (Full Width)</div>
+                                  <div className="border border-dashed border-indigo-300 dark:border-indigo-800 rounded bg-indigo-50/50 dark:bg-indigo-950/20 flex-1 flex items-center justify-center text-[7px] font-mono text-muted-foreground">Ship To (Full Width)</div>
+                                </div>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -3324,8 +4244,8 @@ export function PrintTemplates() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10.5px] font-bold text-foreground">Accent Color</label>
-                    <div className="flex flex-wrap gap-1.5">
+                    <label className="text-[10.5px] font-bold text-foreground">{t("Accent Color", "Accent Color")}</label>
+                    <div className="flex flex-wrap items-center gap-1.5">
                       {COLOR_SWATCHES.map((c) => (
                         <button
                           key={c.value}
@@ -3337,6 +4257,26 @@ export function PrintTemplates() {
                           style={{ backgroundColor: c.value }}
                         />
                       ))}
+                      {/* Free-form hex input so any accent can be chosen */}
+                      <div className="flex items-center gap-1 pl-2 border-l border-border">
+                        <input
+                          type="text"
+                          value={activeTemplate.primaryColor || ""}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (/^#([0-9a-fA-F]{0,6})$/.test(v)) updateTemplateProperty("primaryColor", v);
+                          }}
+                          placeholder="#4f46e5"
+                          className="w-20 h-7 rounded-lg border border-border bg-background px-2 text-[11px] font-mono text-foreground focus:border-indigo-500"
+                        />
+                        <input
+                          type="color"
+                          value={/^#([0-9a-f]{6})$/i.test(activeTemplate.primaryColor || "") ? activeTemplate.primaryColor : "#4f46e5"}
+                          onChange={(e) => updateTemplateProperty("primaryColor", e.target.value)}
+                          className="h-7 w-7 rounded-lg border border-border cursor-pointer"
+                          title={t("Custom color", "Custom color")}
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -3408,7 +4348,3127 @@ export function PrintTemplates() {
                   </div>
                 </div>
 
-                {/* Direct In-Page Word Document Barcode Studio */}
+
+              </div>
+            )}
+
+                                    {/* ── TAB 2: CONTENT ── */}
+                                    {activeEditorTab === "content" && isThermalTemplate ? (
+                                      <div className="space-y-5">
+                                        {/* 1. Header Details & CoreERP Profile Sync */}
+                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <div className="flex items-center justify-between">
+                                            <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                              <Building2 className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                              Store Header & Contact Details
+                                            </h3>
+                                            <button
+                                              onClick={handleSyncWithCoreErp}
+                                              className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                              title="Import name, address, phone, GSTIN from CoreERP active profile"
+                                            >
+                                              <RefreshCw className="h-3 w-3" />
+                                              Sync CoreERP Profile
+                                            </button>
+                                          </div>
+
+                                          <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                              <label className="text-[10px] font-semibold text-foreground">Header Title</label>
+                                              <input
+                                                type="text"
+                                                value={activeTemplate.headerTitle || ""}
+                                                onChange={(e) => updateTemplateProperty("headerTitle", e.target.value)}
+                                                placeholder="e.g. CASH RECEIPT / TAX INVOICE"
+                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500 font-bold"
+                                              />
+                                            </div>
+                                            <div className="space-y-1">
+                                              <label className="text-[10px] font-semibold text-foreground">Store / Business Name</label>
+                                              <input
+                                                type="text"
+                                                value={activeTemplate.storeName || ""}
+                                                onChange={(e) => updateTemplateProperty("storeName", e.target.value)}
+                                                placeholder="Store Name"
+                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500 font-bold"
+                                              />
+                                            </div>
+                                          </div>
+
+                                          <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                              <label className="text-[10px] font-semibold text-foreground">Branch / Outlet</label>
+                                              <input
+                                                type="text"
+                                                value={activeTemplate.branchName || ""}
+                                                onChange={(e) => updateTemplateProperty("branchName", e.target.value)}
+                                                placeholder="e.g. MAIN BRANCH, PRODDATUR"
+                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                                              />
+                                            </div>
+                                            <div className="space-y-1">
+                                              <label className="text-[10px] font-semibold text-foreground">Phone Number</label>
+                                              <input
+                                                type="text"
+                                                value={activeTemplate.storePhone || ""}
+                                                onChange={(e) => updateTemplateProperty("storePhone", e.target.value)}
+                                                placeholder="e.g. +91 9849344919"
+                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                                              />
+                                            </div>
+                                          </div>
+
+                                          <div className="space-y-1">
+                                            <label className="text-[10px] font-semibold text-foreground">Store Address</label>
+                                            <input
+                                              type="text"
+                                              value={activeTemplate.storeAddress || ""}
+                                              onChange={(e) => updateTemplateProperty("storeAddress", e.target.value)}
+                                              placeholder="Street, City, State, Pincode"
+                                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                                            />
+                                          </div>
+
+                                          <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                              <label className="text-[10px] font-semibold text-foreground">GSTIN / Tax ID</label>
+                                              <input
+                                                type="text"
+                                                value={activeTemplate.gstin || ""}
+                                                onChange={(e) => updateTemplateProperty("gstin", e.target.value)}
+                                                placeholder="GSTIN (e.g. 37AAFCOE694G1Z4)"
+                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground font-mono focus:border-indigo-500"
+                                              />
+                                            </div>
+                                            <div className="space-y-1">
+                                              <label className="text-[10px] font-semibold text-foreground">Store Tagline / Subtitle</label>
+                                              <input
+                                                type="text"
+                                                value={activeTemplate.customTaglineText || ""}
+                                                onChange={(e) => updateTemplateProperty("customTaglineText", e.target.value)}
+                                                placeholder="e.g. Quality Products Everyday"
+                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                                              />
+                                            </div>
+                                          </div>
+
+                                          {/* Header Visibility Toggles */}
+                                          <div className="pt-2 border-t border-border/50">
+                                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1.5">
+                                              Header Visibility Toggles
+                                            </label>
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                              <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={activeTemplate.showStoreName !== false}
+                                                  onChange={(e) => updateTemplateProperty("showStoreName" as any, e.target.checked)}
+                                                  className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                                />
+                                                <span className="text-[11px] font-medium text-foreground">Store Name</span>
+                                              </label>
+                                              <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={activeTemplate.showBranch !== false}
+                                                  onChange={(e) => updateTemplateProperty("showBranch" as any, e.target.checked)}
+                                                  className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                                />
+                                                <span className="text-[11px] font-medium text-foreground">Branch / Outlet</span>
+                                              </label>
+                                              <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={activeTemplate.showAddress !== false}
+                                                  onChange={(e) => updateTemplateProperty("showAddress" as any, e.target.checked)}
+                                                  className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                                />
+                                                <span className="text-[11px] font-medium text-foreground">Address</span>
+                                              </label>
+                                              <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={activeTemplate.showPhone !== false}
+                                                  onChange={(e) => updateTemplateProperty("showPhone" as any, e.target.checked)}
+                                                  className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                                />
+                                                <span className="text-[11px] font-medium text-foreground">Phone Number</span>
+                                              </label>
+                                              <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={activeTemplate.showGstin !== false}
+                                                  onChange={(e) => updateTemplateProperty("showGstin" as any, e.target.checked)}
+                                                  className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                                />
+                                                <span className="text-[11px] font-medium text-foreground">GSTIN</span>
+                                              </label>
+                                              <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={activeTemplate.showTagline !== false}
+                                                  onChange={(e) => updateTemplateProperty("showTagline" as any, e.target.checked)}
+                                                  className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                                />
+                                                <span className="text-[11px] font-medium text-foreground">Tagline</span>
+                                              </label>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* 2. Dynamic Custom Header Fields (DL No, FSSAI, Doctor, Cashier, etc.) */}
+                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <div className="flex items-center justify-between">
+                                            <div>
+                                              <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                                <Sparkles className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+                                                Dynamic Custom Header Fields
+                                              </h3>
+                                              <p className="text-[10px] text-muted-foreground">Add custom licenses, DL No, FSSAI, Doctor, or Cashier</p>
+                                            </div>
+                                            <button
+                                              onClick={handleAddThermalCustomField}
+                                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[10px] font-bold shadow-xs hover:bg-indigo-700 cursor-pointer"
+                                            >
+                                              <Plus className="h-3 w-3" />
+                                              Add Header Field
+                                            </button>
+                                          </div>
+
+                                          {/* Quick Suggestion Chips */}
+                                          <div className="flex flex-wrap gap-1.5 pt-1">
+                                            <span className="text-[10px] text-muted-foreground self-center">Quick Add:</span>
+                                            {[
+                                              { label: "DL No", val: "DL-20B-184920" },
+                                              { label: "FSSAI Lic", val: "10123999000142" },
+                                              { label: "Doctor Name", val: "Dr. K. Sharma MD" },
+                                              { label: "Salesperson", val: "Ramesh K." },
+                                              { label: "CIN No", val: "U72200AP2026PTC1" },
+                                            ].map((chip) => (
+                                              <button
+                                                key={chip.label}
+                                                onClick={() => {
+                                                  const existing = activeTemplate.customFields || [];
+                                                  if (existing.some((f) => f.label.toLowerCase() === chip.label.toLowerCase())) {
+                                                    toast.info(`${chip.label} already exists`);
+                                                    return;
+                                                  }
+                                                  const newFields = [...existing, { id: `cf-${Date.now()}`, label: chip.label, value: chip.val, enabled: true }];
+                                                  updateTemplateProperty("customFields" as any, newFields);
+                                                  toast.success(`Added ${chip.label}`);
+                                                }}
+                                                className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 cursor-pointer"
+                                              >
+                                                + {chip.label}
+                                              </button>
+                                            ))}
+                                          </div>
+
+                                          {/* Custom Fields List */}
+                                          <div className="space-y-2 pt-2">
+                                            {(activeTemplate.customFields || []).length === 0 ? (
+                                              <div className="text-center py-3 text-xs text-muted-foreground bg-card/60 rounded-xl border border-dashed border-border">
+                                                No custom header fields added yet. Click &quot;Add Header Field&quot; or select a quick preset above.
+                                              </div>
+                                            ) : (
+                                              (activeTemplate.customFields || []).map((field: any) => (
+                                                <div key={field.id} className="p-2 bg-card rounded-xl border border-border">
+                                                  <div className="flex items-center gap-2">
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={field.enabled !== false}
+                                                      onChange={(e) => handleUpdateThermalCustomField(field.id, { enabled: e.target.checked })}
+                                                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 shrink-0"
+                                                      title="Show/Hide on Thermal Receipt"
+                                                    />
+                                                    <input
+                                                      type="text"
+                                                      value={field.label ?? field.name ?? ""}
+                                                      onChange={(e) => handleUpdateThermalCustomField(field.id, { label: e.target.value, name: e.target.value })}
+                                                      placeholder="Field Label (e.g. DL No)"
+                                                      className="w-1/3 min-w-0 rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground font-semibold"
+                                                    />
+                                                    {/* Source: bind to an EXISTING document field, or leave a new static value */}
+                                                    <select
+                                                      value={field.bindKey || ""}
+                                                      onChange={(e) => handleUpdateThermalCustomField(field.id, { bindKey: e.target.value || undefined, source: e.target.value ? "field" : "static" })}
+                                                      className="flex-1 min-w-0 rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground cursor-pointer"
+                                                      title="Source — pick an existing field to auto-fill, or 'New / static' to type your own"
+                                                    >
+                                                      <option value="">✎ New / static value</option>
+                                                      {FREEFORM_FIELD_BIND_OPTIONS.map((opt) => (
+                                                        <option key={opt.key} value={opt.key}>{opt.label} (existing)</option>
+                                                      ))}
+                                                    </select>
+                                                    <button
+                                                      onClick={() => handleDeleteThermalCustomField(field.id)}
+                                                      className="p-1 rounded-lg hover:bg-destructive/10 text-destructive cursor-pointer shrink-0"
+                                                      title="Delete Field"
+                                                    >
+                                                      <Trash2 className="h-3.5 w-3.5" />
+                                                    </button>
+                                                  </div>
+                                                  <input
+                                                    type="text"
+                                                    value={field.value}
+                                                    disabled={Boolean(field.bindKey)}
+                                                    onChange={(e) => handleUpdateThermalCustomField(field.id, { value: e.target.value })}
+                                                    placeholder={field.bindKey ? "Auto-filled from live document value" : "Field Value (e.g. 10123999000142)"}
+                                                    className="w-full mt-1.5 rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground disabled:opacity-60 disabled:italic disabled:bg-muted/40"
+                                                  />
+                                                  {field.bindKey && (
+                                                    <p className="text-[9.5px] text-indigo-600 dark:text-indigo-400 mt-0.5">
+                                                      Prints the live value of &quot;{FREEFORM_FIELD_BIND_OPTIONS.find((o) => o.key === field.bindKey)?.label || field.bindKey}&quot; from the document.
+                                                    </p>
+                                                  )}
+                                                </div>
+                                              ))
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {/* 3. Customer & Transaction Metadata */}
+                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                            <User className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                            Customer & Transaction Metadata
+                                          </h3>
+
+                                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.fields.showCustomerDetails !== false}
+                                                onChange={() => toggleElementField("showCustomerDetails")}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">Customer Name</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.showCustomerPhone !== false}
+                                                onChange={(e) => updateTemplateProperty("showCustomerPhone" as any, e.target.checked)}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">Customer Mobile</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.showCustomerAddress !== false}
+                                                onChange={(e) => updateTemplateProperty("showCustomerAddress" as any, e.target.checked)}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">Customer Address</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.showCustomerGstin !== false}
+                                                onChange={(e) => updateTemplateProperty("showCustomerGstin" as any, e.target.checked)}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">Customer GSTIN</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.showPoNumber !== false}
+                                                onChange={(e) => updateTemplateProperty("showPoNumber" as any, e.target.checked)}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">PO Number</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.showEwayBill !== false}
+                                                onChange={(e) => updateTemplateProperty("showEwayBill" as any, e.target.checked)}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">E-Way Bill No</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.showVehicleNumber !== false}
+                                                onChange={(e) => updateTemplateProperty("showVehicleNumber" as any, e.target.checked)}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">Vehicle Number</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.showChallanNumber !== false}
+                                                onChange={(e) => updateTemplateProperty("showChallanNumber" as any, e.target.checked)}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">Challan Number</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.showCashierName !== false}
+                                                onChange={(e) => updateTemplateProperty("showCashierName" as any, e.target.checked)}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">Cashier / Terminal</span>
+                                            </label>
+                                          </div>
+                                        </div>
+
+                                        {/* 4. Item Table Columns & Dynamic Custom Item Columns */}
+                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <div className="flex items-center justify-between">
+                                            <div>
+                                              <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                                <Columns className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                                Item Table Columns & Custom Attributes
+                                              </h3>
+                                              <p className="text-[10px] text-muted-foreground">Toggle standard columns and add custom attributes like Rack, Size, Color</p>
+                                            </div>
+                                            <button
+                                              onClick={handleAddThermalCustomColumn}
+                                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[10px] font-bold shadow-xs hover:bg-indigo-700 cursor-pointer"
+                                            >
+                                              <Plus className="h-3 w-3" />
+                                              Add Item Column
+                                            </button>
+                                          </div>
+
+                                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.fields.showItemIndex !== false}
+                                                onChange={() => toggleElementField("showItemIndex")}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">S.No / Index (1,2,3)</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.fields.showDescription !== false}
+                                                onChange={() => toggleElementField("showDescription")}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">Item Description</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.fields.showHSN !== false}
+                                                onChange={() => toggleElementField("showHSN")}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">HSN / SAC Code</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.showBatchNumber !== false}
+                                                onChange={(e) => updateTemplateProperty("showBatchNumber" as any, e.target.checked)}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">Batch Number</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.showExpiryDate !== false}
+                                                onChange={(e) => updateTemplateProperty("showExpiryDate" as any, e.target.checked)}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">Expiry Date (EXP)</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.fields.showMRP !== false}
+                                                onChange={() => toggleElementField("showMRP")}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">MRP & Savings</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.fields.showDiscountBadge !== false}
+                                                onChange={() => toggleElementField("showDiscountBadge")}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">Item Discount</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.showGstRateColumn !== false}
+                                                onChange={(e) => updateTemplateProperty("showGstRateColumn" as any, e.target.checked)}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">GST % Rate</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.showSkuCode !== false}
+                                                onChange={(e) => updateTemplateProperty("showSkuCode" as any, e.target.checked)}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">SKU / Item Code</span>
+                                            </label>
+                                          </div>
+
+                                          {/* Quick Add Custom Item Column Chips */}
+                                          <div className="flex flex-wrap gap-1.5 pt-2 border-t border-border/50">
+                                            <span className="text-[10px] text-muted-foreground self-center">Quick Custom Column:</span>
+                                            {[
+                                              { label: "Rack No", key: "rack_no" },
+                                              { label: "Size / Color", key: "size_color" },
+                                              { label: "Serial / IMEI", key: "serial_no" },
+                                              { label: "Brand", key: "brand_name" },
+                                            ].map((chip) => (
+                                              <button
+                                                key={chip.label}
+                                                onClick={() => {
+                                                  const existing = activeTemplate.customItemColumns || [];
+                                                  if (existing.some((c) => (c.label || c.name || "").toLowerCase() === chip.label.toLowerCase())) {
+                                                    toast.info(`${chip.label} column already exists`);
+                                                    return;
+                                                  }
+                                                  handleAddThermalCustomColumn(chip.label);
+                                                }}
+                                                className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 cursor-pointer"
+                                              >
+                                                + {chip.label}
+                                              </button>
+                                            ))}
+                                          </div>
+
+                                          {/* Custom Columns List */}
+                                          <div className="space-y-2 pt-1">
+                                            {(activeTemplate.customItemColumns || []).length > 0 && (
+                                              <div className="space-y-1.5">
+                                                {(activeTemplate.customItemColumns || []).map((col) => (
+                                                  <div key={col.id} className="flex items-center gap-2 p-2 bg-card rounded-xl border border-border">
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={col.enabled !== false}
+                                                      onChange={(e) => handleUpdateThermalCustomColumn(col.id, { enabled: e.target.checked })}
+                                                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 shrink-0"
+                                                      title="Enable Column on Thermal Receipt"
+                                                    />
+                                                    <input
+                                                      type="text"
+                                                      value={col.label || col.name || ""}
+                                                      onChange={(e) => handleUpdateThermalCustomColumn(col.id, { label: e.target.value, name: e.target.value })}
+                                                      placeholder="Column Label (e.g. Rack No)"
+                                                      className="flex-1 rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground font-semibold"
+                                                    />
+                                                    <button
+                                                      onClick={() => handleDeleteThermalCustomColumn(col.id)}
+                                                      className="p-1 rounded-lg hover:bg-destructive/10 text-destructive cursor-pointer shrink-0"
+                                                      title="Delete Column"
+                                                    >
+                                                      <Trash2 className="h-3.5 w-3.5" />
+                                                    </button>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {/* 5. Summary & Totals Toggles */}
+                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                            <Calculator className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                            Summary, Billed Quantity & Tax Split
+                                          </h3>
+
+                                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.showTotalQuantity !== false}
+                                                onChange={(e) => updateTemplateProperty("showTotalQuantity" as any, e.target.checked)}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">Total Billed Qty (e.g. 3 Items / 7 Units)</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.fields.showTaxSplit !== false}
+                                                onChange={() => toggleElementField("showTaxSplit")}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">GST Split (CGST + SGST)</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.showTotalSavings !== false}
+                                                onChange={(e) => updateTemplateProperty("showTotalSavings" as any, e.target.checked)}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">Total Savings Highlight</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.showPaidInFullStamp !== false}
+                                                onChange={(e) => updateTemplateProperty("showPaidInFullStamp" as any, e.target.checked)}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">Paid In Full Stamp Badge</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.fields.showPaymentDetails !== false}
+                                                onChange={() => toggleElementField("showPaymentDetails")}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">Payment Mode & Change Returned</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.fields.showPartyBalance !== false}
+                                                onChange={() => toggleElementField("showPartyBalance")}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <span className="text-[11px] font-medium text-foreground">Customer Ledger Balance</span>
+                                            </label>
+                                          </div>
+                                        </div>
+
+                                        {/* 6. Terms & Conditions & Statutory Declaration */}
+                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <input
+                                                type="checkbox"
+                                                id="thermal-terms-toggle"
+                                                checked={activeTemplate.fields.showTerms !== false}
+                                                onChange={() => toggleElementField("showTerms")}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <label htmlFor="thermal-terms-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
+                                                <FileText className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                                Terms & Conditions / Disclaimer
+                                              </label>
+                                            </div>
+                                            <button
+                                              onClick={handleSyncWithCoreErp}
+                                              className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                            >
+                                              Sync Terms with CoreERP
+                                            </button>
+                                          </div>
+
+                                          {activeTemplate.fields.showTerms !== false && (
+                                            <textarea
+                                              rows={3}
+                                              value={activeTemplate.termsAndConditionsText || activeTemplate.termsText || ""}
+                                              onChange={(e) => {
+                                                updateTemplateProperty("termsAndConditionsText" as any, e.target.value);
+                                                updateTemplateProperty("termsText", e.target.value);
+                                              }}
+                                              placeholder="1. Goods once sold will not be taken back or exchanged.&#10;2. Subject to local jurisdiction only."
+                                              className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 font-mono"
+                                            />
+                                          )}
+
+                                          {/* Statutory Declaration */}
+                                          <div className="pt-2 border-t border-border/50 space-y-2">
+                                            <div className="flex items-center gap-2">
+                                              <input
+                                                type="checkbox"
+                                                id="thermal-declaration-toggle"
+                                                checked={activeTemplate.showDeclaration !== false}
+                                                onChange={(e) => updateTemplateProperty("showDeclaration" as any, e.target.checked)}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <label htmlFor="thermal-declaration-toggle" className="text-xs font-bold text-foreground cursor-pointer">
+                                                Statutory GST Declaration Note
+                                              </label>
+                                            </div>
+                                            {activeTemplate.showDeclaration !== false && (
+                                              <textarea
+                                                rows={2}
+                                                value={activeTemplate.declarationText || "We declare that this invoice shows the actual price of the goods described and all particulars are true and correct."}
+                                                onChange={(e) => updateTemplateProperty("declarationText" as any, e.target.value)}
+                                                placeholder="Statutory declaration statement..."
+                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                                              />
+                                            )}
+                                          </div>
+
+                                          {/* Thank You Note & Tagline */}
+                                          <div className="pt-2 border-t border-border/50 grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                              <label className="text-[10px] font-semibold text-foreground">Thank You Note</label>
+                                              <input
+                                                type="text"
+                                                value={activeTemplate.thankYouNote || activeTemplate.footerText || ""}
+                                                onChange={(e) => {
+                                                  updateTemplateProperty("thankYouNote", e.target.value);
+                                                  updateTemplateProperty("footerText", e.target.value);
+                                                }}
+                                                placeholder="THANK YOU! VISIT AGAIN"
+                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500 font-bold"
+                                              />
+                                            </div>
+                                            <div className="space-y-1">
+                                              <label className="text-[10px] font-semibold text-foreground">Footer Subtext / Note</label>
+                                              <input
+                                                type="text"
+                                                value={activeTemplate.footerNote || ""}
+                                                onChange={(e) => updateTemplateProperty("footerNote" as any, e.target.value)}
+                                                placeholder="Save Paper, Save Trees!"
+                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500 italic"
+                                              />
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ) : activeEditorTab === "content" ? (
+                                      <div className="space-y-4">
+                                        {/* ══ (a) PARTY DETAILS CONTROLS ══ */}
+                                        <div className="space-y-2.5 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <div className="flex items-center justify-between">
+                                            <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                              <User className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                              {t("Party Details", "Party Details")}
+                                            </h4>
+                                            <span className="text-[9px] font-semibold text-muted-foreground">
+                                              Toggle buyer &amp; consignee party fields across all 3 party layouts
+                                            </span>
+                                          </div>
+                                          <div className="grid grid-cols-2 gap-1.5">
+                                            {([
+                                              { key: "showBillTo", label: "Bill To (Buyer)" },
+                                              { key: "showShipTo", label: "Ship To (Consignee)" },
+                                              { key: "showPartyPhone", label: "Party Phone" },
+                                              { key: "showPartyEmail", label: "Party Email" },
+                                              { key: "showPartyGstin", label: "Party GSTIN" },
+                                              { key: "showPartyPan", label: "Party PAN" },
+                                              { key: "showPartyDlNumber", label: "Drug License (DL No)" },
+                                              { key: "showPlaceOfSupply", label: "Place of Supply" },
+                                              { key: "showPartyBalance", label: "Party Balance" },
+                                              { key: "showContactPerson", label: "Contact Person" },
+                                            ] as const).map(({ key, label }) => (
+                                              <label key={key} className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={isPartyFieldChecked(key)}
+                                                  onChange={(e) => handlePartyToggle(key, e.target.checked)}
+                                                  className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                />
+                                                <span className="text-[11px] font-medium text-foreground">{label}</span>
+                                              </label>
+                                            ))}
+                                          </div>
+                                        </div>
+
+                                        {/* ══ (b) ITEMS TABLE COLUMNS MANAGER ══ */}
+                                        <div className="space-y-2.5 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <div className="flex items-center justify-between">
+                                            <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                              <Columns className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                              {t("Items Table Columns", "Items Table Columns")}
+                                            </h4>
+                                            <span className="text-[9px] font-semibold text-muted-foreground">
+                                              Edit this template's columns — the live preview updates instantly
+                                            </span>
+                                          </div>
+                                          <div className="space-y-1.5">
+                                            {getA4Columns().map((col: any, idx: number) => (
+                                              <div key={col.id || col.fieldKey || idx} className="flex items-center gap-1.5 p-1.5 bg-card rounded-lg border border-border/60">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={col.enabled !== false}
+                                                  onChange={(e) => updateA4Columns((cols) => cols.map((c: any) => c.id === col.id ? { ...c, enabled: e.target.checked } : c))}
+                                                  className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 shrink-0 cursor-pointer"
+                                                  title="Show / hide this column"
+                                                />
+                                                <input
+                                                  type="text"
+                                                  value={col.headerTitle || col.fieldKey}
+                                                  onChange={(e) => updateA4Columns((cols) => cols.map((c: any) => c.id === col.id ? { ...c, headerTitle: e.target.value } : c))}
+                                                  placeholder="Column header"
+                                                  className="flex-1 min-w-0 h-7 rounded-lg border border-input bg-background px-2 text-[11px] font-semibold text-foreground focus:border-indigo-500"
+                                                />
+                                                <select
+                                                  value={col.align || "left"}
+                                                  onChange={(e) => updateA4Columns((cols) => cols.map((c: any) => c.id === col.id ? { ...c, align: e.target.value } : c))}
+                                                  className="h-7 rounded-lg border border-input bg-background px-1 text-[10px] font-semibold text-foreground cursor-pointer"
+                                                  title="Alignment"
+                                                >
+                                                  <option value="left">L</option>
+                                                  <option value="center">C</option>
+                                                  <option value="right">R</option>
+                                                </select>
+                                                <div className="flex items-center gap-0.5 shrink-0">
+                                                  <button onClick={() => updateA4Columns((cols) => { const i = cols.findIndex((c: any) => c.id === col.id); if (i <= 0) return cols; const n = [...cols]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; return n; })} className="p-0.5 rounded hover:bg-muted text-muted-foreground cursor-pointer" title="Move up"><ArrowUp className="h-3 w-3" /></button>
+                                                  <button onClick={() => updateA4Columns((cols) => { const i = cols.findIndex((c: any) => c.id === col.id); if (i < 0 || i >= cols.length - 1) return cols; const n = [...cols]; [n[i], n[i + 1]] = [n[i + 1], n[i]]; return n; })} className="p-0.5 rounded hover:bg-muted text-muted-foreground cursor-pointer" title="Move down"><ArrowDown className="h-3 w-3" /></button>
+                                                  {col.isCustom && (
+                                                    <button onClick={() => updateA4Columns((cols) => cols.filter((c: any) => c.id !== col.id))} className="p-0.5 rounded hover:bg-destructive/10 text-destructive cursor-pointer" title="Delete custom column"><Trash2 className="h-3 w-3" /></button>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            ))}
+                                            {getA4Columns().length === 0 && (
+                                              <p className="text-[10px] text-muted-foreground py-2 text-center">No explicit columns yet — the template uses its default item columns. Add one below.</p>
+                                            )}
+                                          </div>
+
+                                          {/* [+ Add Column] picker: standard key OR custom */}
+                                          {(() => {
+                                            const availableStandard = [
+                                              "sno", "description", "hsn", "batch", "expiry_date", "uom", "tax_rate", "cgst", "sgst", "igst", "unit_price", "selling_price", "mrp", "discount", "quantity", "total_amount",
+                                            ].filter((k) => !getA4Columns().some((c: any) => (c.fieldKey || c.key) === k));
+                                            return (
+                                              <div className="space-y-1.5 pt-1 border-t border-border/40">
+                                                <button onClick={() => setColAddOpen((o) => !o)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-600 text-white text-[10.5px] font-bold shadow-xs hover:bg-indigo-700 cursor-pointer">
+                                                  <Plus className="h-3 w-3" /> {t("Add Column", "Add Column")}
+                                                </button>
+                                                {colAddOpen && (
+                                                  <div className="space-y-2 p-2.5 bg-card rounded-xl border border-border/70">
+                                                    <div>
+                                                      <label className="text-[9.5px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Standard field</label>
+                                                      <div className="flex flex-wrap gap-1">
+                                                        {availableStandard.length === 0 && <span className="text-[10px] text-muted-foreground">All standard fields already present</span>}
+                                                        {availableStandard.map((k) => (
+                                                          <button key={k} onClick={() => { addA4StandardColumn(k); setColAddOpen(false); }} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 cursor-pointer">
+                                                            + {k.replace("_", " ")}
+                                                          </button>
+                                                        ))}
+                                                      </div>
+                                                    </div>
+                                                    <div className="pt-1 border-t border-border/40 space-y-1.5">
+                                                      <label className="text-[9.5px] font-bold text-muted-foreground uppercase tracking-wider block">Custom column</label>
+                                                      <input value={newCustomName} onChange={(e) => setNewCustomName(e.target.value)} placeholder="Column name (e.g. Dispatch Ref)" className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[11px] text-foreground focus:border-indigo-500" />
+                                                      <div className="grid grid-cols-2 gap-1.5">
+                                                        <select value={newCustomSource} onChange={(e) => setNewCustomSource(e.target.value as any)} className="h-7 rounded-lg border border-input bg-background px-1.5 text-[10.5px] text-foreground cursor-pointer">
+                                                          <option value="static">Static value</option>
+                                                          <option value="item_field">Item field</option>
+                                                          <option value="customer_field">Customer field</option>
+                                                        </select>
+                                                        <input
+                                                          value={newCustomValue}
+                                                          onChange={(e) => setNewCustomValue(e.target.value)}
+                                                          placeholder={newCustomSource === "static" ? "Value" : newCustomSource === "item_field" ? "item field key" : "customer field key"}
+                                                          className="h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] font-mono text-foreground focus:border-indigo-500"
+                                                        />
+                                                      </div>
+                                                      <button
+                                                        onClick={() => { if (!newCustomName.trim()) { toast.error("Give the custom column a name first"); return; } addA4CustomColumn(newCustomName.trim(), newCustomSource, newCustomValue.trim()); setNewCustomName(""); setNewCustomValue(""); setColAddOpen(false); }}
+                                                        className="w-full h-7 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10.5px] font-bold cursor-pointer"
+                                                      >
+                                                        Add custom column
+                                                      </button>
+                                                    </div>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          })()}
+                                        </div>
+
+                                        {/* ══ (b) DISPATCH & SHIPPING FIELDS ══ */}
+                                        <div className="space-y-2.5 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                            <Truck className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                            {t("Dispatch & Shipping Fields", "Dispatch & Shipping Fields")}
+                                          </h4>
+                                          <div className="grid grid-cols-2 gap-1.5">
+                                            {([
+                                              { key: "showPoNumber", label: "PO No" },
+                                              { key: "showVehicleNumber", label: "Vehicle No" },
+                                              { key: "showEwayBill", label: "e-Way No / Date" },
+                                              { key: "showChallanNumber", label: "Challan No" },
+                                            ] as const).map(({ key, label }) => (
+                                              <label key={key} className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
+                                                <input type="checkbox" checked={Boolean((activeTemplate as any).fields?.[key])} onChange={(e) => setA4FieldToggle(key, e.target.checked)} className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500" />
+                                                <span className="text-[11px] font-medium text-foreground">{label}</span>
+                                              </label>
+                                            ))}
+                                          </div>
+                                          <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider pt-1">Default values (shown when a document has none)</p>
+                                          <div className="grid grid-cols-2 gap-2">
+                                            {([
+                                              { key: "poNo", label: "PO No" },
+                                              { key: "vehicleNo", label: "Vehicle No" },
+                                              { key: "ewayNo", label: "e-Way No" },
+                                              { key: "challanNo", label: "Challan No" },
+                                              { key: "transporter", label: "Transporter" },
+                                              { key: "driverName", label: "Driver Name" },
+                                              { key: "driverPhone", label: "Driver Phone" },
+                                              { key: "lrNo", label: "LR No" },
+                                              { key: "dispatchMode", label: "Dispatch Mode" },
+                                            ] as const).map(({ key, label }) => (
+                                              <div key={key} className="space-y-0.5">
+                                                <label className="text-[9.5px] font-semibold text-muted-foreground block">{label}</label>
+                                                <input
+                                                  type="text"
+                                                  value={(activeTemplate as any).dispatchDefaults?.[key] || ""}
+                                                  onChange={(e) => setA4DispatchDefault(key, e.target.value)}
+                                                  placeholder={label}
+                                                  className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] text-foreground focus:border-indigo-500"
+                                                />
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+
+                                        {/* ══ (c) FREEFORM FIELDS (template.customFields) ══ */}
+                                        <div className="space-y-2.5 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <div className="flex items-center justify-between">
+                                            <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                              <FilePlus2 className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                              {t("Freeform Fields", "Freeform Fields")}
+                                            </h4>
+                                            <button onClick={() => handleAddThermalCustomField("New Field")} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-600 text-white text-[10px] font-bold shadow-xs hover:bg-indigo-700 cursor-pointer">
+                                              <Plus className="h-3 w-3" /> {t("Add Field", "Add Field")}
+                                            </button>
+                                          </div>
+                                          <div className="space-y-1.5">
+                                            {(activeTemplate.customFields || []).length === 0 ? (
+                                              <p className="text-[10px] text-muted-foreground py-1.5 text-center">No freeform key–value pairs yet. Add one to print extra labels on this document.</p>
+                                            ) : (
+                                              (activeTemplate.customFields || []).map((field: any) => (
+                                                <div key={field.id} className="p-1.5 bg-card rounded-lg border border-border/60">
+                                                  <div className="flex items-center gap-1.5">
+                                                    <input type="checkbox" checked={field.enabled !== false} onChange={(e) => handleUpdateThermalCustomField(field.id, { enabled: e.target.checked })} className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 shrink-0" title="Show / hide" />
+                                                    <input type="text" value={field.name || field.label} onChange={(e) => handleUpdateThermalCustomField(field.id, { name: e.target.value, label: e.target.value })} placeholder="Key (e.g. DL No)" className="w-2/5 min-w-0 rounded-lg border border-input bg-background px-2 py-1 text-[10.5px] font-semibold text-foreground" />
+                                                    <select
+                                                      value={field.bindKey || ""}
+                                                      onChange={(e) => handleUpdateThermalCustomField(field.id, { bindKey: e.target.value || undefined, source: e.target.value ? "field" : "static" })}
+                                                      className="flex-1 min-w-0 rounded-lg border border-input bg-background px-2 py-1 text-[10.5px] text-foreground cursor-pointer"
+                                                      title="Source — bind to an existing document field, or keep a new static value"
+                                                    >
+                                                      <option value="">✎ New / static value</option>
+                                                      {FREEFORM_FIELD_BIND_OPTIONS.map((opt) => (
+                                                        <option key={opt.key} value={opt.key}>{opt.label} (existing)</option>
+                                                      ))}
+                                                    </select>
+                                                    <button onClick={() => handleDeleteThermalCustomField(field.id)} className="p-1 rounded hover:bg-destructive/10 text-destructive cursor-pointer shrink-0" title="Delete"><Trash2 className="h-3 w-3" /></button>
+                                                  </div>
+                                                  <input
+                                                    type="text"
+                                                    value={field.value}
+                                                    disabled={Boolean(field.bindKey)}
+                                                    onChange={(e) => handleUpdateThermalCustomField(field.id, { value: e.target.value })}
+                                                    placeholder={field.bindKey ? "Auto-filled from live document value" : "Value"}
+                                                    className="w-full mt-1 rounded-lg border border-input bg-background px-2 py-1 text-[10.5px] text-foreground disabled:opacity-60 disabled:italic disabled:bg-muted/40"
+                                                  />
+                                                  {field.bindKey && (
+                                                    <p className="text-[9.5px] text-indigo-600 dark:text-indigo-400 mt-0.5">
+                                                      Prints the live value of &quot;{FREEFORM_FIELD_BIND_OPTIONS.find((o) => o.key === field.bindKey)?.label || field.bindKey}&quot;.
+                                                    </p>
+                                                  )}
+                                                </div>
+                                              ))
+                                            )}
+                                          </div>
+                                        </div>
+                                    {/* (d) Texts & Labels + Section Visibility (moved out of the Design tab) */}
+                                        <div className="space-y-3 pt-2 border-t border-border/50">
+    {/* Texts & Labels — full word-level customization (myBillBook / Word style) */}
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-1.5">
+                          <Type className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                          <h4 className="text-xs font-bold text-foreground">{t("Texts & Labels", "Texts & Labels")}</h4>
+                          <span className="text-[10px] text-muted-foreground font-medium hidden sm:inline">
+                            Rename any visible word — titles, headers, totals, bank & QR captions, terms
+                          </span>
+                        </div>
+                        {TEXT_LABEL_GROUPS.map((group) => (
+                          <div key={group.title} className="rounded-xl border border-border/60 bg-card p-2.5">
+                            <p className="text-[10px] font-black uppercase tracking-wide text-muted-foreground mb-1.5">{group.title}</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {group.items.map((item) => (
+                                <label key={item.key} className="space-y-0.5">
+                                  <span className="text-[9.5px] font-semibold text-foreground">{item.label}</span>
+                                  <input
+                                    type="text"
+                                    value={activeTemplateTexts[item.key] ?? ""}
+                                    placeholder={resolvedInvoiceTexts[item.key as keyof InvoiceTexts] || item.label}
+                                    onChange={(e) => updateTemplateTexts(item.key, e.target.value)}
+                                    className="w-full rounded-lg border border-border bg-background px-2 py-1 text-[11px] font-semibold text-foreground focus:ring-2 focus:ring-indigo-500/40"
+                                  />
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Template Elements (14 Reorderable & Toggleable Elements) */}
+                      <div className="space-y-2 pt-2 border-t border-border/50">
+                        <div>
+                          <h4 className="text-xs font-bold text-foreground">{t("Template Elements", "Template Elements")}</h4>
+                          <p className="text-[10.5px] text-muted-foreground">{t("Drag to reorder or enable/disable elements", "Drag to reorder or enable/disable elements")}</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <ElementToggleRow
+                            icon={Building2}
+                            label="Company Details"
+                            checked={!!activeTemplate.fields.showCompanyDetails}
+                            onChange={() => toggleElementField("showCompanyDetails")}
+                          />
+                          <ElementToggleRow
+                            icon={Receipt}
+                            label="Invoice Details (No, Date, Bill To)"
+                            checked={!!activeTemplate.fields.showInvoiceDetails}
+                            onChange={() => toggleElementField("showInvoiceDetails")}
+                          />
+                          <ElementToggleRow
+                            icon={TableIcon}
+                            label="Item Table"
+                            checked={!!activeTemplate.fields.showItemTable}
+                            onChange={() => toggleElementField("showItemTable")}
+                          />
+                          <ElementToggleRow
+                            icon={ScanBarcode}
+                            label="Barcode"
+                            checked={!!activeTemplate.fields.showBarcode}
+                            onChange={() => toggleElementField("showBarcode")}
+                          />
+                          <ElementToggleRow
+                            icon={User}
+                            label="Customer Details"
+                            checked={!!activeTemplate.fields.showCustomerDetails}
+                            onChange={() => toggleElementField("showCustomerDetails")}
+                          />
+                          <ElementToggleRow
+                            icon={CreditCard}
+                            label="Payment Details"
+                            checked={!!activeTemplate.fields.showPaymentDetails}
+                            onChange={() => toggleElementField("showPaymentDetails")}
+                          />
+                          <ElementToggleRow
+                            icon={Calculator}
+                            label="Tax / GST % Split"
+                            checked={!!activeTemplate.fields.showTaxSplit}
+                            onChange={() => toggleElementField("showTaxSplit")}
+                          />
+                          <ElementToggleRow
+                            icon={ImageIcon}
+                            label="Product Image in Items"
+                            checked={!!activeTemplate.fields.showProductImage}
+                            onChange={() => toggleElementField("showProductImage")}
+                          />
+                          <ElementToggleRow
+                            icon={CreditCard}
+                            label="Party Balance Summary"
+                            checked={!!activeTemplate.fields.showPartyBalance}
+                            onChange={() => toggleElementField("showPartyBalance")}
+                          />
+                          <ElementToggleRow
+                            icon={HeartHandshake}
+                            label="Thank You Note & Footer"
+                            checked={!!activeTemplate.fields.showThankYou}
+                            onChange={() => toggleElementField("showThankYou")}
+                          />
+                        </div>
+                      </div>
+                                        </div>
+                                      </div>
+                                    ) : null}
+
+                                    {activeEditorTab === "branding" && isThermalTemplate ? (
+                                      <div className="space-y-5">
+                                        {/* 1. Store Logo on Thermal Paper */}
+                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <input
+                                                type="checkbox"
+                                                id="thermal-logo-toggle"
+                                                checked={activeTemplate.fields?.showLogo !== false}
+                                                onChange={() => toggleElementField("showLogo")}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <label htmlFor="thermal-logo-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
+                                                <ImageIcon className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                                Print Store Logo on Thermal Paper
+                                              </label>
+                                            </div>
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                                              High Contrast Dithered
+                                            </span>
+                                          </div>
+
+                                          {activeTemplate.fields?.showLogo !== false && (
+                                            <div className="space-y-3 pt-1">
+                                              <div className="flex items-center gap-3">
+                                                {activeTemplate.logoUrl ? (
+                                                  <div className="relative h-14 w-28 bg-white border border-slate-300 rounded-lg p-1 flex items-center justify-center overflow-hidden shadow-xs">
+                                                    <img
+                                                      src={activeTemplate.logoUrl}
+                                                      alt="Thermal Logo"
+                                                      className="max-h-full max-w-full object-contain filter grayscale contrast-200"
+                                                    />
+                                                  </div>
+                                                ) : (
+                                                  <div className="h-14 w-28 bg-muted rounded-lg border border-dashed border-border flex items-center justify-center text-[10px] text-muted-foreground text-center px-1">
+                                                    No Logo Set
+                                                  </div>
+                                                )}
+
+                                                <div className="flex-1 space-y-1.5">
+                                                  <input
+                                                    ref={thermalLogoInputRef}
+                                                    type="file"
+                                                    accept="image/*"
+                                                    className="hidden"
+                                                    onChange={(e) => handleThermalImageUpload(e, "logoUrl")}
+                                                  />
+                                                  <div className="flex gap-2">
+                                                    <button
+                                                      onClick={() => thermalLogoInputRef.current?.click()}
+                                                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold shadow-xs hover:bg-indigo-700 cursor-pointer"
+                                                    >
+                                                      <Upload className="h-3.5 w-3.5" />
+                                                      Upload Logo
+                                                    </button>
+                                                    {activeTemplate.logoUrl && (
+                                                      <button
+                                                        onClick={() => updateTemplateProperty("logoUrl", "")}
+                                                        className="px-2.5 py-1.5 rounded-lg border border-border hover:bg-destructive/10 text-destructive text-xs font-semibold cursor-pointer"
+                                                      >
+                                                        Remove
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                  <p className="text-[10px] text-muted-foreground">Recommended: Black & white transparent PNG or high contrast JPG</p>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* 2. Dynamic UPI Payment QR Code */}
+                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <input
+                                                type="checkbox"
+                                                id="thermal-upi-toggle"
+                                                checked={activeTemplate.fields.showQR !== false}
+                                                onChange={() => toggleElementField("showQR")}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <label htmlFor="thermal-upi-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
+                                                <QrCode className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                                Dynamic UPI Payment QR Code
+                                              </label>
+                                            </div>
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                                              Auto-Generates Amount & Bill No
+                                            </span>
+                                          </div>
+
+                                          {activeTemplate.fields.showQR !== false && (
+                                            <div className="space-y-3 pt-1">
+                                              <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                  <label className="text-[10px] font-semibold text-foreground">UPI VPA ID (Merchant ID)</label>
+                                                  <input
+                                                    type="text"
+                                                    value={activeTemplate.upiId || ""}
+                                                    onChange={(e) => updateTemplateProperty("upiId", e.target.value)}
+                                                    placeholder="e.g. 9849344919@okaxis / store@upi"
+                                                    className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground font-mono focus:border-indigo-500"
+                                                  />
+                                                </div>
+                                                <div className="space-y-1">
+                                                  <label className="text-[10px] font-semibold text-foreground">Payee Name</label>
+                                                  <input
+                                                    type="text"
+                                                    value={activeTemplate.payeeName || activeTemplate.storeName || ""}
+                                                    onChange={(e) => updateTemplateProperty("payeeName" as any, e.target.value)}
+                                                    placeholder="Business / Merchant Legal Name"
+                                                    className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                                                  />
+                                                </div>
+                                              </div>
+
+                                              {/* Custom Static QR Upload Option */}
+                                              <div className="pt-2 border-t border-border/50 flex items-center justify-between">
+                                                <div className="space-y-0.5">
+                                                  <span className="text-[11px] font-semibold text-foreground block">Or Upload Standee / Static QR Image</span>
+                                                  <span className="text-[10px] text-muted-foreground">Upload your bank standee QR image directly</span>
+                                                </div>
+                                                <input
+                                                  ref={thermalQrInputRef}
+                                                  type="file"
+                                                  accept="image/*"
+                                                  className="hidden"
+                                                  onChange={(e) => handleThermalImageUpload(e, "customQrUrl" as any)}
+                                                />
+                                                <div className="flex gap-2">
+                                                  <button
+                                                    onClick={() => thermalQrInputRef.current?.click()}
+                                                    className="px-2.5 py-1 rounded-lg border border-border hover:bg-muted text-[11px] font-semibold text-foreground cursor-pointer flex items-center gap-1"
+                                                  >
+                                                    <Upload className="h-3 w-3" />
+                                                    {activeTemplate.customQrUrl ? "Replace QR" : "Upload Custom QR"}
+                                                  </button>
+                                                  {activeTemplate.customQrUrl && (
+                                                    <button
+                                                      onClick={() => updateTemplateProperty("customQrUrl" as any, "")}
+                                                      className="px-2 py-1 rounded-lg border border-border text-destructive text-[11px] font-semibold hover:bg-destructive/10 cursor-pointer"
+                                                    >
+                                                      Remove
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* 3. Google Review 5-Star Feedback QR Code */}
+                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <input
+                                                type="checkbox"
+                                                id="thermal-review-toggle"
+                                                checked={activeTemplate.showGoogleReviewQR !== false}
+                                                onChange={(e) => updateTemplateProperty("showGoogleReviewQR" as any, e.target.checked)}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <label htmlFor="thermal-review-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
+                                                <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+                                                Google Review 5-Star Feedback QR Code
+                                              </label>
+                                            </div>
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                                              Boosts Google Reviews
+                                            </span>
+                                          </div>
+
+                                          {activeTemplate.showGoogleReviewQR !== false && (
+                                            <div className="space-y-2 pt-1">
+                                              <label className="text-[10px] font-semibold text-foreground">Google Business Review Link / URL</label>
+                                              <input
+                                                type="url"
+                                                value={activeTemplate.googleReviewUrl || ""}
+                                                onChange={(e) => updateTemplateProperty("googleReviewUrl" as any, e.target.value)}
+                                                placeholder="https://g.page/r/your-google-place-id/review"
+                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground font-mono focus:border-indigo-500"
+                                              />
+                                              <p className="text-[10px] text-muted-foreground">
+                                                Customers scanning this QR on their phone will directly open your Google Review page to give 5 stars!
+                                              </p>
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* 4. Digital Signature & Company Stamp */}
+                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <input
+                                                type="checkbox"
+                                                id="thermal-sig-toggle"
+                                                checked={activeTemplate.showSignature !== false}
+                                                onChange={(e) => updateTemplateProperty("showSignature" as any, e.target.checked)}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <label htmlFor="thermal-sig-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
+                                                <CheckCircle className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                                Digital Signature & Company Stamp
+                                              </label>
+                                            </div>
+                                          </div>
+
+                                          {activeTemplate.showSignature !== false && (
+                                            <div className="space-y-3 pt-1">
+                                              <div className="space-y-1">
+                                                <label className="text-[10px] font-semibold text-foreground">Signatory Designation / Footer Label</label>
+                                                <input
+                                                  type="text"
+                                                  value={activeTemplate.signatoryLabel || `Authorized Signatory For ${activeTemplate.storeName || "Venatic"}`}
+                                                  onChange={(e) => updateTemplateProperty("signatoryLabel" as any, e.target.value)}
+                                                  placeholder="e.g. Authorized Signatory / Manager"
+                                                  className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                                                />
+                                              </div>
+
+                                              <div className="grid grid-cols-2 gap-3 pt-1">
+                                                {/* Signature Upload */}
+                                                <div className="p-3 bg-card rounded-xl border border-border space-y-2">
+                                                  <div className="flex items-center justify-between">
+                                                    <span className="text-[11px] font-bold text-foreground">Digital Signature</span>
+                                                    {activeTemplate.signatureUrl && (
+                                                      <button
+                                                        onClick={() => updateTemplateProperty("signatureUrl" as any, "")}
+                                                        className="text-[10px] font-semibold text-destructive hover:underline cursor-pointer"
+                                                      >
+                                                        Remove
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                  <input
+                                                    ref={thermalSigInputRef}
+                                                    type="file"
+                                                    accept="image/*"
+                                                    className="hidden"
+                                                    onChange={(e) => handleThermalImageUpload(e, "signatureUrl" as any)}
+                                                  />
+                                                  {activeTemplate.signatureUrl ? (
+                                                    <div className="h-12 bg-white border border-slate-300 rounded p-1 flex items-center justify-center">
+                                                      <img src={activeTemplate.signatureUrl} alt="Signature" className="max-h-full object-contain filter grayscale contrast-200" />
+                                                    </div>
+                                                  ) : (
+                                                    <button
+                                                      onClick={() => thermalSigInputRef.current?.click()}
+                                                      className="w-full py-2 rounded-lg border border-dashed border-border hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer flex items-center justify-center gap-1"
+                                                    >
+                                                      <Upload className="h-3 w-3" /> Upload Signature
+                                                    </button>
+                                                  )}
+                                                </div>
+
+                                                {/* Company Stamp Upload */}
+                                                <div className="p-3 bg-card rounded-xl border border-border space-y-2">
+                                                  <div className="flex items-center justify-between">
+                                                    <span className="text-[11px] font-bold text-foreground">Company Stamp</span>
+                                                    {activeTemplate.stampUrl && (
+                                                      <button
+                                                        onClick={() => updateTemplateProperty("stampUrl" as any, "")}
+                                                        className="text-[10px] font-semibold text-destructive hover:underline cursor-pointer"
+                                                      >
+                                                        Remove
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                  <input
+                                                    ref={thermalStampInputRef}
+                                                    type="file"
+                                                    accept="image/*"
+                                                    className="hidden"
+                                                    onChange={(e) => handleThermalImageUpload(e, "stampUrl" as any)}
+                                                  />
+                                                  {activeTemplate.stampUrl ? (
+                                                    <div className="h-12 bg-white border border-slate-300 rounded p-1 flex items-center justify-center">
+                                                      <img src={activeTemplate.stampUrl} alt="Stamp" className="max-h-full object-contain filter grayscale contrast-200" />
+                                                    </div>
+                                                  ) : (
+                                                    <button
+                                                      onClick={() => thermalStampInputRef.current?.click()}
+                                                      className="w-full py-2 rounded-lg border border-dashed border-border hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer flex items-center justify-center gap-1"
+                                                    >
+                                                      <Upload className="h-3 w-3" /> Upload Stamp
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ) : activeEditorTab === "branding" ? (
+                                      <div className="space-y-4">
+                                        {/* ══ HEADER BUSINESS DETAILS ══ */}
+                                        <div className="space-y-2.5 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <div className="flex items-center justify-between">
+                                            <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                              <Building2 className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                              {t("Header Business Details", "Header Business Details")}
+                                            </h4>
+                                            <span className="text-[9px] font-semibold text-muted-foreground">
+                                              Printed in document header across all layouts
+                                            </span>
+                                          </div>
+                                          <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-0.5 col-span-2">
+                                              <label className="text-[9.5px] font-semibold text-muted-foreground block">Store / Trade Name</label>
+                                              <input
+                                                type="text"
+                                                value={activeTemplate.storeName || ""}
+                                                onChange={(e) => updateTemplateProperty("storeName", e.target.value)}
+                                                placeholder="Your Business Name"
+                                                className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] font-bold text-foreground focus:border-indigo-500"
+                                              />
+                                            </div>
+                                            <div className="space-y-0.5 col-span-2">
+                                              <label className="text-[9.5px] font-semibold text-muted-foreground block">Business Address</label>
+                                              <input
+                                                type="text"
+                                                value={activeTemplate.storeAddress || ""}
+                                                onChange={(e) => updateTemplateProperty("storeAddress", e.target.value)}
+                                                placeholder="Street, Area, City, State - PIN"
+                                                className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] text-foreground focus:border-indigo-500"
+                                              />
+                                            </div>
+                                            <div className="space-y-0.5">
+                                              <label className="text-[9.5px] font-semibold text-muted-foreground block">Phone</label>
+                                              <input
+                                                type="text"
+                                                value={activeTemplate.storePhone || ""}
+                                                onChange={(e) => updateTemplateProperty("storePhone", e.target.value)}
+                                                placeholder="+91 9876543210"
+                                                className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] text-foreground focus:border-indigo-500"
+                                              />
+                                            </div>
+                                            <div className="space-y-0.5">
+                                              <label className="text-[9.5px] font-semibold text-muted-foreground block">Email</label>
+                                              <input
+                                                type="email"
+                                                value={activeTemplate.email || ""}
+                                                onChange={(e) => updateTemplateProperty("email", e.target.value)}
+                                                placeholder="contact@business.com"
+                                                className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] text-foreground focus:border-indigo-500"
+                                              />
+                                            </div>
+                                            <div className="space-y-0.5">
+                                              <label className="text-[9.5px] font-semibold text-muted-foreground block">GSTIN</label>
+                                              <input
+                                                type="text"
+                                                value={activeTemplate.gstin || ""}
+                                                onChange={(e) => updateTemplateProperty("gstin", e.target.value.toUpperCase())}
+                                                placeholder="22AAAAA0000A1Z5"
+                                                className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] font-mono text-foreground focus:border-indigo-500"
+                                              />
+                                            </div>
+                                            <div className="space-y-0.5">
+                                              <label className="text-[9.5px] font-semibold text-muted-foreground block">PAN</label>
+                                              <input
+                                                type="text"
+                                                value={activeTemplate.pan || ""}
+                                                onChange={(e) => updateTemplateProperty("pan", e.target.value.toUpperCase())}
+                                                placeholder="AAAAA0000A"
+                                                className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] font-mono text-foreground focus:border-indigo-500"
+                                              />
+                                            </div>
+                                            <div className="space-y-0.5">
+                                              <label className="text-[9.5px] font-semibold text-muted-foreground block">CIN</label>
+                                              <input
+                                                type="text"
+                                                value={activeTemplate.cin || ""}
+                                                onChange={(e) => updateTemplateProperty("cin", e.target.value.toUpperCase())}
+                                                placeholder="U12345MH2020PTC000000"
+                                                className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] font-mono text-foreground focus:border-indigo-500"
+                                              />
+                                            </div>
+                                            <div className="space-y-0.5">
+                                              <label className="text-[9.5px] font-semibold text-muted-foreground block">State Code</label>
+                                              <input
+                                                type="text"
+                                                value={activeTemplate.sellerStateCode || ""}
+                                                onChange={(e) => updateTemplateProperty("sellerStateCode", e.target.value)}
+                                                placeholder="e.g. 27 or 37"
+                                                className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] text-foreground focus:border-indigo-500"
+                                              />
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* ══ LOGO ══ */}
+                                        <div className="space-y-2.5 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                            <ImageIcon className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                            {t("Logo", "Logo")}
+                                          </h4>
+                                          <div className="grid grid-cols-2 gap-3 items-start">
+                                            <div className="space-y-1.5">
+                                              <label className="text-[9.5px] font-semibold text-muted-foreground block">Logo URL</label>
+                                              <input
+                                                type="text"
+                                                value={activeTemplate.logoUrl || ""}
+                                                onChange={(e) => updateTemplateProperty("logoUrl", e.target.value)}
+                                                placeholder="https://... or /logo.png"
+                                                className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] text-foreground focus:border-indigo-500"
+                                              />
+                                              <div className="flex gap-1.5">
+                                                <input ref={thermalLogoInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleThermalImageUpload(e, "logoUrl")} />
+                                                <button onClick={() => thermalLogoInputRef.current?.click()} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border hover:bg-muted text-[10px] font-semibold text-foreground cursor-pointer">
+                                                  <Upload className="h-3 w-3" /> {activeTemplate.logoUrl ? "Replace" : "Upload"}
+                                                </button>
+                                                {activeTemplate.logoUrl && (
+                                                  <button onClick={() => updateTemplateProperty("logoUrl", "")} className="px-2 py-1 rounded-lg border border-border text-destructive text-[10px] font-semibold hover:bg-destructive/10 cursor-pointer">Remove</button>
+                                                )}
+                                              </div>
+                                            </div>
+                                            <div className="h-20 rounded-xl border border-border/60 bg-white p-2 flex items-center justify-center overflow-hidden">
+                                              {activeTemplate.logoUrl ? (
+                                                <img src={activeTemplate.logoUrl} alt="Logo preview" className="max-h-full max-w-full object-contain" />
+                                              ) : (
+                                                <span className="text-[10px] text-muted-foreground">No logo</span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* ══ SIGNATURE + SIGNATORY TITLE ══ */}
+                                        <div className="space-y-2.5 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                            <PenTool className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                            {t("Signature & Signatory", "Signature & Signatory")}
+                                          </h4>
+                                          <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1.5">
+                                              <label className="text-[9.5px] font-semibold text-muted-foreground block">Signature image</label>
+                                              <input ref={thermalSigInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleThermalImageUpload(e, "signatureUrl")} />
+                                              <div className="h-14 rounded-xl border border-dashed border-border bg-white flex items-center justify-center overflow-hidden">
+                                                {activeTemplate.signatureUrl ? (
+                                                  <img src={activeTemplate.signatureUrl} alt="Signature preview" className="max-h-full max-w-full object-contain filter grayscale" />
+                                                ) : (
+                                                  <button onClick={() => thermalSigInputRef.current?.click()} className="text-[10px] font-semibold text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-1">
+                                                    <Upload className="h-3 w-3" /> {t("Upload Signature", "Upload Signature")}
+                                                  </button>
+                                                )}
+                                              </div>
+                                              {activeTemplate.signatureUrl && (
+                                                <button onClick={() => updateTemplateProperty("signatureUrl" as any, "")} className="w-full text-[10px] font-semibold text-destructive hover:underline cursor-pointer">{t("Remove Signature", "Remove Signature")}</button>
+                                              )}
+                                            </div>
+                                            <div className="space-y-1.5">
+                                              <label className="text-[9.5px] font-semibold text-muted-foreground block">Signatory title</label>
+                                              <input
+                                                type="text"
+                                                value={(activeTemplate as any).signatureTitle || activeTemplate.signatoryLabel || "Authorized Signatory"}
+                                                onChange={(e) => {
+                                                  updateTemplateProperty("signatureTitle" as any, e.target.value);
+                                                  updateTemplateProperty("signatoryLabel" as any, e.target.value);
+                                                }}
+                                                placeholder="Authorized Signatory"
+                                                className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] text-foreground focus:border-indigo-500"
+                                              />
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* ══ STAMP + ALIGNMENT ══ */}
+                                        <div className="space-y-2.5 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                            <Stamp className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                            {t("Company Stamp", "Company Stamp")}
+                                          </h4>
+                                          <div className="flex items-start gap-3">
+                                            <div className="space-y-1.5 flex-1">
+                                              <label className="text-[9.5px] font-semibold text-muted-foreground block">Stamp image</label>
+                                              <input ref={thermalStampInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleThermalImageUpload(e, "stampUrl")} />
+                                              <div className="h-14 rounded-xl border border-dashed border-border bg-white flex items-center justify-center overflow-hidden">
+                                                {activeTemplate.stampUrl ? (
+                                                  <img src={activeTemplate.stampUrl} alt="Stamp preview" className="max-h-full max-w-full object-contain" />
+                                                ) : (
+                                                  <button onClick={() => thermalStampInputRef.current?.click()} className="text-[10px] font-semibold text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-1">
+                                                    <Upload className="h-3 w-3" /> {t("Upload Stamp", "Upload Stamp")}
+                                                  </button>
+                                                )}
+                                              </div>
+                                              {activeTemplate.stampUrl && (
+                                                <button onClick={() => updateTemplateProperty("stampUrl" as any, "")} className="text-[10px] font-semibold text-destructive hover:underline cursor-pointer">{t("Remove Stamp", "Remove Stamp")}</button>
+                                              )}
+                                            </div>
+                                            <div className="space-y-1.5 shrink-0">
+                                              <label className="text-[9.5px] font-semibold text-muted-foreground block">Alignment</label>
+                                              <div className="flex rounded-lg border border-input p-0.5 bg-background">
+                                                {(["left", "center", "right"] as const).map((a) => (
+                                                  <button
+                                                    key={a}
+                                                    type="button"
+                                                    onClick={() => updateTemplateProperty("stampAlign" as any, a)}
+                                                    className={`px-2 py-1 text-[10.5px] font-bold rounded-md cursor-pointer ${((activeTemplate as any).stampAlign || "left") === a ? "bg-indigo-600 text-white" : "text-muted-foreground hover:text-foreground"}`}
+                                                  >
+                                                    {a === "left" ? "L" : a === "center" ? "C" : "R"}
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* ══ FOOTER BRANDING ══ */}
+                                        <div className="space-y-2.5 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                            <HeartHandshake className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                            {t("Footer Branding & Declarations", "Footer Branding & Declarations")}
+                                          </h4>
+                                          <div className="space-y-2">
+                                            <div className="space-y-1">
+                                              <div className="flex items-center justify-between">
+                                                <label className="text-[9.5px] font-semibold text-muted-foreground block">Statutory GST Declaration</label>
+                                                <label className="flex items-center gap-1 text-[9.5px] text-muted-foreground cursor-pointer">
+                                                  <input
+                                                    type="checkbox"
+                                                    checked={activeTemplate.showDeclaration !== false}
+                                                    onChange={(e) => updateTemplateProperty("showDeclaration", e.target.checked)}
+                                                    className="h-3 w-3 rounded text-indigo-600"
+                                                  />
+                                                  Show
+                                                </label>
+                                              </div>
+                                              <textarea
+                                                rows={2}
+                                                value={activeTemplate.declarationText || "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct."}
+                                                onChange={(e) => updateTemplateProperty("declarationText", e.target.value)}
+                                                placeholder="We declare that this invoice shows the actual price..."
+                                                className="w-full rounded-lg border border-input bg-background px-2 py-1 text-[10.5px] text-foreground focus:border-indigo-500"
+                                              />
+                                            </div>
+                                            <div className="space-y-1">
+                                              <div className="flex items-center justify-between">
+                                                <label className="text-[9.5px] font-semibold text-muted-foreground block">Thank You Note</label>
+                                                <label className="flex items-center gap-1 text-[9.5px] text-muted-foreground cursor-pointer">
+                                                  <input
+                                                    type="checkbox"
+                                                    checked={activeTemplate.fields?.showThankYou !== false}
+                                                    onChange={(e) => updateTemplateProperty("fields", { ...activeTemplate.fields, showThankYou: e.target.checked })}
+                                                    className="h-3 w-3 rounded text-indigo-600"
+                                                  />
+                                                  Show
+                                                </label>
+                                              </div>
+                                              <input
+                                                type="text"
+                                                value={activeTemplate.thankYouNote || activeTemplate.footerText || ""}
+                                                onChange={(e) => {
+                                                  updateTemplateProperty("thankYouNote", e.target.value);
+                                                  updateTemplateProperty("footerText", e.target.value);
+                                                }}
+                                                placeholder="Thank you for your business!"
+                                                className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] text-foreground focus:border-indigo-500"
+                                              />
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* ══ WATERMARK CONTROLS & CULTURAL PRESETS ══ */}
+                                        <div className="space-y-2.5 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <div className="flex items-center justify-between">
+                                            <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                              <EyeOff className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                              {t("Background Watermark", "Background Watermark")}
+                                            </h4>
+                                            <input
+                                              type="checkbox"
+                                              checked={!!activeTemplate.showWatermark}
+                                              onChange={(e) => updateTemplateProperty("showWatermark", e.target.checked)}
+                                              className="h-4 w-4 rounded border-input text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                            />
+                                          </div>
+
+                                          {/* Cultural Presets Bar */}
+                                          <div>
+                                            <label className="text-[9.5px] font-semibold text-muted-foreground block mb-1">Quick Cultural &amp; Business Presets</label>
+                                            <div className="flex flex-wrap gap-1">
+                                              {([
+                                                { label: "None", value: "" },
+                                                { label: "॥ श्री गणेशाय नमः ॥", value: "॥ श्री गणेशाय नमः ॥" },
+                                                { label: "॥ ॐ अर्हं नमः ॥", value: "॥ ॐ अर्हं नमः ॥" },
+                                                { label: "॥ शुभ लाभ ॥", value: "॥ शुभ लाभ ॥" },
+                                                { label: "LUXURY GOLD", value: "LUXURY GOLD" },
+                                                { label: "AUTHENTIC TAX INVOICE", value: "AUTHENTIC TAX INVOICE" },
+                                              ] as const).map((preset) => (
+                                                <button
+                                                  key={preset.label}
+                                                  type="button"
+                                                  onClick={() => {
+                                                    updateTemplateProperty("watermarkText", preset.value);
+                                                    updateTemplateProperty("watermarkType", "text");
+                                                    updateTemplateProperty("showWatermark", preset.value !== "");
+                                                  }}
+                                                  className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 cursor-pointer"
+                                                >
+                                                  {preset.label}
+                                                </button>
+                                              ))}
+                                            </div>
+                                          </div>
+
+                                          {/* Watermark Type Selector */}
+                                          <div className="flex gap-2 items-center">
+                                            <label className="text-[9.5px] font-semibold text-muted-foreground">Type:</label>
+                                            <div className="flex rounded-lg border border-input p-0.5 bg-background">
+                                              <button
+                                                type="button"
+                                                onClick={() => updateTemplateProperty("watermarkType", "text")}
+                                                className={`px-2 py-0.5 text-[10px] font-bold rounded cursor-pointer ${activeTemplate.watermarkType !== "image" ? "bg-indigo-600 text-white" : "text-muted-foreground hover:text-foreground"}`}
+                                              >
+                                                Text
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => updateTemplateProperty("watermarkType", "image")}
+                                                className={`px-2 py-0.5 text-[10px] font-bold rounded cursor-pointer ${activeTemplate.watermarkType === "image" ? "bg-indigo-600 text-white" : "text-muted-foreground hover:text-foreground"}`}
+                                              >
+                                                Image
+                                              </button>
+                                            </div>
+                                          </div>
+
+                                          {activeTemplate.watermarkType === "image" ? (
+                                            <div className="space-y-1.5">
+                                              <label className="text-[9.5px] font-semibold text-muted-foreground block">Watermark Image</label>
+                                              <input ref={watermarkImageInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleThermalImageUpload(e, "watermarkImage")} />
+                                              <div className="flex gap-2 items-center">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => watermarkImageInputRef.current?.click()}
+                                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-border hover:bg-muted text-[10.5px] font-semibold text-foreground cursor-pointer"
+                                                >
+                                                  <Upload className="h-3 w-3" /> {activeTemplate.watermarkImage ? "Replace Image" : "Upload Watermark Image"}
+                                                </button>
+                                                {activeTemplate.watermarkImage && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => updateTemplateProperty("watermarkImage", "")}
+                                                    className="px-2 py-1 rounded-lg border border-border text-destructive text-[10px] font-semibold hover:bg-destructive/10 cursor-pointer"
+                                                  >
+                                                    Remove
+                                                  </button>
+                                                )}
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            <div className="space-y-0.5">
+                                              <label className="text-[9.5px] font-semibold text-muted-foreground block">Custom Watermark Text</label>
+                                              <input
+                                                type="text"
+                                                value={activeTemplate.watermarkText || ""}
+                                                onChange={(e) => {
+                                                  updateTemplateProperty("watermarkText", e.target.value);
+                                                  if (e.target.value.trim()) updateTemplateProperty("showWatermark", true);
+                                                }}
+                                                placeholder="e.g. OFFICIAL / DUPLICATE"
+                                                className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] text-foreground focus:border-indigo-500"
+                                              />
+                                            </div>
+                                          )}
+
+                                          <div className="space-y-0.5">
+                                            <label className="text-[9.5px] font-semibold text-muted-foreground block">Opacity ({activeTemplate.watermarkOpacity || 15}%) — Range 5% to 50%</label>
+                                            <input
+                                              type="range"
+                                              min="5"
+                                              max="50"
+                                              value={activeTemplate.watermarkOpacity || 15}
+                                              onChange={(e) => {
+                                                updateTemplateProperty("watermarkOpacity", Number(e.target.value));
+                                                updateTemplateProperty("showWatermark", true);
+                                              }}
+                                              className="w-full cursor-pointer accent-indigo-600 mt-1"
+                                            />
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ) : null}
+
+                                    {activeEditorTab === "settings" && isThermalTemplate ? (
+                                      <div className="space-y-5">
+                                        {/* Organization Master Default */}
+                                        <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/30 rounded-2xl border border-indigo-200 dark:border-indigo-900 space-y-2">
+                                          <div className="flex items-center justify-between">
+                                            <div>
+                                              <div className="text-xs font-bold text-foreground">Organization Master Default</div>
+                                              <div className="text-[11px] text-muted-foreground">Use this template for all POS terminals and cashiers across the organization</div>
+                                            </div>
+                                            <input
+                                              type="checkbox"
+                                              checked={!!activeTemplate.isDefault}
+                                              onChange={(e) => updateTemplateProperty("isDefault", e.target.checked)}
+                                              className="h-4 w-4 rounded border-input text-indigo-600 focus:ring-indigo-500"
+                                            />
+                                          </div>
+                                        </div>
+
+                                        {/* Hardware Paper Roll & Cutter Margins */}
+                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                            <Printer className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                            Hardware Paper Roll & Cutter Margins
+                                          </h3>
+
+                                          <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                              <label className="text-[10px] font-semibold text-foreground">Paper Roll Width</label>
+                                              <select
+                                                value={activeTemplate.paperSize || "80mm"}
+                                                onChange={(e) => updateTemplateProperty("paperSize", e.target.value)}
+                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500 font-semibold"
+                                              >
+                                                <option value="80mm">80mm (Standard 3-Inch POS Roll)</option>
+                                                <option value="58mm">58mm (Mini 2-Inch Compact Roll)</option>
+                                              </select>
+                                            </div>
+                                            <div className="space-y-1">
+                                              <label className="text-[10px] font-semibold text-foreground">Thermal Contrast / Darkness</label>
+                                              <select
+                                                value={activeTemplate.thermalContrast || "ultra-dark"}
+                                                onChange={(e) => updateTemplateProperty("thermalContrast" as any, e.target.value)}
+                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500 font-semibold"
+                                              >
+                                                <option value="ultra-dark">🔥 Ultra-Dark (Pure Black #000 + 900 Weight)</option>
+                                                <option value="crisp-mono">⚡ Crisp Monospace (High Density)</option>
+                                                <option value="compact">📄 Compact Retail Density</option>
+                                                <option value="standard">Standard Balance</option>
+                                              </select>
+                                            </div>
+                                          </div>
+
+                                          <div className="pt-2 border-t border-border/50 space-y-2">
+                                            <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.feedAfterPrint !== false}
+                                                onChange={(e) => updateTemplateProperty("feedAfterPrint" as any, e.target.checked)}
+                                                className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <div className="text-xs">
+                                                <span className="font-semibold text-foreground block">20mm Safe Feed & Cutter Margin</span>
+                                                <span className="text-[10px] text-muted-foreground">Appends feed lines so auto-cutters do not chop off the thank you note</span>
+                                              </div>
+                                            </label>
+
+                                            <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.autoCutPaper !== false}
+                                                onChange={(e) => updateTemplateProperty("autoCutPaper" as any, e.target.checked)}
+                                                className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <div className="text-xs">
+                                                <span className="font-semibold text-foreground block">Send ESC/POS Auto-Cut Command</span>
+                                                <span className="text-[10px] text-muted-foreground">Triggers automatic guillotine cut on supported thermal hardware</span>
+                                              </div>
+                                            </label>
+                                          </div>
+                                        </div>
+
+                                        {/* Receipt Bottom Barcode */}
+                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <input
+                                                type="checkbox"
+                                                id="thermal-barcode-toggle"
+                                                checked={activeTemplate.fields.showBarcode !== false}
+                                                onChange={() => toggleElementField("showBarcode")}
+                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <label htmlFor="thermal-barcode-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
+                                                <Barcode className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                                Receipt Bottom Return / Lookup Barcode
+                                              </label>
+                                            </div>
+                                          </div>
+
+                                          {activeTemplate.fields.showBarcode !== false && (
+                                            <div className="grid grid-cols-2 gap-3 pt-1">
+                                              <div className="space-y-1">
+                                                <label className="text-[10px] font-semibold text-foreground">Barcode Symbology</label>
+                                                <select
+                                                  value={activeTemplate.barcodeSymbology || "Code-128"}
+                                                  onChange={(e) => updateTemplateProperty("barcodeSymbology", e.target.value as any)}
+                                                  className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
+                                                >
+                                                  <option value="Code-128">Code 128 (Universal POS Standard)</option>
+                                                  <option value="EAN-13">EAN-13 (GS1 Retail Standard)</option>
+                                                  <option value="Code-39">Code 39 (Alphanumeric)</option>
+                                                  <option value="QR">QR Code (2D Lookup)</option>
+                                                </select>
+                                              </div>
+
+                                              <div className="space-y-1">
+                                                <div className="flex justify-between text-[10px] font-semibold text-foreground">
+                                                  <span>Barcode Height:</span>
+                                                  <span className="font-mono text-indigo-600">{activeTemplate.barcodeHeight || 28}px</span>
+                                                </div>
+                                                <input
+                                                  type="range"
+                                                  min="18"
+                                                  max="60"
+                                                  value={activeTemplate.barcodeHeight || 28}
+                                                  onChange={(e) => updateTemplateProperty("barcodeHeight", Number(e.target.value))}
+                                                  className="w-full cursor-pointer accent-indigo-600 mt-1"
+                                                />
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ) : activeEditorTab === "settings" ? (
+                                      <div className="space-y-4">
+                                        {/* Settings Sub-Tab Navigation */}
+                                        <div className="flex items-center gap-1 p-1 bg-muted/50 rounded-xl border border-border/60 overflow-x-auto">
+                                          {[
+                                            { id: "numbering", label: "🔢 Numbering & B2B/B2C" },
+                                            { id: "columns", label: "📱 Columns & IMEI" },
+                                            { id: "bank_qr", label: "🏦 Bank & UPI QR" },
+                                            { id: "tax_terms", label: "📜 Terms & Legal" },
+                                            { id: "credit_debit", label: "🧾 Credit / Debit Note" },
+                                            { id: "tax_finance", label: "🧾 Tax & GST" },
+                                            { id: "barcode", label: "🏷️ Barcode" },
+                                          ].map((tab) => (
+                                            <button
+                                              key={tab.id}
+                                              type="button"
+                                              onClick={() => setSettingsActiveSubTab(tab.id as any)}
+                                              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${settingsActiveSubTab === tab.id
+                                                ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs"
+                                                : "text-muted-foreground hover:text-foreground"
+                                                }`}
+                                            >
+                                              {tab.label}
+                                            </button>
+                                          ))}
+                                        </div>
+
+                                        {/* Sub-Tab 1: Numbering & B2B/B2C */}
+                                        {settingsActiveSubTab === "numbering" && (
+                                          <div className="space-y-3 animate-in fade-in">
+                                            {/* B2B vs B2C Separate Series Switch */}
+                                            <div className="p-3.5 bg-white dark:bg-slate-800/80 rounded-xl border border-purple-200 dark:border-purple-900/50 space-y-3">
+                                              <div className="flex items-center justify-between">
+                                                <div>
+                                                  <div className="flex items-center gap-2">
+                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-700">🏢 B2B / 🛒 B2C Switch</span>
+                                                    <h4 className="text-xs font-bold text-foreground">Separate B2B & B2C Invoice Series</h4>
+                                                  </div>
+                                                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                                                    Assign separate prefixes for GST registered corporate customers vs retail walk-ins.
+                                                  </p>
+                                                </div>
+                                                <input
+                                                  type="checkbox"
+                                                  checked={Boolean(liveInvoiceSettings.separateB2BSequenceEnabled)}
+                                                  onChange={(e) => {
+                                                    const updated = { ...liveInvoiceSettings, separateB2BSequenceEnabled: e.target.checked };
+                                                    setLiveInvoiceSettings(updated);
+                                                    saveStoredInvoiceSettings(updated, tenant?.id);
+                                                  }}
+                                                  className="size-4 rounded text-purple-600 focus:ring-purple-500 cursor-pointer"
+                                                />
+                                              </div>
+
+                                              {liveInvoiceSettings.separateB2BSequenceEnabled && (
+                                                <div className="pt-2 border-t border-purple-100 dark:border-purple-900/30 space-y-3">
+                                                  <div className="p-2.5 bg-purple-50/60 dark:bg-purple-950/20 rounded-lg space-y-2">
+                                                    <span className="text-[11px] font-bold text-purple-800 dark:text-purple-300 block">🏢 B2B Tax Invoice Prefix</span>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                      <div>
+                                                        <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
+                                                        <input
+                                                          type="text"
+                                                          value={liveInvoiceSettings.b2bPrefix || "B2B-"}
+                                                          onChange={(e) => {
+                                                            const updated = { ...liveInvoiceSettings, b2bPrefix: e.target.value.toUpperCase() };
+                                                            setLiveInvoiceSettings(updated);
+                                                            saveStoredInvoiceSettings(updated, tenant?.id);
+                                                          }}
+                                                          className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-mono font-bold"
+                                                          placeholder="B2B-"
+                                                        />
+                                                      </div>
+                                                      <div>
+                                                        <label className="text-[10px] text-muted-foreground block mb-0.5">Next Number</label>
+                                                        <input
+                                                          type="number"
+                                                          min="1"
+                                                          value={liveInvoiceSettings.b2bSequenceNumber || 1}
+                                                          onChange={(e) => {
+                                                            const updated = { ...liveInvoiceSettings, b2bSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) };
+                                                            setLiveInvoiceSettings(updated);
+                                                            saveStoredInvoiceSettings(updated, tenant?.id);
+                                                          }}
+                                                          className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-bold"
+                                                        />
+                                                      </div>
+                                                    </div>
+                                                  </div>
+
+                                                  <div className="p-2.5 bg-blue-50/60 dark:bg-blue-950/20 rounded-lg space-y-2">
+                                                    <span className="text-[11px] font-bold text-blue-800 dark:text-blue-300 block">📦 Wholesale Invoice Prefix</span>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                      <div>
+                                                        <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
+                                                        <input
+                                                          type="text"
+                                                          value={liveInvoiceSettings.wholesalePrefix || "WS-"}
+                                                          onChange={(e) => {
+                                                            const updated = { ...liveInvoiceSettings, wholesalePrefix: e.target.value.toUpperCase() };
+                                                            setLiveInvoiceSettings(updated);
+                                                            saveStoredInvoiceSettings(updated, tenant?.id);
+                                                          }}
+                                                          className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-mono font-bold"
+                                                          placeholder="WS-"
+                                                        />
+                                                      </div>
+                                                      <div>
+                                                        <label className="text-[10px] text-muted-foreground block mb-0.5">Next Number</label>
+                                                        <input
+                                                          type="number"
+                                                          min="1"
+                                                          value={liveInvoiceSettings.wholesaleSequenceNumber || 1}
+                                                          onChange={(e) => {
+                                                            const updated = { ...liveInvoiceSettings, wholesaleSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) };
+                                                            setLiveInvoiceSettings(updated);
+                                                            saveStoredInvoiceSettings(updated, tenant?.id);
+                                                          }}
+                                                          className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-bold"
+                                                        />
+                                                      </div>
+                                                    </div>
+                                                  </div>
+
+                                                  <div className="p-2.5 bg-emerald-50/60 dark:bg-emerald-950/20 rounded-lg space-y-2">
+                                                    <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 block">🛒 B2C Consumer Retail Prefix</span>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                      <div>
+                                                        <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
+                                                        <input
+                                                          type="text"
+                                                          value={liveInvoiceSettings.b2cPrefix || "RET-"}
+                                                          onChange={(e) => {
+                                                            const updated = { ...liveInvoiceSettings, b2cPrefix: e.target.value.toUpperCase() };
+                                                            setLiveInvoiceSettings(updated);
+                                                            saveStoredInvoiceSettings(updated, tenant?.id);
+                                                          }}
+                                                          className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-mono font-bold"
+                                                          placeholder="RET-"
+                                                        />
+                                                      </div>
+                                                      <div>
+                                                        <label className="text-[10px] text-muted-foreground block mb-0.5">Next Number</label>
+                                                        <input
+                                                          type="number"
+                                                          min="1"
+                                                          value={liveInvoiceSettings.b2cSequenceNumber || 1}
+                                                          onChange={(e) => {
+                                                            const updated = { ...liveInvoiceSettings, b2cSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) };
+                                                            setLiveInvoiceSettings(updated);
+                                                            saveStoredInvoiceSettings(updated, tenant?.id);
+                                                          }}
+                                                          className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-bold"
+                                                        />
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              )}
+                                            </div>
+
+                                            {/* Standard Invoice Numbering Series */}
+                                            <div className="p-3.5 bg-white dark:bg-slate-800/80 rounded-xl border border-border/70 space-y-2.5">
+                                              <h4 className="text-xs font-bold text-foreground">Standard Sales Invoice Prefix & Sequence</h4>
+                                              <div className="grid grid-cols-3 gap-2">
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
+                                                  <input
+                                                    type="text"
+                                                    value={liveInvoiceSettings.prefix !== undefined ? liveInvoiceSettings.prefix : "INV-"}
+                                                    onChange={(e) => {
+                                                      const updated = { ...liveInvoiceSettings, prefix: e.target.value.toUpperCase() };
+                                                      setLiveInvoiceSettings(updated);
+                                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                                    }}
+                                                    className="w-full h-8 px-2 bg-background border rounded-lg text-xs font-mono font-bold"
+                                                    placeholder="INV-"
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Next Sequence</label>
+                                                  <input
+                                                    type="number"
+                                                    min="1"
+                                                    value={liveInvoiceSettings.sequenceNumber ?? 1}
+                                                    onChange={(e) => {
+                                                      const updated = { ...liveInvoiceSettings, sequenceNumber: Math.max(1, parseInt(e.target.value) || 1) };
+                                                      setLiveInvoiceSettings(updated);
+                                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                                    }}
+                                                    className="w-full h-8 px-2 bg-background border rounded-lg text-xs font-bold"
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Padding</label>
+                                                  <select
+                                                    value={liveInvoiceSettings.padding ?? 4}
+                                                    onChange={(e) => {
+                                                      const updated = { ...liveInvoiceSettings, padding: parseInt(e.target.value, 10) || 4 };
+                                                      setLiveInvoiceSettings(updated);
+                                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                                    }}
+                                                    className="w-full h-8 px-2 bg-background border rounded-lg text-xs font-semibold"
+                                                  >
+                                                    <option value={4}>4 Digits (0001)</option>
+                                                    <option value={5}>5 Digits (00001)</option>
+                                                    <option value={6}>6 Digits (000001)</option>
+                                                    <option value={3}>3 Digits (001)</option>
+                                                  </select>
+                                                </div>
+                                              </div>
+                                              <div className="p-2 bg-indigo-50/50 dark:bg-indigo-950/30 rounded-lg border border-indigo-100 dark:border-indigo-900/50 text-[11px] flex items-center justify-between">
+                                                <span className="text-muted-foreground">Next Generated:</span>
+                                                <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                                                  {(liveInvoiceSettings.prefix || "INV-")}{String(liveInvoiceSettings.sequenceNumber || 1).padStart(liveInvoiceSettings.padding ?? 4, "0")}
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            {/* Additional Numbering Series — Quotation / Proforma / Estimate / Receipt */}
+                                            <div className="p-3.5 bg-white dark:bg-slate-800/80 rounded-xl border border-teal-200 dark:border-teal-900/50 space-y-2.5">
+                                              <h4 className="text-xs font-bold text-foreground">📄 Quotation Prefix & Sequence (QT-)</h4>
+                                              <div className="grid grid-cols-3 gap-2">
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
+                                                  <input type="text" value={liveInvoiceSettings.quotationPrefix || "QT-"}
+                                                    onChange={(e) => { const updated = { ...liveInvoiceSettings, quotationPrefix: e.target.value.toUpperCase() }; setLiveInvoiceSettings(updated); saveStoredInvoiceSettings(updated, tenant?.id); }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-mono font-bold" placeholder="QT-" />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Next Sequence</label>
+                                                  <input type="number" min="1" value={liveInvoiceSettings.quotationSequenceNumber || 1}
+                                                    onChange={(e) => { const updated = { ...liveInvoiceSettings, quotationSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) }; setLiveInvoiceSettings(updated); saveStoredInvoiceSettings(updated, tenant?.id); }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-bold" />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Padding</label>
+                                                  <select value={liveInvoiceSettings.quotationPadding ?? 4}
+                                                    onChange={(e) => { const updated = { ...liveInvoiceSettings, quotationPadding: parseInt(e.target.value, 10) || 4 }; setLiveInvoiceSettings(updated); saveStoredInvoiceSettings(updated, tenant?.id); }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-semibold">
+                                                    <option value={3}>3 Digits</option><option value={4}>4 Digits</option><option value={5}>5 Digits</option><option value={6}>6 Digits</option>
+                                                  </select>
+                                                </div>
+                                              </div>
+                                              <div className="p-2 bg-teal-50/50 dark:bg-teal-950/30 rounded-lg border border-teal-100 dark:border-teal-900/50 text-[11px] flex items-center justify-between">
+                                                <span className="text-muted-foreground">Next Quotation:</span>
+                                                <span className="font-mono font-bold text-teal-600 dark:text-teal-400">
+                                                  {(liveInvoiceSettings.quotationPrefix || "QT-")}{String(liveInvoiceSettings.quotationSequenceNumber || 1).padStart(liveInvoiceSettings.quotationPadding ?? 4, "0")}
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            <div className="p-3.5 bg-white dark:bg-slate-800/80 rounded-xl border border-sky-200 dark:border-sky-900/50 space-y-2.5">
+                                              <h4 className="text-xs font-bold text-foreground">📑 Proforma Prefix & Sequence (PI-)</h4>
+                                              <div className="grid grid-cols-3 gap-2">
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
+                                                  <input type="text" value={liveInvoiceSettings.proformaPrefix || "PI-"}
+                                                    onChange={(e) => { const updated = { ...liveInvoiceSettings, proformaPrefix: e.target.value.toUpperCase() }; setLiveInvoiceSettings(updated); saveStoredInvoiceSettings(updated, tenant?.id); }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-mono font-bold" placeholder="PI-" />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Next Sequence</label>
+                                                  <input type="number" min="1" value={liveInvoiceSettings.proformaSequenceNumber || 1}
+                                                    onChange={(e) => { const updated = { ...liveInvoiceSettings, proformaSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) }; setLiveInvoiceSettings(updated); saveStoredInvoiceSettings(updated, tenant?.id); }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-bold" />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Padding</label>
+                                                  <select value={liveInvoiceSettings.proformaPadding ?? 4}
+                                                    onChange={(e) => { const updated = { ...liveInvoiceSettings, proformaPadding: parseInt(e.target.value, 10) || 4 }; setLiveInvoiceSettings(updated); saveStoredInvoiceSettings(updated, tenant?.id); }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-semibold">
+                                                    <option value={3}>3 Digits</option><option value={4}>4 Digits</option><option value={5}>5 Digits</option><option value={6}>6 Digits</option>
+                                                  </select>
+                                                </div>
+                                              </div>
+                                              <div className="p-2 bg-sky-50/50 dark:bg-sky-950/30 rounded-lg border border-sky-100 dark:border-sky-900/50 text-[11px] flex items-center justify-between">
+                                                <span className="text-muted-foreground">Next Proforma:</span>
+                                                <span className="font-mono font-bold text-sky-600 dark:text-sky-400">
+                                                  {(liveInvoiceSettings.proformaPrefix || "PI-")}{String(liveInvoiceSettings.proformaSequenceNumber || 1).padStart(liveInvoiceSettings.proformaPadding ?? 4, "0")}
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            <div className="p-3.5 bg-white dark:bg-slate-800/80 rounded-xl border border-violet-200 dark:border-violet-900/50 space-y-2.5">
+                                              <h4 className="text-xs font-bold text-foreground">📝 Estimate Prefix & Sequence (EST-)</h4>
+                                              <div className="grid grid-cols-3 gap-2">
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
+                                                  <input type="text" value={liveInvoiceSettings.estimatePrefix || "EST-"}
+                                                    onChange={(e) => { const updated = { ...liveInvoiceSettings, estimatePrefix: e.target.value.toUpperCase() }; setLiveInvoiceSettings(updated); saveStoredInvoiceSettings(updated, tenant?.id); }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-mono font-bold" placeholder="EST-" />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Next Sequence</label>
+                                                  <input type="number" min="1" value={liveInvoiceSettings.estimateSequenceNumber || 1}
+                                                    onChange={(e) => { const updated = { ...liveInvoiceSettings, estimateSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) }; setLiveInvoiceSettings(updated); saveStoredInvoiceSettings(updated, tenant?.id); }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-bold" />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Padding</label>
+                                                  <select value={liveInvoiceSettings.estimatePadding ?? 4}
+                                                    onChange={(e) => { const updated = { ...liveInvoiceSettings, estimatePadding: parseInt(e.target.value, 10) || 4 }; setLiveInvoiceSettings(updated); saveStoredInvoiceSettings(updated, tenant?.id); }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-semibold">
+                                                    <option value={3}>3 Digits</option><option value={4}>4 Digits</option><option value={5}>5 Digits</option><option value={6}>6 Digits</option>
+                                                  </select>
+                                                </div>
+                                              </div>
+                                              <div className="p-2 bg-violet-50/50 dark:bg-violet-950/30 rounded-lg border border-violet-100 dark:border-violet-900/50 text-[11px] flex items-center justify-between">
+                                                <span className="text-muted-foreground">Next Estimate:</span>
+                                                <span className="font-mono font-bold text-violet-600 dark:text-violet-400">
+                                                  {(liveInvoiceSettings.estimatePrefix || "EST-")}{String(liveInvoiceSettings.estimateSequenceNumber || 1).padStart(liveInvoiceSettings.estimatePadding ?? 4, "0")}
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            <div className="p-3.5 bg-white dark:bg-slate-800/80 rounded-xl border border-emerald-200 dark:border-emerald-900/50 space-y-2.5">
+                                              <h4 className="text-xs font-bold text-foreground">🧾 Thermal / Counter Receipt Prefix & Sequence (REC-)</h4>
+                                              <div className="grid grid-cols-3 gap-2">
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
+                                                  <input type="text" value={liveInvoiceSettings.receiptPrefix || "REC-"}
+                                                    onChange={(e) => { const updated = { ...liveInvoiceSettings, receiptPrefix: e.target.value.toUpperCase() }; setLiveInvoiceSettings(updated); saveStoredInvoiceSettings(updated, tenant?.id); }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-mono font-bold" placeholder="REC-" />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Next Sequence</label>
+                                                  <input type="number" min="1" value={liveInvoiceSettings.receiptSequenceNumber || 1}
+                                                    onChange={(e) => { const updated = { ...liveInvoiceSettings, receiptSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) }; setLiveInvoiceSettings(updated); saveStoredInvoiceSettings(updated, tenant?.id); }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-bold" />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Padding</label>
+                                                  <select value={liveInvoiceSettings.receiptPadding ?? 5}
+                                                    onChange={(e) => { const updated = { ...liveInvoiceSettings, receiptPadding: parseInt(e.target.value, 10) || 5 }; setLiveInvoiceSettings(updated); saveStoredInvoiceSettings(updated, tenant?.id); }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-semibold">
+                                                    <option value={3}>3 Digits</option><option value={4}>4 Digits</option><option value={5}>5 Digits</option><option value={6}>6 Digits</option>
+                                                  </select>
+                                                </div>
+                                              </div>
+                                              <div className="p-2 bg-emerald-50/50 dark:bg-emerald-950/30 rounded-lg border border-emerald-100 dark:border-emerald-900/50 text-[11px] flex items-center justify-between">
+                                                <span className="text-muted-foreground">Next Receipt:</span>
+                                                <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                                  {(liveInvoiceSettings.receiptPrefix || "REC-")}{String(liveInvoiceSettings.receiptSequenceNumber || 1).padStart(liveInvoiceSettings.receiptPadding ?? 5, "0")}
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            <div className="p-3.5 bg-white dark:bg-slate-800/80 rounded-xl border border-teal-200 dark:border-teal-900/50 space-y-2.5">
+                                              <h4 className="text-xs font-bold text-foreground">📦 Delivery Challan Prefix &amp; Sequence (DC-)</h4>
+                                              <div className="grid grid-cols-3 gap-2">
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
+                                                  <input type="text" value={liveInvoiceSettings.challanPrefix || "DC-"}
+                                                    onChange={(e) => { const updated = { ...liveInvoiceSettings, challanPrefix: e.target.value.toUpperCase() }; setLiveInvoiceSettings(updated); saveStoredInvoiceSettings(updated, tenant?.id); }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-mono font-bold" placeholder="DC-" />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Next Sequence</label>
+                                                  <input type="number" min="1" value={liveInvoiceSettings.challanSequenceNumber || 1}
+                                                    onChange={(e) => { const updated = { ...liveInvoiceSettings, challanSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) }; setLiveInvoiceSettings(updated); saveStoredInvoiceSettings(updated, tenant?.id); }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-bold" />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Padding</label>
+                                                  <select value={liveInvoiceSettings.challanPadding ?? 4}
+                                                    onChange={(e) => { const updated = { ...liveInvoiceSettings, challanPadding: parseInt(e.target.value, 10) || 4 }; setLiveInvoiceSettings(updated); saveStoredInvoiceSettings(updated, tenant?.id); }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-semibold">
+                                                    <option value={3}>3 Digits</option><option value={4}>4 Digits</option><option value={5}>5 Digits</option><option value={6}>6 Digits</option>
+                                                  </select>
+                                                </div>
+                                              </div>
+                                              <div className="p-2 bg-teal-50/50 dark:bg-teal-950/30 rounded-lg border border-teal-100 dark:border-teal-900/50 text-[11px] flex items-center justify-between">
+                                                <span className="text-muted-foreground">Next Challan:</span>
+                                                <span className="font-mono font-bold text-teal-600 dark:text-teal-400">
+                                                  {(liveInvoiceSettings.challanPrefix || "DC-")}{String(liveInvoiceSettings.challanSequenceNumber || 1).padStart(liveInvoiceSettings.challanPadding ?? 4, "0")}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Sub-Tab 2: Columns & IMEI */}
+                                        {settingsActiveSubTab === "columns" && (
+                                          <div className="space-y-2.5 animate-in fade-in">
+                                            {/* IMEI / Serial No Highlighted Toggle */}
+                                            <label className="flex items-center justify-between p-3 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/30 cursor-pointer hover:bg-indigo-50 transition-colors">
+                                              <div className="flex items-center gap-2.5">
+                                                <span className="text-lg">📱</span>
+                                                <div>
+                                                  <span className="text-xs font-bold text-foreground block">Serial / IMEI No. Column</span>
+                                                  <span className="text-[10px] text-muted-foreground">Print device serial, IMEI & MAC address rows</span>
+                                                </div>
+                                              </div>
+                                              <input
+                                                type="checkbox"
+                                                checked={Boolean(liveInvoiceSettings.showSerialNo)}
+                                                onChange={(e) => {
+                                                  const updated = { ...liveInvoiceSettings, showSerialNo: e.target.checked };
+                                                  setLiveInvoiceSettings(updated);
+                                                  saveStoredInvoiceSettings(updated, tenant?.id);
+                                                  toggleElementField("showSerialNo" as any);
+                                                }}
+                                                className="size-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                              />
+                                            </label>
+
+                                            {/* Item Table Columns — full control set from the old popup */}
+                                            <div className="space-y-2.5 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                                              <h4 className="text-xs font-bold text-foreground">Item Table Columns</h4>
+                                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                                {[
+                                                  { key: "showItemIndex", label: "Item Index (#)" },
+                                                  { key: "showItemDescription", label: "Item Description" },
+                                                  { key: "showSKU", label: "SKU / Barcode" },
+                                                  { key: "showHSN", label: "HSN / SAC" },
+                                                  { key: "showMRP", label: "MRP" },
+                                                  { key: "showDiscount", label: "Discount" },
+                                                  { key: "showTax", label: "Tax / GST Rate" },
+                                                  { key: "showBatchNo", label: "Batch No." },
+                                                  { key: "showExpDate", label: "Expiry Date" },
+                                                  { key: "showMfgDate", label: "Mfg Date" },
+                                                  { key: "showWarranty", label: "Warranty" },
+                                                  { key: "showUOM", label: "Secondary UOM" },
+                                                ].map((col) => (
+                                                  <label
+                                                    key={col.key}
+                                                    className="flex items-center justify-between p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40 transition-colors"
+                                                  >
+                                                    <span className="text-[11px] font-medium text-foreground">{col.label}</span>
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={(activeTemplate.fields as any)[col.key] !== false}
+                                                      onChange={() => toggleElementField(col.key as any)}
+                                                      className="size-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                    />
+                                                  </label>
+                                                ))}
+                                              </div>
+                                            </div>
+
+                                            {/* Summary / Footer Toggles */}
+                                            <div className="space-y-2.5 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                                              <h4 className="text-xs font-bold text-foreground">Summary &amp; Footer Toggles</h4>
+                                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                                {[
+                                                  { key: "showOverallQty", label: "Overall Qty Summary" },
+                                                  { key: "showSavingsBanner", label: "Savings Banner" },
+                                                  { key: "showRoundOff", label: "Round Off" },
+                                                  { key: "showTaxSplit", label: "Tax Breakdown (CGST/SGST/IGST)" },
+                                                  { key: "showPartyBalance", label: "Party Balance" },
+                                                  { key: "showLoyaltyPoints", label: "Loyalty Points" },
+                                                  { key: "showPaidInFullStamp", label: "Paid-in-Full Stamp" },
+                                                  { key: "showQR", label: "Payment QR" },
+                                                  { key: "showGoogleReviewQR", label: "Google Review QR" },
+                                                  { key: "showSignature", label: "Authorized Signatory" },
+                                                  { key: "showSignatureStamp", label: "Signature & Company Stamp" },
+                                                  { key: "showTerms", label: "Terms & Conditions" },
+                                                  { key: "showDeclaration", label: "Statutory Declaration" },
+                                                  { key: "showFooterMessage", label: "Footer Message" },
+                                                ].map((col) => (
+                                                  <label
+                                                    key={col.key}
+                                                    className="flex items-center justify-between p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40 transition-colors"
+                                                  >
+                                                    <span className="text-[11px] font-medium text-foreground">{col.label}</span>
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={(activeTemplate.fields as any)[col.key] !== false}
+                                                      onChange={() => toggleElementField(col.key as any)}
+                                                      className="size-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                    />
+                                                  </label>
+                                                ))}
+                                              </div>
+                                            </div>
+
+                                            {/* Invoice Detail Field Toggles — bound to liveInvoiceSettings */}
+                                            <div className="space-y-2.5 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                                              <h4 className="text-xs font-bold text-foreground">Invoice Detail Fields</h4>
+                                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                                {[
+                                                  { key: "showPoNumber", label: "PO Number" },
+                                                  { key: "showEwayBill", label: "E-Way Bill No." },
+                                                  { key: "showVehicleNumber", label: "Vehicle Number" },
+                                                  { key: "showChallanNumber", label: "Challan Number" },
+                                                ].map((col) => (
+                                                  <label
+                                                    key={col.key}
+                                                    className="flex items-center justify-between p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40 transition-colors"
+                                                  >
+                                                    <span className="text-[11px] font-medium text-foreground">{col.label}</span>
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={Boolean((liveInvoiceSettings as any)[col.key])}
+                                                      onChange={(e) => {
+                                                        const updated = { ...liveInvoiceSettings, [col.key]: e.target.checked } as any;
+                                                        setLiveInvoiceSettings(updated);
+                                                        saveStoredInvoiceSettings(updated, tenant?.id);
+                                                      }}
+                                                      className="size-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                    />
+                                                  </label>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Sub-Tab 3: Bank & UPI QR */}
+                                        {settingsActiveSubTab === "bank_qr" && (
+                                          <div className="space-y-2.5 animate-in fade-in">
+                                            <div className="space-y-2.5 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                                              <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                                <QrCode className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                                {t("UPI Payment QR & Bank Details", "UPI Payment QR & Bank Details")}
+                                              </h4>
+                                              <div className="grid grid-cols-2 gap-2">
+                                                <label className="flex items-center justify-between p-2 rounded-lg border border-border bg-card cursor-pointer">
+                                                  <span className="text-[10.5px] font-semibold text-foreground">Print UPI QR</span>
+                                                  <input
+                                                    type="checkbox"
+                                                    checked={activeTemplate.fields?.showQR !== false}
+                                                    onChange={(e) => updateTemplateProperty("fields", { ...activeTemplate.fields, showQR: e.target.checked })}
+                                                    className="h-4 w-4 rounded border-input text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                  />
+                                                </label>
+                                                <label className="flex items-center justify-between p-2 rounded-lg border border-border bg-card cursor-pointer">
+                                                  <span className="text-[10.5px] font-semibold text-foreground">Bank Account Box</span>
+                                                  <input
+                                                    type="checkbox"
+                                                    checked={!!activeTemplate.fields.showBankDetails}
+                                                    onChange={() => toggleElementField("showBankDetails")}
+                                                    className="h-4 w-4 rounded border-input text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                  />
+                                                </label>
+                                              </div>
+                                              <div className="grid grid-cols-2 gap-2">
+                                                <div>
+                                                  <label className="text-[9.5px] font-semibold text-muted-foreground block mb-0.5">Payee / Merchant Name</label>
+                                                  <input
+                                                    type="text"
+                                                    value={activeTemplate.payeeName || ""}
+                                                    onChange={(e) => updateTemplateProperty("payeeName", e.target.value)}
+                                                    placeholder="Store Merchant / Firm Name"
+                                                    className="w-full h-8 rounded-lg border border-input bg-background px-2.5 text-[11px] font-semibold text-foreground focus:border-indigo-500"
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[9.5px] font-semibold text-muted-foreground block mb-0.5">Merchant UPI ID / VPA</label>
+                                                  <input
+                                                    type="text"
+                                                    value={activeTemplate.upiId || ""}
+                                                    onChange={(e) => updateTemplateProperty("upiId", e.target.value.trim().toLowerCase())}
+                                                    placeholder="e.g. 9908297963@ybl or store@okaxis"
+                                                    className="w-full h-8 rounded-lg border border-input bg-background px-2.5 text-[11px] font-mono font-bold text-foreground focus:border-indigo-500"
+                                                  />
+                                                </div>
+                                              </div>
+                                              <div className="space-y-2 p-3 bg-card rounded-xl border border-border/70">
+                                                <div className="flex items-center justify-between">
+                                                  <span className="text-[11px] font-bold text-foreground">Structured Bank Account Details</span>
+                                                  {printBankAccounts.length > 0 && (
+                                                    <span className="text-[9px] text-muted-foreground">Or pick from accounts below</span>
+                                                  )}
+                                                </div>
+                                                <div>
+                                                  <label className="text-[9.5px] font-semibold text-muted-foreground block mb-0.5">{t("Insert from Configured Bank Account", "Insert from Configured Bank Account")}</label>
+                                                  {printBankAccounts.length > 0 ? (
+                                                    <select
+                                                      onChange={(e) => {
+                                                        const b = printBankAccounts.find((x) => x.id === e.target.value);
+                                                        if (b) {
+                                                          const bName = b.bank_name || b.name || "";
+                                                          const accNo = b.account_number || "";
+                                                          const ifsc = b.ifsc_code || "";
+                                                          const holder = b.account_holder_name || "";
+                                                          const branch = b.branch_name || "";
+                                                          const parts = [
+                                                            `Bank: ${bName}`,
+                                                            `A/C: ${accNo}`,
+                                                            `IFSC: ${ifsc}`,
+                                                          ];
+                                                          if (holder) parts.push(`Holder: ${holder}`);
+                                                          if (branch) parts.push(`Branch: ${branch}`);
+                                                          if (b.upi_id) {
+                                                            parts.push(`UPI: ${b.upi_id}`);
+                                                          }
+                                                          updateTemplateProperties({
+                                                            bankName: bName,
+                                                            accountNumber: accNo,
+                                                            ifscCode: ifsc,
+                                                            accountHolderName: holder,
+                                                            branchName: branch,
+                                                            upiId: b.upi_id || activeTemplate.upiId,
+                                                            bankDetails: parts.join(" | "),
+                                                            fields: { ...activeTemplate.fields, showBankDetails: true },
+                                                          });
+                                                          toast.success(`Inserted bank details from "${b.name}"`);
+                                                        }
+                                                      }}
+                                                      className="w-full h-8 rounded-lg border border-input bg-background px-2 text-[10.5px] font-semibold text-foreground cursor-pointer"
+                                                    >
+                                                      <option value="">{t("-- Choose Bank Account --", "-- Choose Bank Account --")}</option>
+                                                      {printBankAccounts.map((b) => (
+                                                        <option key={b.id} value={b.id}>{b.name} ({b.bank_name || "Bank"}) - ...{b.account_number?.slice(-4) || ""} {b.is_default ? "★" : ""}</option>
+                                                      ))}
+                                                    </select>
+                                                  ) : (
+                                                    <p className="text-[10px] text-muted-foreground py-0.5">{t("No bank accounts configured yet — add one under Settings → Bank Accounts.", "No bank accounts configured yet")}</p>
+                                                  )}
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2 pt-1">
+                                                  <div>
+                                                    <label className="text-[9.5px] font-semibold text-muted-foreground block mb-0.5">Bank Name</label>
+                                                    <input
+                                                      type="text"
+                                                      value={activeTemplate.bankName || ""}
+                                                      onChange={(e) => updateTemplateProperty("bankName", e.target.value)}
+                                                      placeholder="e.g. HDFC Bank"
+                                                      className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] text-foreground focus:border-indigo-500"
+                                                    />
+                                                  </div>
+                                                  <div>
+                                                    <label className="text-[9.5px] font-semibold text-muted-foreground block mb-0.5">Account Number</label>
+                                                    <input
+                                                      type="text"
+                                                      value={activeTemplate.accountNumber || ""}
+                                                      onChange={(e) => updateTemplateProperty("accountNumber", e.target.value)}
+                                                      placeholder="5010023456789"
+                                                      className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] font-mono text-foreground focus:border-indigo-500"
+                                                    />
+                                                  </div>
+                                                  <div>
+                                                    <label className="text-[9.5px] font-semibold text-muted-foreground block mb-0.5">IFSC Code</label>
+                                                    <input
+                                                      type="text"
+                                                      value={activeTemplate.ifscCode || ""}
+                                                      onChange={(e) => updateTemplateProperty("ifscCode", e.target.value.toUpperCase())}
+                                                      placeholder="HDFC0000104"
+                                                      className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] font-mono text-foreground focus:border-indigo-500"
+                                                    />
+                                                  </div>
+                                                  <div>
+                                                    <label className="text-[9.5px] font-semibold text-muted-foreground block mb-0.5">Branch Name</label>
+                                                    <input
+                                                      type="text"
+                                                      value={activeTemplate.branchName || ""}
+                                                      onChange={(e) => updateTemplateProperty("branchName", e.target.value)}
+                                                      placeholder="Indiranagar Branch"
+                                                      className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] text-foreground focus:border-indigo-500"
+                                                    />
+                                                  </div>
+                                                  <div className="col-span-2">
+                                                    <label className="text-[9.5px] font-semibold text-muted-foreground block mb-0.5">Account Holder Name</label>
+                                                    <input
+                                                      type="text"
+                                                      value={activeTemplate.accountHolderName || ""}
+                                                      onChange={(e) => updateTemplateProperty("accountHolderName", e.target.value)}
+                                                      placeholder="ACME ENTERPRISES PVT LTD"
+                                                      className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] text-foreground focus:border-indigo-500"
+                                                    />
+                                                  </div>
+                                                </div>
+                                              </div>
+                                              <div>
+                                                <label className="text-[9.5px] font-semibold text-muted-foreground block mb-0.5">{t("Org-Level Payment QR & UPI Collections", "Org-Level Payment QR & UPI Collections")}</label>
+                                                <div className="space-y-2 p-2.5 bg-purple-50/40 dark:bg-purple-950/20 rounded-xl border border-purple-200 dark:border-purple-900/50">
+                                                  <label className="flex items-center justify-between">
+                                                    <span className="text-[10.5px] font-semibold text-foreground">Enable Payment QR on Invoices</span>
+                                                    <input type="checkbox" checked={Boolean(orgPaymentQr?.enabled)}
+                                                      onChange={(e) => setOrgPaymentQr({ ...orgPaymentQr, enabled: e.target.checked })}
+                                                      className="h-4 w-4 rounded text-purple-600 focus:ring-purple-500 cursor-pointer" />
+                                                  </label>
+                                                  <div>
+                                                    <label className="text-[9.5px] font-semibold text-muted-foreground block mb-0.5">Payment QR Method</label>
+                                                    <div className="grid grid-cols-3 gap-1.5">
+                                                      {([
+                                                        { id: "dynamic_upi", label: "Dynamic UPI" },
+                                                        { id: "razorpay", label: "Razorpay" },
+                                                        { id: "custom_image", label: "Custom Image" },
+                                                      ]).map((m) => (
+                                                        <button key={m.id} type="button"
+                                                          onClick={() => setOrgPaymentQr({ ...orgPaymentQr, type: m.id })}
+                                                          className={`h-7 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
+                                                            orgPaymentQr?.type === m.id
+                                                              ? "bg-purple-600 text-white border-purple-600"
+                                                              : "bg-white dark:bg-slate-900 text-muted-foreground border-input hover:bg-muted/50"
+                                                          }`}>
+                                                          {m.label}
+                                                        </button>
+                                                      ))}
+                                                    </div>
+                                                  </div>
+                                                  <div>
+                                                    <label className="text-[9.5px] font-semibold text-muted-foreground block mb-0.5">UPI VPA</label>
+                                                    <input type="text" value={orgPaymentQr?.vpa || ""}
+                                                      onChange={(e) => setOrgPaymentQr({ ...orgPaymentQr, vpa: e.target.value.trim().toLowerCase() })}
+                                                      placeholder="merchant@okaxis"
+                                                      className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] font-mono font-bold text-foreground focus:border-purple-500" />
+                                                  </div>
+                                                  <div>
+                                                    <label className="text-[9.5px] font-semibold text-muted-foreground block mb-0.5">Payee / Merchant Name</label>
+                                                    <input type="text" value={orgPaymentQr?.payeeName || ""}
+                                                      onChange={(e) => setOrgPaymentQr({ ...orgPaymentQr, payeeName: e.target.value })}
+                                                      className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] font-semibold text-foreground focus:border-purple-500" />
+                                                  </div>
+                                                  <div className="grid grid-cols-3 gap-1.5">
+                                                    <div>
+                                                      <label className="text-[9.5px] font-semibold text-muted-foreground block mb-0.5">Bank</label>
+                                                      <input type="text" value={orgPaymentQr?.bankName || ""}
+                                                        onChange={(e) => setOrgPaymentQr({ ...orgPaymentQr, bankName: e.target.value })}
+                                                        placeholder="HDFC"
+                                                        className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10px] text-foreground focus:border-purple-500" />
+                                                    </div>
+                                                    <div>
+                                                      <label className="text-[9.5px] font-semibold text-muted-foreground block mb-0.5">A/C No</label>
+                                                      <input type="text" value={orgPaymentQr?.accountNumber || ""}
+                                                        onChange={(e) => setOrgPaymentQr({ ...orgPaymentQr, accountNumber: e.target.value })}
+                                                        placeholder="5010023..."
+                                                        className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10px] font-mono text-foreground focus:border-purple-500" />
+                                                    </div>
+                                                    <div>
+                                                      <label className="text-[9.5px] font-semibold text-muted-foreground block mb-0.5">IFSC</label>
+                                                      <input type="text" value={orgPaymentQr?.ifsc || ""}
+                                                        onChange={(e) => setOrgPaymentQr({ ...orgPaymentQr, ifsc: e.target.value })}
+                                                        placeholder="HDFC0000104"
+                                                        className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10px] font-mono text-foreground focus:border-purple-500" />
+                                                    </div>
+                                                  </div>
+                                                  <div>
+                                                    <label className="text-[9.5px] font-semibold text-muted-foreground block mb-0.5">Custom Standee Image URL (base64/URL)</label>
+                                                    <input type="text" value={orgPaymentQr?.customImageUrl || ""}
+                                                      onChange={(e) => setOrgPaymentQr({ ...orgPaymentQr, customImageUrl: e.target.value })}
+                                                      placeholder="https://... or data:image/png;base64,..."
+                                                      className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10px] font-mono text-foreground focus:border-purple-500" />
+                                                  </div>
+                                                  <button type="button" onClick={saveOrgPaymentQr}
+                                                    className="w-full h-7 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs">
+                                                    <Save className="size-3.5" /> Save &amp; Apply
+                                                  </button>
+                                                </div>
+                                              </div>
+                                              <div>
+                                                <label className="text-[9.5px] font-semibold text-muted-foreground block mb-0.5">{t("Bank & Wire Transfer Details", "Bank & Wire Transfer Details")}</label>
+                                                <textarea
+                                                  rows={2}
+                                                  value={activeTemplate.bankDetails || ""}
+                                                  onChange={(e) => updateTemplateProperty("bankDetails", e.target.value)}
+                                                  placeholder="Bank: HDFC Bank | A/C: 5010023456789 | IFSC: HDFC0000104"
+                                                  className="w-full rounded-lg border border-input bg-background px-2 py-1.5 text-[10.5px] font-mono text-foreground focus:border-indigo-500"
+                                                />
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Sub-Tab 4: Terms & Legal */}
+                                        {settingsActiveSubTab === "tax_terms" && (
+                                          <div className="space-y-2.5 animate-in fade-in">
+                                            <label className="flex items-center justify-between p-3 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
+                                              <div>
+                                                <span className="text-xs font-bold text-foreground block">Print Terms & Conditions / Return Policy</span>
+                                                <span className="text-[10px] text-muted-foreground">Display store returns, warranty, and interest policies</span>
+                                              </div>
+                                              <input
+                                                type="checkbox"
+                                                checked={activeTemplate.fields.showTerms !== false}
+                                                onChange={() => toggleElementField("showTerms")}
+                                                className="size-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                              />
+                                            </label>
+                                            <label className="flex items-center justify-between p-3 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
+                                              <div>
+                                                <span className="text-xs font-bold text-foreground block">Digital Signature & Company Stamp</span>
+                                                <span className="text-[10px] text-muted-foreground">Show authorized signatory seal in invoice footer</span>
+                                              </div>
+                                              <input
+                                                type="checkbox"
+                                                checked={!!activeTemplate.fields.showSignature}
+                                                onChange={() => toggleElementField("showSignature")}
+                                                className="size-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                              />
+                                            </label>
+                                            <div className="space-y-2.5 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                                              <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                                <FileText className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                                {t("Terms & Footer Notes", "Terms & Footer Notes")}
+                                              </h4>
+                                              <div className="space-y-1">
+                                                <label className="text-[9.5px] font-semibold text-muted-foreground block">Terms &amp; Conditions</label>
+                                                <textarea
+                                                  rows={3}
+                                                  value={activeTemplate.termsText || (activeTemplate as any).termsAndConditionsText || ""}
+                                                  onChange={(e) => {
+                                                    updateTemplateProperty("termsText", e.target.value);
+                                                    updateTemplateProperty("termsAndConditionsText" as any, e.target.value);
+                                                  }}
+                                                  placeholder="1. Goods once sold will not be taken back or exchanged."
+                                                  className="w-full rounded-lg border border-input bg-background px-2 py-1.5 text-[10.5px] font-mono text-foreground focus:border-indigo-500"
+                                                />
+                                              </div>
+                                              <div className="space-y-1">
+                                                <label className="text-[9.5px] font-semibold text-muted-foreground block">Footer / Thank-You Note</label>
+                                                <input
+                                                  type="text"
+                                                  value={activeTemplate.thankYouNote || activeTemplate.footerText || ""}
+                                                  onChange={(e) => {
+                                                    updateTemplateProperty("thankYouNote", e.target.value);
+                                                    updateTemplateProperty("footerText", e.target.value);
+                                                  }}
+                                                  placeholder="Thank you for shopping with us!"
+                                                  className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] text-foreground focus:border-indigo-500"
+                                                />
+                                              </div>
+                                            </div>
+
+                                            {/* Google Review QR — Org-level (billing GST store) */}
+                                            <div className="space-y-2 p-3.5 bg-amber-50/50 dark:bg-amber-950/20 rounded-2xl border border-amber-200 dark:border-amber-900/50">
+                                              <div className="flex items-center justify-between">
+                                                <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                                  <Star className="h-3.5 w-3.5 text-amber-500" />
+                                                  Google Review QR
+                                                </h4>
+                                                <input type="checkbox" checked={orgReviewEnabled}
+                                                  onChange={(e) => setOrgReviewEnabled(e.target.checked)}
+                                                  className="h-4 w-4 rounded text-amber-500 focus:ring-amber-500 cursor-pointer" />
+                                              </div>
+                                              <div className="space-y-1">
+                                                <label className="text-[9.5px] font-semibold text-muted-foreground block">Review URL (base64/URL)</label>
+                                                <input type="text" value={orgReviewUrl}
+                                                  onChange={(e) => setOrgReviewUrl(e.target.value)}
+                                                  placeholder="https://search.google.com/local/writereview?placeid=..."
+                                                  className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10.5px] font-mono text-foreground focus:border-amber-500" />
+                                                {orgReviewUrl && (
+                                                  <a href={orgReviewUrl} target="_blank" rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-400 hover:underline">
+                                                    <ExternalLink className="h-3 w-3" /> Open link
+                                                  </a>
+                                                )}
+                                              </div>
+                                              <button type="button" onClick={saveOrgReviewSettings}
+                                                className="w-full h-7 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs">
+                                                <Save className="size-3.5" /> Save &amp; Apply
+                                              </button>
+                                            </div>
+
+                                            {/* Signature & Stamp — Org-level (billing GST store) */}
+                                            <div className="space-y-2 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
+                                              <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                                <PenTool className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                                Signature &amp; Stamp
+                                              </h4>
+                                              <div className="grid grid-cols-2 gap-1.5">
+                                                <label className="flex items-center justify-between">
+                                                  <span className="text-[10px] font-semibold text-foreground">Show Signature</span>
+                                                  <input type="checkbox" checked={orgSignature?.showDigitalSignature !== false}
+                                                    onChange={(e) => setOrgSignature({ ...orgSignature, showDigitalSignature: e.target.checked })}
+                                                    className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer" />
+                                                </label>
+                                                <label className="flex items-center justify-between">
+                                                  <span className="text-[10px] font-semibold text-foreground">Show Stamp</span>
+                                                  <input type="checkbox" checked={orgSignature?.showDigitalStamp !== false}
+                                                    onChange={(e) => setOrgSignature({ ...orgSignature, showDigitalStamp: e.target.checked })}
+                                                    className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer" />
+                                                </label>
+                                              </div>
+                                              <div className="space-y-1">
+                                                <label className="text-[9.5px] font-semibold text-muted-foreground block">Signature Image URL (base64/URL)</label>
+                                                <input type="text" value={orgSignature?.signatureUrl || ""}
+                                                  onChange={(e) => setOrgSignature({ ...orgSignature, signatureUrl: e.target.value })}
+                                                  className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10px] font-mono text-foreground focus:border-indigo-500" />
+                                              </div>
+                                              <div className="space-y-1">
+                                                <label className="text-[9.5px] font-semibold text-muted-foreground block">Stamp Image URL (base64/URL)</label>
+                                                <input type="text" value={orgSignature?.stampUrl || ""}
+                                                  onChange={(e) => setOrgSignature({ ...orgSignature, stampUrl: e.target.value })}
+                                                  className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10px] font-mono text-foreground focus:border-indigo-500" />
+                                              </div>
+                                              <div className="grid grid-cols-2 gap-1.5">
+                                                <div className="space-y-1">
+                                                  <label className="text-[9.5px] font-semibold text-muted-foreground block">Signature Title</label>
+                                                  <input type="text" value={orgSignature?.signatureTitle || ""}
+                                                    onChange={(e) => setOrgSignature({ ...orgSignature, signatureTitle: e.target.value })}
+                                                    placeholder="Authorized Signatory"
+                                                    className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10px] font-semibold text-foreground focus:border-indigo-500" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                  <label className="text-[9.5px] font-semibold text-muted-foreground block">Company Name</label>
+                                                  <input type="text" value={orgSignature?.signatureCompanyName || ""}
+                                                    onChange={(e) => setOrgSignature({ ...orgSignature, signatureCompanyName: e.target.value })}
+                                                    className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10px] font-semibold text-foreground focus:border-indigo-500" />
+                                                </div>
+                                              </div>
+                                              <div className="space-y-1">
+                                                <label className="text-[9.5px] font-semibold text-muted-foreground block">Alignment</label>
+                                                <select value={orgSignatureAlignment}
+                                                  onChange={(e) => setOrgSignatureAlignment(e.target.value as any)}
+                                                  className="w-full h-7 rounded-lg border border-input bg-background px-2 text-[10px] font-semibold text-foreground focus:border-indigo-500">
+                                                  <option value="left">Left</option>
+                                                  <option value="center">Center</option>
+                                                  <option value="right">Right</option>
+                                                </select>
+                                              </div>
+                                              <button type="button" onClick={saveOrgSignature}
+                                                className="w-full h-7 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs">
+                                                <Save className="size-3.5" /> Save &amp; Apply
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Sub-Tab 5: Credit / Debit Note Prefixes */}
+                                        {settingsActiveSubTab === "credit_debit" && (
+                                          <div className="space-y-3 animate-in fade-in">
+                                            <div className="p-3.5 bg-rose-50/50 dark:bg-rose-950/20 rounded-xl border border-rose-200 dark:border-rose-900/50 space-y-2.5">
+                                              <span className="text-[11px] font-bold text-rose-800 dark:text-rose-300 block">🧾 Sales Credit Note (CN-)</span>
+                                              <div className="grid grid-cols-3 gap-2">
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
+                                                  <input
+                                                    type="text"
+                                                    value={liveInvoiceSettings.creditNotePrefix || "CN-"}
+                                                    onChange={(e) => {
+                                                      const updated = { ...liveInvoiceSettings, creditNotePrefix: e.target.value.toUpperCase() };
+                                                      setLiveInvoiceSettings(updated);
+                                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                                    }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-mono font-bold"
+                                                    placeholder="CN-"
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Next Number</label>
+                                                  <input
+                                                    type="number"
+                                                    min="1"
+                                                    value={liveInvoiceSettings.creditNoteSequenceNumber || 1}
+                                                    onChange={(e) => {
+                                                      const updated = { ...liveInvoiceSettings, creditNoteSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) };
+                                                      setLiveInvoiceSettings(updated);
+                                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                                    }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-bold"
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Padding</label>
+                                                  <select
+                                                    value={liveInvoiceSettings.creditNotePadding ?? 4}
+                                                    onChange={(e) => {
+                                                      const updated = { ...liveInvoiceSettings, creditNotePadding: parseInt(e.target.value, 10) || 4 };
+                                                      setLiveInvoiceSettings(updated);
+                                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                                    }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-semibold"
+                                                  >
+                                                    <option value={4}>4 Digits</option>
+                                                    <option value={5}>5 Digits</option>
+                                                    <option value={3}>3 Digits</option>
+                                                  </select>
+                                                </div>
+                                              </div>
+                                              <div className="p-2 bg-rose-100/50 dark:bg-rose-950/30 rounded-lg border border-rose-200 dark:border-rose-900/40 flex items-center justify-between">
+                                                <span className="text-[10px] text-muted-foreground">Next Credit Note:</span>
+                                                <span className="font-mono text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                                                  {(liveInvoiceSettings.creditNotePrefix || "CN-")}{String(liveInvoiceSettings.creditNoteSequenceNumber || 1).padStart(liveInvoiceSettings.creditNotePadding ?? 4, "0")}
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            <div className="p-3.5 bg-amber-50/50 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-900/50 space-y-2.5">
+                                              <span className="text-[11px] font-bold text-amber-800 dark:text-amber-300 block">🧾 Vendor Debit Note (DN-)</span>
+                                              <div className="grid grid-cols-3 gap-2">
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
+                                                  <input
+                                                    type="text"
+                                                    value={liveInvoiceSettings.debitNotePrefix || "DN-"}
+                                                    onChange={(e) => {
+                                                      const updated = { ...liveInvoiceSettings, debitNotePrefix: e.target.value.toUpperCase() };
+                                                      setLiveInvoiceSettings(updated);
+                                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                                    }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-mono font-bold"
+                                                    placeholder="DN-"
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Next Number</label>
+                                                  <input
+                                                    type="number"
+                                                    min="1"
+                                                    value={liveInvoiceSettings.debitNoteSequenceNumber || 1}
+                                                    onChange={(e) => {
+                                                      const updated = { ...liveInvoiceSettings, debitNoteSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) };
+                                                      setLiveInvoiceSettings(updated);
+                                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                                    }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-bold"
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Padding</label>
+                                                  <select
+                                                    value={liveInvoiceSettings.debitNotePadding ?? 4}
+                                                    onChange={(e) => {
+                                                      const updated = { ...liveInvoiceSettings, debitNotePadding: parseInt(e.target.value, 10) || 4 };
+                                                      setLiveInvoiceSettings(updated);
+                                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                                    }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-semibold"
+                                                  >
+                                                    <option value={4}>4 Digits</option>
+                                                    <option value={5}>5 Digits</option>
+                                                    <option value={3}>3 Digits</option>
+                                                  </select>
+                                                </div>
+                                              </div>
+                                              <div className="p-2 bg-amber-100/50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-900/40 flex items-center justify-between">
+                                                <span className="text-[10px] text-muted-foreground">Next Debit Note:</span>
+                                                <span className="font-mono text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                                                  {(liveInvoiceSettings.debitNotePrefix || "DN-")}{String(liveInvoiceSettings.debitNoteSequenceNumber || 1).padStart(liveInvoiceSettings.debitNotePadding ?? 4, "0")}
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            <div className="p-3.5 bg-blue-50/50 dark:bg-blue-950/20 rounded-xl border border-blue-200 dark:border-blue-900/50 space-y-2.5">
+                                              <span className="text-[11px] font-bold text-blue-800 dark:text-blue-300 block">🛒 Purchase Invoice (PINV-)</span>
+                                              <div className="grid grid-cols-3 gap-2">
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
+                                                  <input
+                                                    type="text"
+                                                    value={liveInvoiceSettings.purchaseInvoicePrefix || "PINV-"}
+                                                    onChange={(e) => {
+                                                      const updated = { ...liveInvoiceSettings, purchaseInvoicePrefix: e.target.value.toUpperCase() };
+                                                      setLiveInvoiceSettings(updated);
+                                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                                    }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-mono font-bold"
+                                                    placeholder="PINV-"
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Next Number</label>
+                                                  <input
+                                                    type="number"
+                                                    min="1"
+                                                    value={liveInvoiceSettings.purchaseInvoiceSequenceNumber || 1}
+                                                    onChange={(e) => {
+                                                      const updated = { ...liveInvoiceSettings, purchaseInvoiceSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) };
+                                                      setLiveInvoiceSettings(updated);
+                                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                                    }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-bold"
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Padding</label>
+                                                  <select
+                                                    value={liveInvoiceSettings.purchaseInvoicePadding ?? 4}
+                                                    onChange={(e) => {
+                                                      const updated = { ...liveInvoiceSettings, purchaseInvoicePadding: parseInt(e.target.value, 10) || 4 };
+                                                      setLiveInvoiceSettings(updated);
+                                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                                    }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-semibold"
+                                                  >
+                                                    <option value={4}>4 Digits</option>
+                                                    <option value={5}>5 Digits</option>
+                                                    <option value={3}>3 Digits</option>
+                                                  </select>
+                                                </div>
+                                              </div>
+                                              <div className="p-2 bg-blue-100/50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-900/40 flex items-center justify-between">
+                                                <span className="text-[10px] text-muted-foreground">Next Purchase Invoice:</span>
+                                                <span className="font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">
+                                                  {(liveInvoiceSettings.purchaseInvoicePrefix || "PINV-")}{String(liveInvoiceSettings.purchaseInvoiceSequenceNumber || 1).padStart(liveInvoiceSettings.purchaseInvoicePadding ?? 4, "0")}
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            <div className="p-3.5 bg-purple-50/50 dark:bg-purple-950/20 rounded-xl border border-purple-200 dark:border-purple-900/50 space-y-2.5">
+                                              <span className="text-[11px] font-bold text-purple-800 dark:text-purple-300 block">📋 Purchase Order (PO-)</span>
+                                              <div className="grid grid-cols-3 gap-2">
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
+                                                  <input
+                                                    type="text"
+                                                    value={liveInvoiceSettings.purchaseOrderPrefix || "PO-"}
+                                                    onChange={(e) => {
+                                                      const updated = { ...liveInvoiceSettings, purchaseOrderPrefix: e.target.value.toUpperCase() };
+                                                      setLiveInvoiceSettings(updated);
+                                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                                    }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-mono font-bold"
+                                                    placeholder="PO-"
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Next Number</label>
+                                                  <input
+                                                    type="number"
+                                                    min="1"
+                                                    value={liveInvoiceSettings.purchaseOrderSequenceNumber || 1}
+                                                    onChange={(e) => {
+                                                      const updated = { ...liveInvoiceSettings, purchaseOrderSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) };
+                                                      setLiveInvoiceSettings(updated);
+                                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                                    }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-bold"
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="text-[10px] text-muted-foreground block mb-0.5">Padding</label>
+                                                  <select
+                                                    value={liveInvoiceSettings.purchaseOrderPadding ?? 4}
+                                                    onChange={(e) => {
+                                                      const updated = { ...liveInvoiceSettings, purchaseOrderPadding: parseInt(e.target.value, 10) || 4 };
+                                                      setLiveInvoiceSettings(updated);
+                                                      saveStoredInvoiceSettings(updated, tenant?.id);
+                                                    }}
+                                                    className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-semibold"
+                                                  >
+                                                    <option value={4}>4 Digits</option>
+                                                    <option value={5}>5 Digits</option>
+                                                    <option value={3}>3 Digits</option>
+                                                  </select>
+                                                </div>
+                                              </div>
+                                              <div className="p-2 bg-purple-100/50 dark:bg-purple-950/30 rounded-lg border border-purple-200 dark:border-purple-900/40 flex items-center justify-between">
+                                                <span className="text-[10px] text-muted-foreground">Next Purchase Order:</span>
+                                                <span className="font-mono text-[11px] font-bold text-purple-600 dark:text-purple-400">
+                                                  {(liveInvoiceSettings.purchaseOrderPrefix || "PO-")}{String(liveInvoiceSettings.purchaseOrderSequenceNumber || 1).padStart(liveInvoiceSettings.purchaseOrderPadding ?? 4, "0")}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Sub-Tab 6: Tax & GST Slabs (Core ERP) */}
+                                        {settingsActiveSubTab === "tax_finance" && (
+                                          <div className="space-y-3 animate-in fade-in">
+                                            <div className="p-3.5 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-xl border border-emerald-200 dark:border-emerald-900/50 space-y-2.5">
+                                              <div className="flex items-center justify-between">
+                                                <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 block">🧾 Configured GST Tax Slabs</span>
+                                                <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                                                  {taxSlabs.length} Active Slabs
+                                                </span>
+                                              </div>
+                                              <p className="text-[10.5px] text-muted-foreground">Active GST rates across POS, Sales Invoices &amp; Purchases with auto-split as CGST+SGST (Intra) or IGST (Inter).</p>
+                                              {taxSlabs.length === 0 ? (
+                                                <div className="p-3 bg-white/60 dark:bg-slate-900/40 rounded-lg border border-emerald-100 dark:border-emerald-900/40 text-[10.5px] text-muted-foreground">
+                                                  No active GST slabs yet. Add one below.
+                                                </div>
+                                              ) : (
+                                                <div className="grid grid-cols-3 gap-2">
+                                                  {taxSlabs.map((slab) => {
+                                                    const rate = Number(slab.rate ?? slab.rate_percent ?? 0);
+                                                    const half = (rate / 2).toFixed(1);
+                                                    return (
+                                                      <div key={slab.id || slab.code} className="p-2 bg-white/70 dark:bg-slate-900/50 rounded-lg border border-emerald-100 dark:border-emerald-900/40 space-y-0.5">
+                                                        <span className="font-extrabold text-xs text-foreground block">{rate}%</span>
+                                                        <span className="text-[10px] font-bold text-muted-foreground block truncate">{slab.name || `GST ${rate}%`}</span>
+                                                        <div className="mt-1 text-[8.5px] font-mono font-semibold text-muted-foreground border-t border-border/50 pt-1">
+                                                          <div>CGST {half}% + SGST {half}%</div>
+                                                          <div className="text-emerald-600 dark:text-emerald-400 font-bold">IGST {rate}%</div>
+                                                        </div>
+                                                      </div>
+                                                    );
+                                                  })}
+                                                </div>
+                                              )}
+                                            </div>
+
+                                            <div className="p-3.5 bg-indigo-50/40 dark:bg-indigo-950/20 rounded-xl border border-indigo-200 dark:border-indigo-900/50 space-y-2">
+                                              <span className="text-[10px] font-bold text-indigo-900 dark:text-indigo-300 uppercase tracking-wider block">+ Add New GST Tax Slab</span>
+                                              <div className="grid grid-cols-[90px_1fr_auto] gap-1.5 items-center">
+                                                <input
+                                                  type="number"
+                                                  step="0.01"
+                                                  min="0"
+                                                  max="100"
+                                                  value={newTaxRate}
+                                                  onChange={(e) => {
+                                                    setNewTaxRate(e.target.value);
+                                                    if (e.target.value) setNewTaxName(`GST ${e.target.value}%`);
+                                                  }}
+                                                  placeholder="Rate %"
+                                                  className="w-full h-7 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 px-2 text-[11px] font-bold text-foreground focus:ring-1 focus:ring-indigo-500"
+                                                />
+                                                <input
+                                                  type="text"
+                                                  value={newTaxName}
+                                                  onChange={(e) => setNewTaxName(e.target.value)}
+                                                  placeholder="Slab Name (e.g. GST 18% Standard)"
+                                                  className="w-full h-7 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 px-2 text-[11px] font-medium text-foreground focus:ring-1 focus:ring-indigo-500"
+                                                />
+                                                <button
+                                                  type="button"
+                                                  onClick={handleCreateTaxSlab}
+                                                  disabled={isAddingTaxSlab || !newTaxRate}
+                                                  className="h-7 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs disabled:opacity-50"
+                                                >
+                                                  {isAddingTaxSlab ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+                                                  Save
+                                                </button>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Sub-Tab 7: Barcode & Symbology */}
+                                        {settingsActiveSubTab === "barcode" && (
+                                          <div className="space-y-3 animate-in fade-in">
+                                            <div className="space-y-1">
+                                              <label className="text-xs font-semibold text-foreground">Symbology Standard</label>
+                                              <select
+                                                value={activeTemplate.barcodeSymbology || "Auto"}
+                                                onChange={(e) => updateTemplateProperty("barcodeSymbology", e.target.value as any)}
+                                                className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 font-medium"
+                                              >
+                                                <option value="Auto">Auto (Smart Detect numeric vs alphanumeric)</option>
+                                                <option value="Code-128">Code 128 (Universal High-Density Standard)</option>
+                                                <option value="EAN-13">GS1 EAN-13 (13-digit Retail Standard)</option>
+                                                <option value="Code-39">Code 39 (Alphanumeric Standard)</option>
+                                                <option value="QR">QR Code (2D Data Matrix / Instant UPI)</option>
+                                              </select>
+                                            </div>
+
+                                            <div className="space-y-1 p-3 bg-muted/20 rounded-xl border border-border/50">
+                                              <div className="flex justify-between text-[11px] font-semibold text-foreground">
+                                                <span>Barcode Height:</span>
+                                                <span className="font-mono text-indigo-600 dark:text-indigo-400">{activeTemplate.barcodeHeight || 44}px</span>
+                                              </div>
+                                              <input
+                                                type="range"
+                                                min="20"
+                                                max="90"
+                                                value={activeTemplate.barcodeHeight || 44}
+                                                onChange={(e) => updateTemplateProperty("barcodeHeight", Number(e.target.value))}
+                                                className="w-full cursor-pointer accent-indigo-600"
+                                              />
+                                            </div>
+
+                                            <div className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
+                                              <input
+                                                type="checkbox"
+                                                id="show-barcode-text-toggle-2"
+                                                checked={activeTemplate.showBarcodeText !== false}
+                                                onChange={(e) => updateTemplateProperty("showBarcodeText", e.target.checked)}
+                                                className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
+                                              />
+                                              <label htmlFor="show-barcode-text-toggle-2" className="text-xs font-semibold text-foreground cursor-pointer">
+                                                Show Digits / Text below Barcode
+                                              </label>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : null}
+                                    {/* ── Barcode & Label Studio — compact collapsed card (out of the A4 editor area) ── */}
+                                    {isBarcodeTemplate && (
+                                      <details className="rounded-2xl border border-blue-500/40 bg-card p-3 shadow-sm">
+                                        <summary className="cursor-pointer text-xs font-black text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                                          <ScanBarcode className="h-3.5 w-3.5" /> {t("Barcode & Label Studio (collapsed)", "Barcode & Label Studio (collapsed)")}
+                                        </summary>
                 {(selectedDocType === "barcode" || activeTemplate?.category === "barcodes") && (
                   <div className="p-4 rounded-2xl bg-card border border-blue-500/40 shadow-sm space-y-4 mb-4">
                     {/* Header */}
@@ -4677,2555 +8737,8 @@ export function PrintTemplates() {
                     )}
                   </div>
                 )}
-
-                {/* ── Detailed Table Columns & Format Controls ── */}
-                <div className="space-y-4 pt-2 border-t border-border/60">
-
-                  {/* Item Table Column Toggles */}
-                  <div className="space-y-2">
-                    {/* Item Table Column Toggles (Simple Controls - Synced with Advanced Word Studio) */}
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <TableIcon className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                          <h4 className="text-xs font-bold text-foreground">{t("Table Columns & Fields", "Table Columns & Fields")}</h4>
-                          <span className="text-[10px] text-muted-foreground font-medium hidden sm:inline">(Simple Toggles)</span>
-                        </div>
-                        <span className="text-[10px] text-muted-foreground font-medium">Select columns to display</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsWordStudioBlank(false);
-                            setIsWordStudioOpen(true);
-                          }}
-                          className="inline-flex items-center gap-1 text-[10.5px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 transition cursor-pointer active:scale-95 shadow-2xs"
-                          title="Open Advanced Word Studio Column Customizer: reorder columns, drag & drop, set custom widths, headers & alignments"
-                        >
-                          <Sparkles className="size-3 text-indigo-500 animate-pulse" />
-                          <span>{t("Advanced Column Studio", "Advanced Column Studio")}</span>
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                          <input
-                            type="checkbox"
-                            checked={activeTemplate.fields?.showItemIndex !== false}
-                            onChange={() => toggleElementField("showItemIndex")}
-                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span>S.No / #</span>
-                        </label>
-
-                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                          <input
-                            type="checkbox"
-                            checked={activeTemplate.fields?.showProductName !== false}
-                            onChange={() => toggleElementField("showProductName")}
-                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span>Item Name</span>
-                        </label>
-
-                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                          <input
-                            type="checkbox"
-                            checked={activeTemplate.fields?.showItemDescription !== false}
-                            onChange={() => toggleElementField("showItemDescription")}
-                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span>Description</span>
-                        </label>
-
-                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                          <input
-                            type="checkbox"
-                            checked={activeTemplate.fields?.showHSN !== false}
-                            onChange={() => toggleElementField("showHSN")}
-                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span>HSN / SAC</span>
-                        </label>
-
-                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                          <input
-                            type="checkbox"
-                            checked={activeTemplate.fields?.showBatchNumber !== false}
-                            onChange={() => toggleElementField("showBatchNumber")}
-                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span>Batch No</span>
-                        </label>
-
-                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                          <input
-                            type="checkbox"
-                            checked={activeTemplate.fields?.showExpMfgDates !== false}
-                            onChange={() => toggleElementField("showExpMfgDates")}
-                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span>Mfg / Exp Date</span>
-                        </label>
-
-                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                          <input
-                            type="checkbox"
-                            checked={activeTemplate.fields?.showSKU !== false}
-                            onChange={() => toggleElementField("showSKU")}
-                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span>SKU / Code</span>
-                        </label>
-
-                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                          <input
-                            type="checkbox"
-                            checked={activeTemplate.fields?.showSecondaryUnit !== false}
-                            onChange={() => toggleElementField("showSecondaryUnit")}
-                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span>UOM / Unit</span>
-                        </label>
-
-                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                          <input
-                            type="checkbox"
-                            checked={activeTemplate.fields?.showMRP !== false}
-                            onChange={() => toggleElementField("showMRP")}
-                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span>MRP</span>
-                        </label>
-
-                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                          <input
-                            type="checkbox"
-                            checked={activeTemplate.fields?.showItemRate !== false}
-                            onChange={() => toggleElementField("showItemRate")}
-                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span>Rate / Price</span>
-                        </label>
-
-                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                          <input
-                            type="checkbox"
-                            checked={activeTemplate.fields?.showDiscountCol !== false}
-                            onChange={() => toggleElementField("showDiscountCol")}
-                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span>Discount</span>
-                        </label>
-
-                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                          <input
-                            type="checkbox"
-                            checked={activeTemplate.fields?.showGstRateCol !== false}
-                            onChange={() => toggleElementField("showGstRateCol")}
-                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span>GST Rate %</span>
-                        </label>
-
-                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                          <input
-                            type="checkbox"
-                            checked={activeTemplate.fields?.showItemQty !== false}
-                            onChange={() => toggleElementField("showItemQty")}
-                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span>Quantity</span>
-                        </label>
-
-                        <label className="flex items-center gap-2 p-2 rounded-xl border border-border/60 bg-background cursor-pointer hover:bg-muted/40 text-[11px] font-semibold text-foreground transition">
-                          <input
-                            type="checkbox"
-                            checked={activeTemplate.fields?.showItemAmount !== false}
-                            onChange={() => toggleElementField("showItemAmount")}
-                            className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span>Total Amount</span>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Template Elements (14 Reorderable & Toggleable Elements) */}
-                  <div className="space-y-2 pt-2 border-t border-border/50">
-                    <div>
-                      <h4 className="text-xs font-bold text-foreground">{t("Template Elements", "Template Elements")}</h4>
-                      <p className="text-[10.5px] text-muted-foreground">{t("Drag to reorder or enable/disable elements", "Drag to reorder or enable/disable elements")}</p>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <ElementToggleRow
-                        icon={ImageIcon}
-                        label="Store Header & Logo"
-                        checked={!!activeTemplate.fields.showLogo}
-                        onChange={() => toggleElementField("showLogo")}
-                      />
-                      <ElementToggleRow
-                        icon={Building2}
-                        label="Company Details"
-                        checked={!!activeTemplate.fields.showCompanyDetails}
-                        onChange={() => toggleElementField("showCompanyDetails")}
-                      />
-                      <ElementToggleRow
-                        icon={Receipt}
-                        label="Invoice Details (No, Date, Bill To)"
-                        checked={!!activeTemplate.fields.showInvoiceDetails}
-                        onChange={() => toggleElementField("showInvoiceDetails")}
-                      />
-                      <ElementToggleRow
-                        icon={TableIcon}
-                        label="Item Table"
-                        checked={!!activeTemplate.fields.showItemTable}
-                        onChange={() => toggleElementField("showItemTable")}
-                      />
-                      <ElementToggleRow
-                        icon={ScanBarcode}
-                        label="Barcode"
-                        checked={!!activeTemplate.fields.showBarcode}
-                        onChange={() => toggleElementField("showBarcode")}
-                      />
-                      <ElementToggleRow
-                        icon={QrCode}
-                        label="QR Code"
-                        checked={!!activeTemplate.fields.showQR}
-                        onChange={() => toggleElementField("showQR")}
-                      />
-                      <ElementToggleRow
-                        icon={User}
-                        label="Customer Details"
-                        checked={!!activeTemplate.fields.showCustomerDetails}
-                        onChange={() => toggleElementField("showCustomerDetails")}
-                      />
-                      <ElementToggleRow
-                        icon={CreditCard}
-                        label="Payment Details"
-                        checked={!!activeTemplate.fields.showPaymentDetails}
-                        onChange={() => toggleElementField("showPaymentDetails")}
-                      />
-                      <ElementToggleRow
-                        icon={Calculator}
-                        label="Tax / GST % Split"
-                        checked={!!activeTemplate.fields.showTaxSplit}
-                        onChange={() => toggleElementField("showTaxSplit")}
-                      />
-                      <ElementToggleRow
-                        icon={FileText}
-                        label="Terms & Conditions"
-                        checked={!!activeTemplate.fields.showTerms}
-                        onChange={() => toggleElementField("showTerms")}
-                      />
-                      <ElementToggleRow
-                        icon={ImageIcon}
-                        label="Product Image in Items"
-                        checked={!!activeTemplate.fields.showProductImage}
-                        onChange={() => toggleElementField("showProductImage")}
-                      />
-                      <ElementToggleRow
-                        icon={CreditCard}
-                        label="Party Balance Summary"
-                        checked={!!activeTemplate.fields.showPartyBalance}
-                        onChange={() => toggleElementField("showPartyBalance")}
-                      />
-                      <ElementToggleRow
-                        icon={PenTool}
-                        label="Signature Box"
-                        checked={!!activeTemplate.fields.showSignature}
-                        onChange={() => toggleElementField("showSignature")}
-                      />
-                      <ElementToggleRow
-                        icon={HeartHandshake}
-                        label="Thank You Note & Footer"
-                        checked={!!activeTemplate.fields.showThankYou}
-                        onChange={() => toggleElementField("showThankYou")}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-                                    {/* ── TAB 2: CONTENT ── */}
-                                    {activeEditorTab === "content" && isThermalTemplate ? (
-                                      <div className="space-y-5">
-                                        {/* 1. Header Details & CoreERP Profile Sync */}
-                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <div className="flex items-center justify-between">
-                                            <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                                              <Building2 className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                              Store Header & Contact Details
-                                            </h3>
-                                            <button
-                                              onClick={handleSyncWithCoreErp}
-                                              className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
-                                              title="Import name, address, phone, GSTIN from CoreERP active profile"
-                                            >
-                                              <RefreshCw className="h-3 w-3" />
-                                              Sync CoreERP Profile
-                                            </button>
-                                          </div>
-
-                                          <div className="grid grid-cols-2 gap-3">
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-foreground">Header Title</label>
-                                              <input
-                                                type="text"
-                                                value={activeTemplate.headerTitle || ""}
-                                                onChange={(e) => updateTemplateProperty("headerTitle", e.target.value)}
-                                                placeholder="e.g. CASH RECEIPT / TAX INVOICE"
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500 font-bold"
-                                              />
-                                            </div>
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-foreground">Store / Business Name</label>
-                                              <input
-                                                type="text"
-                                                value={activeTemplate.storeName || ""}
-                                                onChange={(e) => updateTemplateProperty("storeName", e.target.value)}
-                                                placeholder="Store Name"
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500 font-bold"
-                                              />
-                                            </div>
-                                          </div>
-
-                                          <div className="grid grid-cols-2 gap-3">
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-foreground">Branch / Outlet</label>
-                                              <input
-                                                type="text"
-                                                value={activeTemplate.branchName || ""}
-                                                onChange={(e) => updateTemplateProperty("branchName", e.target.value)}
-                                                placeholder="e.g. MAIN BRANCH, PRODDATUR"
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                                              />
-                                            </div>
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-foreground">Phone Number</label>
-                                              <input
-                                                type="text"
-                                                value={activeTemplate.storePhone || ""}
-                                                onChange={(e) => updateTemplateProperty("storePhone", e.target.value)}
-                                                placeholder="e.g. +91 9849344919"
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                                              />
-                                            </div>
-                                          </div>
-
-                                          <div className="space-y-1">
-                                            <label className="text-[10px] font-semibold text-foreground">Store Address</label>
-                                            <input
-                                              type="text"
-                                              value={activeTemplate.storeAddress || ""}
-                                              onChange={(e) => updateTemplateProperty("storeAddress", e.target.value)}
-                                              placeholder="Street, City, State, Pincode"
-                                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                                            />
-                                          </div>
-
-                                          <div className="grid grid-cols-2 gap-3">
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-foreground">GSTIN / Tax ID</label>
-                                              <input
-                                                type="text"
-                                                value={activeTemplate.gstin || ""}
-                                                onChange={(e) => updateTemplateProperty("gstin", e.target.value)}
-                                                placeholder="GSTIN (e.g. 37AAFCOE694G1Z4)"
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground font-mono focus:border-indigo-500"
-                                              />
-                                            </div>
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-foreground">Store Tagline / Subtitle</label>
-                                              <input
-                                                type="text"
-                                                value={activeTemplate.customTaglineText || ""}
-                                                onChange={(e) => updateTemplateProperty("customTaglineText", e.target.value)}
-                                                placeholder="e.g. Quality Products Everyday"
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                                              />
-                                            </div>
-                                          </div>
-
-                                          {/* Header Visibility Toggles */}
-                                          <div className="pt-2 border-t border-border/50">
-                                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1.5">
-                                              Header Visibility Toggles
-                                            </label>
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                              <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                                <input
-                                                  type="checkbox"
-                                                  checked={activeTemplate.showStoreName !== false}
-                                                  onChange={(e) => updateTemplateProperty("showStoreName" as any, e.target.checked)}
-                                                  className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                                />
-                                                <span className="text-[11px] font-medium text-foreground">Store Name</span>
-                                              </label>
-                                              <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                                <input
-                                                  type="checkbox"
-                                                  checked={activeTemplate.showBranch !== false}
-                                                  onChange={(e) => updateTemplateProperty("showBranch" as any, e.target.checked)}
-                                                  className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                                />
-                                                <span className="text-[11px] font-medium text-foreground">Branch / Outlet</span>
-                                              </label>
-                                              <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                                <input
-                                                  type="checkbox"
-                                                  checked={activeTemplate.showAddress !== false}
-                                                  onChange={(e) => updateTemplateProperty("showAddress" as any, e.target.checked)}
-                                                  className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                                />
-                                                <span className="text-[11px] font-medium text-foreground">Address</span>
-                                              </label>
-                                              <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                                <input
-                                                  type="checkbox"
-                                                  checked={activeTemplate.showPhone !== false}
-                                                  onChange={(e) => updateTemplateProperty("showPhone" as any, e.target.checked)}
-                                                  className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                                />
-                                                <span className="text-[11px] font-medium text-foreground">Phone Number</span>
-                                              </label>
-                                              <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                                <input
-                                                  type="checkbox"
-                                                  checked={activeTemplate.showGstin !== false}
-                                                  onChange={(e) => updateTemplateProperty("showGstin" as any, e.target.checked)}
-                                                  className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                                />
-                                                <span className="text-[11px] font-medium text-foreground">GSTIN</span>
-                                              </label>
-                                              <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                                <input
-                                                  type="checkbox"
-                                                  checked={activeTemplate.showTagline !== false}
-                                                  onChange={(e) => updateTemplateProperty("showTagline" as any, e.target.checked)}
-                                                  className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                                />
-                                                <span className="text-[11px] font-medium text-foreground">Tagline</span>
-                                              </label>
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        {/* 2. Dynamic Custom Header Fields (DL No, FSSAI, Doctor, Cashier, etc.) */}
-                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <div className="flex items-center justify-between">
-                                            <div>
-                                              <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                                                <Sparkles className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
-                                                Dynamic Custom Header Fields
-                                              </h3>
-                                              <p className="text-[10px] text-muted-foreground">Add custom licenses, DL No, FSSAI, Doctor, or Cashier</p>
-                                            </div>
-                                            <button
-                                              onClick={handleAddThermalCustomField}
-                                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[10px] font-bold shadow-xs hover:bg-indigo-700 cursor-pointer"
-                                            >
-                                              <Plus className="h-3 w-3" />
-                                              Add Header Field
-                                            </button>
-                                          </div>
-
-                                          {/* Quick Suggestion Chips */}
-                                          <div className="flex flex-wrap gap-1.5 pt-1">
-                                            <span className="text-[10px] text-muted-foreground self-center">Quick Add:</span>
-                                            {[
-                                              { label: "DL No", val: "DL-20B-184920" },
-                                              { label: "FSSAI Lic", val: "10123999000142" },
-                                              { label: "Doctor Name", val: "Dr. K. Sharma MD" },
-                                              { label: "Salesperson", val: "Ramesh K." },
-                                              { label: "CIN No", val: "U72200AP2026PTC1" },
-                                            ].map((chip) => (
-                                              <button
-                                                key={chip.label}
-                                                onClick={() => {
-                                                  const existing = activeTemplate.customFields || [];
-                                                  if (existing.some((f) => f.label.toLowerCase() === chip.label.toLowerCase())) {
-                                                    toast.info(`${chip.label} already exists`);
-                                                    return;
-                                                  }
-                                                  const newFields = [...existing, { id: `cf-${Date.now()}`, label: chip.label, value: chip.val, enabled: true }];
-                                                  updateTemplateProperty("customFields" as any, newFields);
-                                                  toast.success(`Added ${chip.label}`);
-                                                }}
-                                                className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 cursor-pointer"
-                                              >
-                                                + {chip.label}
-                                              </button>
-                                            ))}
-                                          </div>
-
-                                          {/* Custom Fields List */}
-                                          <div className="space-y-2 pt-2">
-                                            {(activeTemplate.customFields || []).length === 0 ? (
-                                              <div className="text-center py-3 text-xs text-muted-foreground bg-card/60 rounded-xl border border-dashed border-border">
-                                                No custom header fields added yet. Click &quot;Add Header Field&quot; or select a quick preset above.
-                                              </div>
-                                            ) : (
-                                              (activeTemplate.customFields || []).map((field) => (
-                                                <div key={field.id} className="flex items-center gap-2 p-2 bg-card rounded-xl border border-border">
-                                                  <input
-                                                    type="checkbox"
-                                                    checked={field.enabled !== false}
-                                                    onChange={(e) => handleUpdateThermalCustomField(field.id, { enabled: e.target.checked })}
-                                                    className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 shrink-0"
-                                                    title="Show/Hide on Thermal Receipt"
-                                                  />
-                                                  <input
-                                                    type="text"
-                                                    value={field.label}
-                                                    onChange={(e) => handleUpdateThermalCustomField(field.id, { label: e.target.value })}
-                                                    placeholder="Field Label (e.g. DL No)"
-                                                    className="w-1/3 rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground font-semibold"
-                                                  />
-                                                  <input
-                                                    type="text"
-                                                    value={field.value}
-                                                    onChange={(e) => handleUpdateThermalCustomField(field.id, { value: e.target.value })}
-                                                    placeholder="Field Value (e.g. 10123999000142)"
-                                                    className="flex-1 rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground"
-                                                  />
-                                                  <button
-                                                    onClick={() => handleDeleteThermalCustomField(field.id)}
-                                                    className="p-1 rounded-lg hover:bg-destructive/10 text-destructive cursor-pointer shrink-0"
-                                                    title="Delete Field"
-                                                  >
-                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                  </button>
-                                                </div>
-                                              ))
-                                            )}
-                                          </div>
-                                        </div>
-
-                                        {/* 3. Customer & Transaction Metadata */}
-                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                                            <User className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                            Customer & Transaction Metadata
-                                          </h3>
-
-                                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.fields.showCustomerDetails !== false}
-                                                onChange={() => toggleElementField("showCustomerDetails")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">Customer Name</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.showCustomerPhone !== false}
-                                                onChange={(e) => updateTemplateProperty("showCustomerPhone" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">Customer Mobile</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.showCustomerAddress !== false}
-                                                onChange={(e) => updateTemplateProperty("showCustomerAddress" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">Customer Address</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.showCustomerGstin !== false}
-                                                onChange={(e) => updateTemplateProperty("showCustomerGstin" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">Customer GSTIN</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.showPoNumber !== false}
-                                                onChange={(e) => updateTemplateProperty("showPoNumber" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">PO Number</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.showEwayBill !== false}
-                                                onChange={(e) => updateTemplateProperty("showEwayBill" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">E-Way Bill No</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.showVehicleNumber !== false}
-                                                onChange={(e) => updateTemplateProperty("showVehicleNumber" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">Vehicle Number</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.showChallanNumber !== false}
-                                                onChange={(e) => updateTemplateProperty("showChallanNumber" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">Challan Number</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.showCashierName !== false}
-                                                onChange={(e) => updateTemplateProperty("showCashierName" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">Cashier / Terminal</span>
-                                            </label>
-                                          </div>
-                                        </div>
-
-                                        {/* 4. Item Table Columns & Dynamic Custom Item Columns */}
-                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <div className="flex items-center justify-between">
-                                            <div>
-                                              <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                                                <Columns className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                                Item Table Columns & Custom Attributes
-                                              </h3>
-                                              <p className="text-[10px] text-muted-foreground">Toggle standard columns and add custom attributes like Rack, Size, Color</p>
-                                            </div>
-                                            <button
-                                              onClick={handleAddThermalCustomColumn}
-                                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[10px] font-bold shadow-xs hover:bg-indigo-700 cursor-pointer"
-                                            >
-                                              <Plus className="h-3 w-3" />
-                                              Add Item Column
-                                            </button>
-                                          </div>
-
-                                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.fields.showItemIndex !== false}
-                                                onChange={() => toggleElementField("showItemIndex")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">S.No / Index (1,2,3)</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.fields.showDescription !== false}
-                                                onChange={() => toggleElementField("showDescription")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">Item Description</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.fields.showHSN !== false}
-                                                onChange={() => toggleElementField("showHSN")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">HSN / SAC Code</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.showBatchNumber !== false}
-                                                onChange={(e) => updateTemplateProperty("showBatchNumber" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">Batch Number</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.showExpiryDate !== false}
-                                                onChange={(e) => updateTemplateProperty("showExpiryDate" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">Expiry Date (EXP)</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.fields.showMRP !== false}
-                                                onChange={() => toggleElementField("showMRP")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">MRP & Savings</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.fields.showDiscountBadge !== false}
-                                                onChange={() => toggleElementField("showDiscountBadge")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">Item Discount</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.showGstRateColumn !== false}
-                                                onChange={(e) => updateTemplateProperty("showGstRateColumn" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">GST % Rate</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.showSkuCode !== false}
-                                                onChange={(e) => updateTemplateProperty("showSkuCode" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">SKU / Item Code</span>
-                                            </label>
-                                          </div>
-
-                                          {/* Quick Add Custom Item Column Chips */}
-                                          <div className="flex flex-wrap gap-1.5 pt-2 border-t border-border/50">
-                                            <span className="text-[10px] text-muted-foreground self-center">Quick Custom Column:</span>
-                                            {[
-                                              { label: "Rack No", key: "rack_no" },
-                                              { label: "Size / Color", key: "size_color" },
-                                              { label: "Serial / IMEI", key: "serial_no" },
-                                              { label: "Brand", key: "brand_name" },
-                                            ].map((chip) => (
-                                              <button
-                                                key={chip.label}
-                                                onClick={() => {
-                                                  const existing = activeTemplate.customItemColumns || [];
-                                                  if (existing.some((c) => (c.label || c.name || "").toLowerCase() === chip.label.toLowerCase())) {
-                                                    toast.info(`${chip.label} column already exists`);
-                                                    return;
-                                                  }
-                                                  handleAddThermalCustomColumn(chip.label);
-                                                }}
-                                                className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 cursor-pointer"
-                                              >
-                                                + {chip.label}
-                                              </button>
-                                            ))}
-                                          </div>
-
-                                          {/* Custom Columns List */}
-                                          <div className="space-y-2 pt-1">
-                                            {(activeTemplate.customItemColumns || []).length > 0 && (
-                                              <div className="space-y-1.5">
-                                                {(activeTemplate.customItemColumns || []).map((col) => (
-                                                  <div key={col.id} className="flex items-center gap-2 p-2 bg-card rounded-xl border border-border">
-                                                    <input
-                                                      type="checkbox"
-                                                      checked={col.enabled !== false}
-                                                      onChange={(e) => handleUpdateThermalCustomColumn(col.id, { enabled: e.target.checked })}
-                                                      className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 shrink-0"
-                                                      title="Enable Column on Thermal Receipt"
-                                                    />
-                                                    <input
-                                                      type="text"
-                                                      value={col.label || col.name || ""}
-                                                      onChange={(e) => handleUpdateThermalCustomColumn(col.id, { label: e.target.value, name: e.target.value })}
-                                                      placeholder="Column Label (e.g. Rack No)"
-                                                      className="flex-1 rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground font-semibold"
-                                                    />
-                                                    <button
-                                                      onClick={() => handleDeleteThermalCustomColumn(col.id)}
-                                                      className="p-1 rounded-lg hover:bg-destructive/10 text-destructive cursor-pointer shrink-0"
-                                                      title="Delete Column"
-                                                    >
-                                                      <Trash2 className="h-3.5 w-3.5" />
-                                                    </button>
-                                                  </div>
-                                                ))}
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
-
-                                        {/* 5. Summary & Totals Toggles */}
-                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                                            <Calculator className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                            Summary, Billed Quantity & Tax Split
-                                          </h3>
-
-                                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.showTotalQuantity !== false}
-                                                onChange={(e) => updateTemplateProperty("showTotalQuantity" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">Total Billed Qty (e.g. 3 Items / 7 Units)</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.fields.showTaxSplit !== false}
-                                                onChange={() => toggleElementField("showTaxSplit")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">GST Split (CGST + SGST)</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.showTotalSavings !== false}
-                                                onChange={(e) => updateTemplateProperty("showTotalSavings" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">Total Savings Highlight</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.showPaidInFullStamp !== false}
-                                                onChange={(e) => updateTemplateProperty("showPaidInFullStamp" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">Paid In Full Stamp Badge</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.fields.showPaymentDetails !== false}
-                                                onChange={() => toggleElementField("showPaymentDetails")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">Payment Mode & Change Returned</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-card text-xs cursor-pointer hover:bg-muted/30">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.fields.showPartyBalance !== false}
-                                                onChange={() => toggleElementField("showPartyBalance")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <span className="text-[11px] font-medium text-foreground">Customer Ledger Balance</span>
-                                            </label>
-                                          </div>
-                                        </div>
-
-                                        {/* 6. Terms & Conditions & Statutory Declaration */}
-                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <input
-                                                type="checkbox"
-                                                id="thermal-terms-toggle"
-                                                checked={activeTemplate.fields.showTerms !== false}
-                                                onChange={() => toggleElementField("showTerms")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <label htmlFor="thermal-terms-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
-                                                <FileText className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                                Terms & Conditions / Disclaimer
-                                              </label>
-                                            </div>
-                                            <button
-                                              onClick={handleSyncWithCoreErp}
-                                              className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
-                                            >
-                                              Sync Terms with CoreERP
-                                            </button>
-                                          </div>
-
-                                          {activeTemplate.fields.showTerms !== false && (
-                                            <textarea
-                                              rows={3}
-                                              value={activeTemplate.termsAndConditionsText || activeTemplate.termsText || ""}
-                                              onChange={(e) => {
-                                                updateTemplateProperty("termsAndConditionsText" as any, e.target.value);
-                                                updateTemplateProperty("termsText", e.target.value);
-                                              }}
-                                              placeholder="1. Goods once sold will not be taken back or exchanged.&#10;2. Subject to local jurisdiction only."
-                                              className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 font-mono"
-                                            />
-                                          )}
-
-                                          {/* Statutory Declaration */}
-                                          <div className="pt-2 border-t border-border/50 space-y-2">
-                                            <div className="flex items-center gap-2">
-                                              <input
-                                                type="checkbox"
-                                                id="thermal-declaration-toggle"
-                                                checked={activeTemplate.showDeclaration !== false}
-                                                onChange={(e) => updateTemplateProperty("showDeclaration" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <label htmlFor="thermal-declaration-toggle" className="text-xs font-bold text-foreground cursor-pointer">
-                                                Statutory GST Declaration Note
-                                              </label>
-                                            </div>
-                                            {activeTemplate.showDeclaration !== false && (
-                                              <textarea
-                                                rows={2}
-                                                value={activeTemplate.declarationText || "We declare that this invoice shows the actual price of the goods described and all particulars are true and correct."}
-                                                onChange={(e) => updateTemplateProperty("declarationText" as any, e.target.value)}
-                                                placeholder="Statutory declaration statement..."
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                                              />
-                                            )}
-                                          </div>
-
-                                          {/* Thank You Note & Tagline */}
-                                          <div className="pt-2 border-t border-border/50 grid grid-cols-2 gap-3">
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-foreground">Thank You Note</label>
-                                              <input
-                                                type="text"
-                                                value={activeTemplate.thankYouNote || activeTemplate.footerText || ""}
-                                                onChange={(e) => {
-                                                  updateTemplateProperty("thankYouNote", e.target.value);
-                                                  updateTemplateProperty("footerText", e.target.value);
-                                                }}
-                                                placeholder="THANK YOU! VISIT AGAIN"
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500 font-bold"
-                                              />
-                                            </div>
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-foreground">Footer Subtext / Note</label>
-                                              <input
-                                                type="text"
-                                                value={activeTemplate.footerNote || ""}
-                                                onChange={(e) => updateTemplateProperty("footerNote" as any, e.target.value)}
-                                                placeholder="Save Paper, Save Trees!"
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500 italic"
-                                              />
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    ) : activeEditorTab === "content" ? (
-                                      <div className="space-y-4">
-                                        {/* 1. Header & Business Identity */}
-                                        <div className="space-y-3 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                                            <Building2 className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                            Header & Business Profile
-                                          </h4>
-                                          <div className="grid grid-cols-2 gap-3">
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-foreground">Header Title</label>
-                                              <input
-                                                type="text"
-                                                value={activeTemplate.headerTitle || ""}
-                                                onChange={(e) => updateTemplateProperty("headerTitle", e.target.value)}
-                                                placeholder="e.g. TAX INVOICE / ESTIMATE"
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                                              />
-                                            </div>
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-foreground">Store / Business Name</label>
-                                              <input
-                                                type="text"
-                                                value={activeTemplate.storeName || ""}
-                                                onChange={(e) => updateTemplateProperty("storeName", e.target.value)}
-                                                placeholder="Legal Store Name"
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                                              />
-                                            </div>
-                                          </div>
-
-                                          <div className="space-y-1">
-                                            <label className="text-[10px] font-semibold text-foreground">Store Address</label>
-                                            <input
-                                              type="text"
-                                              value={activeTemplate.storeAddress || ""}
-                                              onChange={(e) => updateTemplateProperty("storeAddress", e.target.value)}
-                                              placeholder="Shop No, Street, City, State, Pincode"
-                                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                                            />
-                                          </div>
-
-                                          <div className="grid grid-cols-2 gap-3">
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-foreground">Phone Number</label>
-                                              <input
-                                                type="text"
-                                                value={activeTemplate.storePhone || ""}
-                                                onChange={(e) => updateTemplateProperty("storePhone", e.target.value)}
-                                                placeholder="e.g. +91 9849344919"
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                                              />
-                                            </div>
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-foreground">GSTIN / Tax ID</label>
-                                              <input
-                                                type="text"
-                                                value={activeTemplate.gstin || ""}
-                                                onChange={(e) => updateTemplateProperty("gstin", e.target.value)}
-                                                placeholder="GSTIN (e.g. 37AABCV1234F1Z5)"
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground font-mono focus:border-indigo-500"
-                                              />
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        {/* 2. Terms & Conditions & Statutory GST Declaration */}
-                                        <div className="space-y-3 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <input
-                                                type="checkbox"
-                                                id="invoice-terms-toggle"
-                                                checked={activeTemplate.fields.showTerms !== false}
-                                                onChange={() => toggleElementField("showTerms")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                              />
-                                              <label htmlFor="invoice-terms-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
-                                                <FileText className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                                Print Terms & Conditions
-                                              </label>
-                                            </div>
-                                            <button
-                                              onClick={handleSyncWithCoreErp}
-                                              className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
-                                            >
-                                              Sync with CoreERP
-                                            </button>
-                                          </div>
-
-                                          {activeTemplate.fields.showTerms !== false && (
-                                            <div className="space-y-1 pt-1">
-                                              <label className="text-[10px] font-semibold text-foreground">Terms & Conditions / Return Policy</label>
-                                              <textarea
-                                                rows={3}
-                                                value={activeTemplate.termsText || (activeTemplate as any).termsAndConditionsText || ""}
-                                                onChange={(e) => {
-                                                  updateTemplateProperty("termsText", e.target.value);
-                                                  updateTemplateProperty("termsAndConditionsText" as any, e.target.value);
-                                                }}
-                                                placeholder="1. Goods once sold will not be taken back.&#10;2. Interest @ 18% p.a. charged after due date.&#10;3. All disputes subject to local jurisdiction."
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 font-mono leading-relaxed"
-                                              />
-                                            </div>
-                                          )}
-
-                                          {/* Statutory Declaration */}
-                                          <div className="pt-2 border-t border-border/50 space-y-2">
-                                            <div className="flex items-center gap-2">
-                                              <input
-                                                type="checkbox"
-                                                id="invoice-declaration-toggle"
-                                                checked={activeTemplate.showDeclaration !== false}
-                                                onChange={(e) => updateTemplateProperty("showDeclaration" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                              />
-                                              <label htmlFor="invoice-declaration-toggle" className="text-xs font-bold text-foreground cursor-pointer">
-                                                Statutory GST Declaration Note
-                                              </label>
-                                            </div>
-                                            {activeTemplate.showDeclaration !== false && (
-                                              <textarea
-                                                rows={2}
-                                                value={activeTemplate.declarationText || "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct."}
-                                                onChange={(e) => updateTemplateProperty("declarationText" as any, e.target.value)}
-                                                placeholder="Statutory declaration statement..."
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                                              />
-                                            )}
-                                          </div>
-                                        </div>
-
-                                        {/* 3. Dynamic UPI Payment QR Code */}
-                                        <div className="space-y-3 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <input
-                                                type="checkbox"
-                                                id="invoice-upi-toggle"
-                                                checked={activeTemplate.fields.showQR !== false}
-                                                onChange={() => toggleElementField("showQR")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                              />
-                                              <label htmlFor="invoice-upi-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
-                                                <QrCode className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                                Dynamic UPI Payment QR Code
-                                              </label>
-                                            </div>
-                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
-                                              UPI / GPay / PhonePe
-                                            </span>
-                                          </div>
-
-                                          {activeTemplate.fields.showQR !== false && (
-                                            <div className="space-y-3 pt-1">
-                                              <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1">
-                                                  <label className="text-[10px] font-semibold text-foreground">UPI VPA ID (Merchant ID)</label>
-                                                  <input
-                                                    type="text"
-                                                    value={activeTemplate.upiId || ""}
-                                                    onChange={(e) => updateTemplateProperty("upiId", e.target.value)}
-                                                    placeholder="e.g. 9849344919@okaxis / store@upi"
-                                                    className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground font-mono focus:border-indigo-500"
-                                                  />
-                                                </div>
-                                                <div className="space-y-1">
-                                                  <label className="text-[10px] font-semibold text-foreground">Payee Display Name</label>
-                                                  <input
-                                                    type="text"
-                                                    value={activeTemplate.payeeName || activeTemplate.storeName || ""}
-                                                    onChange={(e) => updateTemplateProperty("payeeName" as any, e.target.value)}
-                                                    placeholder="Business / Legal Name"
-                                                    className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                                                  />
-                                                </div>
-                                              </div>
-
-                                              {/* Custom Standee QR Upload Option */}
-                                              <div className="pt-2 border-t border-border/50 flex items-center justify-between">
-                                                <div className="space-y-0.5">
-                                                  <span className="text-[11px] font-semibold text-foreground block">Or Upload Standee / Static QR</span>
-                                                  <span className="text-[10px] text-muted-foreground">Upload your bank standee QR image</span>
-                                                </div>
-                                                <input
-                                                  ref={thermalQrInputRef}
-                                                  type="file"
-                                                  accept="image/*"
-                                                  className="hidden"
-                                                  onChange={(e) => handleThermalImageUpload(e, "customQrUrl" as any)}
-                                                />
-                                                <div className="flex gap-2">
-                                                  <button
-                                                    onClick={() => thermalQrInputRef.current?.click()}
-                                                    className="px-2.5 py-1 rounded-lg border border-border hover:bg-muted text-[11px] font-semibold text-foreground cursor-pointer flex items-center gap-1"
-                                                  >
-                                                    <Upload className="h-3 w-3" />
-                                                    {activeTemplate.customQrUrl ? "Replace QR" : "Upload Custom QR"}
-                                                  </button>
-                                                  {activeTemplate.customQrUrl && (
-                                                    <button
-                                                      onClick={() => updateTemplateProperty("customQrUrl" as any, "")}
-                                                      className="px-2 py-1 rounded-lg border border-border text-destructive text-[11px] font-semibold hover:bg-destructive/10 cursor-pointer"
-                                                    >
-                                                      Remove
-                                                    </button>
-                                                  )}
-                                                </div>
-                                              </div>
-                                            </div>
-                                          )}
-                                        </div>
-
-                                        {/* 4. Google Review 5-Star Feedback QR Code */}
-                                        <div className="space-y-3 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <input
-                                                type="checkbox"
-                                                id="invoice-review-toggle"
-                                                checked={activeTemplate.showGoogleReviewQR !== false}
-                                                onChange={(e) => updateTemplateProperty("showGoogleReviewQR" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                              />
-                                              <label htmlFor="invoice-review-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
-                                                <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
-                                                Google Review 5-Star Feedback QR Code
-                                              </label>
-                                            </div>
-                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-                                              Boosts Google Ratings
-                                            </span>
-                                          </div>
-
-                                          {activeTemplate.showGoogleReviewQR !== false && (
-                                            <div className="space-y-2 pt-1">
-                                              <label className="text-[10px] font-semibold text-foreground">Google Business Review Link / URL</label>
-                                              <input
-                                                type="url"
-                                                value={activeTemplate.googleReviewUrl || ""}
-                                                onChange={(e) => updateTemplateProperty("googleReviewUrl" as any, e.target.value)}
-                                                placeholder="https://g.page/r/your-google-place-id/review"
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground font-mono focus:border-indigo-500"
-                                              />
-                                            </div>
-                                          )}
-                                        </div>
-
-                                        {/* 5. Bank Payment Details */}
-                                        <div className="space-y-3 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <input
-                                                type="checkbox"
-                                                id="invoice-bank-toggle"
-                                                checked={activeTemplate.fields.showPaymentDetails !== false}
-                                                onChange={() => toggleElementField("showPaymentDetails")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                              />
-                                              <label htmlFor="invoice-bank-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
-                                                <CreditCard className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                                Bank Account Details Box
-                                              </label>
-                                            </div>
-                                          </div>
-
-                                          {activeTemplate.fields.showPaymentDetails !== false && (
-                                            <div className="space-y-2 pt-1">
-                                              {printBankAccounts.length > 0 && (
-                                                <div className="flex items-center gap-2">
-                                                  <select
-                                                    onChange={(e) => {
-                                                      const b = printBankAccounts.find((x) => x.id === e.target.value);
-                                                      if (b) {
-                                                        const parts = [
-                                                          `Bank: ${b.bank_name || b.name}`,
-                                                          `A/C: ${b.account_number || ""}`,
-                                                          `IFSC: ${b.ifsc_code || ""}`,
-                                                        ];
-                                                        if (b.account_holder_name) parts.push(`Holder: ${b.account_holder_name}`);
-                                                        if (b.branch_name) parts.push(`Branch: ${b.branch_name}`);
-                                                        if (b.upi_id) parts.push(`UPI: ${b.upi_id}`);
-                                                        updateTemplateProperty("bankDetails", parts.join(" | "));
-                                                        toast.success(`Inserted bank details from "${b.name}"`);
-                                                      }
-                                                    }}
-                                                    className="w-full text-xs font-semibold bg-background border border-input rounded-xl px-2.5 py-1.5 text-foreground outline-none focus:border-indigo-500 cursor-pointer"
-                                                  >
-                                                    <option value="">-- Insert from Configured Bank Account --</option>
-                                                    {printBankAccounts.map((b) => (
-                                                      <option key={b.id} value={b.id}>
-                                                        {b.name} ({b.bank_name || "Bank"}) - ...{b.account_number?.slice(-4) || ""} {b.is_default ? "★ Default" : ""}
-                                                      </option>
-                                                    ))}
-                                                  </select>
-                                                </div>
-                                              )}
-                                              <textarea
-                                                rows={2}
-                                                value={activeTemplate.bankDetails || ""}
-                                                onChange={(e) => updateTemplateProperty("bankDetails", e.target.value)}
-                                                placeholder="Bank name, Account Number, IFSC code, Branch"
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 font-mono"
-                                              />
-                                              <p className="text-[10px] text-muted-foreground">
-                                                This text prints in the Bank & UPI payment section of invoices when &quot;Bank Account Details Box&quot; is checked.
-                                              </p>
-                                            </div>
-                                          )}
-                                        </div>
-
-                                        {/* 6. Digital Signature & Company Stamp */}
-                                        <div className="space-y-3 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <input
-                                                type="checkbox"
-                                                id="invoice-sig-toggle"
-                                                checked={activeTemplate.fields.showSignature !== false}
-                                                onChange={() => toggleElementField("showSignature")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                              />
-                                              <label htmlFor="invoice-sig-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
-                                                <CheckCircle className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                                Digital Signature & Company Stamp
-                                              </label>
-                                            </div>
-                                          </div>
-
-                                          {activeTemplate.fields.showSignature !== false && (
-                                            <div className="space-y-3 pt-1">
-                                              <div className="space-y-1">
-                                                <label className="text-[10px] font-semibold text-foreground">Signatory Designation / Footer Label</label>
-                                                <input
-                                                  type="text"
-                                                  value={activeTemplate.signatoryLabel || `Authorized Signatory For ${activeTemplate.storeName || "Venatic"}`}
-                                                  onChange={(e) => updateTemplateProperty("signatoryLabel" as any, e.target.value)}
-                                                  placeholder="e.g. Authorized Signatory / Director"
-                                                  className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                                                />
-                                              </div>
-
-                                              <div className="grid grid-cols-2 gap-3 pt-1">
-                                                {/* Signature Upload */}
-                                                <div className="p-3 bg-card rounded-xl border border-border space-y-2">
-                                                  <div className="flex items-center justify-between">
-                                                    <span className="text-[11px] font-bold text-foreground">Digital Signature</span>
-                                                    {activeTemplate.signatureUrl && (
-                                                      <button
-                                                        onClick={() => updateTemplateProperty("signatureUrl" as any, "")}
-                                                        className="text-[10px] font-semibold text-destructive hover:underline cursor-pointer"
-                                                      >
-                                                        Remove
-                                                      </button>
-                                                    )}
-                                                  </div>
-                                                  <input
-                                                    ref={thermalSigInputRef}
-                                                    type="file"
-                                                    accept="image/*"
-                                                    className="hidden"
-                                                    onChange={(e) => handleThermalImageUpload(e, "signatureUrl" as any)}
-                                                  />
-                                                  {activeTemplate.signatureUrl ? (
-                                                    <div className="h-12 bg-white border border-slate-300 rounded p-1 flex items-center justify-center">
-                                                      <img src={activeTemplate.signatureUrl} alt="Signature" className="max-h-full object-contain filter grayscale" />
-                                                    </div>
-                                                  ) : (
-                                                    <button
-                                                      onClick={() => thermalSigInputRef.current?.click()}
-                                                      className="w-full py-2 rounded-lg border border-dashed border-border hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer flex items-center justify-center gap-1"
-                                                    >
-                                                      <Upload className="h-3 w-3" /> Upload Signature
-                                                    </button>
-                                                  )}
-                                                </div>
-
-                                                {/* Company Stamp Upload */}
-                                                <div className="p-3 bg-card rounded-xl border border-border space-y-2">
-                                                  <div className="flex items-center justify-between">
-                                                    <span className="text-[11px] font-bold text-foreground">Company Stamp</span>
-                                                    {activeTemplate.stampUrl && (
-                                                      <button
-                                                        onClick={() => updateTemplateProperty("stampUrl" as any, "")}
-                                                        className="text-[10px] font-semibold text-destructive hover:underline cursor-pointer"
-                                                      >
-                                                        Remove
-                                                      </button>
-                                                    )}
-                                                  </div>
-                                                  <input
-                                                    ref={thermalStampInputRef}
-                                                    type="file"
-                                                    accept="image/*"
-                                                    className="hidden"
-                                                    onChange={(e) => handleThermalImageUpload(e, "stampUrl" as any)}
-                                                  />
-                                                  {activeTemplate.stampUrl ? (
-                                                    <div className="h-12 bg-white border border-slate-300 rounded p-1 flex items-center justify-center">
-                                                      <img src={activeTemplate.stampUrl} alt="Stamp" className="max-h-full object-contain filter grayscale" />
-                                                    </div>
-                                                  ) : (
-                                                    <button
-                                                      onClick={() => thermalStampInputRef.current?.click()}
-                                                      className="w-full py-2 rounded-lg border border-dashed border-border hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer flex items-center justify-center gap-1"
-                                                    >
-                                                      <Upload className="h-3 w-3" /> Upload Stamp
-                                                    </button>
-                                                  )}
-                                                </div>
-                                              </div>
-                                            </div>
-                                          )}
-                                        </div>
-
-                                        {/* 7. Thank You Note & Tagline */}
-                                        <div className="grid grid-cols-2 gap-3 p-3.5 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <div className="space-y-1">
-                                            <label className="text-[10px] font-semibold text-foreground">Thank You Note</label>
-                                            <input
-                                              type="text"
-                                              value={activeTemplate.thankYouNote || activeTemplate.footerText || ""}
-                                              onChange={(e) => {
-                                                updateTemplateProperty("thankYouNote", e.target.value);
-                                                updateTemplateProperty("footerText", e.target.value);
-                                              }}
-                                              placeholder="Thank you for shopping with us!"
-                                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                                            />
-                                          </div>
-                                          <div className="space-y-1">
-                                            <label className="text-[10px] font-semibold text-foreground">Tagline / Subtext</label>
-                                            <input
-                                              type="text"
-                                              value={activeTemplate.customTaglineText || ""}
-                                              onChange={(e) => updateTemplateProperty("customTaglineText", e.target.value)}
-                                              placeholder="Quality Products Everyday"
-                                              className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                                            />
-                                          </div>
-                                        </div>
-                                      </div>
-                                    ) : null}
-
-                                    {/* ── TAB 3: BRANDING ── */}
-                                    {activeEditorTab === "branding" && isThermalTemplate ? (
-                                      <div className="space-y-5">
-                                        {/* 1. Store Logo on Thermal Paper */}
-                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <input
-                                                type="checkbox"
-                                                id="thermal-logo-toggle"
-                                                checked={activeTemplate.fields?.showLogo !== false}
-                                                onChange={() => toggleElementField("showLogo")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <label htmlFor="thermal-logo-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
-                                                <ImageIcon className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                                Print Store Logo on Thermal Paper
-                                              </label>
-                                            </div>
-                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                                              High Contrast Dithered
-                                            </span>
-                                          </div>
-
-                                          {activeTemplate.fields?.showLogo !== false && (
-                                            <div className="space-y-3 pt-1">
-                                              <div className="flex items-center gap-3">
-                                                {activeTemplate.logoUrl ? (
-                                                  <div className="relative h-14 w-28 bg-white border border-slate-300 rounded-lg p-1 flex items-center justify-center overflow-hidden shadow-xs">
-                                                    <img
-                                                      src={activeTemplate.logoUrl}
-                                                      alt="Thermal Logo"
-                                                      className="max-h-full max-w-full object-contain filter grayscale contrast-200"
-                                                    />
-                                                  </div>
-                                                ) : (
-                                                  <div className="h-14 w-28 bg-muted rounded-lg border border-dashed border-border flex items-center justify-center text-[10px] text-muted-foreground text-center px-1">
-                                                    No Logo Set
-                                                  </div>
-                                                )}
-
-                                                <div className="flex-1 space-y-1.5">
-                                                  <input
-                                                    ref={thermalLogoInputRef}
-                                                    type="file"
-                                                    accept="image/*"
-                                                    className="hidden"
-                                                    onChange={(e) => handleThermalImageUpload(e, "logoUrl")}
-                                                  />
-                                                  <div className="flex gap-2">
-                                                    <button
-                                                      onClick={() => thermalLogoInputRef.current?.click()}
-                                                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold shadow-xs hover:bg-indigo-700 cursor-pointer"
-                                                    >
-                                                      <Upload className="h-3.5 w-3.5" />
-                                                      Upload Logo
-                                                    </button>
-                                                    {activeTemplate.logoUrl && (
-                                                      <button
-                                                        onClick={() => updateTemplateProperty("logoUrl", "")}
-                                                        className="px-2.5 py-1.5 rounded-lg border border-border hover:bg-destructive/10 text-destructive text-xs font-semibold cursor-pointer"
-                                                      >
-                                                        Remove
-                                                      </button>
-                                                    )}
-                                                  </div>
-                                                  <p className="text-[10px] text-muted-foreground">Recommended: Black & white transparent PNG or high contrast JPG</p>
-                                                </div>
-                                              </div>
-                                            </div>
-                                          )}
-                                        </div>
-
-                                        {/* 2. Dynamic UPI Payment QR Code */}
-                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <input
-                                                type="checkbox"
-                                                id="thermal-upi-toggle"
-                                                checked={activeTemplate.fields.showQR !== false}
-                                                onChange={() => toggleElementField("showQR")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <label htmlFor="thermal-upi-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
-                                                <QrCode className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                                Dynamic UPI Payment QR Code
-                                              </label>
-                                            </div>
-                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
-                                              Auto-Generates Amount & Bill No
-                                            </span>
-                                          </div>
-
-                                          {activeTemplate.fields.showQR !== false && (
-                                            <div className="space-y-3 pt-1">
-                                              <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1">
-                                                  <label className="text-[10px] font-semibold text-foreground">UPI VPA ID (Merchant ID)</label>
-                                                  <input
-                                                    type="text"
-                                                    value={activeTemplate.upiId || ""}
-                                                    onChange={(e) => updateTemplateProperty("upiId", e.target.value)}
-                                                    placeholder="e.g. 9849344919@okaxis / store@upi"
-                                                    className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground font-mono focus:border-indigo-500"
-                                                  />
-                                                </div>
-                                                <div className="space-y-1">
-                                                  <label className="text-[10px] font-semibold text-foreground">Payee Name</label>
-                                                  <input
-                                                    type="text"
-                                                    value={activeTemplate.payeeName || activeTemplate.storeName || ""}
-                                                    onChange={(e) => updateTemplateProperty("payeeName" as any, e.target.value)}
-                                                    placeholder="Business / Merchant Legal Name"
-                                                    className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                                                  />
-                                                </div>
-                                              </div>
-
-                                              {/* Custom Static QR Upload Option */}
-                                              <div className="pt-2 border-t border-border/50 flex items-center justify-between">
-                                                <div className="space-y-0.5">
-                                                  <span className="text-[11px] font-semibold text-foreground block">Or Upload Standee / Static QR Image</span>
-                                                  <span className="text-[10px] text-muted-foreground">Upload your bank standee QR image directly</span>
-                                                </div>
-                                                <input
-                                                  ref={thermalQrInputRef}
-                                                  type="file"
-                                                  accept="image/*"
-                                                  className="hidden"
-                                                  onChange={(e) => handleThermalImageUpload(e, "customQrUrl" as any)}
-                                                />
-                                                <div className="flex gap-2">
-                                                  <button
-                                                    onClick={() => thermalQrInputRef.current?.click()}
-                                                    className="px-2.5 py-1 rounded-lg border border-border hover:bg-muted text-[11px] font-semibold text-foreground cursor-pointer flex items-center gap-1"
-                                                  >
-                                                    <Upload className="h-3 w-3" />
-                                                    {activeTemplate.customQrUrl ? "Replace QR" : "Upload Custom QR"}
-                                                  </button>
-                                                  {activeTemplate.customQrUrl && (
-                                                    <button
-                                                      onClick={() => updateTemplateProperty("customQrUrl" as any, "")}
-                                                      className="px-2 py-1 rounded-lg border border-border text-destructive text-[11px] font-semibold hover:bg-destructive/10 cursor-pointer"
-                                                    >
-                                                      Remove
-                                                    </button>
-                                                  )}
-                                                </div>
-                                              </div>
-                                            </div>
-                                          )}
-                                        </div>
-
-                                        {/* 3. Google Review 5-Star Feedback QR Code */}
-                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <input
-                                                type="checkbox"
-                                                id="thermal-review-toggle"
-                                                checked={activeTemplate.showGoogleReviewQR !== false}
-                                                onChange={(e) => updateTemplateProperty("showGoogleReviewQR" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <label htmlFor="thermal-review-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
-                                                <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
-                                                Google Review 5-Star Feedback QR Code
-                                              </label>
-                                            </div>
-                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-                                              Boosts Google Reviews
-                                            </span>
-                                          </div>
-
-                                          {activeTemplate.showGoogleReviewQR !== false && (
-                                            <div className="space-y-2 pt-1">
-                                              <label className="text-[10px] font-semibold text-foreground">Google Business Review Link / URL</label>
-                                              <input
-                                                type="url"
-                                                value={activeTemplate.googleReviewUrl || ""}
-                                                onChange={(e) => updateTemplateProperty("googleReviewUrl" as any, e.target.value)}
-                                                placeholder="https://g.page/r/your-google-place-id/review"
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground font-mono focus:border-indigo-500"
-                                              />
-                                              <p className="text-[10px] text-muted-foreground">
-                                                Customers scanning this QR on their phone will directly open your Google Review page to give 5 stars!
-                                              </p>
-                                            </div>
-                                          )}
-                                        </div>
-
-                                        {/* 4. Digital Signature & Company Stamp */}
-                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <input
-                                                type="checkbox"
-                                                id="thermal-sig-toggle"
-                                                checked={activeTemplate.showSignature !== false}
-                                                onChange={(e) => updateTemplateProperty("showSignature" as any, e.target.checked)}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <label htmlFor="thermal-sig-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
-                                                <CheckCircle className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                                Digital Signature & Company Stamp
-                                              </label>
-                                            </div>
-                                          </div>
-
-                                          {activeTemplate.showSignature !== false && (
-                                            <div className="space-y-3 pt-1">
-                                              <div className="space-y-1">
-                                                <label className="text-[10px] font-semibold text-foreground">Signatory Designation / Footer Label</label>
-                                                <input
-                                                  type="text"
-                                                  value={activeTemplate.signatoryLabel || `Authorized Signatory For ${activeTemplate.storeName || "Venatic"}`}
-                                                  onChange={(e) => updateTemplateProperty("signatoryLabel" as any, e.target.value)}
-                                                  placeholder="e.g. Authorized Signatory / Manager"
-                                                  className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                                                />
-                                              </div>
-
-                                              <div className="grid grid-cols-2 gap-3 pt-1">
-                                                {/* Signature Upload */}
-                                                <div className="p-3 bg-card rounded-xl border border-border space-y-2">
-                                                  <div className="flex items-center justify-between">
-                                                    <span className="text-[11px] font-bold text-foreground">Digital Signature</span>
-                                                    {activeTemplate.signatureUrl && (
-                                                      <button
-                                                        onClick={() => updateTemplateProperty("signatureUrl" as any, "")}
-                                                        className="text-[10px] font-semibold text-destructive hover:underline cursor-pointer"
-                                                      >
-                                                        Remove
-                                                      </button>
-                                                    )}
-                                                  </div>
-                                                  <input
-                                                    ref={thermalSigInputRef}
-                                                    type="file"
-                                                    accept="image/*"
-                                                    className="hidden"
-                                                    onChange={(e) => handleThermalImageUpload(e, "signatureUrl" as any)}
-                                                  />
-                                                  {activeTemplate.signatureUrl ? (
-                                                    <div className="h-12 bg-white border border-slate-300 rounded p-1 flex items-center justify-center">
-                                                      <img src={activeTemplate.signatureUrl} alt="Signature" className="max-h-full object-contain filter grayscale contrast-200" />
-                                                    </div>
-                                                  ) : (
-                                                    <button
-                                                      onClick={() => thermalSigInputRef.current?.click()}
-                                                      className="w-full py-2 rounded-lg border border-dashed border-border hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer flex items-center justify-center gap-1"
-                                                    >
-                                                      <Upload className="h-3 w-3" /> Upload Signature
-                                                    </button>
-                                                  )}
-                                                </div>
-
-                                                {/* Company Stamp Upload */}
-                                                <div className="p-3 bg-card rounded-xl border border-border space-y-2">
-                                                  <div className="flex items-center justify-between">
-                                                    <span className="text-[11px] font-bold text-foreground">Company Stamp</span>
-                                                    {activeTemplate.stampUrl && (
-                                                      <button
-                                                        onClick={() => updateTemplateProperty("stampUrl" as any, "")}
-                                                        className="text-[10px] font-semibold text-destructive hover:underline cursor-pointer"
-                                                      >
-                                                        Remove
-                                                      </button>
-                                                    )}
-                                                  </div>
-                                                  <input
-                                                    ref={thermalStampInputRef}
-                                                    type="file"
-                                                    accept="image/*"
-                                                    className="hidden"
-                                                    onChange={(e) => handleThermalImageUpload(e, "stampUrl" as any)}
-                                                  />
-                                                  {activeTemplate.stampUrl ? (
-                                                    <div className="h-12 bg-white border border-slate-300 rounded p-1 flex items-center justify-center">
-                                                      <img src={activeTemplate.stampUrl} alt="Stamp" className="max-h-full object-contain filter grayscale contrast-200" />
-                                                    </div>
-                                                  ) : (
-                                                    <button
-                                                      onClick={() => thermalStampInputRef.current?.click()}
-                                                      className="w-full py-2 rounded-lg border border-dashed border-border hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer flex items-center justify-center gap-1"
-                                                    >
-                                                      <Upload className="h-3 w-3" /> Upload Stamp
-                                                    </button>
-                                                  )}
-                                                </div>
-                                              </div>
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
-                                    ) : activeEditorTab === "branding" ? (
-                                      <div className="space-y-5">
-                                        {/* Select Color & Palette + Paper Background + Opacity */}
-                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/60 rounded-2xl">
-                                          <div className="flex items-center justify-between">
-                                            <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                                              <Palette className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                              Select Color & Palette
-                                            </h3>
-                                            <span className="text-[10px] font-mono text-muted-foreground">{activeTemplate.primaryColor}</span>
-                                          </div>
-
-                                          <div className="flex flex-wrap items-center gap-2">
-                                            {COLOR_SWATCHES.map((swatch) => (
-                                              <button
-                                                key={swatch.value}
-                                                onClick={() => updateTemplateProperty("primaryColor", swatch.value)}
-                                                title={swatch.label}
-                                                className={`h-7 w-7 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center ${activeTemplate.primaryColor === swatch.value
-                                                  ? "border-foreground scale-110 shadow-md ring-2 ring-indigo-500/30"
-                                                  : "border-transparent hover:scale-105"
-                                                  }`}
-                                                style={{ backgroundColor: swatch.value }}
-                                              >
-                                                {activeTemplate.primaryColor === swatch.value && (
-                                                  <Check className="h-3.5 w-3.5 text-white stroke-[3]" />
-                                                )}
-                                              </button>
-                                            ))}
-                                            <div className="flex items-center gap-1.5 pl-2 border-l border-border">
-                                              <input
-                                                type="color"
-                                                value={activeTemplate.primaryColor}
-                                                onChange={(e) => updateTemplateProperty("primaryColor", e.target.value)}
-                                                className="h-7 w-7 rounded-lg border border-border cursor-pointer"
-                                              />
-                                            </div>
-                                          </div>
-
-                                          {/* Paper Background Color & Opacity */}
-                                          <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border/40 text-xs">
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-muted-foreground">Paper Background Color</label>
-                                              <select
-                                                value={activeTemplate.paperBgColor || "#ffffff"}
-                                                onChange={(e) => updateTemplateProperty("paperBgColor", e.target.value)}
-                                                className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                                              >
-                                                <option value="#ffffff">Pure White</option>
-                                                <option value="#fffbeb">Ivory Warm Parchment</option>
-                                                <option value="#fff7ed">Royal Saffron Tint</option>
-                                                <option value="#fef2f2">Festive Rose Tint</option>
-                                                <option value="#f8fafc">Cool Slate White</option>
-                                                <option value="#f0fdf4">Emerald Mint Tint</option>
-                                              </select>
-                                            </div>
-
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-muted-foreground">Watermark / Theme Opacity</label>
-                                              <div className="flex items-center gap-2 pt-1">
-                                                <input
-                                                  type="range"
-                                                  min="5"
-                                                  max="40"
-                                                  value={activeTemplate.watermarkOpacity || 15}
-                                                  onChange={(e) => {
-                                                    updateTemplateProperty("watermarkOpacity", Number(e.target.value));
-                                                    updateTemplateProperty("showWatermark", true);
-                                                  }}
-                                                  className="w-full cursor-pointer accent-indigo-600"
-                                                />
-                                                <span className="text-[10px] font-mono text-muted-foreground w-8">
-                                                  {activeTemplate.watermarkOpacity || 15}%
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        {/* Page & Layout Settings */}
-                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/60 rounded-2xl">
-                                          <h3 className="text-xs font-bold text-foreground">{t("Page Settings", "Page Settings")}</h3>
-
-                                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                                            {/* Paper Size */}
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-muted-foreground">Paper Size</label>
-                                              <select
-                                                value={activeTemplate.paperSize}
-                                                onChange={(e) => updateTemplateProperty("paperSize", e.target.value)}
-                                                className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                              >
-                                                <option value="A4">A4 (210 × 297 mm)</option>
-                                                <option value="A5">A5 (148 × 210 mm)</option>
-                                                <option value="Letter">Letter (8.5 × 11 in)</option>
-                                                <option value="80mm">Thermal 80mm (3 Inch)</option>
-                                                <option value="58mm">Thermal 58mm (2 Inch)</option>
-                                                <option value="50x25mm">Barcode 50 × 25 mm</option>
-                                                <option value="38x25mm">Barcode 38 × 25 mm</option>
-                                                <option value="100x50mm">Barcode 100 × 50 mm</option>
-                                                <option value="50x30mm">Price Tag 50 × 30 mm</option>
-                                              </select>
-                                            </div>
-
-                                            {/* Orientation */}
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-muted-foreground">Orientation</label>
-                                              <div className="flex rounded-xl border border-input p-0.5 bg-background">
-                                                <button
-                                                  onClick={() => updateTemplateProperty("orientation", "portrait")}
-                                                  className={`flex-1 py-1 text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${activeTemplate.orientation === "portrait"
-                                                    ? "bg-indigo-600 text-white shadow-xs"
-                                                    : "text-muted-foreground hover:text-foreground"
-                                                    }`}
-                                                >
-                                                  Portrait
-                                                </button>
-                                                <button
-                                                  onClick={() => updateTemplateProperty("orientation", "landscape")}
-                                                  className={`flex-1 py-1 text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${activeTemplate.orientation === "landscape"
-                                                    ? "bg-indigo-600 text-white shadow-xs"
-                                                    : "text-muted-foreground hover:text-foreground"
-                                                    }`}
-                                                >
-                                                  Landscape
-                                                </button>
-                                              </div>
-                                            </div>
-
-                                            {/* Margins */}
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-muted-foreground">Margins</label>
-                                              <select
-                                                value={activeTemplate.margins || "normal"}
-                                                onChange={(e) => updateTemplateProperty("margins", e.target.value as any)}
-                                                className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                              >
-                                                <option value="normal">Normal (15mm)</option>
-                                                <option value="narrow">Narrow (8mm)</option>
-                                                <option value="wide">Wide (25mm)</option>
-                                                <option value="none">None (0mm)</option>
-                                              </select>
-                                            </div>
-
-                                            {/* Font Family */}
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-muted-foreground">Font Family</label>
-                                              <select
-                                                value={activeTemplate.fontFamily}
-                                                onChange={(e) => updateTemplateProperty("fontFamily", e.target.value)}
-                                                className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                              >
-                                                <option value="Inter, sans-serif">Inter (Clean Modern)</option>
-                                                <option value="Roboto, sans-serif">Roboto (ERP Standard)</option>
-                                                <option value="Outfit, sans-serif">Outfit (Contemporary)</option>
-                                                <option value="Playfair Display, serif">Playfair (Luxury Serif)</option>
-                                                <option value="monospace">Monospace (Terminal / POS)</option>
-                                              </select>
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        {/* Logo URL */}
-                                        <div className="space-y-1.5">
-                                          <label className="text-xs font-semibold text-foreground">Logo URL</label>
-                                          <div className="flex gap-2">
-                                            <input
-                                              type="text"
-                                              value={activeTemplate.logoUrl || ""}
-                                              onChange={(e) => updateTemplateProperty("logoUrl", e.target.value)}
-                                              placeholder="https://... or /logo.png"
-                                              className="flex-1 rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500"
-                                            />
-                                            <button
-                                              onClick={() => {
-                                                const sample = "https://images.unsplash.com/photo-1542838132-92c53300491e?w=120&auto=format&fit=crop&q=60";
-                                                updateTemplateProperty("logoUrl", sample);
-                                                toast.success("Sample logo applied!");
-                                              }}
-                                              className="rounded-xl border border-border bg-muted px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/80 cursor-pointer"
-                                            >
-                                              Use Sample
-                                            </button>
-                                          </div>
-                                        </div>
-
-                                        {/* Watermark Controls */}
-                                        <div className="space-y-2 p-3 bg-muted/30 rounded-xl border border-border/50">
-                                          <div className="flex items-center justify-between">
-                                            <div className="text-xs font-semibold text-foreground">Background Watermark Text</div>
-                                            <input
-                                              type="checkbox"
-                                              checked={!!activeTemplate.showWatermark}
-                                              onChange={(e) => updateTemplateProperty("showWatermark", e.target.checked)}
-                                              className="h-4 w-4 rounded border-input text-indigo-600 focus:ring-indigo-500"
-                                            />
-                                          </div>
-                                          {activeTemplate.showWatermark && (
-                                            <div className="space-y-2 pt-2">
-                                              <input
-                                                type="text"
-                                                value={activeTemplate.watermarkText || activeTemplate.storeName || "ACME LUXURY"}
-                                                onChange={(e) => updateTemplateProperty("watermarkText", e.target.value)}
-                                                placeholder="Watermark Text"
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground"
-                                              />
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
-                                    ) : null}
-
-                                    {/* ── TAB 4: SETTINGS ── */}
-                                    {activeEditorTab === "settings" && isThermalTemplate ? (
-                                      <div className="space-y-5">
-                                        {/* Organization Master Default */}
-                                        <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/30 rounded-2xl border border-indigo-200 dark:border-indigo-900 space-y-2">
-                                          <div className="flex items-center justify-between">
-                                            <div>
-                                              <div className="text-xs font-bold text-foreground">Organization Master Default</div>
-                                              <div className="text-[11px] text-muted-foreground">Use this template for all POS terminals and cashiers across the organization</div>
-                                            </div>
-                                            <input
-                                              type="checkbox"
-                                              checked={!!activeTemplate.isDefault}
-                                              onChange={(e) => updateTemplateProperty("isDefault", e.target.checked)}
-                                              className="h-4 w-4 rounded border-input text-indigo-600 focus:ring-indigo-500"
-                                            />
-                                          </div>
-                                        </div>
-
-                                        {/* Hardware Paper Roll & Cutter Margins */}
-                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                                            <Printer className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                            Hardware Paper Roll & Cutter Margins
-                                          </h3>
-
-                                          <div className="grid grid-cols-2 gap-3">
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-foreground">Paper Roll Width</label>
-                                              <select
-                                                value={activeTemplate.paperSize || "80mm"}
-                                                onChange={(e) => updateTemplateProperty("paperSize", e.target.value)}
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500 font-semibold"
-                                              >
-                                                <option value="80mm">80mm (Standard 3-Inch POS Roll)</option>
-                                                <option value="58mm">58mm (Mini 2-Inch Compact Roll)</option>
-                                              </select>
-                                            </div>
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-semibold text-foreground">Thermal Contrast / Darkness</label>
-                                              <select
-                                                value={activeTemplate.thermalContrast || "ultra-dark"}
-                                                onChange={(e) => updateTemplateProperty("thermalContrast" as any, e.target.value)}
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500 font-semibold"
-                                              >
-                                                <option value="ultra-dark">🔥 Ultra-Dark (Pure Black #000 + 900 Weight)</option>
-                                                <option value="crisp-mono">⚡ Crisp Monospace (High Density)</option>
-                                                <option value="compact">📄 Compact Retail Density</option>
-                                                <option value="standard">Standard Balance</option>
-                                              </select>
-                                            </div>
-                                          </div>
-
-                                          <div className="pt-2 border-t border-border/50 space-y-2">
-                                            <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.feedAfterPrint !== false}
-                                                onChange={(e) => updateTemplateProperty("feedAfterPrint" as any, e.target.checked)}
-                                                className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <div className="text-xs">
-                                                <span className="font-semibold text-foreground block">20mm Safe Feed & Cutter Margin</span>
-                                                <span className="text-[10px] text-muted-foreground">Appends feed lines so auto-cutters do not chop off the thank you note</span>
-                                              </div>
-                                            </label>
-
-                                            <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
-                                              <input
-                                                type="checkbox"
-                                                checked={activeTemplate.autoCutPaper !== false}
-                                                onChange={(e) => updateTemplateProperty("autoCutPaper" as any, e.target.checked)}
-                                                className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <div className="text-xs">
-                                                <span className="font-semibold text-foreground block">Send ESC/POS Auto-Cut Command</span>
-                                                <span className="text-[10px] text-muted-foreground">Triggers automatic guillotine cut on supported thermal hardware</span>
-                                              </div>
-                                            </label>
-                                          </div>
-                                        </div>
-
-                                        {/* Receipt Bottom Barcode */}
-                                        <div className="space-y-3 p-4 bg-muted/20 border border-border/70 rounded-2xl">
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <input
-                                                type="checkbox"
-                                                id="thermal-barcode-toggle"
-                                                checked={activeTemplate.fields.showBarcode !== false}
-                                                onChange={() => toggleElementField("showBarcode")}
-                                                className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <label htmlFor="thermal-barcode-toggle" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
-                                                <Barcode className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                                Receipt Bottom Return / Lookup Barcode
-                                              </label>
-                                            </div>
-                                          </div>
-
-                                          {activeTemplate.fields.showBarcode !== false && (
-                                            <div className="grid grid-cols-2 gap-3 pt-1">
-                                              <div className="space-y-1">
-                                                <label className="text-[10px] font-semibold text-foreground">Barcode Symbology</label>
-                                                <select
-                                                  value={activeTemplate.barcodeSymbology || "Code-128"}
-                                                  onChange={(e) => updateTemplateProperty("barcodeSymbology", e.target.value as any)}
-                                                  className="w-full rounded-xl border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:border-indigo-500"
-                                                >
-                                                  <option value="Code-128">Code 128 (Universal POS Standard)</option>
-                                                  <option value="EAN-13">EAN-13 (GS1 Retail Standard)</option>
-                                                  <option value="Code-39">Code 39 (Alphanumeric)</option>
-                                                  <option value="QR">QR Code (2D Lookup)</option>
-                                                </select>
-                                              </div>
-
-                                              <div className="space-y-1">
-                                                <div className="flex justify-between text-[10px] font-semibold text-foreground">
-                                                  <span>Barcode Height:</span>
-                                                  <span className="font-mono text-indigo-600">{activeTemplate.barcodeHeight || 28}px</span>
-                                                </div>
-                                                <input
-                                                  type="range"
-                                                  min="18"
-                                                  max="60"
-                                                  value={activeTemplate.barcodeHeight || 28}
-                                                  onChange={(e) => updateTemplateProperty("barcodeHeight", Number(e.target.value))}
-                                                  className="w-full cursor-pointer accent-indigo-600 mt-1"
-                                                />
-                                              </div>
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
-                                    ) : activeEditorTab === "settings" ? (
-                                      <div className="space-y-4">
-                                        <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/30 rounded-xl border border-indigo-200 dark:border-indigo-900 space-y-2">
-                                          <div className="flex items-center justify-between">
-                                            <div>
-                                              <div className="text-xs font-bold text-foreground">Organization Master Default</div>
-                                              <div className="text-[11px] text-muted-foreground">Use this template as default for all users in active workspace</div>
-                                            </div>
-                                            <input
-                                              type="checkbox"
-                                              checked={!!activeTemplate.isDefault}
-                                              onChange={(e) => updateTemplateProperty("isDefault", e.target.checked)}
-                                              className="h-4 w-4 rounded border-input text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                            />
-                                          </div>
-                                        </div>
-
-                                        {/* Master Settings Studio Launcher */}
-                                        <div className="p-3.5 rounded-xl bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 dark:from-indigo-950/40 dark:via-purple-950/40 dark:to-pink-950/40 border border-indigo-200 dark:border-indigo-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-                                          <div className="min-w-0">
-                                            <div className="text-xs font-bold text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
-                                              <Sparkles className="size-3.5 text-indigo-600 shrink-0" />
-                                              <span>Sales Invoice & ERP Settings Studio</span>
-                                            </div>
-                                            <p className="text-[10.5px] text-muted-foreground truncate mt-0.5">
-                                              Configure B2B/B2C prefixes, IMEI serials, item table columns, bank details, and QR codes.
-                                            </p>
-                                          </div>
-                                          <button
-                                            type="button"
-                                            onClick={() => setIsInvoiceSettingsModalOpen(true)}
-                                            className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shrink-0 shadow-sm flex items-center gap-1.5 cursor-pointer transition-all"
-                                          >
-                                            <Sliders className="size-3.5" />
-                                            <span>Open Full Settings Studio</span>
-                                          </button>
-                                        </div>
-
-                                        {isBarcodeTemplate ? (
-                                          /* Barcode-specific settings */
-                                          <div className="space-y-3">
-                                            <div className="space-y-1">
-                                              <div className="flex items-center justify-between">
-                                                <label className="text-xs font-semibold text-foreground">Symbology Standard</label>
-                                                <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
-                                                  100% Laser Scannable
-                                                </span>
-                                              </div>
-                                              <select
-                                                value={activeTemplate.barcodeSymbology || "Auto"}
-                                                onChange={(e) => updateTemplateProperty("barcodeSymbology", e.target.value as any)}
-                                                className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 font-medium"
-                                              >
-                                                <option value="Auto">Auto (Smart Detect numeric vs alphanumeric)</option>
-                                                <option value="Code-128">Code 128 (Universal High-Density Standard)</option>
-                                                <option value="EAN-13">GS1 EAN-13 (13-digit Retail Standard)</option>
-                                                <option value="EAN-8">GS1 EAN-8 (8-digit Compact Retail Standard)</option>
-                                                <option value="UPC-A">UPC-A (12-digit North America Standard)</option>
-                                                <option value="UPC-E">UPC-E (6-digit Compact Standard)</option>
-                                                <option value="Code-39">Code 39 (Alphanumeric Standard)</option>
-                                                <option value="Code-93">Code 93 (High-Density Alphanumeric)</option>
-                                                <option value="ITF-14">ITF-14 (14-digit Shipping Carton Standard)</option>
-                                                <option value="MSI">MSI Plessey (Warehouse & Inventory)</option>
-                                                <option value="Codabar">Codabar (Logistics & Library Standard)</option>
-                                                <option value="Pharmacode">Pharmacode (Pharmaceutical Packaging)</option>
-                                                <option value="QR">QR Code (2D Data Matrix / Instant UPI)</option>
-                                              </select>
-                                            </div>
-
-                                            <div className="grid grid-cols-2 gap-3 p-3 bg-muted/20 rounded-xl border border-border/50">
-                                              <div className="space-y-1">
-                                                <div className="flex justify-between text-[11px] font-semibold text-foreground">
-                                                  <span>Barcode Height:</span>
-                                                  <span className="font-mono text-indigo-600 dark:text-indigo-400">{activeTemplate.barcodeHeight || 44}px</span>
-                                                </div>
-                                                <input
-                                                  type="range"
-                                                  min="20"
-                                                  max="90"
-                                                  value={activeTemplate.barcodeHeight || 44}
-                                                  onChange={(e) => updateTemplateProperty("barcodeHeight", Number(e.target.value))}
-                                                  className="w-full cursor-pointer accent-indigo-600"
-                                                />
-                                              </div>
-
-                                              <div className="space-y-1">
-                                                <label className="text-[11px] font-semibold text-foreground block">Placement Slot</label>
-                                                <select
-                                                  value={(activeTemplate as any).barcodePlacement || "bottom"}
-                                                  onChange={(e) => updateTemplateProperty("barcodePlacement" as any, e.target.value)}
-                                                  className="w-full rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground focus:border-indigo-500"
-                                                >
-                                                  <option value="bottom">Bottom of Label (Standard)</option>
-                                                  <option value="top">Top of Label</option>
-                                                  <option value="middle">Middle of Label</option>
-                                                </select>
-                                              </div>
-                                            </div>
-
-                                            <div className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
-                                              <input
-                                                type="checkbox"
-                                                id="show-barcode-text-toggle"
-                                                checked={activeTemplate.showBarcodeText !== false}
-                                                onChange={(e) => updateTemplateProperty("showBarcodeText", e.target.checked)}
-                                                className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
-                                              />
-                                              <label htmlFor="show-barcode-text-toggle" className="text-xs font-semibold text-foreground cursor-pointer">
-                                                Show Digits / Text below Barcode
-                                              </label>
-                                            </div>
-                                          </div>
-                                        ) : (
-                                          /* Invoice, Delivery Challan & Document Settings Suite */
-                                          <div className="space-y-3">
-                                            {/* Settings Sub-Tab Navigation */}
-                                            <div className="flex items-center gap-1 p-1 bg-muted/50 rounded-xl border border-border/60 overflow-x-auto">
-                                              {[
-                                                { id: "numbering", label: "🔢 Numbering & B2B/B2C" },
-                                                { id: "columns", label: "📱 Columns & IMEI" },
-                                                { id: "bank_qr", label: "🏦 Bank & UPI QR" },
-                                                { id: "tax_terms", label: "📜 Terms & Legal" },
-                                                { id: "barcode", label: "🏷️ Barcode" },
-                                              ].map((tab) => (
-                                                <button
-                                                  key={tab.id}
-                                                  type="button"
-                                                  onClick={() => setSettingsActiveSubTab(tab.id as any)}
-                                                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${settingsActiveSubTab === tab.id
-                                                    ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs"
-                                                    : "text-muted-foreground hover:text-foreground"
-                                                    }`}
-                                                >
-                                                  {tab.label}
-                                                </button>
-                                              ))}
-                                            </div>
-
-                                            {/* Sub-Tab 1: Numbering & B2B/B2C Switch */}
-                                            {settingsActiveSubTab === "numbering" && (
-                                              <div className="space-y-3 animate-in fade-in">
-                                                {/* B2B vs B2C Separate Series Switch */}
-                                                <div className="p-3.5 bg-white dark:bg-slate-800/80 rounded-xl border border-purple-200 dark:border-purple-900/50 space-y-3">
-                                                  <div className="flex items-center justify-between">
-                                                    <div>
-                                                      <div className="flex items-center gap-2">
-                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-700">🏢 B2B / 🛒 B2C Switch</span>
-                                                        <h4 className="text-xs font-bold text-foreground">Separate B2B & B2C Invoice Series</h4>
-                                                      </div>
-                                                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                                                        Assign separate prefixes for GST registered corporate customers vs retail walk-ins.
-                                                      </p>
-                                                    </div>
-                                                    <input
-                                                      type="checkbox"
-                                                      checked={Boolean(liveInvoiceSettings.separateB2BSequenceEnabled)}
-                                                      onChange={(e) => {
-                                                        const updated = { ...liveInvoiceSettings, separateB2BSequenceEnabled: e.target.checked };
-                                                        setLiveInvoiceSettings(updated);
-                                                        saveStoredInvoiceSettings(updated, tenant?.id);
-                                                      }}
-                                                      className="size-4 rounded text-purple-600 focus:ring-purple-500 cursor-pointer"
-                                                    />
-                                                  </div>
-
-                                                  {liveInvoiceSettings.separateB2BSequenceEnabled && (
-                                                    <div className="pt-2 border-t border-purple-100 dark:border-purple-900/30 space-y-3">
-                                                      <div className="p-2.5 bg-purple-50/60 dark:bg-purple-950/20 rounded-lg space-y-2">
-                                                        <span className="text-[11px] font-bold text-purple-800 dark:text-purple-300 block">🏢 B2B Tax Invoice Prefix</span>
-                                                        <div className="grid grid-cols-2 gap-2">
-                                                          <div>
-                                                            <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
-                                                            <input
-                                                              type="text"
-                                                              value={liveInvoiceSettings.b2bPrefix || "B2B-"}
-                                                              onChange={(e) => {
-                                                                const updated = { ...liveInvoiceSettings, b2bPrefix: e.target.value.toUpperCase() };
-                                                                setLiveInvoiceSettings(updated);
-                                                                saveStoredInvoiceSettings(updated, tenant?.id);
-                                                              }}
-                                                              className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-mono font-bold"
-                                                              placeholder="B2B-"
-                                                            />
-                                                          </div>
-                                                          <div>
-                                                            <label className="text-[10px] text-muted-foreground block mb-0.5">Next Number</label>
-                                                            <input
-                                                              type="number"
-                                                              min="1"
-                                                              value={liveInvoiceSettings.b2bSequenceNumber || 1}
-                                                              onChange={(e) => {
-                                                                const updated = { ...liveInvoiceSettings, b2bSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) };
-                                                                setLiveInvoiceSettings(updated);
-                                                                saveStoredInvoiceSettings(updated, tenant?.id);
-                                                              }}
-                                                              className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-bold"
-                                                            />
-                                                          </div>
-                                                        </div>
-                                                      </div>
-
-                                                      <div className="p-2.5 bg-blue-50/60 dark:bg-blue-950/20 rounded-lg space-y-2">
-                                                        <span className="text-[11px] font-bold text-blue-800 dark:text-blue-300 block">📦 Wholesale Invoice Prefix</span>
-                                                        <div className="grid grid-cols-2 gap-2">
-                                                          <div>
-                                                            <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
-                                                            <input
-                                                              type="text"
-                                                              value={liveInvoiceSettings.wholesalePrefix || "WS-"}
-                                                              onChange={(e) => {
-                                                                const updated = { ...liveInvoiceSettings, wholesalePrefix: e.target.value.toUpperCase() };
-                                                                setLiveInvoiceSettings(updated);
-                                                                saveStoredInvoiceSettings(updated, tenant?.id);
-                                                              }}
-                                                              className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-mono font-bold"
-                                                              placeholder="WS-"
-                                                            />
-                                                          </div>
-                                                          <div>
-                                                            <label className="text-[10px] text-muted-foreground block mb-0.5">Next Number</label>
-                                                            <input
-                                                              type="number"
-                                                              min="1"
-                                                              value={liveInvoiceSettings.wholesaleSequenceNumber || 1}
-                                                              onChange={(e) => {
-                                                                const updated = { ...liveInvoiceSettings, wholesaleSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) };
-                                                                setLiveInvoiceSettings(updated);
-                                                                saveStoredInvoiceSettings(updated, tenant?.id);
-                                                              }}
-                                                              className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-bold"
-                                                            />
-                                                          </div>
-                                                        </div>
-                                                      </div>
-
-                                                      <div className="p-2.5 bg-emerald-50/60 dark:bg-emerald-950/20 rounded-lg space-y-2">
-                                                        <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 block">🛒 B2C Consumer Retail Prefix</span>
-                                                        <div className="grid grid-cols-2 gap-2">
-                                                          <div>
-                                                            <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
-                                                            <input
-                                                              type="text"
-                                                              value={liveInvoiceSettings.b2cPrefix || "RET-"}
-                                                              onChange={(e) => {
-                                                                const updated = { ...liveInvoiceSettings, b2cPrefix: e.target.value.toUpperCase() };
-                                                                setLiveInvoiceSettings(updated);
-                                                                saveStoredInvoiceSettings(updated, tenant?.id);
-                                                              }}
-                                                              className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-mono font-bold"
-                                                              placeholder="RET-"
-                                                            />
-                                                          </div>
-                                                          <div>
-                                                            <label className="text-[10px] text-muted-foreground block mb-0.5">Next Number</label>
-                                                            <input
-                                                              type="number"
-                                                              min="1"
-                                                              value={liveInvoiceSettings.b2cSequenceNumber || 1}
-                                                              onChange={(e) => {
-                                                                const updated = { ...liveInvoiceSettings, b2cSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) };
-                                                                setLiveInvoiceSettings(updated);
-                                                                saveStoredInvoiceSettings(updated, tenant?.id);
-                                                              }}
-                                                              className="w-full h-7 px-2 bg-white dark:bg-slate-900 border rounded text-xs font-bold"
-                                                            />
-                                                          </div>
-                                                        </div>
-                                                      </div>
-                                                    </div>
-                                                  )}
-                                                </div>
-
-                                                {/* Standard Invoice Numbering Series */}
-                                                <div className="p-3.5 bg-white dark:bg-slate-800/80 rounded-xl border border-border/70 space-y-2.5">
-                                                  <h4 className="text-xs font-bold text-foreground">Standard Sales Invoice Prefix & Sequence</h4>
-                                                  <div className="grid grid-cols-3 gap-2">
-                                                    <div>
-                                                      <label className="text-[10px] text-muted-foreground block mb-0.5">Prefix</label>
-                                                      <input
-                                                        type="text"
-                                                        value={liveInvoiceSettings.prefix !== undefined ? liveInvoiceSettings.prefix : "INV-"}
-                                                        onChange={(e) => {
-                                                          const updated = { ...liveInvoiceSettings, prefix: e.target.value.toUpperCase() };
-                                                          setLiveInvoiceSettings(updated);
-                                                          saveStoredInvoiceSettings(updated, tenant?.id);
-                                                        }}
-                                                        className="w-full h-8 px-2 bg-background border rounded-lg text-xs font-mono font-bold"
-                                                        placeholder="INV-"
-                                                      />
-                                                    </div>
-                                                    <div>
-                                                      <label className="text-[10px] text-muted-foreground block mb-0.5">Next Sequence</label>
-                                                      <input
-                                                        type="number"
-                                                        min="1"
-                                                        value={liveInvoiceSettings.sequenceNumber ?? 1}
-                                                        onChange={(e) => {
-                                                          const updated = { ...liveInvoiceSettings, sequenceNumber: Math.max(1, parseInt(e.target.value) || 1) };
-                                                          setLiveInvoiceSettings(updated);
-                                                          saveStoredInvoiceSettings(updated, tenant?.id);
-                                                        }}
-                                                        className="w-full h-8 px-2 bg-background border rounded-lg text-xs font-bold"
-                                                      />
-                                                    </div>
-                                                    <div>
-                                                      <label className="text-[10px] text-muted-foreground block mb-0.5">Padding</label>
-                                                      <select
-                                                        value={liveInvoiceSettings.padding ?? 4}
-                                                        onChange={(e) => {
-                                                          const updated = { ...liveInvoiceSettings, padding: parseInt(e.target.value, 10) || 4 };
-                                                          setLiveInvoiceSettings(updated);
-                                                          saveStoredInvoiceSettings(updated, tenant?.id);
-                                                        }}
-                                                        className="w-full h-8 px-2 bg-background border rounded-lg text-xs font-semibold"
-                                                      >
-                                                        <option value={4}>4 Digits (0001)</option>
-                                                        <option value={5}>5 Digits (00001)</option>
-                                                        <option value={6}>6 Digits (000001)</option>
-                                                        <option value={3}>3 Digits (001)</option>
-                                                      </select>
-                                                    </div>
-                                                  </div>
-                                                  <div className="p-2 bg-indigo-50/50 dark:bg-indigo-950/30 rounded-lg border border-indigo-100 dark:border-indigo-900/50 text-[11px] flex items-center justify-between">
-                                                    <span className="text-muted-foreground">Next Generated:</span>
-                                                    <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                                                      {liveInvoiceSettings.prefix || "INV-"}{String(liveInvoiceSettings.sequenceNumber || 1).padStart(liveInvoiceSettings.padding ?? 4, "0")}
-                                                    </span>
-                                                  </div>
-                                                </div>
-                                              </div>
-                                            )}
-
-                                            {/* Sub-Tab 2: Columns & IMEI */}
-                                            {settingsActiveSubTab === "columns" && (
-                                              <div className="space-y-2.5 animate-in fade-in">
-                                                {/* IMEI / Serial No Highlighted Toggle */}
-                                                <label className="flex items-center justify-between p-3 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/30 cursor-pointer hover:bg-indigo-50 transition-colors">
-                                                  <div className="flex items-center gap-2.5">
-                                                    <span className="text-lg">📱</span>
-                                                    <div>
-                                                      <span className="text-xs font-bold text-foreground block">Serial / IMEI No. Column</span>
-                                                      <span className="text-[10px] text-muted-foreground">Print device serial, IMEI & MAC address rows</span>
-                                                    </div>
-                                                  </div>
-                                                  <input
-                                                    type="checkbox"
-                                                    checked={Boolean(liveInvoiceSettings.showSerialNo)}
-                                                    onChange={(e) => {
-                                                      const updated = { ...liveInvoiceSettings, showSerialNo: e.target.checked };
-                                                      setLiveInvoiceSettings(updated);
-                                                      saveStoredInvoiceSettings(updated, tenant?.id);
-                                                      toggleElementField("showSerialNo" as any);
-                                                    }}
-                                                    className="size-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                                  />
-                                                </label>
-
-                                                {/* Standard Column Toggles */}
-                                                <div className="grid grid-cols-2 gap-2 text-xs">
-                                                  {[
-                                                    { key: "showHSN", label: "Show HSN / SAC Codes", active: activeTemplate.fields.showHSN },
-                                                    { key: "showUOM", label: "Show UOM (Units)", active: (activeTemplate.fields as any).showUOM },
-                                                    { key: "showBatchNo", label: "Show Batch / Lot No.", active: (activeTemplate.fields as any).showBatchNo },
-                                                    { key: "showExpDate", label: "Show Expiry Date", active: (activeTemplate.fields as any).showExpDate },
-                                                    { key: "showMfgDate", label: "Show Mfg Date", active: (activeTemplate.fields as any).showMfgDate },
-                                                    { key: "showMRP", label: "Show MRP (₹)", active: (activeTemplate.fields as any).showMRP },
-                                                    { key: "showRate", label: "Show Unit Price / Rate", active: (activeTemplate.fields as any).showRate },
-                                                    { key: "showDiscount", label: "Show Discount", active: (activeTemplate.fields as any).showDiscount },
-                                                    { key: "showTax", label: "Show GST Tax %", active: (activeTemplate.fields as any).showTax },
-                                                    { key: "showPartyBalance", label: "Show Party Outstanding", active: activeTemplate.fields.showPartyBalance },
-                                                  ].map((col) => (
-                                                    <label
-                                                      key={col.key}
-                                                      className="flex items-center justify-between p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40 transition-colors"
-                                                    >
-                                                      <span className="text-[11px] font-medium text-foreground">{col.label}</span>
-                                                      <input
-                                                        type="checkbox"
-                                                        checked={!!col.active}
-                                                        onChange={() => toggleElementField(col.key as any)}
-                                                        className="size-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                                      />
-                                                    </label>
-                                                  ))}
-                                                </div>
-                                              </div>
-                                            )}
-
-                                            {/* Sub-Tab 3: Bank & UPI QR */}
-                                            {settingsActiveSubTab === "bank_qr" && (
-                                              <div className="space-y-2.5 animate-in fade-in">
-                                                <label className="flex items-center justify-between p-3 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
-                                                  <div>
-                                                    <span className="text-xs font-bold text-foreground block">Bank Account Details Box</span>
-                                                    <span className="text-[10px] text-muted-foreground">Print primary operating bank account info for direct NEFT/RTGS payments</span>
-                                                  </div>
-                                                  <input
-                                                    type="checkbox"
-                                                    checked={!!activeTemplate.fields.showBankDetails}
-                                                    onChange={() => toggleElementField("showBankDetails")}
-                                                    className="size-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                                  />
-                                                </label>
-
-                                                <label className="flex items-center justify-between p-3 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
-                                                  <div>
-                                                    <span className="text-xs font-bold text-foreground block">Dynamic UPI Payment QR Code</span>
-                                                    <span className="text-[10px] text-muted-foreground">Generate live UPI scan-and-pay QR code for exact invoice total</span>
-                                                  </div>
-                                                  <input
-                                                    type="checkbox"
-                                                    checked={!!activeTemplate.fields.showUPIQR}
-                                                    onChange={() => toggleElementField("showUPIQR")}
-                                                    className="size-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                                  />
-                                                </label>
-
-                                                <label className="flex items-center justify-between p-3 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
-                                                  <div>
-                                                    <span className="text-xs font-bold text-foreground block">Google Review 5-Star QR Code</span>
-                                                    <span className="text-[10px] text-muted-foreground">Print customer feedback QR code to boost Google Business ratings</span>
-                                                  </div>
-                                                  <input
-                                                    type="checkbox"
-                                                    checked={!!activeTemplate.fields.showGoogleReviewQR}
-                                                    onChange={() => toggleElementField("showGoogleReviewQR")}
-                                                    className="size-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                                  />
-                                                </label>
-                                              </div>
-                                            )}
-
-                                            {/* Sub-Tab 4: Terms & Legal */}
-                                            {settingsActiveSubTab === "tax_terms" && (
-                                              <div className="space-y-2.5 animate-in fade-in">
-                                                <label className="flex items-center justify-between p-3 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
-                                                  <div>
-                                                    <span className="text-xs font-bold text-foreground block">Print Terms & Conditions / Return Policy</span>
-                                                    <span className="text-[10px] text-muted-foreground">Display store returns, warranty, and interest policies</span>
-                                                  </div>
-                                                  <input
-                                                    type="checkbox"
-                                                    checked={!!activeTemplate.fields.showTerms}
-                                                    onChange={() => toggleElementField("showTerms")}
-                                                    className="size-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                                  />
-                                                </label>
-
-                                                <label className="flex items-center justify-between p-3 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
-                                                  <div>
-                                                    <span className="text-xs font-bold text-foreground block">Statutory GST Declaration Note</span>
-                                                    <span className="text-[10px] text-muted-foreground">Print certified declaration under GST Act</span>
-                                                  </div>
-                                                  <input
-                                                    type="checkbox"
-                                                    checked={!!activeTemplate.fields.showDeclaration}
-                                                    onChange={() => toggleElementField("showDeclaration")}
-                                                    className="size-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                                  />
-                                                </label>
-
-                                                <label className="flex items-center justify-between p-3 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
-                                                  <div>
-                                                    <span className="text-xs font-bold text-foreground block">Digital Signature & Company Stamp</span>
-                                                    <span className="text-[10px] text-muted-foreground">Show authorized signatory seal in invoice footer</span>
-                                                  </div>
-                                                  <input
-                                                    type="checkbox"
-                                                    checked={!!activeTemplate.fields.showSignature}
-                                                    onChange={() => toggleElementField("showSignature")}
-                                                    className="size-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                                  />
-                                                </label>
-                                              </div>
-                                            )}
-
-                                            {/* Sub-Tab 5: Barcode & Symbology */}
-                                            {settingsActiveSubTab === "barcode" && (
-                                              <div className="space-y-3 animate-in fade-in">
-                                                <div className="space-y-1">
-                                                  <label className="text-xs font-semibold text-foreground">Symbology Standard</label>
-                                                  <select
-                                                    value={activeTemplate.barcodeSymbology || "Auto"}
-                                                    onChange={(e) => updateTemplateProperty("barcodeSymbology", e.target.value as any)}
-                                                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground focus:border-indigo-500 font-medium"
-                                                  >
-                                                    <option value="Auto">Auto (Smart Detect numeric vs alphanumeric)</option>
-                                                    <option value="Code-128">Code 128 (Universal High-Density Standard)</option>
-                                                    <option value="EAN-13">GS1 EAN-13 (13-digit Retail Standard)</option>
-                                                    <option value="Code-39">Code 39 (Alphanumeric Standard)</option>
-                                                    <option value="QR">QR Code (2D Data Matrix / Instant UPI)</option>
-                                                  </select>
-                                                </div>
-
-                                                <div className="space-y-1 p-3 bg-muted/20 rounded-xl border border-border/50">
-                                                  <div className="flex justify-between text-[11px] font-semibold text-foreground">
-                                                    <span>Barcode Height:</span>
-                                                    <span className="font-mono text-indigo-600 dark:text-indigo-400">{activeTemplate.barcodeHeight || 44}px</span>
-                                                  </div>
-                                                  <input
-                                                    type="range"
-                                                    min="20"
-                                                    max="90"
-                                                    value={activeTemplate.barcodeHeight || 44}
-                                                    onChange={(e) => updateTemplateProperty("barcodeHeight", Number(e.target.value))}
-                                                    className="w-full cursor-pointer accent-indigo-600"
-                                                  />
-                                                </div>
-
-                                                <div className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/40">
-                                                  <input
-                                                    type="checkbox"
-                                                    id="show-barcode-text-toggle-2"
-                                                    checked={activeTemplate.showBarcodeText !== false}
-                                                    onChange={(e) => updateTemplateProperty("showBarcodeText", e.target.checked)}
-                                                    className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
-                                                  />
-                                                  <label htmlFor="show-barcode-text-toggle-2" className="text-xs font-semibold text-foreground cursor-pointer">
-                                                    Show Digits / Text below Barcode
-                                                  </label>
-                                                </div>
-                                              </div>
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
-                                    ) : null}
+                                      </details>
+                                    )}
                                   </div>
                                 </div>
 
@@ -7310,7 +8823,7 @@ export function PrintTemplates() {
                                         {(selectedDocType === "invoice" || activeTemplate.category === "invoices" || activeTemplate.docType === "invoice") && (
                                           <button
                                             type="button"
-                                            onClick={() => setIsWordStudioOpen(true)}
+                                            onClick={() => { setIsWordStudioBlank(false); setIsWordStudioOpen(true); }}
                                             className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-2.5 py-1.5 text-[11px] font-bold shadow-xs transition-all cursor-pointer"
                                             title="Customize with Visual Word-Style Studio"
                                           >
@@ -7514,6 +9027,9 @@ export function PrintTemplates() {
                                           <LiveDocumentPreview
                                             template={activeTemplate}
                                             currency={currency}
+                                            bankAccounts={printBankAccounts}
+                                            previewInvoiceSettings={liveInvoiceSettings}
+                                            previewSlot={slotKeyForDocType(selectedDocType)}
                                             selectedBarcodeElementKey={selectedBarcodeElementKey}
                                             onSelectBarcodeElement={(k) => setSelectedBarcodeElementKey(k)}
                                             onFieldEdit={(k, val) => updateBarcodeCustomText(k, val)}
@@ -7574,7 +9090,7 @@ export function PrintTemplates() {
                                   onClose={() => setIsBarcodeCustomizerModalOpen(false)}
                                   initialTemplateId={activeTemplate?.id}
                                   onSaved={(savedId) => {
-                                    const allBarcodes = getAllBarcodeTemplates();
+                                    const allBarcodes = receiptTemplateStore.getAllBarcodeTemplates();
                                     setTemplates((prev) => {
                                       const others = prev.filter((t) => t.category !== "barcodes" && t.docType !== "barcode");
                                       return [...others, ...allBarcodes];
@@ -7681,8 +9197,18 @@ export function PrintTemplates() {
                                                 name: c.headerTitle,
                                                 label: c.headerTitle,
                                                 key: c.fieldKey,
+                                                fieldKey: c.fieldKey,
                                                 enabled: c.enabled,
                                               })),
+                                            fields: {
+                                              ...(t.fields || {}),
+                                              showItemIndex: (savedConfig.columns || []).some((c: any) => c.fieldKey === "sno" && c.enabled),
+                                              showHSN: (savedConfig.columns || []).some((c: any) => c.fieldKey === "hsn" && c.enabled),
+                                              showBankDetails: savedConfig.showBankDetails ?? t.fields?.showBankDetails,
+                                              showQR: savedConfig.showPaymentQr ?? t.fields?.showQR,
+                                              showTaxSplit: savedConfig.showTaxBreakdown ?? t.fields?.showTaxSplit,
+                                              showAmountInWords: savedConfig.showAmountInWords ?? t.fields?.showAmountInWords,
+                                            },
                                             body: {
                                               ...(t.body || {}),
                                               columns: (savedConfig.columns || []).filter((c: any) => c.enabled).map((c: any) => ({
@@ -7715,16 +9241,7 @@ export function PrintTemplates() {
                                 />
                               )}
 
-                              {/* Sales Invoice & ERP Full Settings Studio Modal */}
-                              {isInvoiceSettingsModalOpen && (
-                                <InvoiceQuickSettingsModal
-                                  isOpen={isInvoiceSettingsModalOpen}
-                                  onClose={() => setIsInvoiceSettingsModalOpen(false)}
-                                  onSaved={(newSet) => {
-                                    setLiveInvoiceSettings(newSet);
-                                  }}
-                                />
-                              )}
+                              
 
                               {/* ── Thermal Receipt Full View Modal (In-Tab Interactive) ── */}
                               {isThermalFullViewOpen && (
@@ -7784,6 +9301,9 @@ export function PrintTemplates() {
                                         <LiveDocumentPreview
                                           template={activeTemplate}
                                           currency={currency}
+                                            bankAccounts={printBankAccounts}
+                                            previewInvoiceSettings={liveInvoiceSettings}
+                                            previewSlot={slotKeyForDocType(selectedDocType)}
                                         />
                                       </div>
                                     </div>
@@ -7832,7 +9352,10 @@ export function PrintTemplates() {
                           /* ── Live Document Preview Engine (Exact Multi-Theme Renderer Matching Original Screens) ── */
                           function LiveDocumentPreview({
                             template,
+                            bankAccounts,
                             currency,
+                            previewSlot,
+                            previewInvoiceSettings,
                             selectedBarcodeElementKey,
                             onSelectBarcodeElement,
                             onFieldEdit,
@@ -7842,6 +9365,9 @@ export function PrintTemplates() {
                             sampleBarcodeItem,
 }: {
                             template: PrintTemplate;
+  bankAccounts?: BankAccountRecord[];
+  previewSlot?: A4SlotKey;
+  previewInvoiceSettings?: any;
                           currency: {symbol: string; code: string };
                           selectedBarcodeElementKey?: string | null;
   onSelectBarcodeElement?: (key: string | null) => void;
@@ -7853,8 +9379,13 @@ export function PrintTemplates() {
 }) {
   const {t} = useI18n();
                           const {tenant} = useTenant();
+                          const liveInvoiceSettings = previewInvoiceSettings || loadStoredInvoiceSettings(tenant?.id);
                           const f = {
                             ...DEFAULT_ELEMENT_TOGGLES,
+                            showPoNumber: (template as any)?.fields?.showPoNumber !== undefined ? Boolean((template as any)?.fields?.showPoNumber) : (previewInvoiceSettings?.showPoNumber !== false),
+                            showVehicleNumber: (template as any)?.fields?.showVehicleNumber !== undefined ? Boolean((template as any)?.fields?.showVehicleNumber) : (previewInvoiceSettings?.showVehicleNumber !== false),
+                            showEwayBill: (template as any)?.fields?.showEwayBill !== undefined ? Boolean((template as any)?.fields?.showEwayBill) : (previewInvoiceSettings?.showEwayBill !== false),
+                            showChallanNumber: (template as any)?.fields?.showChallanNumber !== undefined ? Boolean((template as any)?.fields?.showChallanNumber) : Boolean(previewInvoiceSettings?.showChallanNumber),
     ...(template?.fields || { }),
                           ...(template ? {
                             showLogo: template?.fields?.showLogo ?? (template as any)?.showLogo ?? true,
@@ -7880,9 +9411,32 @@ export function PrintTemplates() {
                           showQR: template?.fields?.showQR ?? (template as any)?.showQrCode ?? true,
                           showTerms: template?.fields?.showTerms ?? (template as any)?.showTermsAndConditions ?? true,
                           showThankYou: template?.fields?.showThankYou ?? (template as any)?.showFooterNote ?? true,
+                          showBillTo: template?.fields?.showBillTo ?? template?.party?.billTo?.showName ?? true,
+                          showShipTo: template?.fields?.showShipTo ?? template?.party?.shipTo?.showName ?? true,
+                          showPartyPhone: template?.fields?.showPartyPhone ?? template?.party?.billTo?.showPhone ?? true,
+                          showPartyEmail: template?.fields?.showPartyEmail ?? template?.party?.billTo?.showEmail ?? true,
+                          showPartyGstin: template?.fields?.showPartyGstin ?? template?.party?.billTo?.showGst ?? true,
+                          showPartyPan: template?.fields?.showPartyPan ?? template?.party?.billTo?.showPan ?? true,
+                          showPartyDlNumber: template?.fields?.showPartyDlNumber ?? (template?.fields as any)?.showPartyDl ?? true,
+                          showPartyDl: template?.fields?.showPartyDlNumber ?? (template?.fields as any)?.showPartyDl ?? true,
+                          showCustomerDl: template?.fields?.showPartyDlNumber ?? (template?.fields as any)?.showPartyDl ?? true,
+                          showDlNumber: template?.fields?.showPartyDlNumber ?? (template?.fields as any)?.showPartyDl ?? true,
+                          showCustomerEmail: template?.fields?.showPartyEmail ?? true,
+                          showCustomerPhone: template?.fields?.showPartyPhone ?? true,
+                          showCustomerGstin: template?.fields?.showPartyGstin ?? true,
+                          showCustomerPan: template?.fields?.showPartyPan ?? true,
+                          showPlaceOfSupply: template?.fields?.showPlaceOfSupply ?? (template as any)?.showPlaceOfSupply ?? true,
+                          showContactPerson: template?.fields?.showContactPerson ?? (template as any)?.showContactPerson ?? true,
+                          showBankDetails: template?.fields?.showBankDetails ?? (template as any)?.showBankDetails ?? true,
+                          showDeclaration: template?.fields?.showDeclaration ?? (template as any)?.showDeclaration ?? true,
     } : { }),
   };
-                          const theme = template?.themeName || "stylish";
+                          // THE SAME theme + renderer decision the print path uses
+                          // (resolveInvoiceRenderer), so the live preview can no
+                          // longer route a template to a different engine than
+                          // print / PDF / WhatsApp do.
+                          const { renderer: previewRenderer, theme: resolvedTheme } = resolveInvoiceRenderer(template);
+                          const theme = resolvedTheme;
 
                           // ── Structural Layout Themes (Stylish, Luxury, Tally, BillBook, Modern, Simple, etc.) ──
                           const layoutTheme = template.themeName || "stylish";
@@ -7999,10 +9553,11 @@ export function PrintTemplates() {
 
                           // Dynamic Store Name Resolution
                           const resolvedStoreName =
+                          (template.storeName && template.storeName.trim() !== "" && !template.storeName.includes("Organization") && !template.storeName.includes("Smart Bazaar") ? template.storeName : "") ||
                           activeBillingGst?.trade_name ||
                           activeBillingGst?.legal_name ||
                           tenant?.name ||
-                          (template.storeName && template.storeName.trim() !== "" && !template.storeName.includes("Organization") && !template.storeName.includes("Smart Bazaar") ? template.storeName : "") ||
+                          template.storeName ||
                           "Store";
 
                           // Dynamic Logo Resolution
@@ -8010,28 +9565,165 @@ export function PrintTemplates() {
 
                           // Dynamic Address Resolution
                           const resolvedAddress =
+                          (template.storeAddress && !isDummyAddress(template.storeAddress) ? template.storeAddress : '') ||
                           (activeBillingGst?.address && !isDummyAddress(activeBillingGst.address) ? activeBillingGst.address : '') ||
                           (tenantAddress && !isDummyAddress(tenantAddress) ? tenantAddress : '') ||
-                          (template.storeAddress && !isDummyAddress(template.storeAddress) ? template.storeAddress : '') ||
+                          template.storeAddress ||
                           activeBillingGst?.address ||
                           tenantAddress ||
                           '';
 
                           // Dynamic Phone Resolution
                           const resolvedPhone =
+                          (template.storePhone && !isDummyPhone(template.storePhone) ? template.storePhone : '') ||
                           (activeBillingGst?.phone && !isDummyPhone(activeBillingGst.phone) ? activeBillingGst.phone : '') ||
                           (tenantPhone && !isDummyPhone(tenantPhone) ? tenantPhone : '') ||
-                          (template.storePhone && !isDummyPhone(template.storePhone) ? template.storePhone : '') ||
+                          template.storePhone ||
                           activeBillingGst?.phone ||
                           tenantPhone ||
                           '';
 
                           // Dynamic GSTIN Resolution
                           const resolvedGstin =
+                          (template.gstin && !isDummyGstin(template.gstin) ? template.gstin : '') ||
                           (activeBillingGst?.gstin && !isDummyGstin(activeBillingGst.gstin) ? activeBillingGst.gstin : '') ||
                           (tenantGstin && !isDummyGstin(tenantGstin) ? tenantGstin : '') ||
-                          (template.gstin && !isDummyGstin(template.gstin) ? template.gstin : '') ||
+                          template.gstin ||
                           '';
+
+                          // ── Editable words + payment QR: must reach the theme components,
+                          //    exactly like FullInvoicePrinter does, so the live preview
+                          //    matches the real print / PDF / WhatsApp output.
+                          const previewTexts = resolveInvoiceTexts(template, theme);
+                          // ── Doc-type identity: drive the preview title / number from the
+                          //    selected document slot so a quotation/proforma/estimate/
+                          //    challan shows its OWN identity (never the tax invoice's).
+                          //    The template's explicit headerTitle still wins when set.
+                          const slotMeta = previewSlot ? A4_SLOT_PREVIEWS[previewSlot] : A4_SLOT_PREVIEWS.invoice;
+                          const previewDocTitle = previewSlot && previewSlot !== "invoice" ? slotMeta.title : ((template as any)?.headerTitle || slotMeta.title);
+                          const previewDocNoSafe = (() => {
+                            const isQuote = previewSlot === "quotation";
+                            const isProf = previewSlot === "proforma";
+                            const isEst = previewSlot === "estimate";
+                            const isChal = previewSlot === "challan";
+                            const isCN = previewSlot === "credit_note";
+                            const isDN = previewSlot === "debit_note";
+                            const isPINV = previewSlot === "purchase_invoice";
+                            const isPO = previewSlot === "purchase_order";
+                            const isRec = previewSlot === "thermal" || (template as any)?.docType === "thermal" || (template as any)?.category === "thermal";
+
+                            let pfx = isQuote
+                              ? (liveInvoiceSettings.quotationPrefix || "QT-")
+                              : isProf
+                              ? (liveInvoiceSettings.proformaPrefix || "PI-")
+                              : isEst
+                              ? (liveInvoiceSettings.estimatePrefix || "EST-")
+                              : isChal
+                              ? (liveInvoiceSettings.challanPrefix || "DC-")
+                              : isCN
+                              ? (liveInvoiceSettings.creditNotePrefix || "CN-")
+                              : isDN
+                              ? (liveInvoiceSettings.debitNotePrefix || "DN-")
+                              : isPINV
+                              ? (liveInvoiceSettings.purchaseInvoicePrefix || "PINV-")
+                              : isPO
+                              ? (liveInvoiceSettings.purchaseOrderPrefix || "PO-")
+                              : isRec
+                              ? (liveInvoiceSettings.receiptPrefix || "REC-")
+                              : (liveInvoiceSettings.prefix || slotMeta.noPrefix || "INV-");
+
+                            if (!pfx.endsWith("-") && !pfx.endsWith("/")) {
+                              pfx = `${pfx}-`;
+                            }
+
+                            const seq = isQuote
+                              ? (liveInvoiceSettings.quotationSequenceNumber || 1)
+                              : isProf
+                              ? (liveInvoiceSettings.proformaSequenceNumber || 1)
+                              : isEst
+                              ? (liveInvoiceSettings.estimateSequenceNumber || 1)
+                              : isChal
+                              ? (liveInvoiceSettings.challanSequenceNumber || 1)
+                              : isCN
+                              ? (liveInvoiceSettings.creditNoteSequenceNumber || 1)
+                              : isDN
+                              ? (liveInvoiceSettings.debitNoteSequenceNumber || 1)
+                              : isPINV
+                              ? (liveInvoiceSettings.purchaseInvoiceSequenceNumber || 1)
+                              : isPO
+                              ? (liveInvoiceSettings.purchaseOrderSequenceNumber || 1)
+                              : isRec
+                              ? (liveInvoiceSettings.receiptSequenceNumber || 1)
+                              : (liveInvoiceSettings.sequenceNumber || 1);
+
+                            const pad = isQuote
+                              ? (liveInvoiceSettings.quotationPadding ?? 4)
+                              : isProf
+                              ? (liveInvoiceSettings.proformaPadding ?? 4)
+                              : isEst
+                              ? (liveInvoiceSettings.estimatePadding ?? 4)
+                              : isChal
+                              ? (liveInvoiceSettings.challanPadding ?? 4)
+                              : isCN
+                              ? (liveInvoiceSettings.creditNotePadding ?? 4)
+                              : isDN
+                              ? (liveInvoiceSettings.debitNotePadding ?? 4)
+                              : isPINV
+                              ? (liveInvoiceSettings.purchaseInvoicePadding ?? 4)
+                              : isPO
+                              ? (liveInvoiceSettings.purchaseOrderPadding ?? 4)
+                              : isRec
+                              ? (liveInvoiceSettings.receiptPadding ?? 5)
+                              : (liveInvoiceSettings.padding ?? 4);
+
+                            const sfx = (!isQuote && !isProf && !isEst && !isChal && !isCN && !isDN && !isPINV && !isPO && !isRec)
+                              ? (liveInvoiceSettings.suffix || "")
+                              : "";
+
+                            return `${pfx}${String(seq).padStart(pad, "0")}${sfx}`;
+                          })();
+
+                          const previewPaymentQr: PaymentQrContext = (() => {
+                            const qrSettings = getOrgPaymentQrSettings(tenant?.id);
+                            const upiVpa = ((template as any)?.upiId || qrSettings?.vpa || activeBillingGst?.upi_vpa || "").trim();
+                            const customQr = (template as any)?.customQrUrl || (qrSettings?.type === 'custom_image' ? qrSettings?.customImageUrl : null);
+                            const hasValidUpi = Boolean(upiVpa && upiVpa.includes('@'));
+                            const hasRealSource = Boolean(customQr || hasValidUpi);
+                            const enabled = f.showQR !== false && hasRealSource;
+                            const src = !enabled
+                              ? ""
+                              : customQr
+                                ? customQr
+                                : generateQRCodeSVG(
+                                    buildUpiPayUrl({
+                                      vpa: upiVpa,
+                                      payeeName: (template as any)?.payeeName || qrSettings?.payeeName || resolvedStoreName || "Store Merchant",
+                                      amount: 51262,
+                                      invoiceNumber: previewDocNoSafe,
+                                    }),
+                                    160,
+                                  );
+                            return { enabled, src, vpa: upiVpa, targetAmount: 51262, balanceDue: 51262, isPaidInFull: false };
+                          })();
+                          // Real bank line: prefer structured bank fields, then template string,
+                          // then active GST bank, never hardcoded numbers.
+                          const structuredBank = [
+                            template?.bankName ? `Bank: ${template.bankName}` : "",
+                            template?.accountNumber ? `A/C: ${template.accountNumber}` : "",
+                            template?.ifscCode ? `IFSC: ${template.ifscCode}` : "",
+                            template?.branchName ? `Branch: ${template.branchName}` : "",
+                            template?.accountHolderName ? `Holder: ${template.accountHolderName}` : "",
+                          ].filter(Boolean).join(" | ");
+
+                          const previewBank =
+                            structuredBank ||
+                            (template?.bankDetails || "").trim() ||
+                            (bankAccounts && bankAccounts.length > 0 && bankAccounts[0]
+                              ? `Bank: ${bankAccounts[0].bank_name || bankAccounts[0].name} | A/C: ${bankAccounts[0].account_number || ""} | IFSC: ${bankAccounts[0].ifsc_code || ""}`
+                              : "") ||
+                            (activeBillingGst?.bank_name
+                              ? `Bank: ${activeBillingGst.bank_name} | A/C: ${activeBillingGst?.bank_account_number || ""} | IFSC: ${activeBillingGst?.bank_ifsc || ""}`
+                              : "");
 
                           // ─── 0. THERMAL RECEIPT LIVE PREVIEW ENGINE (80mm / 58mm Pure Black High-Contrast) ───
                           if (template.docType === "thermal" || template.category === "thermal") {
@@ -8162,7 +9854,7 @@ export function PrintTemplates() {
                               {/* Title & Metadata */}
                               <div className="text-center">
                                 <span className="font-black text-xs uppercase px-2.5 py-0.5 border-2 border-black rounded inline-block text-black tracking-wider">
-                                  {template.headerTitle || "TAX INVOICE"}
+                                  {previewDocTitle}
                                 </span>
                               </div>
 
@@ -8397,7 +10089,7 @@ export function PrintTemplates() {
                                     <img
                                       src={generateQRCodeSVG(
                                         buildUpiPayUrl({
-                                          vpa: template.upiId || activeBillingGst?.upi_vpa || "pay@upi",
+                                          vpa: template.upiId || activeBillingGst?.upi_vpa || "",
                                           payeeName: template.payeeName || resolvedStoreName,
                                           amount: "870.00",
                                           invoiceNumber: "POS-2026-0042",
@@ -8512,21 +10204,26 @@ export function PrintTemplates() {
                           );
   }
 
-                          // 1. INVOICE PREVIEW ENGINE
-                          if (template.docType === "invoice" || template.category === "invoices") {
-    // ── Check if Word-Style Designer or Global Template ──
-    if (
-                          (template as any).wordConfig ||
-                          template.id?.startsWith("tpl-word-") ||
-                          template.id?.startsWith("tpl-inv-global-") ||
-                          theme === "word_studio" ||
-                          template.themeName === "word_studio" ||
-                          template.themeName?.startsWith("global_") ||
-                          (template as any)?.isWordTemplate
+                          // 1. A4 COMMERCIAL DOCUMENT PREVIEW ENGINE (Invoices, Quotations, Proformas, Challans)
+                          if (
+                            template.docType === "invoice" ||
+                            template.category === "invoices" ||
+                            template.docType === "challan" ||
+                            template.category === "challan" ||
+                            template.docType === "quotation" ||
+                            template.docType === "proforma" ||
+                            template.docType === "custom" ||
+                            template.category === "custom" ||
+                            isInvoicesFamilyDocType(template.docType)
                           ) {
+    // ── Check if Word-Style Designer or Global Template ──
+    // Routed by the SHARED resolver (same decision as the print path), so a
+    // named theme with an attached wordConfig no longer flips to the Word
+    // mock here while print keeps the named design.
+    if (previewRenderer === "word") {
       const wordMockInvoice: FullInvoiceData = {
                             id: "mock-inv-word-01",
-                          invoice_number: (template as any).wordConfig?.invoiceNumberValue || "INV-2026-0009",
+                          invoice_number: (template as any).wordConfig?.invoiceNumberValue || previewDocNoSafe,
                           invoice_date: new Date().toISOString(),
                           due_date: new Date(Date.now() + 7 * 86400000).toISOString(),
                           customerName: (template as any).wordConfig?.customerName || "Sri Sai Supermarket & Retailers",
@@ -8630,9 +10327,9 @@ export function PrintTemplates() {
     }
 
                           // ── Check if Exact PDF Stationery Overlay Template ──
-                          if ((template as any).isPdfStationeryOverlay || theme === "pdf_stationery_overlay" || (template as any).pdfBackgroundDataUrl) {
+                          if (previewRenderer === "pdf_overlay") {
       const overlayMockInvoice: FullInvoiceData = {
-                            invoice_number: "INV-2026-0089",
+                            invoice_number: previewDocNoSafe,
                           invoice_date: new Date().toISOString(),
                           due_date: new Date().toISOString(),
                           customerName: "Acme Retail Enterprises",
@@ -8672,10 +10369,10 @@ export function PrintTemplates() {
     }
 
                           // ── Check if Custom Replica Template (Marg Pharma) ──
-                          if (theme === "marg_pharma") {
+                          if (previewRenderer === "marg_pharma") {
       const margMockInvoice: FullInvoiceData = {
                             id: "mock-marg-01",
-                          invoice_number: "A000002",
+                          invoice_number: previewDocNoSafe,
                           invoice_date: "2026-08-11",
                           due_date: "2026-08-11",
                           created_at: "2026-08-11T10:00:00Z",
@@ -8791,8 +10488,11 @@ export function PrintTemplates() {
                                 dynamicEmail=""
                                 sellerGstin={resolvedGstin}
                                 sellerStateCode="37"
+                                dynamicBank={previewBank}
                                 currency={currency}
                                 f={f as any}
+                                texts={previewTexts}
+                                paymentQr={previewPaymentQr}
                               />
                             </div>
                           </div>
@@ -8800,10 +10500,10 @@ export function PrintTemplates() {
     }
 
                           // ── Check if Custom Replica Template (FMCG Wholesale) ──
-                          if (theme === "fmcg_distributor") {
+                          if (previewRenderer === "fmcg_distributor") {
       const fmcgMockInvoice: FullInvoiceData = {
                             id: "mock-fmcg-01",
-                          invoice_number: "B/26-27/010451",
+                          invoice_number: previewDocNoSafe,
                           invoice_date: "2026-07-21",
                           due_date: "2026-07-21",
                           created_at: "2026-07-21T10:00:00Z",
@@ -8902,8 +10602,11 @@ export function PrintTemplates() {
                                 dynamicEmail=""
                                 sellerGstin={resolvedGstin}
                                 sellerStateCode="37"
+                                dynamicBank={previewBank}
                                 currency={currency}
                                 f={f as any}
+                                texts={previewTexts}
+                                paymentQr={previewPaymentQr}
                               />
                             </div>
                           </div>
@@ -8911,10 +10614,10 @@ export function PrintTemplates() {
     }
 
                           // ── Check if Custom Replica Template (Parle Supermarket) ──
-                          if (theme === "parle_teal") {
+                          if (previewRenderer === "parle_teal") {
       const parleMockInvoice: FullInvoiceData = {
                             id: "mock-parle-01",
-                          invoice_number: "B000738",
+                          invoice_number: previewDocNoSafe,
                           invoice_date: "2026-05-30",
                           due_date: "2026-05-30",
                           created_at: "2026-05-30T10:00:00Z",
@@ -9012,8 +10715,11 @@ export function PrintTemplates() {
                                 dynamicEmail=""
                                 sellerGstin={resolvedGstin}
                                 sellerStateCode="37"
+                                dynamicBank={previewBank}
                                 currency={currency}
                                 f={f as any}
+                                texts={previewTexts}
+                                paymentQr={previewPaymentQr}
                               />
                             </div>
                           </div>
@@ -9021,10 +10727,10 @@ export function PrintTemplates() {
     }
 
                           // ── Check if Custom Replica Template (Agri Seeds) ──
-                          if (theme === "agri_seeds") {
+                          if (previewRenderer === "agri_seeds") {
       const agriMockInvoice: FullInvoiceData = {
                             id: "mock-agri-01",
-                          invoice_number: "AGRI/2026/099",
+                          invoice_number: previewDocNoSafe,
                           invoice_date: "2026-06-15",
                           due_date: "2026-06-15",
                           created_at: "2026-06-15T10:00:00Z",
@@ -9120,32 +10826,49 @@ export function PrintTemplates() {
                                 dynamicEmail=""
                                 sellerGstin={resolvedGstin}
                                 sellerStateCode="37"
-                                dynamicBank={template.bankDetails || "Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003"}
+                                dynamicBank={previewBank}
                                 currency={currency}
                                 f={f as any}
+                                texts={previewTexts}
+                                paymentQr={previewPaymentQr}
                               />
                             </div>
                           </div>
                           );
     }
 
-                          // ── Check if GST Tally (myBillBook) Theme ──
-                          if (theme === "gst_tally") {
-      const gstTallyMockInvoice: FullInvoiceData = {
+                          // ── Canonical Commercial Document Engine (GST Tally, Stylish, Luxury, BillBook, etc.) ──
+                          const gstTallyMockInvoice: FullInvoiceData = {
                             id: "mock-gst-tally-01",
-                          invoice_number: "B/26-27/004512",
+                          invoice_number: previewDocNoSafe,
+                          doc_type: previewSlot && previewSlot !== "invoice" ? (previewSlot === "challan" ? "challan" : previewSlot) : "invoice",
+                          header_title: previewDocTitle,
                           invoice_date: "2026-07-10",
                           due_date: "2026-07-24",
                           created_at: "2026-07-10T10:00:00Z",
                           payment_method: "Cash",
                           place_of_supply: "37 - Andhra Pradesh",
-                          po_number: "PO-2026-8812",
+                          po_number: (template as any)?.dispatchDefaults?.poNo || "PO-2026-8812",
+                          challan_number: (template as any)?.dispatchDefaults?.challanNo || "DC-2026-042",
+                          vehicle_number: (template as any)?.dispatchDefaults?.vehicleNo || "AP-04-TX-4412",
+                          eway_bill_number: (template as any)?.dispatchDefaults?.ewayNo || "2418-9201-9920",
                           customerName: "ACME Enterprises Pvt Ltd",
                           customerCompany: "ACME Enterprises Pvt Ltd",
+                          contactPerson: "Dr. Rajesh Sharma",
+                          customerEmail: "billing@acme-enterprises.com",
+                          customerPAN: "AABCA8821K",
+                          customerDl: "DL-2026-UP-8871",
+                          customer_dl: "DL-2026-UP-8871",
                           customerAddress: "45 Tech Boulevard, Sector 62, Noida, UP",
                           customerShippingAddress: "Plot 12, Industrial Area, Sector 63, Noida, UP",
                           customerPhone: "98765 43210",
                           customerGST: "09BBBBA9999C1Z2",
+                          seller_pan: template.pan || activeBillingGst?.pan || "",
+                          seller_cin: template.cin || activeBillingGst?.cin || "",
+                          terms_text: template.termsText || (template as any).termsAndConditionsText || "",
+                          terms_and_conditions: template.termsText || (template as any).termsAndConditionsText || "",
+                          thank_you_note: template.thankYouNote || template.footerText || "",
+                          declaration_text: template.declarationText || "",
                           taxable_value: 43450,
                           cgst_amount: 3906,
                           sgst_amount: 3906,
@@ -9176,108 +10899,54 @@ export function PrintTemplates() {
                             className={`relative overflow-hidden ${containerWidthClass} shadow-xl`}
                             style={{
                               fontFamily: template.fontFamily,
-                              backgroundColor: template.paperBgColor || "#ffffff",
-                              borderTop: `5px solid ${template.primaryColor}`,
-                            }}
-                          >
-                            <div className="relative z-10">
-                              <GstTallyTemplate
-                                invoice={gstTallyMockInvoice}
-                                dynamicStoreName={resolvedStoreName}
-                                dynamicLogoUrl={resolvedLogoUrl}
-                                dynamicAddress={resolvedAddress}
-                                dynamicPhone={resolvedPhone}
-                                dynamicEmail={activeBillingGst?.email || ""}
-                                sellerGstin={resolvedGstin}
-                                sellerStateCode="37"
-                                dynamicBank={template.bankDetails || "HDFC Bank | A/C 502000492811 | IFSC HDFC0000003"}
-                                currency={currency}
-                                f={f as any}
-                                paperSize={(template.paperSize as any) || "A4"}
-                                orientation={(template.orientation as any) || "portrait"}
-                              />
-                            </div>
-                          </div>
-                          );
-    }
-
-                          return (
-                          <div
-                            className={`relative overflow-hidden ${containerWidthClass} text-slate-900 ${marginPaddingClass} shadow-xl text-[8.5px] space-y-3 ${borderStyle}`}
-                            style={{
-                              fontFamily: template.fontFamily,
                               backgroundColor: template.paperBgColor || (isDecorativeTheme ? "#fffdf5" : "#ffffff"),
-                              borderTop:
-                                isStylish || isCultureUp || isCultureGod || isElegant || isEmeraldCorp || isMaharashtra || isGanesh || isHinduGod || isShubhLabh || isRoyalGold || isJain
-                                  ? `5px solid ${template.primaryColor}`
-                                  : undefined,
+                              borderTop: isStylish || isCultureUp || isCultureGod || isElegant || isEmeraldCorp || isMaharashtra || isGanesh || isHinduGod || isShubhLabh || isRoyalGold || isJain ? `5px solid ${template.primaryColor}` : undefined,
                             }}
                           >
-                            {/* Cultural & Auspicious Header Banners for ThemeStore Themes */}
                             {isJain && (
-                              <div className="text-center text-[8px] font-bold tracking-widest text-amber-800 bg-amber-100/70 py-0.5 rounded border border-amber-300/80 -mt-1 shadow-2xs">
+                              <div className="text-center text-[8px] font-bold tracking-widest text-amber-800 bg-amber-100/70 py-0.5 rounded border border-amber-300/80 mb-2 shadow-2xs">
                                 ॥ ॐ नमो जिनानाम् ॥ अहिंसा परमो धर्मः ॥
                               </div>
                             )}
                             {isMaharashtra && (
-                              <div className="text-center text-[8px] font-bold tracking-widest text-orange-900 bg-orange-100/80 py-0.5 rounded border border-orange-300/80 -mt-1 shadow-2xs">
+                              <div className="text-center text-[8px] font-bold tracking-widest text-orange-900 bg-orange-100/80 py-0.5 rounded border border-orange-300/80 mb-2 shadow-2xs">
                                 🚩 ॥ जय भवानी जय शिवाजी ॥ जय महाराष्ट्र ॥ 🚩
                               </div>
                             )}
                             {isGanesh && (
-                              <div className="text-center text-[8px] font-bold tracking-widest text-amber-900 bg-amber-100/80 py-0.5 rounded border border-amber-300/80 -mt-1 shadow-2xs">
+                              <div className="text-center text-[8px] font-bold tracking-widest text-amber-900 bg-amber-100/80 py-0.5 rounded border border-amber-300/80 mb-2 shadow-2xs">
                                 🕉️ ॥ श्री गणेशाय नमः ॥ ॐ गं गणपतये नमः ॥ ✨
                               </div>
                             )}
                             {isHinduGod && (
-                              <div className="text-center text-[8px] font-bold tracking-widest text-red-900 bg-red-100/70 py-0.5 rounded border border-red-300/80 -mt-1 shadow-2xs">
+                              <div className="text-center text-[8px] font-bold tracking-widest text-red-900 bg-red-100/70 py-0.5 rounded border border-red-300/80 mb-2 shadow-2xs">
                                 🪷 ॥ ॐ नमो भगवते वासुदेवाय ॥ श्री महालक्ष्म्यै नमः ॥ 🪷
                               </div>
                             )}
                             {isShubhLabh && (
-                              <div className="text-center text-[8px] font-bold tracking-widest text-amber-900 bg-amber-100/70 py-0.5 rounded border border-amber-300/80 -mt-1 shadow-2xs">
+                              <div className="text-center text-[8px] font-bold tracking-widest text-amber-900 bg-amber-100/80 py-0.5 rounded border border-amber-300/80 mb-2 shadow-2xs">
                                 ✨ ॥ शुभ लाभ ॥ रिद्धि सिद्धि ॥ श्री गणेशाय नमः ॥ ✨
                               </div>
                             )}
                             {isRoyalGold && (
-                              <div className="text-center text-[8px] font-black tracking-widest text-amber-900 bg-gradient-to-r from-amber-200/60 via-yellow-100/90 to-amber-200/60 py-0.5 rounded border border-amber-400/80 -mt-1 shadow-2xs">
+                              <div className="text-center text-[8px] font-black tracking-widest text-amber-900 bg-gradient-to-r from-amber-200/60 via-yellow-100/90 to-amber-200/60 py-0.5 rounded border border-amber-400/80 mb-2 shadow-2xs">
                                 👑 ✦ ROYAL HERITAGE TAX INVOICE ✦ 👑
                               </div>
                             )}
                             {isCorporate && (
-                              <div className="text-center text-[8px] font-bold tracking-widest text-indigo-900 dark:text-indigo-200 bg-indigo-50/80 dark:bg-indigo-950/50 py-0.5 rounded border border-indigo-200/80 -mt-1 shadow-2xs">
+                              <div className="text-center text-[8px] font-bold tracking-widest text-indigo-900 dark:text-indigo-200 bg-indigo-50/80 dark:bg-indigo-950/50 py-0.5 rounded border border-indigo-200/80 mb-2 shadow-2xs">
                                 🏛️ OFFICIAL COMMERCIAL TAX INVOICE · ORIGINAL 🏛️
                               </div>
                             )}
-                            {isCultureGod && (
-                              <div className="text-center text-[8px] font-bold tracking-widest text-amber-700 bg-amber-50 py-0.5 rounded border border-amber-200 -mt-1">
-                                ॥ श्री गणेशाय नमः ॥ शुभ लाभ ॥
-                              </div>
-                            )}
-                            {isCultureUp && (
-                              <div className="text-center text-[8px] font-bold tracking-widest text-amber-700 bg-amber-50 py-0.5 rounded border border-amber-200 -mt-1">
-                                ॥ गंगा मैया की जय ॥ उत्तर प्रदेश शासन स्वीकृत ॥
-                              </div>
-                            )}
 
-                            {/* BillBook Recipient Copy Header */}
-                            {isBillBook && (
-                              <div className="flex justify-between items-center text-[7.5px] text-slate-500 border-b border-dashed pb-1.5">
-                                <span className="font-semibold text-slate-700">TAX INVOICE</span>
-                                <div className="flex gap-2">
-                                  <span>[x] Original for Recipient</span>
-                                  <span>[ ] Duplicate</span>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Watermark Overlay & Decorative Motifs */}
                             {template.showWatermark && (
                               <div
                                 className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0 overflow-hidden"
                                 style={{ opacity: (template.watermarkOpacity || 15) / 100 }}
                               >
-                                {isGanesh ? (
+                                {template.watermarkType === "image" && template.watermarkImage ? (
+                                  <img src={template.watermarkImage} alt="Watermark" className="max-w-[60%] max-h-[60%] object-contain" />
+                                ) : isGanesh ? (
                                   <span className="text-8xl select-none font-bold text-amber-800/40">🕉️</span>
                                 ) : isJain ? (
                                   <span className="text-8xl select-none font-bold text-amber-800/40">🛕</span>
@@ -9297,395 +10966,33 @@ export function PrintTemplates() {
                               </div>
                             )}
 
-                            {/* Invoice Header */}
-                            {f.showHeader !== false && (
-                              <div
-                                className={`flex items-start justify-between border-b pb-3 z-10 relative ${isTally ? "border-slate-900 border-b-2" : "border-slate-100"
-                                  }`}
-                                style={!isTally && !isSimple && !isModern ? { borderBottom: `2px solid ${template.primaryColor}` } : {}}
-                              >
-                                <div>
-                                  {f.showLogo && (
-                                    <div className="flex items-center gap-2 mb-1.5">
-                                      <img
-                                        src={resolvedLogoUrl}
-                                        alt="Logo"
-                                        className="h-8 max-w-[100px] object-contain rounded shadow-2xs"
-                                        onError={(e) => {
-                                          (e.currentTarget as HTMLImageElement).src = "/Logo.png";
-                                        }}
-                                      />
-                                      <div>
-                                        <h2 className="font-extrabold text-xs text-slate-900 leading-tight">
-                                          {resolvedStoreName}
-                                        </h2>
-                                        <span className="text-[7px] font-bold text-slate-500 uppercase tracking-widest block">
-                                          Authorized Business Organization
-                                        </span>
-                                      </div>
-                                    </div>
-                                  )}
-                                  {!f.showLogo && (
-                                    <h2 className="font-extrabold text-xs mb-0.5" style={{ color: template.primaryColor }}>
-                                      {resolvedStoreName}
-                                    </h2>
-                                  )}
-                                  {f.showCompanyDetails !== false && (
-                                    <>
-                                      <p className="text-[7.5px] text-slate-600 max-w-[180px] leading-tight">
-                                        {resolvedAddress}
-                                      </p>
-                                      <p className="text-[7.5px] text-slate-500">Ph: {resolvedPhone}</p>
-                                      {resolvedGstin && (
-                                        <p className="text-[7.5px] font-bold text-slate-700">GSTIN: {resolvedGstin}</p>
-                                      )}
-                                    </>
-                                  )}
-                                </div>
-
-                                {f.showInvoiceDetails !== false && (
-                                  <div className="text-right">
-                                    <h3
-                                      className={`font-black text-xs tracking-wider uppercase mb-1 ${isLuxury ? "font-serif text-amber-900" : ""}`}
-                                      style={{ color: isLuxury ? template.primaryColor : undefined }}
-                                    >
-                                      {isCultureGod ? "श्री गणेशाय नमः (TAX INVOICE)" : isGanesh ? "॥ TAX INVOICE ॥" : (template.headerTitle || "TAX INVOICE")}
-                                    </h3>
-                                    <div className="text-[7.5px] text-slate-600 space-y-0.5">
-                                      <div>Invoice No: <strong>#INV-2026/0822</strong></div>
-                                      <div>Date: 01 Aug 2026 12:14 PM</div>
-                                      <div>Due Date: 15 Aug 2026</div>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Customer / Party Info Block */}
-                            {f.showCustomerDetails && (
-                              <div
-                                className={`grid grid-cols-3 gap-1.5 p-2 rounded-lg border z-10 relative ${isDecorativeTheme
-                                  ? "bg-amber-500/5 border-amber-300/40"
-                                  : isModern
-                                    ? "bg-slate-50 border-slate-100"
-                                    : isLuxury
-                                      ? "bg-amber-50/40 border-amber-200/60"
-                                      : isTally
-                                        ? "bg-transparent border-slate-900"
-                                        : "bg-black/[0.02] border-slate-200/60"
-                                  }`}
-                              >
-                                <div>
-                                  <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wider block">BILLED TO</span>
-                                  <h4 className="font-bold text-slate-800 text-[8.5px] mt-0.5 leading-tight">{t("ACME Enterprises Pvt Ltd", "ACME Enterprises Pvt Ltd")}</h4>
-                                  <p className="text-[7px] text-slate-600 leading-tight">45 Tech Boulevard, Sector 62, Noida, UP</p>
-                                  <p className="text-[7px] text-slate-600 font-medium">GSTIN: 09BBBBA9999C1Z2</p>
-                                </div>
-                                <div className="border-l border-slate-200 pl-1.5">
-                                  <span className="text-[7px] font-bold text-indigo-500 uppercase tracking-wider block">SHIPPED TO</span>
-                                  <h4 className="font-bold text-slate-800 text-[8.5px] mt-0.5 leading-tight">{t("ACME Warehouse (Noida Hub)", "ACME Warehouse (Noida Hub)")}</h4>
-                                  <p className="text-[7px] text-slate-600 leading-tight">Plot 12, Industrial Area, Sector 63, Noida, UP</p>
-                                  <p className="text-[7px] text-slate-600 font-semibold">Contact: +91 98765 43210</p>
-                                </div>
-                                <div className="text-right flex flex-col justify-between border-l border-slate-200 pl-1.5">
-                                  <div>
-                                    <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wider block">PLACE OF SUPPLY</span>
-                                    <p className="text-[7.5px] font-semibold text-slate-700 mt-0.5">Uttar Pradesh (09)</p>
-                                  </div>
-                                  {f.showPartyBalance && (
-                                    <div className="text-[7px] font-bold text-red-600 mt-1">
-                                      Outstanding: {currency.symbol}14,200.00
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Line Items Table with dynamic columns based on user toggles */}
-                            {f.showItemTable && (
-                              <table className={`w-full border-collapse text-[7.5px] z-10 relative ${isTally ? "border border-slate-900" : ""}`}>
-                                <thead>
-                                  <tr
-                                    className="text-white text-left font-bold"
-                                    style={{ backgroundColor: isSimple ? "#1e293b" : template.primaryColor }}
-                                  >
-                                    <th className={`p-1.5 ${isTally ? "border border-slate-900" : "rounded-l"}`}>#</th>
-                                    {f.showProductImage && <th className={`p-1.5 ${isTally ? "border border-slate-900" : ""}`}>IMG</th>}
-                                    <th className={`p-1.5 ${isTally ? "border border-slate-900" : ""}`}>ITEM & DESCRIPTION</th>
-                                    {f.showHSN && <th className={`p-1.5 ${isTally ? "border border-slate-900" : ""}`}>HSN</th>}
-                                    <th className={`p-1.5 text-center ${isTally ? "border border-slate-900" : ""}`}>QTY</th>
-                                    {f.showMRP && <th className={`p-1.5 text-right ${isTally ? "border border-slate-900" : ""}`}>MRP</th>}
-                                    <th className={`p-1.5 text-right ${isTally ? "border border-slate-900" : ""}`}>RATE</th>
-                                    {f.showTaxSplit && <th className={`p-1.5 text-right ${isTally ? "border border-slate-900" : ""}`}>GST %</th>}
-                                    <th className={`p-1.5 text-right ${isTally ? "border border-slate-900" : "rounded-r"}`}>AMOUNT</th>
-                                  </tr>
-                                </thead>
-                                <tbody className={`divide-y ${isTally ? "divide-slate-900" : "divide-slate-100"}`}>
-                                  <tr className={isTally ? "border-b border-slate-900" : ""}>
-                                    <td className={`p-1.5 text-slate-400 ${isTally ? "border-r border-slate-900 text-slate-900 text-center" : ""}`}>1</td>
-                                    {f.showProductImage && (
-                                      <td className={`p-1 ${isTally ? "border-r border-slate-900" : ""}`}>
-                                        <div className="w-5 h-5 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-[8px]">
-                                          📱
-                                        </div>
-                                      </td>
-                                    )}
-                                    <td className={`p-1.5 font-semibold text-slate-800 ${isTally ? "border-r border-slate-900" : ""}`}>
-                                      Samsung Galaxy A30
-                                      {f.showItemDescription && (
-                                        <span className="block text-[6.5px] font-normal text-slate-500 leading-tight">
-                                          6.4-inch display, 4GB RAM, Dual Camera setup, 4000mAh Battery.
-                                        </span>
-                                      )}
-                                      {f.showSKU && <span className="block text-[6px] font-normal text-slate-500">SKU: SAM-A30-4G</span>}
-                                    </td>
-                                    {f.showHSN && <td className={`p-1.5 text-slate-600 ${isTally ? "border-r border-slate-900 text-center" : ""}`}>85171200</td>}
-                                    <td className={`p-1.5 text-center font-bold ${isTally ? "border-r border-slate-900" : ""}`}>1 PCS</td>
-                                    {f.showMRP && <td className={`p-1.5 text-right text-slate-400 line-through ${isTally ? "border-r border-slate-900" : ""}`}>{currency.symbol}14,000</td>}
-                                    <td className={`p-1.5 text-right ${isTally ? "border-r border-slate-900" : ""}`}>{currency.symbol}12,000.00</td>
-                                    {f.showTaxSplit && <td className={`p-1.5 text-right text-slate-600 ${isTally ? "border-r border-slate-900" : ""}`}>18%</td>}
-                                    <td className="p-1.5 text-right font-bold text-slate-900">{currency.symbol}10,620.00</td>
-                                  </tr>
-                                  <tr className={isTally ? "border-b border-slate-900" : ""}>
-                                    <td className={`p-1.5 text-slate-400 ${isTally ? "border-r border-slate-900 text-slate-900 text-center" : ""}`}>2</td>
-                                    {f.showProductImage && (
-                                      <td className={`p-1 ${isTally ? "border-r border-slate-900" : ""}`}>
-                                        <div className="w-5 h-5 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-[8px]">
-                                          🍪
-                                        </div>
-                                      </td>
-                                    )}
-                                    <td className={`p-1.5 font-semibold text-slate-800 ${isTally ? "border-r border-slate-900" : ""}`}>
-                                      Parle-G Biscuit 200g
-                                      {f.showItemDescription && (
-                                        <span className="block text-[6.5px] font-normal text-slate-500 leading-tight">
-                                          Crispy glucose biscuits packed with wheat & milk energy.
-                                        </span>
-                                      )}
-                                      {f.showSKU && <span className="block text-[6px] font-normal text-slate-500">SKU: PARLE-G-200</span>}
-                                    </td>
-                                    {f.showHSN && <td className={`p-1.5 text-slate-600 ${isTally ? "border-r border-slate-900 text-center" : ""}`}>19059090</td>}
-                                    <td className={`p-1.5 text-center font-bold ${isTally ? "border-r border-slate-900" : ""}`}>1 BOX</td>
-                                    {f.showMRP && <td className={`p-1.5 text-right text-slate-400 line-through ${isTally ? "border-r border-slate-900" : ""}`}>{currency.symbol}450</td>}
-                                    <td className={`p-1.5 text-right ${isTally ? "border-r border-slate-900" : ""}`}>{currency.symbol}400.00</td>
-                                    {f.showTaxSplit && <td className={`p-1.5 text-right text-slate-600 ${isTally ? "border-r border-slate-900" : ""}`}>18%</td>}
-                                    <td className="p-1.5 text-right font-bold text-slate-900">{currency.symbol}342.86</td>
-                                  </tr>
-                                </tbody>
-                              </table>
-                            )}
-
-                            {/* Live Scannable Invoice Barcode & Scannable QR Code */}
-                            {(f.showBarcode || f.showQR || (template.showGoogleReviewQR !== false && template.googleReviewUrl)) && (
-                              <div className={`flex items-center justify-center gap-4 p-2 rounded-lg my-1 border ${isDecorativeTheme
-                                ? "bg-white/60 border-amber-300/40"
-                                : "bg-slate-50/80 border-slate-200"
-                                }`}>
-                                {f.showBarcode && (
-                                  <div className="flex flex-col items-center">
-                                    <RealBarcodeSvg
-                                      code="INV-2026/0822"
-                                      format={template.barcodeSymbology || "Code-128"}
-                                      height={32}
-                                      displayValue={true}
-                                    />
-                                  </div>
-                                )}
-                                {f.showQR && (
-                                  <div className="flex flex-col items-center justify-center p-1 bg-white border border-slate-300 rounded shadow-2xs">
-                                    {template.customQrUrl ? (
-                                      <img src={template.customQrUrl} alt="UPI QR" className="h-11 w-11 object-contain" />
-                                    ) : (
-                                      <img
-                                        src={generateQRCodeSVG(
-                                          buildUpiPayUrl({
-                                            vpa: template.upiId || "9849344919@okaxis",
-                                            payeeName: template.payeeName || resolvedStoreName,
-                                            amount: "13566.46",
-                                            invoiceNumber: "INV-2026/0822",
-                                            transactionNote: "INV-2026/0822",
-                                          }),
-                                          80
-                                        )}
-                                        alt="UPI QR"
-                                        className="h-11 w-11 object-contain"
-                                      />
-                                    )}
-                                    <span className="text-[5.5px] font-bold text-slate-700 mt-0.5">UPI SCAN & PAY</span>
-                                  </div>
-                                )}
-                                {template.showGoogleReviewQR !== false && template.googleReviewUrl && (
-                                  <div className="flex flex-col items-center justify-center p-1 bg-white border border-slate-300 rounded shadow-2xs">
-                                    <img
-                                      src={generateQRCodeSVG(template.googleReviewUrl, 80)}
-                                      alt="Google Review QR"
-                                      className="h-11 w-11 object-contain"
-                                    />
-                                    <span className="text-[5.5px] font-black text-amber-600 mt-0.5">⭐⭐⭐⭐⭐ REVIEW</span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Bank Details & Totals */}
-                            <div className="flex justify-between items-start pt-1 z-10 relative">
-                              {f.showPaymentDetails !== false && (
-                                <div className={`p-2 rounded-lg border max-w-[150px] ${isDecorativeTheme
-                                  ? "bg-amber-500/5 border-amber-300/40"
-                                  : isTally
-                                    ? "border-slate-900 bg-transparent"
-                                    : "border-slate-100 bg-slate-50/60"
-                                  }`}>
-                                  <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">
-                                    BANK PAYMENT INFO
-                                  </span>
-                                  <p className="text-[7px] text-slate-700 whitespace-pre-line leading-tight font-mono">
-                                    {template.bankDetails || "Bank: HDFC Bank\nA/C: 502000492811\nIFSC: HDFC0000003"}
-                                  </p>
-                                </div>
-                              )}
-                              {f.showPaymentDetails === false && <div />}
-
-                              {f.showTotals !== false && (
-                                <div className="w-36 space-y-0.5 text-slate-700 text-[7.5px]">
-                                  <div className="flex justify-between">
-                                    <span>Subtotal:</span>
-                                    <span className="font-semibold">{currency.symbol}11,497.00</span>
-                                  </div>
-                                  {f.showTaxSplit && (
-                                    <>
-                                      <div className="flex justify-between text-slate-500">
-                                        <span>CGST (9%):</span>
-                                        <span>{currency.symbol}1,034.73</span>
-                                      </div>
-                                      <div className="flex justify-between text-slate-500">
-                                        <span>SGST (9%):</span>
-                                        <span>{currency.symbol}1,034.73</span>
-                                      </div>
-                                    </>
-                                  )}
-                                  <div
-                                    className={`flex justify-between pt-1 text-[9px] font-bold text-slate-900 ${isTally ? "border-t-2 border-double border-slate-900" : "border-t-2"
-                                      }`}
-                                    style={!isTally ? { borderColor: template.primaryColor } : {}}
-                                  >
-                                    <span>Total Amount:</span>
-                                    <span style={{ color: template.primaryColor }}>{currency.symbol}13,566.46</span>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Footer, Terms & Signature */}
-                            {(f.showFooter !== false || f.showTerms !== false || f.showSignature || (template.showDeclaration !== false && template.declarationText)) && (
-                              <div className="border-t pt-2.5 flex justify-between items-end z-10 relative">
-                                <div className="space-y-1 max-w-[65%]">
-                                  {f.showFooter !== false && (template.thankYouNote || template.footerText) && (
-                                    <p className="text-[7.5px] font-semibold text-slate-700 mb-0.5">
-                                      {template.thankYouNote || template.footerText}
-                                    </p>
-                                  )}
-                                  {f.showTerms !== false && (
-                                    <div className="text-[6.5px] text-slate-500 whitespace-pre-line leading-tight">
-                                      <span className="font-bold uppercase text-slate-600 block mb-0.5">Terms & Conditions:</span>
-                                      <p>{template.termsText || (template as any).termsAndConditionsText || "1. Goods once sold will not be taken back.\n2. Subject to local jurisdiction only."}</p>
-                                    </div>
-                                  )}
-                                  {template.showDeclaration !== false && template.declarationText && (
-                                    <p className="text-[6px] text-slate-400 italic leading-tight pt-0.5 border-t border-dotted border-slate-200">
-                                      {template.declarationText}
-                                    </p>
-                                  )}
-                                </div>
-                                {f.showSignature && (
-                                  <div className="text-right space-y-0.5">
-                                    <div className="flex items-end justify-end gap-1.5 min-h-[30px]">
-                                      {template.stampUrl && (
-                                        <img src={template.stampUrl} alt="Stamp" className="h-8 w-12 object-contain filter grayscale" />
-                                      )}
-                                      {template.signatureUrl && (
-                                        <img src={template.signatureUrl} alt="Signature" className="h-8 max-w-[80px] object-contain filter grayscale" />
-                                      )}
-                                    </div>
-                                    <div className="border-t border-slate-300 pt-0.5 text-center min-w-[90px]">
-                                      <p className="text-[7px] font-bold text-slate-800 leading-none">
-                                        {template.signatoryLabel || `For ${resolvedStoreName}`}
-                                      </p>
-                                      <span className="text-[6px] text-slate-500 block uppercase">
-                                        Authorized Signatory
-                                      </span>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                          );
-  }
-
-                          // 2. THERMAL RECEIPT PREVIEW
-                          if (template.docType === "thermal" || template.category === "thermal") {
-    return (
-                          <div
-                            className="w-[260px] bg-white text-slate-900 rounded-lg shadow-xl p-3 text-[8.5px] font-mono border border-slate-300 leading-tight space-y-2"
-                            style={{ fontFamily: "monospace" }}
-                          >
-                            <div className="text-center space-y-0.5 border-b border-dashed border-slate-400 pb-2">
-                              <h3 className="font-black text-xs">{resolvedStoreName}</h3>
-                              <p className="text-[7px] text-slate-600">{resolvedAddress}</p>
-                              <p className="text-[7px] text-slate-600">GSTIN: {resolvedGstin}</p>
-                              <p className="text-[8px] font-bold mt-1">RECEIPT #POS-8892</p>
-                            </div>
-
-                            <div className="space-y-1">
-                              <div className="flex justify-between font-bold border-b border-slate-300 pb-0.5">
-                                <span>ITEM</span>
-                                <span>QTY</span>
-                                <span>AMT</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Samsung A30</span>
-                                <span>1</span>
-                                <span>10,620</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Parle-G 200g</span>
-                                <span>1</span>
-                                <span>306</span>
-                              </div>
-                            </div>
-
-                            <div className="border-t border-dashed border-slate-400 pt-1.5 space-y-0.5 text-right font-bold">
-                              <div className="flex justify-between">
-                                <span>SUBTOTAL:</span>
-                                <span>12,816.00</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>CGST+SGST (18%):</span>
-                                <span>2,307.00</span>
-                              </div>
-                              <div className="flex justify-between text-[10px] font-black border-t border-slate-900 pt-0.5">
-                                <span>TOTAL:</span>
-                                <span>₹ 15,123.00</span>
-                              </div>
-                            </div>
-
-                            <div className="text-center pt-2 border-t border-dashed border-slate-400 space-y-1">
-                              {f.showBarcode && (
-                                <div className="flex flex-col items-center justify-center py-1">
-                                  <RealBarcodeSvg
-                                    code="POS-8892"
-                                    format={template.barcodeSymbology || "Code-128"}
-                                    height={32}
-                                    displayValue={true}
-                                  />
-                                </div>
-                              )}
-                              <p className="text-[7px] text-slate-600">{template.thankYouNote || "Thank You! Visit Again!"}</p>
+                            <div className="relative z-10">
+                              <GstTallyTemplate
+                                invoice={gstTallyMockInvoice}
+                                dynamicStoreName={resolvedStoreName}
+                                dynamicLogoUrl={resolvedLogoUrl}
+                                dynamicAddress={resolvedAddress}
+                                dynamicPhone={resolvedPhone}
+                                dynamicEmail={template.email || activeBillingGst?.email || ""}
+                                sellerGstin={resolvedGstin}
+                                sellerStateCode={template.sellerStateCode || activeBillingGst?.state_code || "37"}
+                                dynamicBank={previewBank}
+                                currency={currency}
+                                f={f as any}
+                                texts={previewTexts}
+                                paymentQr={previewPaymentQr}
+                                template={template}
+                                partyLayout={(template as any)?.party?.layout || (template as any)?.partyLayout || "layout_1"}
+                                columns={(template as any)?.itemTable?.columns || (template as any)?.columns}
+                                customFields={(template as any)?.customFields}
+                                paperSize={(template.paperSize as any) || "A4"}
+                                orientation={(template.orientation as any) || "portrait"}
+                              />
                             </div>
                           </div>
                           );
   }
+
 
                           // 3. BARCODE LABEL PREVIEW (HD Studio Workspace with Millimeter Grid & Safe Bounds)
                           if (template.docType === "barcode" || template.category === "barcodes") {
@@ -9996,7 +11303,6 @@ export function PrintTemplates() {
 
                           /* ── Printable HTML Generator ── */
                           function generatePrintableHtml(template: PrintTemplate, currency: {symbol: string }) {
-  const {t} = useI18n();
                           return `
                           <!DOCTYPE html>
                           <html>

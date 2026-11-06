@@ -39,7 +39,7 @@ import {
   Sliders,
 } from "lucide-react";
 import { useStoreLocations } from "@/hooks/use-store-locations";
-import { inventoryApi, posApi, procurementApi } from "@/lib/api-client";
+import { inventoryApi, posApi, procurementApi, numberSeriesApi } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { cn } from "@/lib/utils";
@@ -579,10 +579,29 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             }));
           }
         } else {
-          // Do NOT auto-select the first vendor — leave the placeholder so the user picks a vendor
-          const prefix = docType === "PR" ? "PR-2026-" : docType === "PO" ? "PO-2026-" : "PINV-2026-";
-          const randomSeq = Math.floor(1000 + Math.random() * 9000);
-          setDocNumber(`${prefix}${randomSeq}`);
+          // Do NOT auto-select the first vendor — leave the placeholder so the user picks a vendor.
+          // Peek the configured NumberSeries so new docs show the user's own prefix/sequence
+          // (Settings → Number Series) instead of a random id. Falls back to a random number if
+          // the peek is unavailable.
+          const moduleMap: Record<string, { m: string; fb: string }> = {
+            PR: { m: "purchase_requests", fb: "PR-" },
+            PO: { m: "purchase_orders", fb: "PO-" },
+            PINV: { m: "purchase_invoices", fb: "PINV-" },
+          };
+          const cfg = moduleMap[docType] || moduleMap["PINV"];
+          let picked = "";
+          try {
+            const peek = await numberSeriesApi.peekNextNumber(cfg.m);
+            if (peek && peek.formatted_number) picked = peek.formatted_number;
+          } catch {
+            picked = "";
+          }
+          if (!picked) {
+            const year = new Date().getFullYear();
+            const randomSeq = Math.floor(1000 + Math.random() * 9000);
+            picked = `${cfg.fb}${year}-${randomSeq}`;
+          }
+          setDocNumber(picked);
         }
       } catch (err) {
         console.error("Error initializing procurement form data:", err);
@@ -1385,6 +1404,7 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           total_amount: roundedTotal,
           paid_amount: finalPaidAmount,
           status: billStatus,
+          payment_method: paymentMode,
           due_date: safeToIsoString(dueDate),
           // Persist the EXACT per-line values so re-opening the bill for edit
           // restores MRP / sell price / UOM without falling back to product MRP.

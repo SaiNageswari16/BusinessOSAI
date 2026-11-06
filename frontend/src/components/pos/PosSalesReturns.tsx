@@ -660,6 +660,12 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
     };
   }, [exchangeItems, returnTotals]);
 
+  // Net exchange line total = (qty × rate × (1 + tax%)) − discount.
+  // The product's own discount is carried through so the exchange balance reflects
+  // the real selling price of the replacement item.
+  const exchangeLineTotal = (e: ExchangeProductItem): number =>
+    Number((e.quantity * e.unit_price * (1 + (e.tax_rate || 0) / 100) - (e.discount_amount || 0)).toFixed(2));
+
   // Add item to exchange list
   const handleAddExchangeItem = (prod: any) => {
     const existing = exchangeItems.find((e) => e.product_id === prod.id);
@@ -669,23 +675,23 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
     const taxRate = Number(
       prod.tax_percent ?? prod.tax_rate ?? prod.gst_rate ?? 0
     );
-    const isTaxInclusive = prod.is_tax_inclusive !== false;
-    const lineTotal = isTaxInclusive
-      ? Number((rate * 1).toFixed(2))
-      : Number((rate * (1 + taxRate / 100)).toFixed(2));
+    // Seed the item's discount from the product's own discount (flat value, or
+    // percent of rate) so a discounted replacement still bills correctly.
+    const prodDiscount = Number(
+      prod.discount_amount ??
+      prod.discount_value ??
+      (prod.discount_percent ? (rate * Number(prod.discount_percent)) / 100 : 0)
+    );
 
     if (existing) {
       setExchangeItems(
         exchangeItems.map((e) => {
           if (e.product_id !== prod.id) return e;
           const newQty = e.quantity + 1;
-          const tot = isTaxInclusive
-            ? Number((newQty * e.unit_price).toFixed(2))
-            : Number((newQty * e.unit_price * (1 + (e.tax_rate || 0) / 100)).toFixed(2));
           return {
             ...e,
             quantity: newQty,
-            total_amount: tot,
+            total_amount: exchangeLineTotal({ ...e, quantity: newQty }),
           };
         })
       );
@@ -700,8 +706,13 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
           quantity: 1,
           unit_price: rate,
           tax_rate: taxRate,
-          discount_amount: 0,
-          total_amount: lineTotal,
+          discount_amount: prodDiscount,
+          total_amount: exchangeLineTotal({
+            quantity: 1,
+            unit_price: rate,
+            tax_rate: taxRate,
+            discount_amount: prodDiscount,
+          } as ExchangeProductItem),
         },
       ]);
     }
@@ -719,7 +730,7 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
           ? {
               ...e,
               quantity: qty,
-              total_amount: Number((qty * e.unit_price * (1 + (e.tax_rate || 0) / 100)).toFixed(2)),
+              total_amount: exchangeLineTotal({ ...e, quantity: qty }),
             }
           : e
       )
@@ -733,7 +744,7 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
           ? {
               ...e,
               unit_price: rate,
-              total_amount: Number((e.quantity * rate * (1 + (e.tax_rate || 0) / 100)).toFixed(2)),
+              total_amount: exchangeLineTotal({ ...e, unit_price: rate }),
             }
           : e
       )
@@ -747,7 +758,21 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
           ? {
               ...e,
               tax_rate: taxRate,
-              total_amount: Number((e.quantity * e.unit_price * (1 + taxRate / 100)).toFixed(2)),
+              total_amount: exchangeLineTotal({ ...e, tax_rate: taxRate }),
+            }
+          : e
+      )
+    );
+  };
+
+  const handleUpdateExchangeItemDiscount = (id: string, discount: number) => {
+    setExchangeItems(
+      exchangeItems.map((e) =>
+        e.id === id
+          ? {
+              ...e,
+              discount_amount: Math.max(0, discount),
+              total_amount: exchangeLineTotal({ ...e, discount_amount: Math.max(0, discount) }),
             }
           : e
       )
@@ -1927,6 +1952,7 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                           <th className="py-3 px-3">Exchange Product</th>
                           <th className="py-3 px-3 text-center w-24">Qty</th>
                           <th className="py-3 px-3 text-right">Unit Rate</th>
+                          <th className="py-3 px-3 text-right">Discount</th>
                           <th className="py-3 px-3 text-right">Tax Rate</th>
                           <th className="py-3 px-3 text-right">Total Amount</th>
                           <th className="py-3 px-3 text-center w-12">Remove</th>
@@ -1957,6 +1983,19 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                                   step="any"
                                   value={ex.unit_price}
                                   onChange={(e) => handleUpdateExchangeItemRate(ex.id, parseFloat(e.target.value) || 0)}
+                                  className="w-24 text-right py-1 px-2 text-xs font-mono font-bold border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500"
+                                />
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 text-right">
+                              <div className="inline-flex items-center gap-1 justify-end">
+                                <span className="text-slate-400 text-xs">₹</span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step="any"
+                                  value={ex.discount_amount}
+                                  onChange={(e) => handleUpdateExchangeItemDiscount(ex.id, parseFloat(e.target.value) || 0)}
                                   className="w-24 text-right py-1 px-2 text-xs font-mono font-bold border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500"
                                 />
                               </div>

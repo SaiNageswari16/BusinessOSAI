@@ -7,6 +7,8 @@ import {
   Search,
   Calendar as CalendarIcon,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   RefreshCw,
   FileSpreadsheet,
   FileText,
@@ -68,6 +70,10 @@ export function PaymentModeSalesReportSuite({
   const [downloadMenuOpen, setDownloadMenuOpen] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [reportData, setReportData] = useState<any>(null);
+
+  // Pagination state
+  const [pageSize, setPageSize] = useState<number>(25);
+  const [currentPage, setCurrentPage] = useState<number>(1);
 
   // Initialize date range based on preset
   useEffect(() => {
@@ -198,6 +204,36 @@ export function PaymentModeSalesReportSuite({
     );
   }, [detailedInvoices, searchQuery]);
 
+  // Reset pagination when filter criteria change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, activeModeTab, startDate, endDate, datePreset, pageSize]);
+
+  // Paginated Invoices
+  const totalInvoicesCount = filteredInvoices.length;
+  const totalPages = pageSize === 0 ? 1 : Math.max(1, Math.ceil(totalInvoicesCount / (pageSize || 25)));
+
+  const paginatedInvoices = useMemo(() => {
+    if (pageSize === 0) return filteredInvoices;
+    const start = (currentPage - 1) * pageSize;
+    return filteredInvoices.slice(start, start + pageSize);
+  }, [filteredInvoices, currentPage, pageSize]);
+
+  // Filtered Grand Totals
+  const filteredTotals = useMemo(() => {
+    return filteredInvoices.reduce(
+      (acc, inv) => {
+        acc.subtotal += Number(inv.subtotal || 0);
+        acc.tax += Number(inv.tax || 0);
+        acc.total += Number(inv.total_amount || 0);
+        acc.collected += Number(inv.paid_amount || 0);
+        acc.dues += Number(inv.pending_amount || 0);
+        return acc;
+      },
+      { subtotal: 0, tax: 0, total: 0, collected: 0, dues: 0 }
+    );
+  }, [filteredInvoices]);
+
   // Excel (.xlsx) Export
   const handleExportExcel = () => {
     setDownloadMenuOpen(false);
@@ -312,10 +348,10 @@ export function PaymentModeSalesReportSuite({
   // Print PDF
   const handlePrintPDF = () => {
     const billingGst = getActiveBillingGst();
-    const companyName = tenant?.name || billingGst.tradeName || "Business Enterprise";
-    const companyGstin = billingGst.gstin || "Unregistered";
-    const companyAddress = billingGst.address || "";
-    const companyPhone = billingGst.phone || "";
+    const companyName = tenant?.name || billingGst?.trade_name || "Business Enterprise";
+    const companyGstin = billingGst?.gstin || "Unregistered";
+    const companyAddress = billingGst?.address || "";
+    const companyPhone = billingGst?.phone || "";
 
     const dateRangeLabel =
       startDate && endDate
@@ -533,7 +569,7 @@ export function PaymentModeSalesReportSuite({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full min-h-0 overflow-y-auto w-full bg-slate-50 text-slate-800 font-sans pb-24 custom-scrollbar">
+    <div className="flex-1 flex flex-col h-full min-h-0 overflow-y-auto w-full bg-slate-50 text-slate-800 font-sans pb-28 custom-scrollbar">
       {/* ──────────────────────────────────────────────────────────────────────────
           TOP HEADER TOOLBAR
       ────────────────────────────────────────────────────────────────────────── */}
@@ -650,7 +686,7 @@ export function PaymentModeSalesReportSuite({
       {/* ──────────────────────────────────────────────────────────────────────────
           MAIN CONTENT AREA
       ────────────────────────────────────────────────────────────────────────── */}
-      <div className="flex-1 px-6 py-5 flex flex-col gap-5">
+      <div className="px-6 py-6 flex flex-col gap-6">
         {/* ────────────────────────────────────────────────────────────────────────
             1. FILTER BAR
         ──────────────────────────────────────────────────────────────────────── */}
@@ -1087,7 +1123,7 @@ export function PaymentModeSalesReportSuite({
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-50/80 text-slate-500 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
+                <tr className="sticky top-0 bg-slate-50/95 backdrop-blur-xs text-slate-600 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200 z-10 shadow-2xs">
                   <th className="py-3 px-4">Date</th>
                   <th className="py-3 px-4">Invoice #</th>
                   <th className="py-3 px-4">Customer & Contact</th>
@@ -1101,19 +1137,19 @@ export function PaymentModeSalesReportSuite({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredInvoices.length === 0 ? (
+                {paginatedInvoices.length === 0 ? (
                   <tr>
                     <td colSpan={10} className="py-12 text-center text-slate-400">
                       No invoices found for the selected period and payment mode.
                     </td>
                   </tr>
                 ) : (
-                  filteredInvoices.map((inv) => (
+                  paginatedInvoices.map((inv) => (
                     <tr
                       key={inv.id || inv.invoice_no}
-                      className="hover:bg-slate-50/80 transition-colors"
+                      className="hover:bg-indigo-50/25 transition-colors"
                     >
-                      <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap">
+                      <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap font-medium">
                         {inv.date || "—"}
                       </td>
                       <td className="py-2.5 px-4 font-bold text-slate-900 whitespace-nowrap">
@@ -1155,10 +1191,10 @@ export function PaymentModeSalesReportSuite({
                           {inv.status || (inv.pending_amount > 0.01 ? "Due" : "Paid")}
                         </span>
                       </td>
-                      <td className="py-2.5 px-4 text-right text-slate-600">
+                      <td className="py-2.5 px-4 text-right text-slate-600 font-medium">
                         {formatCurrency(inv.subtotal)}
                       </td>
-                      <td className="py-2.5 px-4 text-right text-slate-600">
+                      <td className="py-2.5 px-4 text-right text-slate-600 font-medium">
                         {formatCurrency(inv.tax)}
                       </td>
                       <td className="py-2.5 px-4 text-right font-black text-slate-900">
@@ -1175,6 +1211,98 @@ export function PaymentModeSalesReportSuite({
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Table Summary & Pagination Controls */}
+          <div className="px-5 py-3.5 border-t border-slate-200/90 bg-slate-50/70 flex flex-wrap items-center justify-between gap-4 text-xs font-semibold text-slate-600">
+            {/* Left: Showing count & Rows per page */}
+            <div className="flex items-center gap-3">
+              <span>
+                Showing{" "}
+                <strong className="text-slate-900 font-bold">
+                  {totalInvoicesCount === 0
+                    ? 0
+                    : (currentPage - 1) * (pageSize || totalInvoicesCount) + 1}
+                </strong>{" "}
+                to{" "}
+                <strong className="text-slate-900 font-bold">
+                  {pageSize === 0
+                    ? totalInvoicesCount
+                    : Math.min(currentPage * pageSize, totalInvoicesCount)}
+                </strong>{" "}
+                of{" "}
+                <strong className="text-slate-900 font-bold">
+                  {totalInvoicesCount}
+                </strong>{" "}
+                Invoices
+              </span>
+
+              <div className="flex items-center gap-1.5 ml-2">
+                <span className="text-slate-400 font-medium text-[11px]">Rows:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="h-7 px-2 text-xs font-bold rounded-lg border border-slate-200 bg-white text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                >
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={0}>All</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Middle: Active Filter Grand Totals */}
+            <div className="hidden lg:flex items-center gap-4 text-xs">
+              <span>
+                Billed:{" "}
+                <strong className="text-slate-900 font-black">
+                  {formatCurrency(filteredTotals.total)}
+                </strong>
+              </span>
+              <span>
+                Collected:{" "}
+                <strong className="text-emerald-600 font-black">
+                  {formatCurrency(filteredTotals.collected)}
+                </strong>
+              </span>
+              <span>
+                Dues:{" "}
+                <strong className="text-rose-600 font-black">
+                  {formatCurrency(filteredTotals.dues)}
+                </strong>
+              </span>
+            </div>
+
+            {/* Right: Pagination Navigation */}
+            {pageSize > 0 && totalPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Prev</span>
+                </button>
+
+                <div className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-700">
+                  Page <span className="text-indigo-600">{currentPage}</span> of{" "}
+                  {totalPages}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Next</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useI18n } from "@/contexts/i18n-context";
+import { safeGetItem, safeSetItem } from "@/lib/safe-storage";
 import { createPortal } from "react-dom";
 import {
   FileText,
@@ -49,9 +50,20 @@ import {
   getTenantDefaultsKey,
   getTenantIdFromStorage,
   setActiveInvoicePrintTemplate,
+  savePrintTemplateSafe,
+  getActiveInvoicePrintTemplateForCategory,
+  setActiveInvoicePrintTemplateForCategory,
+  getActiveInvoicePrintTemplate,
   type ActiveGstDetails,
 } from "@/lib/receipt-template-store";
 import { printTemplatesApi, invoicesApi } from "@/lib/api-client";
+import { GstTallyTemplate } from "./invoice-templates/GstTallyTemplate";
+import { MargPharmaTemplate } from "./invoice-templates/MargPharmaTemplate";
+import { FmcgDistributorTemplate } from "./invoice-templates/FmcgDistributorTemplate";
+import { ParleDistributorTemplate } from "./invoice-templates/ParleDistributorTemplate";
+import { AgriSeedsTemplate } from "./invoice-templates/AgriSeedsTemplate";
+import { resolveInvoiceTexts } from "@/lib/invoice-template-config";
+import { PaymentQrBlock, type PaymentQrContext } from "./invoice-templates/PaymentQrBlock";
 import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
 
 export interface WordStudioColumnConfig {
@@ -196,6 +208,8 @@ export const PRESET_FIELD_SUGGESTIONS = [
   { label: "Destination", value: "Hyderabad Hub" },
 ];
 
+import type { InvoiceDocCategory } from "@/lib/invoice-template-config";
+
 interface WordInvoiceStudioModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -210,6 +224,71 @@ interface WordInvoiceStudioModalProps {
   email?: string;
   gstin?: string;
   docMode?: "sales" | "purchase";
+  /**
+   * Document category this studio session is editing (default "invoice").
+   * When `initialTemplate` is NOT supplied, the studio loads the CURRENT active
+   * template for this category from the receipt-template-store so every edit
+   * lands on the real, in-use template — never a default clone.
+   */
+  docCategory?: InvoiceDocCategory;
+}
+
+const detectStudioTheme = (tpl: any): string => {
+  if (!tpl) return "gst_tally";
+  const known = ["gst_tally", "marg_pharma", "fmcg_distributor", "parle_teal", "agri_seeds", "word_studio"];
+  if (tpl.theme && known.includes(tpl.theme)) {
+    return tpl.theme;
+  }
+  // Templates persisted from Print & Document Templates carry the engine
+  // under `themeName` — honor it so the studio preview matches the print path.
+  if (tpl.themeName && known.includes(tpl.themeName) && !String(tpl.themeName).startsWith("global_")) {
+    return tpl.themeName;
+  }
+  const id = String(tpl.id || "").toLowerCase();
+  if (id.includes("gst-tally") || id.includes("tally")) return "gst_tally";
+  if (id.includes("marg")) return "marg_pharma";
+  if (id.includes("fmcg")) return "fmcg_distributor";
+  if (id.includes("parle")) return "parle_teal";
+  if (id.includes("agri")) return "agri_seeds";
+  if (id.includes("word") || tpl.wordConfig || tpl.isWordTemplate || String(tpl.themeName || "").startsWith("global_")) return "word_studio";
+  return "gst_tally";
+};
+
+/**
+ * Load the CURRENT active print template (full object incl. wordConfig,
+ * columns, fields, customFields, texts) for a document category from the
+ * tenant-scoped template list. Falls back to the master invoice template.
+ * Used when the caller did not pass `initialTemplate` explicitly, so the
+ * studio edits the real active template instead of a default clone.
+ */
+function loadActivePrintTemplateForCategory(category: InvoiceDocCategory, tenantId: string): any {
+  if (typeof window === "undefined") return undefined;
+  const tid = tenantId || getTenantIdFromStorage();
+  const listKey = getTenantTemplatesKey(tid);
+  const globalKey = "businessos_print_templates_v1";
+  const readList = (key: string): any[] => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+  const findTpl = (id: string | null | undefined): any => {
+    if (!id || id === "tpl-word-default") return null;
+    const s = String(id).toLowerCase().trim();
+    if (s === "thermal" || s === "pos" || s.startsWith("tpl-thm-") || s.includes("receipt") || s.includes("thermal")) return null;
+    for (const list of [readList(listKey), readList(globalKey)]) {
+      const hit = list.find((t: any) => t && (t.id === id || t.themeName === id));
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const categoryActiveId = getActiveInvoicePrintTemplateForCategory(category, tid);
+  const masterActiveId = getActiveInvoicePrintTemplateForCategory("invoice", tid);
+  return findTpl(categoryActiveId) || findTpl(masterActiveId) || getActiveInvoicePrintTemplate(tid);
 }
 
 export function WordInvoiceStudioModal({
@@ -226,6 +305,7 @@ export function WordInvoiceStudioModal({
   email: propEmail,
   gstin: propGstin,
   docMode = "sales",
+  docCategory,
 }: WordInvoiceStudioModalProps) {
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<"visual_canvas" | "smart_suggestions" | "columns" | "custom_fields" | "signature_stamp" | "typography">(startBlank ? "smart_suggestions" : "visual_canvas");
@@ -233,8 +313,38 @@ export function WordInvoiceStudioModal({
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
   const [quickAddSection, setQuickAddSection] = useState<"meta" | "party" | "footer">("meta");
+  const [studioTheme, setStudioTheme] = useState<string>(() => detectStudioTheme(initialTemplate));
+
+  useEffect(() => {
+    if (isOpen && initialTemplate) {
+      setStudioTheme(detectStudioTheme(initialTemplate));
+    }
+  }, [isOpen, initialTemplate?.id, initialTemplate?.theme]);
 
   const tenantId = getTenantIdFromStorage();
+
+  // Load the CURRENT active template for the doc category being edited so the
+  // studio edits the real in-use template (incl. wordConfig) — not a default
+  // clone. Skipped when the caller supplied an explicit `initialTemplate` or
+  // asked for a blank canvas.
+  const [loadedCategoryTemplate, setLoadedCategoryTemplate] = useState<any>(null);
+  useEffect(() => {
+    if (!isOpen || startBlank || initialTemplate) {
+      setLoadedCategoryTemplate(null);
+      return;
+    }
+    const tpl = loadActivePrintTemplateForCategory(docCategory || "invoice", tenantId);
+    setLoadedCategoryTemplate(tpl);
+    if (tpl) {
+      setStudioTheme(detectStudioTheme(tpl));
+    }
+  }, [isOpen, startBlank, initialTemplate?.id, docCategory, tenantId]);
+
+  // The template the studio is actually editing: an explicit `initialTemplate`,
+  // else the active template resolved for the category on open.
+  const effectiveSourceTemplate = initialTemplate || loadedCategoryTemplate;
+
+  const studioThemeSource = detectStudioTheme(effectiveSourceTemplate) || "gst_tally";
   const activeGst = getActiveBillingGst(tenantId);
   const activeSig = getOrgSignatureSettings(tenantId);
   const activeQr = getOrgPaymentQrSettings(tenantId);
@@ -490,10 +600,15 @@ export function WordInvoiceStudioModal({
       },
       termsText: src?.termsText || template?.termsText || template?.termsAndConditionsText || gstDetails?.terms_and_conditions || "1. Goods once sold will not be taken back without valid receipt.\n2. Interest @ 18% p.a. will be levied on overdue payments.\n3. All disputes subject to local jurisdiction.",
       footerNote: src?.footerNote || src?.footerText || template?.thankYouNote || template?.footerText || "THANK YOU FOR YOUR VALUED BUSINESS!",
-      showBankDetails: src?.showBankDetails ?? true,
-      showPaymentQr: src?.showPaymentQr ?? true,
-      showTaxBreakdown: src?.showTaxBreakdown ?? true,
-      showAmountInWords: src?.showAmountInWords ?? true,
+      // Named themes (myBillBook / GST Tally, Marg, FMCG, …) carry these
+      // toggles under `fields`, not at top level. Honor them when seeding so
+      // a re-opened studio doesn't force the payment-QR / bank block back on
+      // and overwrite the user's template option (the "QR reappears 2nd time"
+      // bug). Word-studio templates read their own top-level keys.
+      showBankDetails: src?.showBankDetails ?? template?.fields?.showBankDetails ?? true,
+      showPaymentQr: src?.showPaymentQr ?? template?.fields?.showQR ?? true,
+      showTaxBreakdown: src?.showTaxBreakdown ?? template?.fields?.showTaxSplit ?? true,
+      showAmountInWords: src?.showAmountInWords ?? template?.fields?.showAmountInWords ?? true,
       createdAt: src?.createdAt || new Date().toISOString(),
     };
   };
@@ -514,7 +629,9 @@ export function WordInvoiceStudioModal({
     )
   );
 
-  // Re-sync configuration whenever a new initialTemplate is passed or modal opens
+  // Re-sync configuration whenever the source template changes or the modal
+  // opens — so the studio always seeds from the CURRENT active category
+  // template (effectiveSourceTemplate), never from a stale default clone.
   useEffect(() => {
     if (!isOpen) return;
     if (startBlank) {
@@ -522,7 +639,7 @@ export function WordInvoiceStudioModal({
     }
     setConfig(
       buildInitialWordConfig(
-        initialTemplate,
+        effectiveSourceTemplate,
         startBlank,
         activeGst,
         activeSig,
@@ -534,7 +651,7 @@ export function WordInvoiceStudioModal({
         propGstin
       )
     );
-  }, [isOpen, initialTemplate?.id, startBlank, propLogoUrl, propStoreName]);
+  }, [isOpen, effectiveSourceTemplate?.id, startBlank, propLogoUrl, propStoreName]);
 
   const sigFileInputRef = useRef<HTMLInputElement>(null);
   const stampFileInputRef = useRef<HTMLInputElement>(null);
@@ -697,10 +814,36 @@ export function WordInvoiceStudioModal({
       const rawTemplates = localStorage.getItem(storageKey);
       const existingList = rawTemplates ? JSON.parse(rawTemplates) : [];
 
+      const sourceTpl = effectiveSourceTemplate || initialTemplate;
+
+      // Write every studio edit back onto the ACTIVE template itself
+      // (effectiveSourceTemplate = the in-use template for the doc category,
+      // loaded on open). `texts` keeps any previously edited labels and layers
+      // the studio's edited label fields on top so Print & Document Templates /
+      // print paths pick them up.
+      const sourceTexts: any = (sourceTpl as any)?.texts || {};
+      const studioTexts: any = {
+        ...sourceTexts,
+        invoiceTitle: config.invoiceTitle || undefined,
+        partyTitle: config.customerTitle || undefined,
+        shipToTitle: config.shippingTitle || undefined,
+        invoiceNoLabel: config.invoiceNumberLabel || undefined,
+        invoiceDateLabel: config.invoiceDateLabel || undefined,
+        dueDateLabel: config.dueDateLabel || undefined,
+        placeOfSupplyLabel: config.placeOfSupplyLabel || undefined,
+        thankYouLabel: config.footerNote || undefined,
+      };
+      const cleanTexts = Object.fromEntries(Object.entries(studioTexts).filter(([, v]) => v !== undefined && String(v).trim() !== ""));
+
       const transformedTemplate = {
-        ...(initialTemplate || {}),
+        ...(sourceTpl || {}),
         id: config.id,
         name: config.name,
+        theme: studioTheme,
+        primaryColor: config.primaryColor,
+        fontFamily: config.fontFamily,
+        fontSize: String(config.fontSizePt),
+        paperBgColor: config.paperBgColor,
         category: "invoices",
         docType: "invoice",
         paperSize: "a4",
@@ -719,10 +862,8 @@ export function WordInvoiceStudioModal({
         companyEmail: config.companyEmail,
         gstin: config.companyGstin,
         headerTitle: config.invoiceTitle,
-        primaryColor: config.primaryColor,
-        fontFamily: config.fontFamily,
-        paperBgColor: config.paperBgColor,
         watermarkText: config.watermarkText,
+        texts: cleanTexts,
         columns: config.columns || DEFAULT_WORD_COLUMNS,
         customItemColumns: (config.columns || DEFAULT_WORD_COLUMNS)
           .filter((c) => c.isCustom || !DEFAULT_WORD_COLUMNS.some((dc) => dc.id === c.id || dc.fieldKey === c.fieldKey))
@@ -779,53 +920,59 @@ export function WordInvoiceStudioModal({
           showTime: true,
         },
         fields: {
-          ...((initialTemplate as any)?.fields || {}),
-          showItemIndex: config.columns?.find((c) => c.fieldKey === "sno")?.enabled ?? true,
-          showHSN: config.columns?.find((c) => c.fieldKey === "hsn")?.enabled ?? true,
-          showBatchNumber: config.columns?.find((c) => c.fieldKey === "batch")?.enabled ?? true,
-          showExpMfgDates: config.columns?.find((c) => c.fieldKey === "expiry_date" || c.fieldKey === "exp")?.enabled ?? true,
-          showItemDescription: config.columns?.find((c) => c.fieldKey === "description")?.enabled ?? true,
-          showMRP: config.columns?.find((c) => c.fieldKey === "mrp")?.enabled ?? true,
-          showSecondaryUnit: config.columns?.find((c) => c.fieldKey === "uom")?.enabled ?? true,
-          showItemRate: config.columns?.find((c) => c.fieldKey === "unit_price" || c.fieldKey === "selling_price")?.enabled ?? true,
-          showDiscountCol: config.columns?.find((c) => c.fieldKey === "discount")?.enabled ?? true,
-          showGstRateCol: config.columns?.find((c) => c.fieldKey === "tax_rate")?.enabled ?? true,
-          showItemQty: config.columns?.find((c) => c.fieldKey === "quantity")?.enabled ?? true,
-          showItemAmount: config.columns?.find((c) => c.fieldKey === "total_amount")?.enabled ?? true,
-          showBankDetails: config.showBankDetails,
-          showQR: config.showPaymentQr,
-          showTerms: Boolean(config.termsText),
-          showSignature: config.signatureConfig.showSignature,
+          ...((sourceTpl as any)?.fields || {}),
+          ...computedStudioF,
         },
       };
 
-      const updatedList = existingList.some((t: any) => t.id === transformedTemplate.id)
-        ? existingList.map((t: any) => (t.id === transformedTemplate.id ? transformedTemplate : t))
-        : [transformedTemplate, ...existingList];
-
-      localStorage.setItem(storageKey, JSON.stringify(updatedList));
-      localStorage.setItem("businessos_print_templates_v1", JSON.stringify(updatedList));
+      // Persist into the tenant's stored list via the quota-safe upsert
+      // (dedupes + prunes, safe on QuotaExceeded). If that fails, fall back to
+      // the legacy manual write so a save never silently drops.
+      const savedSafe = savePrintTemplateSafe(transformedTemplate, tenantId);
+      if (!savedSafe) {
+        // Tenant-scoped fallback ONLY. The unsuffixed global key
+        // ("businessos_print_templates_v1") is intentionally left untouched —
+        // it holds other tenants' templates and is periodically purged, so
+        // writing it here would re-pollute the shared cache.
+        const updatedList = existingList.some((t: any) => t.id === transformedTemplate.id)
+          ? existingList.map((t: any) => (t.id === transformedTemplate.id ? transformedTemplate : t))
+          : [transformedTemplate, ...existingList];
+        try {
+          safeSetItem(storageKey, JSON.stringify(updatedList));
+        } catch {
+          // Quota / SSR — keep the backend persist below as the source of truth.
+        }
+      }
 
       if (config.isDefault) {
         if (docMode === "purchase") {
-          localStorage.setItem(`bos_active_purchase_template_id_${tenantId || 'default'}`, transformedTemplate.id);
-          localStorage.setItem('bos_active_purchase_template_id', transformedTemplate.id);
+          // Tenant-scoped active key only — the unsuffixed global variant is
+          // deliberately not written (see note in the fallback branch above).
+          safeSetItem(`bos_active_purchase_template_id_${tenantId || 'default'}`, transformedTemplate.id);
           window.dispatchEvent(new CustomEvent('bos-purchase-invoice-template-changed', { detail: { templateId: transformedTemplate.id } }));
           printTemplatesApi.setActiveTemplate(transformedTemplate.id, "purchase_invoices").catch(console.warn);
         } else {
           const defaultsKey = getTenantDefaultsKey(tenantId);
-          const rawDefaults = localStorage.getItem(defaultsKey);
+          const rawDefaults = safeGetItem(defaultsKey);
           const nextDefaults = rawDefaults ? JSON.parse(rawDefaults) : {};
           nextDefaults.invoices = transformedTemplate.id;
           nextDefaults.invoice = transformedTemplate.id;
-          localStorage.setItem(defaultsKey, JSON.stringify(nextDefaults));
-          localStorage.setItem("user_active_print_templates_v1", JSON.stringify(nextDefaults));
-          localStorage.setItem(`bos_active_invoice_template_id_${tenantId || 'default'}`, transformedTemplate.id);
-          localStorage.setItem('bos_active_invoice_template_id', transformedTemplate.id);
-          localStorage.setItem('bos_word_invoice_custom_fields', JSON.stringify(config.customFields));
+          safeSetItem(defaultsKey, JSON.stringify(nextDefaults));
+          safeSetItem(`bos_active_invoice_template_id_${tenantId || 'default'}`, transformedTemplate.id);
+          // Global (cross-tenant) studio field cache — intentionally unsuffixed.
+          safeSetItem('bos_word_invoice_custom_fields', JSON.stringify(config.customFields));
           setActiveInvoicePrintTemplate(transformedTemplate.id, tenantId);
           invoicesApi.setActivePrintTemplate(transformedTemplate.id).catch(console.warn);
           printTemplatesApi.setActiveTemplate(transformedTemplate.id, "invoices").catch(console.warn);
+          // Keep the edited category's own slot in step with this save so the
+          // studio edit wins for that document category (quotation / proforma
+          // / estimate pin; "invoice" is already covered by the master slot).
+          const editCategory = docCategory || "invoice";
+          if (editCategory !== "invoice") {
+            try {
+              setActiveInvoicePrintTemplateForCategory(transformedTemplate.id, editCategory, tenantId);
+            } catch {}
+          }
         }
       }
 
@@ -885,6 +1032,7 @@ export function WordInvoiceStudioModal({
       }
 
       window.dispatchEvent(new Event("print_templates_updated"));
+      window.dispatchEvent(new Event("print-templates-updated"));
       window.dispatchEvent(new CustomEvent("bos_invoice_template_changed", { detail: { templateId: transformedTemplate.id } }));
       
       toast.success(`Word-Style Invoice Template "${config.name}" saved & applied across organization!`);
@@ -897,6 +1045,100 @@ export function WordInvoiceStudioModal({
   };
 
   // Sample Live Preview Data matching Production Mock Invoice
+  // Live field toggles mapped directly from Word Studio config
+  const computedStudioF = {
+    showLogo: config.sections.find((s) => s.id === "company_header")?.enabled ?? true,
+    showCompanyDetails: config.sections.find((s) => s.id === "company_header")?.enabled ?? true,
+    showInvoiceDetails: config.sections.find((s) => s.id === "invoice_meta")?.enabled ?? true,
+    showCustomerDetails: config.sections.find((s) => s.id === "party_details")?.enabled ?? true,
+    showBillTo: true,
+    showShipTo: true,
+    showPartyGstin: true,
+    showPartyPhone: true,
+    showPlaceOfSupply: true,
+    showPartyBalance: true,
+    showItemTable: config.sections.find((s) => s.id === "items_table")?.enabled ?? true,
+    showItemIndex: config.columns.find((c) => c.fieldKey === "sno" || c.id === "col_sno")?.enabled ?? true,
+    showItemDescription: config.columns.find((c) => c.fieldKey === "description" || c.id === "col_desc")?.enabled ?? true,
+    showHSN: config.columns.find((c) => c.fieldKey === "hsn" || c.id === "col_hsn")?.enabled ?? true,
+    showBatchNumber: config.columns.find((c) => c.fieldKey === "batch" || c.id === "col_batch")?.enabled ?? true,
+    showExpMfgDates: config.columns.find((c) => c.fieldKey === "expiry_date" || c.id === "col_exp")?.enabled ?? true,
+    showMRP: config.columns.find((c) => c.fieldKey === "mrp" || c.id === "col_mrp")?.enabled ?? true,
+    showSecondaryUnit: config.columns.find((c) => c.fieldKey === "uom" || c.id === "col_uom")?.enabled ?? true,
+    showItemRate: config.columns.find((c) => c.fieldKey === "unit_price" || c.fieldKey === "selling_price" || c.id === "col_rate")?.enabled ?? true,
+    showDiscountCol: config.columns.find((c) => c.fieldKey === "discount" || c.id === "col_disc")?.enabled ?? true,
+    showGstRateCol: config.columns.find((c) => c.fieldKey === "tax_rate" || c.id === "col_tax")?.enabled ?? true,
+    showItemQty: config.columns.find((c) => c.fieldKey === "quantity" || c.id === "col_qty")?.enabled ?? true,
+    showItemAmount: config.columns.find((c) => c.fieldKey === "total_amount" || c.id === "col_total")?.enabled ?? true,
+    showTotals: config.sections.find((s) => s.id === "totals_block")?.enabled ?? true,
+    showTaxSplit: (config.sections.find((s) => s.id === "tax_slabs")?.enabled ?? true) && config.showTaxBreakdown,
+    showAmountInWords: config.showAmountInWords,
+    showBankDetails: (config.sections.find((s) => s.id === "bank_qr_block")?.enabled ?? true) && config.showBankDetails,
+    showQR: (config.sections.find((s) => s.id === "bank_qr_block")?.enabled ?? true) && config.showPaymentQr,
+    showTerms: (config.sections.find((s) => s.id === "terms_block")?.enabled ?? true) && Boolean(config.termsText),
+    showDeclaration: (config.sections.find((s) => s.id === "terms_block")?.enabled ?? true),
+    showSignature: (config.sections.find((s) => s.id === "signature_block")?.enabled ?? true) && config.signatureConfig.showSignature,
+    showThankYou: true,
+    showPoNumber: config.customFields.find((f) => f.id === "cf_po")?.enabled ?? true,
+    showVehicleNumber: config.customFields.find((f) => f.id === "cf_veh")?.enabled ?? true,
+    showEwayBill: config.customFields.find((f) => f.id === "cf_eway")?.enabled ?? true,
+    showChallanNumber: config.customFields.find((f) => f.id === "cf_challan")?.enabled ?? true,
+  };
+
+  const studioPaymentQr: PaymentQrContext = (() => {
+    const upiId = activeGst?.upi_vpa || (initialTemplate as any)?.upiId || "";
+    const hasUpi = Boolean(upiId && upiId.includes("@"));
+    const enabled = computedStudioF.showQR !== false && hasUpi;
+    const src = enabled ? generateQRCodeSVG(buildUpiPayUrl({ vpa: upiId, payeeName: config.companyName || "Merchant", amount: 51262 }), 120) : "";
+    return { enabled, src, vpa: upiId, targetAmount: 51262, balanceDue: 51262, isPaidInFull: false };
+  })();
+
+  const studioMockInvoice: any = {
+    id: "mock-studio-01",
+    invoice_number: config.invoiceNumberValue || "INV-2026-0001",
+    invoice_date: "2026-07-10",
+    due_date: "2026-07-24",
+    created_at: "2026-07-10T10:00:00Z",
+    payment_method: "Cash",
+    place_of_supply: config.placeOfSupplyValue || "37 - Andhra Pradesh",
+    po_number: config.customFields.find((f) => f.id === "cf_po")?.value || "PO-2026-8812",
+    vehicle_number: config.customFields.find((f) => f.id === "cf_veh")?.value || "TS 09 EA 4412",
+    eway_bill_number: config.customFields.find((f) => f.id === "cf_eway")?.value || "241098234190",
+    challan_number: config.customFields.find((f) => f.id === "cf_challan")?.value || "DC-0045",
+    transporter_name: "SafeExpress Road Logistics",
+    customerName: config.customerName || "ACME Enterprises Pvt Ltd",
+    customerCompany: config.customerName || "ACME Enterprises Pvt Ltd",
+    customerAddress: config.customerAddress || "45 Tech Boulevard, Sector 62, Noida, UP",
+    customerShippingAddress: config.shippingAddress || "Plot 12, Industrial Area, Sector 63, Noida, UP",
+    customerPhone: config.customerPhone || "98765 43210",
+    customerGST: config.customerGstin || "09BBBBA9999C1Z2",
+    taxable_value: 43450,
+    cgst_amount: 3906,
+    sgst_amount: 3906,
+    tax_amount: 7812,
+    grand_total: 51262,
+    amount_received: 51262,
+    party_previous_balance: 4500,
+    terms_text: config.termsText,
+    items: [
+      { product_name: "Samsung Galaxy A30", description: "6.4\" display, 4GB RAM, Dual Camera, 4000mAh", quantity: 1, unit_price: 12000, mrp: 14000, hsn_code: "85171200", tax_rate: 18, subtotal: 14160, batch_no: "SA-4412", mfg_date: "01/2026", exp_date: "01/2027" },
+      { product_name: "Parle-G Biscuit 200g", description: "Crispy glucose biscuits", quantity: 24, unit_price: 40, mrp: 48, hsn_code: "19059090", tax_rate: 18, subtotal: 5632, batch_no: "PG-778", mfg_date: "05/2026", exp_date: "05/2028" },
+      { product_name: "Tata Salt 1kg", description: "Iodized table salt", quantity: 40, unit_price: 28, mrp: 32, hsn_code: "2915", tax_rate: 0, subtotal: 1120, batch_no: "TS-112", mfg_date: "03/2026", exp_date: "" },
+      { product_name: "Amul Ghee 500ml", description: "Pure cow ghee", quantity: 6, unit_price: 380, mrp: 420, hsn_code: "0405", tax_rate: 18, subtotal: 2721, batch_no: "AG-88", mfg_date: "06/2026", exp_date: "06/2027" },
+      { product_name: "Dettol Soap 100g", description: "Antiseptic body wash", quantity: 50, unit_price: 32, mrp: 38, hsn_code: "3401", tax_rate: 18, subtotal: 3768, batch_no: "DT-45", mfg_date: "04/2026", exp_date: "04/2029" },
+      { product_name: "Liril 1kg", description: "Fruit salt detergent", quantity: 30, unit_price: 45, mrp: 52, hsn_code: "3402", tax_rate: 18, subtotal: 4091, batch_no: "LR-90", mfg_date: "05/2026", exp_date: "05/2028" },
+      { product_name: "Coca Cola 750ml", description: "Carbonated beverage", quantity: 24, unit_price: 40, mrp: 45, hsn_code: "2202", tax_rate: 28, subtotal: 1288, batch_no: "CC-19", mfg_date: "06/2026", exp_date: "06/2027" },
+      { product_name: "MTR Sambar Powder 200g", description: "Instant sambar masala", quantity: 8, unit_price: 95, mrp: 110, hsn_code: "2103", tax_rate: 5, subtotal: 801, batch_no: "MT-77", mfg_date: "02/2026", exp_date: "02/2027" },
+      { product_name: "Haldiram Bhujia 200g", description: "Onion bhujia snack", quantity: 20, unit_price: 42, mrp: 48, hsn_code: "2005", tax_rate: 18, subtotal: 2482, batch_no: "HB-31", mfg_date: "05/2026", exp_date: "05/2028" },
+      { product_name: "Wai Wai Noodles 500g", description: "Instant wavy noodles", quantity: 18, unit_price: 80, mrp: 90, hsn_code: "1902", tax_rate: 5, subtotal: 1494, batch_no: "WW-64", mfg_date: "04/2026", exp_date: "04/2027" },
+      { product_name: "Red Label Tea 250g", description: "Premium CTC tea leaves", quantity: 10, unit_price: 120, mrp: 140, hsn_code: "0902", tax_rate: 5, subtotal: 1262, batch_no: "RT-08", mfg_date: "03/2026", exp_date: "03/2028" },
+      { product_name: "Surf Excel 1kg", description: "Auto-wash detergent", quantity: 14, unit_price: 78, mrp: 88, hsn_code: "3402", tax_rate: 18, subtotal: 2184, batch_no: "SE-52", mfg_date: "05/2026", exp_date: "05/2028" },
+      { product_name: "Vejantene Vajol 90ml", description: "Herbal cough syrup", quantity: 5, unit_price: 210, mrp: 240, hsn_code: "3003", tax_rate: 5, subtotal: 1107, batch_no: "VJ-17", mfg_date: "02/2026", exp_date: "02/2027" },
+      { product_name: "Dabur Red 200ml", description: "Hair oil with herbs", quantity: 7, unit_price: 160, mrp: 185, hsn_code: "3304", tax_rate: 18, subtotal: 1325, batch_no: "DB-83", mfg_date: "06/2026", exp_date: "06/2028" },
+      { product_name: "Complan 1L", description: "Nutritious malt drink", quantity: 4, unit_price: 340, mrp: 380, hsn_code: "2106", tax_rate: 5, subtotal: 1428, batch_no: "CP-29", mfg_date: "05/2026", exp_date: "05/2027" },
+    ],
+  };
+
   const sampleItems = [
     {
       sno: 1,
@@ -1077,14 +1319,41 @@ export function WordInvoiceStudioModal({
             </div>
           </div>
           
-          {/* Template Name Input */}
+          {/* Template Theme Selector & Name Input */}
           <div className="flex items-center gap-2 border-r border-slate-300 pr-4">
             <span className="font-bold text-slate-600 uppercase text-[10px] tracking-wider">Template:</span>
+            <select
+              value={studioTheme}
+              onChange={(e) => {
+                const nextTheme = e.target.value;
+                setStudioTheme(nextTheme);
+                const themeNames: Record<string, string> = {
+                  gst_tally: "GST Tally (myBillBook Style)",
+                  marg_pharma: "Marg Pharma Distributor",
+                  fmcg_distributor: "FMCG Wholesale Distributor",
+                  parle_teal: "Parle Distributor Teal",
+                  agri_seeds: "Agri Seeds & Fertilizers",
+                  word_studio: "Word Document Canvas (Freeform)",
+                };
+                if (themeNames[nextTheme]) {
+                  setConfig((prev) => ({ ...prev, name: themeNames[nextTheme] }));
+                }
+              }}
+              className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-bold text-slate-800 text-xs shadow-2xs focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
+            >
+              <option value="gst_tally">GST Tally (myBillBook Style)</option>
+              <option value="marg_pharma">Marg Pharma Standard</option>
+              <option value="fmcg_distributor">FMCG Distributor Grid</option>
+              <option value="parle_teal">Parle Distributor Teal</option>
+              <option value="agri_seeds">Agri Seeds & Fertilizer</option>
+              <option value="word_studio">Word Document Canvas (Freeform)</option>
+            </select>
             <input
               type="text"
               value={config.name}
               onChange={(e) => setConfig({ ...config, name: e.target.value })}
-              className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-bold text-slate-800 text-xs w-44 shadow-2xs focus:ring-2 focus:ring-indigo-500 outline-none"
+              placeholder="Template Name"
+              className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-bold text-slate-800 text-xs w-40 shadow-2xs focus:ring-2 focus:ring-indigo-500 outline-none"
             />
           </div>
 
@@ -1802,7 +2071,115 @@ export function WordInvoiceStudioModal({
                 </div>
               )}
 
-              {/* RENDER ACTIVE SECTIONS IN ORDER */}
+              {/* RENDER SELECTED TEMPLATE LIVE ACCORDING TO USER SELECTION */}
+              {studioTheme === "gst_tally" ? (
+                <div className="w-full">
+                  <GstTallyTemplate
+                    invoice={studioMockInvoice}
+                    dynamicStoreName={config.companyName}
+                    dynamicLogoUrl={config.logoUrl || ""}
+                    dynamicAddress={config.companyAddress}
+                    dynamicPhone={config.companyPhone}
+                    dynamicEmail={config.companyEmail}
+                    sellerGstin={config.companyGstin}
+                    sellerStateCode="37"
+                    dynamicBank={config.showBankDetails ? (activeGst?.bank_name ? `Bank: ${activeGst.bank_name} | A/C: ${activeGst.bank_account_number || ""} | IFSC: ${activeGst.bank_ifsc || ""}` : (initialTemplate?.bankDetails || "Bank: HDFC Bank | A/C: 501002934050 | IFSC: HDFC0000104")) : ""}
+                    currency={{ symbol: "₹", code: "INR" }}
+                    f={computedStudioF}
+                    texts={resolveInvoiceTexts({ ...initialTemplate, primaryColor: config.primaryColor, fontFamily: config.fontFamily }, "gst_tally")}
+                    paymentQr={studioPaymentQr}
+                    paperSize="A4"
+                    orientation="portrait"
+                    template={{ ...initialTemplate, ...config, primaryColor: config.primaryColor, fontFamily: config.fontFamily }}
+                  />
+                </div>
+              ) : studioTheme === "marg_pharma" ? (
+                <div className="w-full">
+                  <MargPharmaTemplate
+                    invoice={studioMockInvoice}
+                    dynamicStoreName={config.companyName}
+                    dynamicLogoUrl={config.logoUrl || ""}
+                    dynamicAddress={config.companyAddress}
+                    dynamicPhone={config.companyPhone}
+                    dynamicEmail={config.companyEmail}
+                    sellerGstin={config.companyGstin}
+                    sellerStateCode="37"
+                    dynamicBank={config.showBankDetails ? (activeGst?.bank_name ? `Bank: ${activeGst.bank_name} | A/C: ${activeGst.bank_account_number || ""} | IFSC: ${activeGst.bank_ifsc || ""}` : (initialTemplate?.bankDetails || "Bank: HDFC Bank | A/C: 501002934050 | IFSC: HDFC0000104")) : ""}
+                    currency={{ symbol: "₹", code: "INR" }}
+                    f={computedStudioF}
+                    texts={resolveInvoiceTexts({ ...initialTemplate, primaryColor: config.primaryColor, fontFamily: config.fontFamily }, "marg_pharma")}
+                    paymentQr={studioPaymentQr}
+                    paperSize="A4"
+                    orientation="portrait"
+                    template={{ ...initialTemplate, ...config, primaryColor: config.primaryColor, fontFamily: config.fontFamily }}
+                  />
+                </div>
+              ) : studioTheme === "fmcg_distributor" ? (
+                <div className="w-full">
+                  <FmcgDistributorTemplate
+                    invoice={studioMockInvoice}
+                    dynamicStoreName={config.companyName}
+                    dynamicLogoUrl={config.logoUrl || ""}
+                    dynamicAddress={config.companyAddress}
+                    dynamicPhone={config.companyPhone}
+                    dynamicEmail={config.companyEmail}
+                    sellerGstin={config.companyGstin}
+                    sellerStateCode="37"
+                    dynamicBank={config.showBankDetails ? (activeGst?.bank_name ? `Bank: ${activeGst.bank_name} | A/C: ${activeGst.bank_account_number || ""} | IFSC: ${activeGst.bank_ifsc || ""}` : (initialTemplate?.bankDetails || "Bank: HDFC Bank | A/C: 501002934050 | IFSC: HDFC0000104")) : ""}
+                    currency={{ symbol: "₹", code: "INR" }}
+                    f={computedStudioF}
+                    texts={resolveInvoiceTexts({ ...initialTemplate, primaryColor: config.primaryColor, fontFamily: config.fontFamily }, "fmcg_distributor")}
+                    paymentQr={studioPaymentQr}
+                    paperSize="A4"
+                    orientation="portrait"
+                    template={{ ...initialTemplate, ...config, primaryColor: config.primaryColor, fontFamily: config.fontFamily }}
+                  />
+                </div>
+              ) : studioTheme === "parle_teal" ? (
+                <div className="w-full">
+                  <ParleDistributorTemplate
+                    invoice={studioMockInvoice}
+                    dynamicStoreName={config.companyName}
+                    dynamicLogoUrl={config.logoUrl || ""}
+                    dynamicAddress={config.companyAddress}
+                    dynamicPhone={config.companyPhone}
+                    dynamicEmail={config.companyEmail}
+                    sellerGstin={config.companyGstin}
+                    sellerStateCode="37"
+                    dynamicBank={config.showBankDetails ? (activeGst?.bank_name ? `Bank: ${activeGst.bank_name} | A/C: ${activeGst.bank_account_number || ""} | IFSC: ${activeGst.bank_ifsc || ""}` : (initialTemplate?.bankDetails || "Bank: HDFC Bank | A/C: 501002934050 | IFSC: HDFC0000104")) : ""}
+                    currency={{ symbol: "₹", code: "INR" }}
+                    f={computedStudioF}
+                    texts={resolveInvoiceTexts({ ...initialTemplate, primaryColor: config.primaryColor, fontFamily: config.fontFamily }, "parle_teal")}
+                    paymentQr={studioPaymentQr}
+                    paperSize="A4"
+                    orientation="portrait"
+                    template={{ ...initialTemplate, ...config, primaryColor: config.primaryColor, fontFamily: config.fontFamily }}
+                  />
+                </div>
+              ) : studioTheme === "agri_seeds" ? (
+                <div className="w-full">
+                  <AgriSeedsTemplate
+                    invoice={studioMockInvoice}
+                    dynamicStoreName={config.companyName}
+                    dynamicLogoUrl={config.logoUrl || ""}
+                    dynamicAddress={config.companyAddress}
+                    dynamicPhone={config.companyPhone}
+                    dynamicEmail={config.companyEmail}
+                    sellerGstin={config.companyGstin}
+                    sellerStateCode="37"
+                    dynamicBank={config.showBankDetails ? (activeGst?.bank_name ? `Bank: ${activeGst.bank_name} | A/C: ${activeGst.bank_account_number || ""} | IFSC: ${activeGst.bank_ifsc || ""}` : (initialTemplate?.bankDetails || "Bank: HDFC Bank | A/C: 501002934050 | IFSC: HDFC0000104")) : ""}
+                    currency={{ symbol: "₹", code: "INR" }}
+                    f={computedStudioF}
+                    texts={resolveInvoiceTexts({ ...initialTemplate, primaryColor: config.primaryColor, fontFamily: config.fontFamily }, "agri_seeds")}
+                    paymentQr={studioPaymentQr}
+                    paperSize="A4"
+                    orientation="portrait"
+                    template={{ ...initialTemplate, ...config, primaryColor: config.primaryColor, fontFamily: config.fontFamily }}
+                  />
+                </div>
+              ) : (<>
+
+{/* RENDER ACTIVE SECTIONS IN ORDER */}
               <div className="space-y-4 z-10 flex-1 flex flex-col">
                 {(config.sections || DEFAULT_WORD_SECTIONS).filter((s) => s.enabled).length === 0 ? (
                   <div className="my-auto py-12 px-6 border-2 border-dashed border-slate-300 hover:border-indigo-400 rounded-2xl bg-slate-50/70 flex flex-col items-center justify-center text-center transition-all">
@@ -2712,15 +3089,15 @@ export function WordInvoiceStudioModal({
                             <span className="font-bold text-slate-400 uppercase text-[8.5px] tracking-wider block">
                               Bank Payment Details
                             </span>
-                            <p className="text-slate-600">Bank: <strong className="text-slate-900">{activeGst?.bank_name || "HDFC Bank Ltd"}</strong></p>
-                            <p className="text-slate-600">A/C No: <strong className="font-mono text-slate-900">{activeGst?.bank_account_number || "50200012345678"}</strong></p>
-                            <p className="text-slate-600">IFSC Code: <strong className="font-mono text-slate-900">{activeGst?.bank_ifsc || "HDFC0001234"}</strong></p>
+                            <p className="text-slate-600">Bank: <strong className="text-slate-900">{activeGst?.bank_name || initialTemplate?.bankDetails?.bankName || "Operating Bank"}</strong></p>
+                            <p className="text-slate-600">A/C No: <strong className="font-mono text-slate-900">{activeGst?.bank_account_number || initialTemplate?.bankDetails?.accountNumber || "—"}</strong></p>
+                            <p className="text-slate-600">IFSC Code: <strong className="font-mono text-slate-900">{activeGst?.bank_ifsc || initialTemplate?.bankDetails?.ifscCode || "—"}</strong></p>
                           </div>
                           <div className="flex items-center gap-3">
                             <img
                               src={generateQRCodeSVG(
                                 buildUpiPayUrl({
-                                  vpa: activeGst?.upi_vpa || "merchant@upi",
+                                  vpa: activeGst?.upi_vpa || (initialTemplate as any)?.upiId || "",
                                   payeeName: config.companyName || "Merchant",
                                   amount: grandTotal,
                                   invoiceNumber: config.invoiceNumberValue || "INV-2026-0009",
@@ -2833,6 +3210,8 @@ export function WordInvoiceStudioModal({
                   className="bg-transparent text-center w-full outline-none text-slate-400 focus:bg-slate-50 p-1 rounded"
                 />
               </div>
+</>
+              )}
             </div>
           </div>
         </div>

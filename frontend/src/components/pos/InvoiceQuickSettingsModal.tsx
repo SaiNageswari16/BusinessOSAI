@@ -100,9 +100,24 @@ export interface InvoiceSettings {
   proformaPrefix?: string;
   proformaSequenceNumber?: number;
   proformaPadding?: number;
+  challanPrefix?: string;
+  challanSequenceNumber?: number;
+  challanPadding?: number;
   estimatePrefix?: string;
+  estimateSequenceNumber?: number;
+  estimatePadding?: number;
   creditNotePrefix?: string;
+  creditNoteSequenceNumber?: number;
+  creditNotePadding?: number;
   debitNotePrefix?: string;
+  debitNoteSequenceNumber?: number;
+  debitNotePadding?: number;
+  purchaseInvoicePrefix?: string;
+  purchaseInvoiceSequenceNumber?: number;
+  purchaseInvoicePadding?: number;
+  purchaseOrderPrefix?: string;
+  purchaseOrderSequenceNumber?: number;
+  purchaseOrderPadding?: number;
 
   // Thermal & Counter Receipt Numbering
   receiptPrefix?: string;
@@ -162,9 +177,24 @@ export const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
   proformaPrefix: "PI-",
   proformaSequenceNumber: 1,
   proformaPadding: 4,
+  challanPrefix: "DC-",
+  challanSequenceNumber: 1,
+  challanPadding: 4,
   estimatePrefix: "EST-",
+  estimateSequenceNumber: 1,
+  estimatePadding: 4,
   creditNotePrefix: "CN-",
+  creditNoteSequenceNumber: 1,
+  creditNotePadding: 4,
   debitNotePrefix: "DN-",
+  debitNoteSequenceNumber: 1,
+  debitNotePadding: 4,
+  purchaseInvoicePrefix: "PINV-",
+  purchaseInvoiceSequenceNumber: 1,
+  purchaseInvoicePadding: 4,
+  purchaseOrderPrefix: "PO-",
+  purchaseOrderSequenceNumber: 1,
+  purchaseOrderPadding: 4,
 
   receiptPrefix: "REC-",
   receiptSequenceNumber: 1,
@@ -203,6 +233,78 @@ export function getInvoiceSettingsStorageKey(tenantId?: string, companyId?: stri
 }
 
 export function loadStoredInvoiceSettings(tenantId?: string, companyId?: string): InvoiceSettings {
+  const base = loadRawStoredInvoiceSettings(tenantId, companyId);
+  // Coalesce across the scoped/tenant/global keys: when the most-specific key holds a
+  // DEFAULT value for a numbering field but a broader key holds a user-configured one,
+  // the configured value must win. (The Settings panel saves to the tenant key while POS
+  // reads the company key — without this, a stale "INV-" default would shadow a
+  // configured prefix like "SVB/26-27-".)
+  if (typeof window === "undefined" || !base) return { ...DEFAULT_INVOICE_SETTINGS, ...(base || {}) };
+  const tid = tenantId || getTenantIdFromStorage();
+  const cid = companyId || getCompanyIdFromStorage();
+  const altKeys = Array.from(new Set([
+    `pos_invoice_quick_settings_${tid}_${cid}`,
+    `pos_invoice_quick_settings_${tid}`,
+    `pos_invoice_quick_settings_${cid}`,
+    "pos_invoice_quick_settings",
+  ]));
+  const altParsed: any[] = [];
+  for (const k of altKeys) {
+    try { const raw = localStorage.getItem(k); if (raw) altParsed.push(JSON.parse(raw)); } catch { /* ignore */ }
+  }
+  const mergeIfConfigured = (field: keyof InvoiceSettings, defaultVal?: string) => {
+    const def = (defaultVal ?? "").trim();
+    if (String((base as any)[field] ?? "").trim() !== def) return; // base already configured
+    const found = altParsed.map((p) => p?.[field]).find((v) => v && String(v).trim() !== def);
+    if (found) (base as any)[field] = found;
+  };
+  mergeIfConfigured("prefix", DEFAULT_INVOICE_SETTINGS.prefix);
+  mergeIfConfigured("quotationPrefix", DEFAULT_INVOICE_SETTINGS.quotationPrefix);
+  mergeIfConfigured("proformaPrefix", DEFAULT_INVOICE_SETTINGS.proformaPrefix);
+  mergeIfConfigured("challanPrefix", DEFAULT_INVOICE_SETTINGS.challanPrefix);
+  mergeIfConfigured("estimatePrefix", DEFAULT_INVOICE_SETTINGS.estimatePrefix);
+  mergeIfConfigured("creditNotePrefix", DEFAULT_INVOICE_SETTINGS.creditNotePrefix);
+  mergeIfConfigured("debitNotePrefix", DEFAULT_INVOICE_SETTINGS.debitNotePrefix);
+  mergeIfConfigured("receiptPrefix", DEFAULT_INVOICE_SETTINGS.receiptPrefix);
+  mergeIfConfigured("b2bPrefix", DEFAULT_INVOICE_SETTINGS.b2bPrefix);
+  mergeIfConfigured("wholesalePrefix", DEFAULT_INVOICE_SETTINGS.wholesalePrefix);
+  mergeIfConfigured("b2cPrefix", DEFAULT_INVOICE_SETTINGS.b2cPrefix);
+  // Also coalesce the NUMERIC numbering fields. Without this, a configured
+  // sequence/padding set in the Settings panel (tenant key) is shadowed by the
+  // default value in the more-specific company-scoped key — which is why the
+  // right prefix surfaced but the number still started from 0001 instead of
+  // the user's configured next sequence.
+  const mergeNumIfConfigured = (field: keyof InvoiceSettings, defaultVal: number) => {
+    const cur = (base as any)[field];
+    if (cur === undefined || cur === null || Number(cur) === defaultVal) {
+      const found = altParsed.map((p) => p?.[field]).find((v) => v !== undefined && v !== null && Number(v) !== defaultVal);
+      if (found !== undefined && found !== null) (base as any)[field] = found;
+    }
+  };
+  mergeNumIfConfigured("sequenceNumber", DEFAULT_INVOICE_SETTINGS.sequenceNumber as number);
+  mergeNumIfConfigured("padding", DEFAULT_INVOICE_SETTINGS.padding as number);
+  mergeNumIfConfigured("quotationSequenceNumber", DEFAULT_INVOICE_SETTINGS.quotationSequenceNumber as number);
+  mergeNumIfConfigured("quotationPadding", DEFAULT_INVOICE_SETTINGS.quotationPadding as number);
+  mergeNumIfConfigured("proformaSequenceNumber", DEFAULT_INVOICE_SETTINGS.proformaSequenceNumber as number);
+  mergeNumIfConfigured("proformaPadding", DEFAULT_INVOICE_SETTINGS.proformaPadding as number);
+  mergeNumIfConfigured("challanSequenceNumber", DEFAULT_INVOICE_SETTINGS.challanSequenceNumber as number);
+  mergeNumIfConfigured("challanPadding", DEFAULT_INVOICE_SETTINGS.challanPadding as number);
+  mergeNumIfConfigured("estimateSequenceNumber", DEFAULT_INVOICE_SETTINGS.estimateSequenceNumber as number);
+  mergeNumIfConfigured("estimatePadding", DEFAULT_INVOICE_SETTINGS.estimatePadding as number);
+  mergeNumIfConfigured("creditNoteSequenceNumber", DEFAULT_INVOICE_SETTINGS.creditNoteSequenceNumber as number);
+  mergeNumIfConfigured("creditNotePadding", DEFAULT_INVOICE_SETTINGS.creditNotePadding as number);
+  mergeNumIfConfigured("debitNoteSequenceNumber", DEFAULT_INVOICE_SETTINGS.debitNoteSequenceNumber as number);
+  mergeNumIfConfigured("debitNotePadding", DEFAULT_INVOICE_SETTINGS.debitNotePadding as number);
+  mergeNumIfConfigured("purchaseInvoiceSequenceNumber", DEFAULT_INVOICE_SETTINGS.purchaseInvoiceSequenceNumber as number);
+  mergeNumIfConfigured("purchaseInvoicePadding", DEFAULT_INVOICE_SETTINGS.purchaseInvoicePadding as number);
+  mergeNumIfConfigured("purchaseOrderSequenceNumber", DEFAULT_INVOICE_SETTINGS.purchaseOrderSequenceNumber as number);
+  mergeNumIfConfigured("purchaseOrderPadding", DEFAULT_INVOICE_SETTINGS.purchaseOrderPadding as number);
+  mergeNumIfConfigured("receiptSequenceNumber", DEFAULT_INVOICE_SETTINGS.receiptSequenceNumber as number);
+  mergeNumIfConfigured("receiptPadding", DEFAULT_INVOICE_SETTINGS.receiptPadding as number);
+  return base;
+}
+
+function loadRawStoredInvoiceSettings(tenantId?: string, companyId?: string): InvoiceSettings {
   try {
     const key = getInvoiceSettingsStorageKey(tenantId, companyId);
     const raw = localStorage.getItem(key) || (key !== "pos_invoice_quick_settings" ? localStorage.getItem("pos_invoice_quick_settings") : null);
@@ -851,8 +953,11 @@ export function InvoiceQuickSettingsModal({
             quotation_prefix: cleaned.quotationPrefix || "QT-",
             estimate_prefix: cleaned.estimatePrefix || "EST-",
             proforma_prefix: cleaned.proformaPrefix || "PI-",
+            challan_prefix: cleaned.challanPrefix || "DC-",
             credit_note_prefix: cleaned.creditNotePrefix || "CN-",
             debit_note_prefix: cleaned.debitNotePrefix || "DN-",
+            purchase_invoice_prefix: cleaned.purchaseInvoicePrefix || "PINV-",
+            purchase_order_prefix: cleaned.purchaseOrderPrefix || "PO-",
             receipt_prefix: cleaned.receiptPrefix || "REC-",
             receipt_sequence: Number(cleaned.receiptSequenceNumber || 1),
             receipt_padding: Number(cleaned.receiptPadding || 5),
@@ -964,6 +1069,62 @@ export function InvoiceQuickSettingsModal({
               padding: receiptPadding,
               status: "active",
             }).catch(console.warn);
+          }
+
+          // Sync credit note / debit note / purchase invoice / purchase order
+          // series in backend (same module names the NumberSeries page uses).
+          const extraSeries: Array<{ moduleName: string; prefix: string; seq: number; padding: number }> = [
+            {
+              moduleName: "delivery_challans",
+              prefix: cleaned.challanPrefix || "DC-",
+              seq: Math.max(0, Number(cleaned.challanSequenceNumber || 1) - 1),
+              padding: cleaned.challanPadding ?? 4,
+            },
+            {
+              moduleName: "credit_notes",
+              prefix: cleaned.creditNotePrefix || "CN-",
+              seq: Math.max(0, Number(cleaned.creditNoteSequenceNumber || 1) - 1),
+              padding: cleaned.creditNotePadding ?? 4,
+            },
+            {
+              moduleName: "debit_notes",
+              prefix: cleaned.debitNotePrefix || "DN-",
+              seq: Math.max(0, Number(cleaned.debitNoteSequenceNumber || 1) - 1),
+              padding: cleaned.debitNotePadding ?? 4,
+            },
+            {
+              moduleName: "purchase_invoices",
+              prefix: cleaned.purchaseInvoicePrefix || "PINV-",
+              seq: Math.max(0, Number(cleaned.purchaseInvoiceSequenceNumber || 1) - 1),
+              padding: cleaned.purchaseInvoicePadding ?? 4,
+            },
+            {
+              moduleName: "purchase_orders",
+              prefix: cleaned.purchaseOrderPrefix || "PO-",
+              seq: Math.max(0, Number(cleaned.purchaseOrderSequenceNumber || 1) - 1),
+              padding: cleaned.purchaseOrderPadding ?? 4,
+            },
+          ];
+          for (const entry of extraSeries) {
+            const existingExtra = seriesList.find(
+              (s) => s.module_name?.toLowerCase() === entry.moduleName
+            );
+            if (existingExtra) {
+              await numberSeriesApi.update(existingExtra.id, {
+                prefix: entry.prefix,
+                current_number: entry.seq,
+                padding: entry.padding,
+              }).catch(console.warn);
+            } else {
+              await numberSeriesApi.create({
+                company_id: activeCompany.id,
+                module_name: entry.moduleName,
+                prefix: entry.prefix,
+                current_number: entry.seq,
+                padding: entry.padding,
+                status: "active",
+              }).catch(console.warn);
+            }
           }
         } catch (apiErr) {
           console.warn("Could not sync company/series to backend API:", apiErr);
@@ -1890,6 +2051,78 @@ export function InvoiceQuickSettingsModal({
                           {draftSettings.receiptPrefix || "REC-"}
                           {String(draftSettings.receiptSequenceNumber || 1).padStart(draftSettings.receiptPadding ?? 5, "0")}
                         </span>
+                      </div>
+                    </div>
+
+                    {/* Credit Note / Debit Note / Estimate / Purchase Invoice / Purchase Order Series */}
+                    <div className="pt-3 border-t border-slate-100 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                          <FileText className="size-3 text-slate-700" />
+                          {t("Notes & Purchase Document Series", "Notes & Purchase Document Series")}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">Credit Note Prefix</label>
+                          <input type="text" value={draftSettings.creditNotePrefix ?? "CN-"}
+                            onChange={(e) => setDraftSettings((p) => ({ ...p, creditNotePrefix: e.target.value }))}
+                            placeholder="CN-"
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-slate-700 focus:bg-white" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">Debit Note Prefix</label>
+                          <input type="text" value={draftSettings.debitNotePrefix ?? "DN-"}
+                            onChange={(e) => setDraftSettings((p) => ({ ...p, debitNotePrefix: e.target.value }))}
+                            placeholder="DN-"
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-slate-700 focus:bg-white" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">Estimate Prefix</label>
+                          <input type="text" value={draftSettings.estimatePrefix ?? "EST-"}
+                            onChange={(e) => setDraftSettings((p) => ({ ...p, estimatePrefix: e.target.value }))}
+                            placeholder="EST-"
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-slate-700 focus:bg-white" />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">Purchase Invoice Prefix</label>
+                          <input type="text" value={draftSettings.purchaseInvoicePrefix ?? "PINV-"}
+                            onChange={(e) => setDraftSettings((p) => ({ ...p, purchaseInvoicePrefix: e.target.value }))}
+                            placeholder="PINV-"
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-slate-700 focus:bg-white" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">Purchase Order Prefix</label>
+                          <input type="text" value={draftSettings.purchaseOrderPrefix ?? "PO-"}
+                            onChange={(e) => setDraftSettings((p) => ({ ...p, purchaseOrderPrefix: e.target.value }))}
+                            placeholder="PO-"
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-slate-700 focus:bg-white" />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">Credit Note Next #</label>
+                          <input type="number" min={1} value={draftSettings.creditNoteSequenceNumber ?? 1}
+                            onChange={(e) => setDraftSettings((p) => ({ ...p, creditNoteSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) }))}
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-slate-700 focus:bg-white" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">Debit Note Next #</label>
+                          <input type="number" min={1} value={draftSettings.debitNoteSequenceNumber ?? 1}
+                            onChange={(e) => setDraftSettings((p) => ({ ...p, debitNoteSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) }))}
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-slate-700 focus:bg-white" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">Estimate Next #</label>
+                          <input type="number" min={1} value={draftSettings.estimateSequenceNumber ?? 1}
+                            onChange={(e) => setDraftSettings((p) => ({ ...p, estimateSequenceNumber: Math.max(1, parseInt(e.target.value) || 1) }))}
+                            className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-slate-700 focus:bg-white" />
+                        </div>
                       </div>
                     </div>
                   </div>

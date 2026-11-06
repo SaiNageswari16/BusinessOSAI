@@ -37,6 +37,7 @@ from src.models import (
     Tenant, Company, NumberSeries
 )
 from src.utils.clock import clock
+from src.utils.number_series import generate_number, sync_series_from_document_number
 from src.schemas.procurement import (
     SupplierCategoryCreate, SupplierCategoryResponse,
     SupplierCreate, SupplierUpdate, SupplierResponse,
@@ -1526,12 +1527,30 @@ async def create_purchase_order(
 ):
     total = sum(x.quantity * x.unit_price * (1.0 + (x.tax_percent or 0.0) / 100.0) for x in payload.items)
     
-    po_num = payload.po_number or f"PO-{clock.utcnow().year}-{uuid.uuid4().hex[:6].upper()}"
+    if payload.po_number:
+        po_num = payload.po_number
+    else:
+        # Honor the configured NumberSeries prefix/sequence (Settings → Number Series)
+        # instead of a random PO-xxxx id.
+        try:
+            po_num = await generate_number(
+                db, ctx.tenant_id, "purchase_orders", ctx.active_company_id, fallback_prefix="PO-"
+            )
+        except Exception:
+            po_num = f"PO-{clock.utcnow().year}-{uuid.uuid4().hex[:6].upper()}"
+        if not po_num:
+            po_num = f"PO-{clock.utcnow().year}-{uuid.uuid4().hex[:6].upper()}"
     existing_po = await db.scalar(
         select(PurchaseOrder).where(PurchaseOrder.po_number == po_num)
     )
     if existing_po:
         po_num = f"{po_num}-{uuid.uuid4().hex[:4].upper()}"
+    # Keep the series counter in sync when the caller supplied its own number.
+    if payload.po_number:
+        try:
+            await sync_series_from_document_number(db, ctx.tenant_id, "purchase_orders", payload.po_number, ctx.active_company_id)
+        except Exception:
+            pass
 
     po = PurchaseOrder(
         tenant_id=ctx.tenant_id,
@@ -2497,7 +2516,18 @@ async def create_vendor_bill(
             grn_status_val = "Verified"
     # ────────────────────────────────────────────────────────────────────────
 
-    b_num = payload.bill_number or f"BILL-{clock.utcnow().year}-{uuid.uuid4().hex[:6].upper()}"
+    if payload.bill_number:
+        b_num = payload.bill_number
+    else:
+        # Honor the configured NumberSeries prefix/sequence (PINV) instead of a random BILL- id.
+        try:
+            b_num = await generate_number(
+                db, ctx.tenant_id, "purchase_invoices", ctx.active_company_id, fallback_prefix="PINV-"
+            )
+        except Exception:
+            b_num = None
+        if not b_num:
+            b_num = f"BILL-{clock.utcnow().year}-{uuid.uuid4().hex[:6].upper()}"
     existing_bill = await db.scalar(
         select(VendorBill).where(VendorBill.bill_number == b_num)
     )
@@ -2521,14 +2551,16 @@ async def create_vendor_bill(
     db.add(bill)
     await db.flush()
     
-    # If paid or partially paid, also record VendorPayment automatically
+    # If paid or partially paid, also record VendorPayment automatically.
+    # Persist the settlement mode the user picked at entry (Cash/UPI/Bank/Cheque/...)
+    # so the Payment Mode & Outflow report classifies it correctly.
     if paid_amt > 0:
         v_payment = VendorPayment(
             tenant_id=ctx.tenant_id,
             company_id=ctx.active_company_id,
             vendor_bill_id=bill.id,
             payment_date=clock.utc_naive(),
-            payment_method="Direct/Paid",
+            payment_method=(payload.payment_method or "Bank Transfer").strip(),
             amount_paid=paid_amt,
             reference_number=f"BILL-PAY-{b_num}"
         )
@@ -3162,10 +3194,22 @@ async def create_credit_note(
                 if po and po.supplier_id:
                     resolved_supp_id = po.supplier_id
 
+    if not payload.note_number:
+        try:
+            cn_num = await generate_number(db, ctx.tenant_id, "credit_notes", ctx.active_company_id, fallback_prefix="CN-")
+        except Exception:
+            cn_num = None
+        cn_num = cn_num or f"CN-{clock.utcnow().year}-{uuid.uuid4().hex[:6].upper()}"
+    else:
+        cn_num = payload.note_number
+        try:
+            await sync_series_from_document_number(db, ctx.tenant_id, "credit_notes", cn_num, ctx.active_company_id)
+        except Exception:
+            pass
     cn = VendorCreditNote(
         tenant_id=ctx.tenant_id,
         company_id=ctx.active_company_id,
-        note_number=payload.note_number,
+        note_number=cn_num,
         supplier_id=resolved_supp_id,
         amount=payload.amount,
         status=payload.status or "Unapplied",
@@ -3307,10 +3351,22 @@ async def create_debit_note(
                 if po and po.supplier_id:
                     resolved_supp_id = po.supplier_id
 
+    if not payload.note_number:
+        try:
+            dn_num = await generate_number(db, ctx.tenant_id, "debit_notes", ctx.active_company_id, fallback_prefix="DN-")
+        except Exception:
+            dn_num = None
+        dn_num = dn_num or f"DN-{clock.utcnow().year}-{uuid.uuid4().hex[:6].upper()}"
+    else:
+        dn_num = payload.note_number
+        try:
+            await sync_series_from_document_number(db, ctx.tenant_id, "debit_notes", dn_num, ctx.active_company_id)
+        except Exception:
+            pass
     dn = VendorDebitNote(
         tenant_id=ctx.tenant_id,
         company_id=ctx.active_company_id,
-        note_number=payload.note_number,
+        note_number=dn_num,
         supplier_id=resolved_supp_id,
         amount=payload.amount,
         status=payload.status or "Draft",

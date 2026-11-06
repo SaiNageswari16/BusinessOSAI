@@ -1745,6 +1745,7 @@ class Customer(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
     anniversary_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     gender: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    age: Mapped[int | None] = mapped_column(Integer, nullable=True)
     preferred_language: Mapped[str | None] = mapped_column(String(50), default="English", nullable=True)
     credit_limit: Mapped[float | None] = mapped_column(Numeric(14, 2), default=0.0, nullable=True)
     outstanding_balance: Mapped[float | None] = mapped_column(Numeric(14, 2), default=0.0, nullable=True)

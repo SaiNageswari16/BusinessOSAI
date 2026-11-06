@@ -1,4 +1,5 @@
 import { printTemplatesApi, invoicesApi } from "./api-client";
+import { safeSetItem, safeRemoveItem, pruneTemplateList } from "./safe-storage";
 
 export interface ReceiptTemplate {
   id: string;
@@ -324,7 +325,7 @@ export const DEFAULT_RECEIPT_TEMPLATE: ReceiptTemplate = {
   showStamp: false,
 
   qrType: 'einvoice',
-  upiId: 'ismartbazaar@upi',
+  upiId: '',
 };
 
 const STORAGE_KEY = 'bos_pos_active_receipt_templates_v1';
@@ -353,7 +354,10 @@ export interface ActiveGstDetails {
   estimate_prefix?: string | null;
   credit_note_prefix?: string | null;
   debit_note_prefix?: string | null;
+  purchase_invoice_prefix?: string | null;
+  purchase_order_prefix?: string | null;
   proforma_prefix?: string | null;
+  challan_prefix?: string | null;
   receipt_prefix?: string | null;
   receipt_sequence?: number | null;
   receipt_padding?: number | null;
@@ -436,8 +440,8 @@ export function setOrgSignatureSettings(
       showDigitalStamp: settings.show_digital_stamp !== false,
       signatureAlignment: settings.signature_alignment || current.signature_alignment || "right",
     };
-    localStorage.setItem(`bos_signature_settings_${tid}`, JSON.stringify(sigPayload));
-    localStorage.setItem('bos_signature_settings', JSON.stringify(sigPayload));
+    safeSetItem(`bos_signature_settings_${tid}`, JSON.stringify(sigPayload));
+    safeSetItem('bos_signature_settings', JSON.stringify(sigPayload));
     window.dispatchEvent(new CustomEvent("bos-signature-settings-changed", { detail: sigPayload }));
   } catch {}
 }
@@ -498,8 +502,8 @@ export function setOrgPaymentQrSettings(
       vpa: settings.upi_vpa || "",
       payeeName: settings.upi_payee_name || current.trade_name || "Merchant",
     };
-    localStorage.setItem(`bos_payment_qr_settings_${tid}`, JSON.stringify(qrPayload));
-    localStorage.setItem('bos_payment_qr_settings', JSON.stringify(qrPayload));
+    safeSetItem(`bos_payment_qr_settings_${tid}`, JSON.stringify(qrPayload));
+    safeSetItem('bos_payment_qr_settings', JSON.stringify(qrPayload));
   } catch {}
 }
 
@@ -522,11 +526,20 @@ export function getOrgDocumentPrefix(
   if (typeUpper === "PROFORMA" || typeUpper === "PROFORMA_INVOICE" || typeUpper === "PI") {
     return active?.proforma_prefix?.trim() || "PI";
   }
+  if (typeUpper === "CHALLAN" || typeUpper === "DELIVERY_CHALLAN" || typeUpper === "DC" || typeUpper === "DELIVERY_NOTE") {
+    return active?.challan_prefix?.trim() || "DC";
+  }
   if (typeUpper === "CREDIT_NOTE" || typeUpper === "CN") {
     return active?.credit_note_prefix?.trim() || "CN";
   }
   if (typeUpper === "DEBIT_NOTE" || typeUpper === "DN") {
     return active?.debit_note_prefix?.trim() || "DN";
+  }
+  if (typeUpper === "PURCHASE_INVOICE" || typeUpper === "PINV" || typeUpper === "PO_INVOICE" || typeUpper === "VENDOR_BILL") {
+    return active?.purchase_invoice_prefix?.trim() || "PINV";
+  }
+  if (typeUpper === "PURCHASE_ORDER" || typeUpper === "PO") {
+    return active?.purchase_order_prefix?.trim() || "PO";
   }
   if (typeUpper === "RECEIPT" || typeUpper === "RECEIPTS" || typeUpper === "POS_RECEIPT" || typeUpper === "REC") {
     return active?.receipt_prefix?.trim() || "REC-";
@@ -542,7 +555,10 @@ export function setOrgDocumentPrefixes(
     estimate_prefix?: string;
     credit_note_prefix?: string;
     debit_note_prefix?: string;
+    purchase_invoice_prefix?: string;
+    purchase_order_prefix?: string;
     proforma_prefix?: string;
+    challan_prefix?: string;
     receipt_prefix?: string;
     receipt_sequence?: number;
     receipt_padding?: number;
@@ -787,7 +803,7 @@ export function clearActiveBillingGst(tenantId?: string): void {
   }
 }
 
-export function setActiveBillingGst(details: ActiveGstDetails, tenantId?: string): void {
+export function setActiveBillingGst(details: Partial<ActiveGstDetails>, tenantId?: string): void {
   if (typeof window === 'undefined') return;
   try {
     const tid = tenantId || getTenantIdFromStorage();
@@ -810,12 +826,227 @@ export function setActiveBillingGst(details: ActiveGstDetails, tenantId?: string
     merged.phone = details.phone !== undefined ? (details.phone || '') : (isDifferentCompany ? '' : (existing.phone || ''));
     merged.email = details.email !== undefined ? (details.email || '') : (isDifferentCompany ? '' : (existing.email || ''));
 
-    localStorage.setItem(`bos_active_billing_gst_details_${tid}`, JSON.stringify(merged));
-    localStorage.setItem(`bos_active_billing_gstin_${tid}`, merged.gstin);
+    safeSetItem(`bos_active_billing_gst_details_${tid}`, JSON.stringify(merged));
+    safeSetItem(`bos_active_billing_gstin_${tid}`, merged.gstin);
     window.dispatchEvent(new CustomEvent('bos-active-gst-changed', { detail: merged }));
     window.dispatchEvent(new Event('storage'));
   } catch (err) {
     console.error('Error saving active billing GST:', err);
+  }
+}
+
+// ── Bulletproof template storage helpers ─────────────────────────────────
+// The print-template store (businessos_print_templates_v1*) is the one
+// localStorage surface that historically crashed the app on save via
+// QuotaExceededError and silently lost every user customization. These helpers
+// guarantee that a save NEVER throws:
+//   - prunedTemplatesFromRaw(): every template-list read is deduped, sorted by
+//     `updated_at` desc, capped at 15 entries, and base64-sanitized.
+//   - purgeStalePrintTemplates(): one-time sweep of legacy / bloat keys.
+//   - savePrintTemplateSafe(): upsert a single template into the stored list.
+//   - ACTIVE_DOC_TEMPLATE_KEYS + get/setActiveDocTemplateId: per-document-category
+//     active-template key mapping (tenant-suffixed variants included).
+
+let hasPurgedStalePrintTemplates = false;
+
+/**
+ * Read a stored print-template list and normalize it through
+ * `pruneTemplateList` (dedupe by id → name, sort by `updated_at` desc, cap at
+ * 15, strip oversized base64). Corrupt / missing / non-array storage yields
+ * an empty list instead of a throw.
+ */
+function prunedTemplatesFromRaw(raw: string | null | undefined): any[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? pruneTemplateList(parsed) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Read the per-tenant active-template id map (user_active_print_templates_v1*). */
+function readActiveDefaults(key?: string | null): Record<string, any> {
+  if (!key || typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Run the stale-key sweep at most once per session (lazy, silent). */
+function ensurePurgeStalePrintTemplates(): void {
+  if (!hasPurgedStalePrintTemplates) {
+    hasPurgedStalePrintTemplates = true;
+    purgeStalePrintTemplates();
+  }
+}
+
+/**
+ * Purge stale / bloated print-template localStorage keys:
+ *   - `businessos_print_templates` (legacy v0 list),
+ *   - `bos_temp_pdf_overlay` (one-shot PDF-overlay bloat cache),
+ *   - any other key matching /print_templates/i that is NOT a current
+ *     `businessos_print_templates_v1*` or `user_active_print_templates_v1*` key.
+ * Idempotent, silent, and safe on the server (SSR).
+ */
+export function purgeStalePrintTemplates(): void {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  hasPurgedStalePrintTemplates = true;
+  try {
+    safeRemoveItem("businessos_print_templates");
+    safeRemoveItem("bos_temp_pdf_overlay");
+
+    const currentPrefixes = [
+      "businessos_print_templates_v1",
+      "user_active_print_templates_v1",
+    ];
+    const staleKeys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !/print_templates/i.test(k)) continue;
+      if (currentPrefixes.some((p) => k.startsWith(p))) continue;
+      staleKeys.push(k);
+    }
+    for (const k of staleKeys) safeRemoveItem(k);
+  } catch {
+    // Silent — a storage sweep must never break a render.
+  }
+}
+
+/**
+ * Upsert a single print template into the active tenant's stored template list
+ * (replace on same `id`, otherwise push), then prune, sanitize, and write via
+ * `safeSetItem` so a QuotaExceededError can never crash the app.
+ * Returns `true` only when the write actually landed in localStorage.
+ */
+export function savePrintTemplateSafe(tpl: any, tenantId?: string): boolean {
+  if (typeof window === "undefined" || !tpl || typeof tpl !== "object" || !tpl.id) return false;
+  try {
+    const tid = tenantId || getTenantIdFromStorage();
+    const key = getTenantTemplatesKey(tid);
+    const list = prunedTemplatesFromRaw(localStorage.getItem(key));
+
+    const entry = { ...tpl, updatedAt: new Date().toISOString() };
+    const idx = list.findIndex((t: any) => t && t.id === entry.id);
+    if (idx >= 0) list[idx] = entry;
+    else list.push(entry);
+
+    const ok = safeSetItem(key, JSON.stringify(pruneTemplateList(list)));
+    if (ok) {
+      window.dispatchEvent(new Event("print_templates_updated"));
+      window.dispatchEvent(new Event("storage"));
+    }
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Per-document-category ACTIVE template key mapping. Every category key has a
+ * tenant-suffixed variant (`<key>_<tid>`) and, when a company is active, a
+ * company-suffixed variant (`<key>_<tid>_<cid>`) — the same pattern the
+ * invoice key already uses in get/setActiveInvoicePrintTemplate.
+ */
+export const ACTIVE_DOC_TEMPLATE_KEYS: Record<string, string> = {
+  invoice: "bos_active_invoice_template_id",
+  quotation: "bos_active_quotation_template_id",
+  proforma: "bos_active_proforma_template_id",
+  estimate: "bos_active_estimate_template_id",
+  challan: "bos_active_challan_template_id",
+  credit_note: "bos_active_credit_note_template_id",
+  debit_note: "bos_active_debit_note_template_id",
+  purchase_invoice: "bos_active_purchase_invoice_template_id",
+  purchase_order: "bos_active_purchase_order_template_id",
+  // "Custom Document" slot on the Print & Document Templates strip — device-local,
+  // lives in the SAME key family so it can never diverge from the others.
+  custom: "bos_active_custom_doc_template_id",
+};
+
+/** Set the active template id for a document category (tenant + company suffixed). */
+export function setActiveDocTemplateId(
+  category: string,
+  templateId: string,
+  tenantId?: string,
+  companyId?: string,
+): void {
+  if (typeof window === "undefined" || !category || !templateId) return;
+  const base = ACTIVE_DOC_TEMPLATE_KEYS[category];
+  if (!base) return;
+  const tid = tenantId || getTenantIdFromStorage();
+  const cid = companyId || localStorage.getItem("bos_active_company_id");
+  if (cid) {
+    safeSetItem(`${base}_${tid}_${cid}`, templateId);
+  } else {
+    safeSetItem(`${base}_${tid}`, templateId);
+  }
+  // Keep the strip's category-slot key in lockstep so the two key families
+  // (ACTIVE_DOC_TEMPLATE_KEYS and bos_active_invoice_category_template_*) can
+  // never diverge — resolution reads both.
+  try {
+    ensurePurgeStalePrintTemplates();
+    safeSetItem(getInvoiceCategoryActiveKey(tid, cid, category), templateId);
+    // When a specific category template is assigned, automatically mark it unlinked from master
+    if (category !== "invoice") {
+      if (cid) {
+        safeSetItem(getInvoiceCategoryLinkKey(tid, cid, category), "unlinked");
+      } else {
+        safeSetItem(getInvoiceCategoryLinkKey(tid, null, category), "unlinked");
+      }
+    }
+  } catch {}
+}
+
+/** Clear the active template id for a document category (tenant + company variants). */
+export function safeRemoveTenantDocTemplateId(
+  category: string,
+  tenantId?: string,
+  companyId?: string,
+): void {
+  if (typeof window === "undefined" || !category) return;
+  const base = ACTIVE_DOC_TEMPLATE_KEYS[category];
+  if (!base) return;
+  const tid = tenantId || getTenantIdFromStorage();
+  const cid = companyId || localStorage.getItem("bos_active_company_id");
+  if (cid) {
+    safeRemoveItem(`${base}_${tid}_${cid}`);
+    safeRemoveItem(getInvoiceCategoryActiveKey(tid, cid, category));
+  } else {
+    safeRemoveItem(`${base}_${tid}`);
+    safeRemoveItem(getInvoiceCategoryActiveKey(tid, null, category));
+  }
+}
+
+/** Read the active template id for a document category (company variant first, then tenant variant). */
+export function getActiveDocTemplateId(
+  category: string,
+  tenantId?: string,
+  companyId?: string,
+): string | null {
+  if (typeof window === "undefined" || !category) return null;
+  const base = ACTIVE_DOC_TEMPLATE_KEYS[category];
+  if (!base) return null;
+  const tid = tenantId || getTenantIdFromStorage();
+  const cid = companyId || localStorage.getItem("bos_active_company_id");
+  try {
+    if (cid) {
+      return (
+        localStorage.getItem(`${base}_${tid}_${cid}`) ||
+        localStorage.getItem(getInvoiceCategoryActiveKey(tid, cid, category)) ||
+        null
+      );
+    }
+    return (
+      localStorage.getItem(`${base}_${tid}`) ||
+      localStorage.getItem(getInvoiceCategoryActiveKey(tid, null, category)) ||
+      null
+    );
+  } catch {
+    return null;
   }
 }
 
@@ -829,12 +1060,12 @@ export function getActiveReceiptTemplate(tenantId?: string): ReceiptTemplate {
       const defKey = getTenantDefaultsKey(tid);
       // Strictly workspace-scoped template storage — never fall back to the
       // unsuffixed global keys, which hold templates from other tenants.
+      ensurePurgeStalePrintTemplates();
       const invTemplatesRaw = tid ? localStorage.getItem(tplKey) : null;
-      const userActiveDefaultsRaw = tid ? localStorage.getItem(defKey) : null;
 
       if (invTemplatesRaw) {
-        const invTemplates = JSON.parse(invTemplatesRaw);
-        const activeDefaults = userActiveDefaultsRaw ? JSON.parse(userActiveDefaultsRaw) : {};
+        const invTemplates = pruneTemplateList(JSON.parse(invTemplatesRaw));
+        const activeDefaults = readActiveDefaults(tid ? defKey : null);
 
         const activeThermalId =
           (tid ? localStorage.getItem(`bos_active_receipt_template_id_${tid}`) : null) ||
@@ -869,8 +1100,15 @@ export function getActiveReceiptTemplate(tenantId?: string): ReceiptTemplate {
           const resolvedGstin = activeGst?.gstin || (!isDummyGstin(matched.gstin) ? matched.gstin : '');
           const resolvedBranch = (matched.branchName && !matched.branchName.toUpperCase().includes('PRODDATUR')) ? matched.branchName : '';
 
+          // Live master-link: while the receipt is linked, the master invoice
+          // template's mappable settings (words, signature/stamp, UPI/payee,
+          // custom fields & columns, terms/footer, bank) flow through here.
+          // The receipt's own layout, toggles & paper size are unchanged.
+          const linked = getLinkedMaster(matched, tid);
+
           return {
             ...matched,
+            ...linked,
             id: matched.id,
             name: matched.name || 'Organization Active Print Template',
             isDefault: true,
@@ -879,29 +1117,36 @@ export function getActiveReceiptTemplate(tenantId?: string): ReceiptTemplate {
             printClarity: matched.printClarity || matched.thermalContrast || 'ultra_dark',
             dividerStyle: matched.dividerStyle || 'dashed',
             fontFamily: matched.thermalFontFamily || matched.fontFamily || 'monospace',
-            storeName: activeGst?.trade_name || activeGst?.legal_name || (!isGenericBusinessTerm(matched.storeName) && !matched.storeName?.includes('Smart Bazaar') ? matched.storeName : '') || 'Store',
+            storeName: activeGst?.trade_name || activeGst?.legal_name || (!isGenericBusinessTerm(linked.storeName) && !linked.storeName?.includes('Smart Bazaar') ? linked.storeName : '') || 'Store',
             branchName: resolvedBranch,
-            headerTagline: matched.customTaglineText || matched.headerTagline || '',
+            headerTagline: linked.customTaglineText || linked.headerTagline || '',
             invoiceTitle: matched.headerTitle || 'TAX INVOICE',
             address: resolvedAddress,
             phone: resolvedPhone,
-            email: activeGst?.email || matched.storeEmail || '',
+            email: activeGst?.email || linked.storeEmail || '',
             gstin: resolvedGstin,
-            cin: activeGst?.cin || matched.cin || '',
-            logoUrl: activeGst?.logo_url || matched.logoUrl || '',
+            cin: activeGst?.cin || linked.cin || '',
+            logoUrl: activeGst?.logo_url || linked.logoUrl || '',
 
-            customFields: matched.customFields || [],
-            customItemColumns: matched.customItemColumns || [],
+            // Merged editable label words (master < local) — drives the receipt
+            // renderer's label resolver and the receipt Texts & Labels editor.
+            texts: linked.texts || matched.texts || {},
+            customTexts: linked.customTexts || matched.customTexts || {},
+
+            customFields: linked.customFields || [],
+            customItemColumns: linked.customItemColumns || [],
             showPaidInFullStamp: matched.showPaidInFullStamp !== false,
             showGoogleReviewQR: matched.showGoogleReviewQR !== false,
-            googleReviewUrl: matched.googleReviewUrl || activeGst?.google_review_url || '',
-            upiId: matched.upiId || activeGst?.upi_vpa || '',
-            payeeName: matched.payeeName || '',
-            customQrUrl: matched.customQrUrl || '',
+            googleReviewUrl: linked.googleReviewUrl || activeGst?.google_review_url || '',
+            upiId: linked.upiId || activeGst?.upi_vpa || '',
+            payeeName: linked.payeeName || '',
+            customQrUrl: linked.customQrUrl || '',
             showSignature: matched.showSignature !== false,
             showStamp: matched.showStamp !== false,
-            signatureUrl: matched.signatureUrl || activeGst?.signature_url || '',
-            stampUrl: matched.stampUrl || activeGst?.stamp_url || '',
+            signatureUrl: linked.signatureUrl || activeGst?.signature_url || '',
+            stampUrl: linked.stampUrl || activeGst?.stamp_url || '',
+            signatoryLabel: linked.signatoryLabel || matched.signatoryLabel || '',
+            bankDetails: linked.bankDetails || matched.bankDetails || '',
 
             fields: {
               ...(matched.fields || {}),
@@ -977,11 +1222,12 @@ export function getResolvedActiveThermalTemplate(tenantId?: string): any {
       const tplKey = getTenantTemplatesKey(tid);
       const defKey = getTenantDefaultsKey(tid);
       // Strictly workspace-scoped template storage — no unsuffixed global fallbacks
+      ensurePurgeStalePrintTemplates();
       const rawTemplates = tid ? (localStorage.getItem(tplKey) || localStorage.getItem(`businessos_print_templates_v1_${tid}`)) : null;
       const rawDefaults = tid ? (localStorage.getItem(defKey) || localStorage.getItem(`user_active_print_templates_v1_${tid}`) || localStorage.getItem(`businessos_active_template_ids_${tid}`)) : null;
 
       if (rawTemplates) {
-        const templates = JSON.parse(rawTemplates);
+        const templates = pruneTemplateList(JSON.parse(rawTemplates));
         const defaults = rawDefaults ? JSON.parse(rawDefaults) : {};
         const activeThermalId =
           (tid ? localStorage.getItem(`bos_active_receipt_template_id_${tid}`) : null) ||
@@ -1017,22 +1263,25 @@ export function getResolvedActiveThermalTemplate(tenantId?: string): any {
           const cleanGstin = isDummyGstin(matched.gstin) ? '' : (matched.gstin || '');
           const cleanBranch = (matched.branchName && !matched.branchName.toUpperCase().includes('PRODDATUR')) ? matched.branchName : '';
 
+          // Live master-link: while linked, mappable settings follow the master
+          // invoice template; unlinked templates keep only their own values.
+          const linked = getLinkedMaster(matched, tid);
           if (activeGst) {
             return {
-              ...matched,
-              storeName: activeGst.trade_name || activeGst.legal_name || (!isGenericBusinessTerm(matched.storeName) && !matched.storeName?.includes('Smart Bazaar') ? matched.storeName : '') || 'Store',
+              ...linked,
+              storeName: activeGst.trade_name || activeGst.legal_name || (!isGenericBusinessTerm(linked.storeName) && !linked.storeName?.includes('Smart Bazaar') ? linked.storeName : '') || 'Store',
               branchName: cleanBranch,
               storeAddress: activeGst.address || cleanAddress,
               storePhone: activeGst.phone || cleanPhone,
-              storeEmail: activeGst.email || matched.storeEmail || '',
+              storeEmail: activeGst.email || linked.storeEmail || '',
               gstin: activeGst.gstin || cleanGstin,
-              cin: activeGst.cin || matched.cin || '',
-              logoUrl: activeGst.logo_url || (activeGst.trade_name ? '' : matched.logoUrl) || '',
+              cin: activeGst.cin || linked.cin || '',
+              logoUrl: activeGst.logo_url || (activeGst.trade_name ? '' : linked.logoUrl) || '',
             };
           }
 
           return {
-            ...matched,
+            ...linked,
             branchName: cleanBranch,
             storeAddress: cleanAddress,
             storePhone: cleanPhone,
@@ -1051,19 +1300,23 @@ export function getResolvedActiveThermalTemplate(tenantId?: string): any {
 
 export function getTenantTemplatesKey(tenantId?: string): string {
   if (typeof window === 'undefined') return 'businessos_print_templates_v1';
-  let tid = tenantId;
-  if (!tid) {
+  // Canonical suffix source: always agree with getTenantIdFromStorage() (the
+  // suffix used by every active-template key), otherwise an active template
+  // id can't be resolved against the tenant's template list and printers
+  // silently fall back to the Word stub.
+  let tid = tenantId || getTenantIdFromStorage();
+  if (tid === 'default') {
     try {
       const activeComp = localStorage.getItem('bos_active_company') || localStorage.getItem('bos-active-company');
       if (activeComp) tid = activeComp;
-      if (!tid) {
+      if (!tid || tid === 'default') {
         const authRaw = localStorage.getItem('bos-auth');
         if (authRaw) {
           const authParsed = JSON.parse(authRaw);
           tid = authParsed?.user?.tenantId || authParsed?.user?.tenant_id || authParsed?.user?.tenantSlug;
         }
       }
-      if (!tid) {
+      if (!tid || tid === 'default') {
         const raw = localStorage.getItem('bos-tenant');
         if (raw) {
           const parsed = JSON.parse(raw);
@@ -1077,19 +1330,20 @@ export function getTenantTemplatesKey(tenantId?: string): string {
 
 export function getTenantDefaultsKey(tenantId?: string): string {
   if (typeof window === 'undefined') return 'user_active_print_templates_v1';
-  let tid = tenantId;
-  if (!tid) {
+  // Same canonical suffix source as getTenantTemplatesKey / getTenantIdFromStorage.
+  let tid = tenantId || getTenantIdFromStorage();
+  if (tid === 'default') {
     try {
       const activeComp = localStorage.getItem('bos_active_company') || localStorage.getItem('bos-active-company');
       if (activeComp) tid = activeComp;
-      if (!tid) {
+      if (!tid || tid === 'default') {
         const authRaw = localStorage.getItem('bos-auth');
         if (authRaw) {
           const authParsed = JSON.parse(authRaw);
           tid = authParsed?.user?.tenantId || authParsed?.user?.tenant_id || authParsed?.user?.tenantSlug;
         }
       }
-      if (!tid) {
+      if (!tid || tid === 'default') {
         const raw = localStorage.getItem('bos-tenant');
         if (raw) {
           const parsed = JSON.parse(raw);
@@ -2083,13 +2337,14 @@ export async function syncPrintTemplatesFromBackend(force: boolean = false): Pro
       const merged = Array.from(templateMap.values());
       // Write only to the workspace-scoped key — never to the unsuffixed global
       // keys, which would leak this workspace's templates into other tenants.
-      localStorage.setItem(storageKey, JSON.stringify(merged));
+      // Prune (dedupe / cap at 15 / sanitize) so a bloated backend sync can
+      // never exhaust the browser quota on write.
+      safeSetItem(storageKey, JSON.stringify(pruneTemplateList(merged)));
 
       // Also sync active map if present (workspace-scoped keys only)
       if (res.active_map) {
         const defaultsKey = getTenantDefaultsKey();
-        const curDefRaw = localStorage.getItem(defaultsKey);
-        const curDef = curDefRaw ? JSON.parse(curDefRaw) : {};
+        const curDef = readActiveDefaults(defaultsKey);
         const updatedDef = { ...curDef, ...res.active_map };
         if (res.active_map.barcodes) {
           updatedDef.barcode = res.active_map.barcodes;
@@ -2097,7 +2352,7 @@ export async function syncPrintTemplatesFromBackend(force: boolean = false): Pro
         if (res.active_map.invoices) {
           updatedDef.invoice = res.active_map.invoices;
         }
-        localStorage.setItem(defaultsKey, JSON.stringify(updatedDef));
+        safeSetItem(defaultsKey, JSON.stringify(updatedDef));
       }
 
       window.dispatchEvent(new Event("print_templates_updated"));
@@ -2232,18 +2487,20 @@ export function getActiveBarcodeTemplate(tenantId?: string): any {
       if (activeBarcodeId) {
         const found = allTemplates.find((t) => t.id === activeBarcodeId);
         if (found) {
+          const linked = getLinkedMaster(found, tid);
           return {
-            ...found,
-            storeName: tenantOrgName || (found.storeName && !found.storeName.toUpperCase().includes('LAZYMONKEY') ? found.storeName : undefined)
+            ...linked,
+            storeName: tenantOrgName || (linked.storeName && !linked.storeName.toUpperCase().includes('LAZYMONKEY') ? linked.storeName : undefined)
           };
         }
       }
 
       const defaultTemplate = allTemplates.find((t) => t.isDefault) || allTemplates[0];
       if (defaultTemplate) {
+        const linked = getLinkedMaster(defaultTemplate, tid);
         return {
-          ...defaultTemplate,
-          storeName: tenantOrgName || (defaultTemplate.storeName && !defaultTemplate.storeName.toUpperCase().includes('LAZYMONKEY') ? defaultTemplate.storeName : undefined)
+          ...linked,
+          storeName: tenantOrgName || (linked.storeName && !linked.storeName.toUpperCase().includes('LAZYMONKEY') ? linked.storeName : undefined)
         };
       }
     } catch (e) {
@@ -2251,9 +2508,10 @@ export function getActiveBarcodeTemplate(tenantId?: string): any {
     }
   }
 
+  const baseLinked = getLinkedMaster(allTemplates[0] || DEFAULT_BARCODE_TEMPLATES[0], tid);
   return {
-    ...allTemplates[0] || DEFAULT_BARCODE_TEMPLATES[0],
-    storeName: tenantOrgName || undefined,
+    ...baseLinked,
+    storeName: tenantOrgName || (baseLinked.storeName && !String(baseLinked.storeName).toUpperCase().includes('LAZYMONKEY') ? baseLinked.storeName : undefined),
   };
 }
 
@@ -2262,12 +2520,11 @@ export function setActiveBarcodeTemplate(id: string, tenantId?: string): void {
   const tid = tenantId || getTenantIdFromStorage();
   try {
     const defaultsKey = getTenantDefaultsKey(tid);
-    const raw = tid ? localStorage.getItem(defaultsKey) : null;
-    const defaults = raw ? JSON.parse(raw) : {};
+    const defaults = readActiveDefaults(defaultsKey);
     defaults.barcodes = id;
     defaults.barcode = id;
-    if (tid) localStorage.setItem(defaultsKey, JSON.stringify(defaults));
-    if (tid) localStorage.setItem(`bos_active_barcode_template_id_${tid}`, id);
+    if (tid) safeSetItem(defaultsKey, JSON.stringify(defaults));
+    if (tid) safeSetItem(`bos_active_barcode_template_id_${tid}`, id);
 
     // Also update isDefault in stored templates (workspace-scoped keys only)
     const storageKey = getTenantTemplatesKey(tid);
@@ -2285,7 +2542,7 @@ export function setActiveBarcodeTemplate(id: string, tenantId?: string): void {
               }
               return t;
             });
-            localStorage.setItem(k, JSON.stringify(updated));
+            safeSetItem(k, JSON.stringify(updated));
           }
         }
       } catch {}
@@ -2319,14 +2576,7 @@ export function saveBarcodeTemplate(updated: any, setAsDefault: boolean = false)
 
     keysToSync.forEach((k) => {
       try {
-        const raw = localStorage.getItem(k);
-        let allTemplates: any[] = [];
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) allTemplates = parsed;
-          } catch {}
-        }
+        let allTemplates: any[] = prunedTemplatesFromRaw(localStorage.getItem(k));
 
         const existingIdx = allTemplates.findIndex((t: any) => t.id === updated.id);
         if (existingIdx >= 0) {
@@ -2344,19 +2594,18 @@ export function saveBarcodeTemplate(updated: any, setAsDefault: boolean = false)
           });
         }
 
-        localStorage.setItem(k, JSON.stringify(allTemplates));
+        safeSetItem(k, JSON.stringify(allTemplates));
       } catch {}
     });
 
     if (setAsDefault) {
       const tid = getTenantIdFromStorage();
       const defaultsKey = getTenantDefaultsKey(tid);
-      const rawDef = tid ? localStorage.getItem(defaultsKey) : null;
-      const defaults = rawDef ? JSON.parse(rawDef) : {};
+      const defaults = readActiveDefaults(defaultsKey);
       defaults.barcodes = updated.id;
       defaults.barcode = updated.id;
-      if (tid) localStorage.setItem(defaultsKey, JSON.stringify(defaults));
-      if (tid) localStorage.setItem(`bos_active_barcode_template_id_${tid}`, updated.id);
+      if (tid) safeSetItem(defaultsKey, JSON.stringify(defaults));
+      if (tid) safeSetItem(`bos_active_barcode_template_id_${tid}`, updated.id);
     }
 
     // Persist directly to backend PostgreSQL database for the whole organization
@@ -2385,7 +2634,7 @@ export function deleteBarcodeTemplate(id: string): void {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
             const filtered = parsed.filter((t: any) => t.id !== id);
-            localStorage.setItem(k, JSON.stringify(filtered));
+            safeSetItem(k, JSON.stringify(filtered));
           }
         }
       } catch {}
@@ -2398,6 +2647,236 @@ export function deleteBarcodeTemplate(id: string): void {
     window.dispatchEvent(new Event("bos_barcode_template_changed"));
   } catch (e) {
     console.error("Error deleting barcode template:", e);
+  }
+}
+
+/**
+ * Master-template → receiver sync.
+ *
+ * The "master" is the active A4 invoice template (category 'invoices'). When the
+ * user designs/saves it, this copies the organization-level, non-layout content
+ * down to the thermal receipt (80mm/58mm) and barcode-label templates so the
+ * whole template family stays consistent:
+ *   - `texts` / `customTexts`  → editable label words
+ *   - signature / stamp urls + title
+ *   - custom fields + custom item columns
+ *   - payment-QR / Google-review / UPI settings
+ *   - brand primary color + tagline
+ * Layout, column order, element positions and per-receipt paper size are left
+ * untouched (a receipt can't render a full A4 page). Returns the count of
+ * receiver templates updated so the UI can report it.
+ */
+export function syncMasterInvoiceToReceivers(master: any, tenantId?: string): number {
+  if (typeof window === "undefined" || !master) return 0;
+  try {
+    const tid = tenantId || getTenantIdFromStorage();
+    const storageKey = getTenantTemplatesKey(tid);
+    const all = tid ? prunedTemplatesFromRaw(localStorage.getItem(storageKey)) : [];
+
+    const receiver = (t: any) =>
+      t &&
+      (t.category === "thermal" ||
+        t.docType === "thermal" ||
+        t.category === "barcodes" ||
+        t.docType === "barcode" ||
+        String(t.id || "").startsWith("tpl-bar"));
+
+    const isMaster = (t: any) =>
+      t && (t.category === "invoices" || t.docType === "invoice" || t.themeName === "word_studio") && !receiver(t);
+
+    // Only sync when the passed master really IS an invoice template, so a
+    // thermal/barcode save never clobbers the invoice designer.
+    const masterIsInvoice = isMaster(master);
+
+    const pick = (t: any, key: string) => (t?.[key] && t[key].length ? t[key] : null);
+
+    let updatedCount = 0;
+    let nextAll = all.map((t) => {
+      if (!receiver(t) || t.id === master?.id) return t;
+      if (masterIsInvoice) {
+        const synced: any = { ...t, updatedAt: new Date().toISOString() };
+        // Editable label words (master `texts` → receiver `texts` + `customTexts`)
+        if (master.texts || master.customTexts) {
+          const mergedTexts = { ...(master.customTexts || {}), ...(master.texts || {}) };
+          synced.texts = mergedTexts;
+          synced.customTexts = mergedTexts;
+        }
+        // Signature / stamp / signatory
+        if (master.signatureUrl) synced.signatureUrl = master.signatureUrl;
+        if (master.stampUrl) synced.stampUrl = master.stampUrl;
+        if (master.signatureTitle) synced.signatoryLabel = master.signatureTitle;
+        // Custom fields + custom item columns
+        const cf = pick(master, "customFields");
+        if (cf) synced.customFields = cf;
+        const cic = pick(master, "customItemColumns");
+        if (cic) synced.customItemColumns = cic;
+        // Payment-QR / Google-review / UPI
+        if (master.upiId) synced.upiId = master.upiId;
+        if (master.payeeName) synced.payeeName = master.payeeName;
+        if (master.customQrUrl) synced.customQrUrl = master.customQrUrl;
+        if (master.googleReviewUrl) synced.googleReviewUrl = master.googleReviewUrl;
+        // Brand
+        if (master.primaryColor) synced.primaryColor = master.primaryColor;
+        if (master.customTaglineText || master.headerTagline) {
+          synced.customTaglineText = master.customTaglineText || master.headerTagline;
+          synced.headerTagline = master.customTaglineText || master.headerTagline;
+        }
+        updatedCount++;
+        return synced;
+      }
+      return t;
+    });
+
+    if (nextAll.length) safeSetItem(storageKey, JSON.stringify(nextAll));
+    window.dispatchEvent(new Event("print_templates_updated"));
+    window.dispatchEvent(new Event("bos_receipt_template_changed"));
+    window.dispatchEvent(new Event("bos_barcode_template_changed"));
+    return updatedCount;
+  } catch (err) {
+    console.error("Error syncing master template to receivers:", err);
+    return 0;
+  }
+}
+
+// ── LIVE MASTER LINK (receipt / barcode → invoice master) ────────────────
+// A receipt or barcode template is LINKED to the master A4 invoice template
+// by default. While linked, any mappable setting that the receiver has NOT
+// explicitly set follows the master at render time — no one-off copy step.
+// Per-word labels keep the receiver's own edited words (local wins per key).
+// Unlinking makes the receiver fully independent (its last values are kept).
+export function getMasterInvoiceTemplate(tenantId?: string): any {
+  if (typeof window === "undefined") return null;
+  try {
+    const master = getActiveInvoicePrintTemplate(tenantId);
+    if (!master) return null;
+    const id = String(master.id || "");
+    const isInvoice =
+      master.category === "invoices" ||
+      master.docType === "invoice" ||
+      master.themeName === "word_studio" ||
+      id.startsWith("tpl-word") ||
+      id.startsWith("tpl-inv") ||
+      id.startsWith("tpl-thm");
+    // Never link a thermal receipt to itself as the "master".
+    if (master.category === "thermal" || master.docType === "thermal") return null;
+    return isInvoice ? master : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isReceiverLinkedToMaster(receiver: any): boolean {
+  // Default: linked. Only an explicit `linkedToMaster === false` detaches.
+  return receiver?.linkedToMaster !== false;
+}
+
+/**
+ * Merge the master invoice template's mappable settings into a receiver
+ * (receipt or barcode) template. Local receiver values win when they are set;
+ * anything unset follows the master. Words are merged per-key (local word
+ * beats master word). Used only while the receiver is linked.
+ */
+export function linkMasterToReceiver(receiver: any, master: any): any {
+  if (!receiver || !master || receiver.id === master.id) return receiver;
+  const out: any = { ...receiver };
+
+  // Editable label words — receiver local words win per-key, then master.
+  const masterTexts: any = { ...(master.customTexts || {}), ...(master.texts || {}) };
+  const localTexts: any = { ...(receiver.customTexts || {}), ...(receiver.texts || {}) };
+  const mergedTexts = { ...masterTexts, ...localTexts };
+  if (Object.keys(mergedTexts).length) {
+    out.texts = mergedTexts;
+    out.customTexts = mergedTexts;
+  }
+
+  // Signature / stamp (receiver override wins when present, else master).
+  out.signatureUrl = receiver.signatureUrl || master.signatureUrl || "";
+  out.stampUrl = receiver.stampUrl || master.stampUrl || "";
+  out.signatoryLabel = receiver.signatoryLabel || master.signatureTitle || "";
+
+  // Payment-QR / Google-review / UPI.
+  out.upiId = receiver.upiId || master.upiId || "";
+  out.payeeName = receiver.payeeName || master.payeeName || "";
+  out.customQrUrl = receiver.customQrUrl || master.customQrUrl || "";
+  out.googleReviewUrl = receiver.googleReviewUrl || master.googleReviewUrl || "";
+
+  // Brand.
+  out.primaryColor = receiver.primaryColor || master.primaryColor || "";
+  const tagline = receiver.customTaglineText || master.customTaglineText || master.headerTagline || "";
+  out.customTaglineText = tagline;
+  out.headerTagline = tagline;
+
+  // Bank details (receipt/bank block).
+  out.bankDetails = receiver.bankDetails || master.bankDetails || "";
+
+  // Custom fields & columns — receiver wins wholesale when it has any, else master.
+  if (Array.isArray(receiver.customFields) && receiver.customFields.length) out.customFields = receiver.customFields;
+  else if (Array.isArray(master.customFields) && master.customFields.length) out.customFields = master.customFields;
+  if (Array.isArray(receiver.customItemColumns) && receiver.customItemColumns.length) out.customItemColumns = receiver.customItemColumns;
+  else if (Array.isArray(master.customItemColumns) && master.customItemColumns.length) out.customItemColumns = master.customItemColumns;
+
+  // Terms / declaration / footer — receiver override wins when present.
+  out.termsText = receiver.termsText || master.termsText || out.termsText || "";
+  out.termsAndConditionsText = receiver.termsAndConditionsText || master.termsAndConditionsText || out.termsAndConditionsText || "";
+  out.declarationText = receiver.declarationText || master.declarationText || out.declarationText || "";
+  out.footerText = receiver.footerText || master.footerText || out.footerText || "";
+  out.thankYouNote = receiver.thankYouNote || master.thankYouNote || out.thankYouNote || "";
+
+  // Mark as linked so the UI can show the state.
+  out.linkedToMaster = true;
+  out.linkedToMasterId = master.id;
+  return out;
+}
+
+/**
+ * Live-linked receipt: the stored receiver merged with its master when it is
+ * still linked. Falls back to the plain receiver when unlinked or no master.
+ */
+export function getLinkedMaster(receiver: any, tenantId?: string): any {
+  if (!receiver) return receiver;
+  if (!isReceiverLinkedToMaster(receiver)) return receiver;
+  const master = getMasterInvoiceTemplate(tenantId);
+  return master ? linkMasterToReceiver(receiver, master) : receiver;
+}
+
+/**
+ * Persist a receiver template's link state (`linkedToMaster`) across all the
+ * storage keys a receipt/barcode template lives in, plus the backend, so the
+ * whole organization agrees. `linked=false` fully detaches the template so it
+ * can be customized independently; `linked=true` re-attaches it to the master.
+ */
+export function setReceiverLinkedToMaster(receiverId: string, linked: boolean, tenantId?: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const tid = tenantId || getTenantIdFromStorage();
+    const write = (k: string) => {
+      try {
+        const list = pruneTemplateList(prunedTemplatesFromRaw(localStorage.getItem(k)));
+        if (!Array.isArray(list)) return;
+        list.forEach((t: any) => {
+          if (t && t.id === receiverId) {
+            t.linkedToMaster = linked;
+            if (!linked) {
+              // Detach: stop following the master; keep the last live values.
+              t.linkedToMasterId = null;
+            } else if (getMasterInvoiceTemplate(tid)) {
+              t.linkedToMasterId = getMasterInvoiceTemplate(tid)?.id;
+            }
+          }
+        });
+        safeSetItem(k, JSON.stringify(list));
+      } catch {}
+    };
+    write(getTenantTemplatesKey(tid));
+    write(`businessos_print_templates_v1_${tid}`);
+    write(getTenantReceiptTemplatesKey(tid));
+
+    printTemplatesApi.setActiveTemplate(receiverId, "thermal").catch(() => {});
+    window.dispatchEvent(new CustomEvent("bos_receipt_template_changed", { detail: { id: receiverId, linked } }));
+    window.dispatchEvent(new CustomEvent("bos_barcode_template_changed", { detail: { id: receiverId, linked } }));
+    window.dispatchEvent(new Event("print_templates_updated"));
+  } catch (err) {
+    console.error("Error updating receiver link state:", err);
   }
 }
 
@@ -2609,10 +3088,11 @@ export function setActiveInvoicePrintTemplate(templateId: string, tenantId?: str
   const tid = tenantId || getTenantIdFromStorage();
   const cid = companyId || localStorage.getItem('bos_active_company_id');
   try {
+    ensurePurgeStalePrintTemplates();
     if (tid) {
-      localStorage.setItem(`bos_active_invoice_template_id_${tid}`, templateId);
+      safeSetItem(`bos_active_invoice_template_id_${tid}`, templateId);
       if (cid) {
-        localStorage.setItem(`bos_active_invoice_template_id_${tid}_${cid}`, templateId);
+        safeSetItem(`bos_active_invoice_template_id_${tid}_${cid}`, templateId);
       }
     }
 
@@ -2620,17 +3100,16 @@ export function setActiveInvoicePrintTemplate(templateId: string, tenantId?: str
       return;
     }
     const defaultsKey = getTenantDefaultsKey(tid);
-    const rawDefaults = localStorage.getItem(defaultsKey);
-    const parsedDefaults = rawDefaults ? JSON.parse(rawDefaults) : {};
+    const parsedDefaults = readActiveDefaults(defaultsKey);
     parsedDefaults.invoices = templateId;
     parsedDefaults.invoice = templateId;
-    localStorage.setItem(defaultsKey, JSON.stringify(parsedDefaults));
+    safeSetItem(defaultsKey, JSON.stringify(parsedDefaults));
 
     const tplKey = getTenantTemplatesKey(tid);
     const rawTpls = localStorage.getItem(tplKey);
     if (rawTpls) {
       try {
-        const tpls = JSON.parse(rawTpls);
+        const tpls = pruneTemplateList(JSON.parse(rawTpls));
         if (Array.isArray(tpls)) {
           const updated = tpls.map((t: any) => {
             if (t.category === 'invoices' || t.docType === 'invoice') {
@@ -2638,7 +3117,7 @@ export function setActiveInvoicePrintTemplate(templateId: string, tenantId?: str
             }
             return t;
           });
-          localStorage.setItem(tplKey, JSON.stringify(updated));
+          safeSetItem(tplKey, JSON.stringify(updated));
         }
       } catch {}
     }
@@ -2659,6 +3138,7 @@ export function getActiveInvoicePrintTemplate(tenantId?: string, companyId?: str
 
   if (typeof window !== 'undefined') {
     try {
+      ensurePurgeStalePrintTemplates();
       const storageKey = getTenantTemplatesKey(tid);
       const defaultsKey = getTenantDefaultsKey(tid);
       const invTemplatesRaw = localStorage.getItem(storageKey);
@@ -2682,7 +3162,7 @@ export function getActiveInvoicePrintTemplate(tenantId?: string, companyId?: str
       let matched: any = null;
 
       if (invTemplatesRaw) {
-        const invTemplates = JSON.parse(invTemplatesRaw);
+        const invTemplates = pruneTemplateList(JSON.parse(invTemplatesRaw));
         if (activeInvoiceId) {
           // Use only the template explicitly selected for this workspace — no fallback to
           // built-in/global templates (which may carry baked-in company data from other tenants)
@@ -2792,6 +3272,267 @@ export function getActiveInvoicePrintTemplate(tenantId?: string, companyId?: str
   return base;
 }
 
+// ── Per-document-category invoice template slots ─────────────────────────
+// The user can assign a specific template to each document category (quotation,
+// proforma, estimate, credit note, debit note). Each is persisted to localStorage
+// (this device) AND the backend (/invoices/print-template/active with a category
+// param), so the same chosen template is used for that category across every
+// mode — direct save, print, PDF, email, WhatsApp. If a category has no template
+// set, the caller falls back to the invoice slot.
+import { INVOICE_DOC_CATEGORIES } from './invoice-template-config';
+import type { InvoiceDocCategory } from './invoice-template-config';
+
+// Re-exported so consumers of the receipt-template-store can pull the document
+// category list + type from this module alongside the per-category APIs.
+export { INVOICE_DOC_CATEGORIES };
+export type { InvoiceDocCategory };
+
+export function getInvoiceCategoryActiveKey(tid: string, cid?: string | null, category?: string): string {
+  const base = `bos_active_invoice_category_template_${tid}`;
+  const catSuffix = category && category !== 'invoice' ? `_${category}` : '';
+  return cid ? `${base}${catSuffix}_${cid}` : `${base}${catSuffix}`;
+}
+
+export function setActiveInvoicePrintTemplateForCategory(
+  templateId: string,
+  category: InvoiceDocCategory,
+  tenantId?: string,
+  companyId?: string,
+): void {
+  if (typeof window === 'undefined') return;
+  const tid = tenantId || getTenantIdFromStorage();
+  const cid = companyId || localStorage.getItem('bos_active_company_id');
+  try {
+    ensurePurgeStalePrintTemplates();
+    safeSetItem(getInvoiceCategoryActiveKey(tid, cid, category), templateId);
+    // Mirror into the dedicated per-category key family (ACTIVE_DOC_TEMPLATE_KEYS)
+    // so every resolver that reads it sees the same choice as the strip.
+    setActiveDocTemplateId(category, templateId, tid, cid || undefined);
+
+    // Non-invoice categories are automatically unlinked so they persist independently
+    // without clobbering or following master tax invoice.
+    if (category !== 'invoice') {
+      if (cid) {
+        safeSetItem(getInvoiceCategoryLinkKey(tid, cid, category), 'unlinked');
+      } else {
+        safeSetItem(getInvoiceCategoryLinkKey(tid, null, category), 'unlinked');
+      }
+      invoicesApi.setActivePrintTemplate(templateId, category).catch(() => {});
+    } else {
+      // The "invoice" category is the master slot — keep the standard keys in sync.
+      setActiveInvoicePrintTemplate(templateId, tid, cid || undefined);
+    }
+    window.dispatchEvent(new CustomEvent('bos_invoice_category_template_changed', { detail: { category, templateId } }));
+    window.dispatchEvent(new Event('storage'));
+  } catch (err) {
+    console.error('Error setting active invoice template for category:', err);
+  }
+}
+
+/**
+ * Resolve the active template ID for a document category. Falls back to the
+ * invoice category when the specific category has no saved template, so a
+ * category always has a usable design.
+ */
+export function getActiveInvoicePrintTemplateForCategory(
+  category: InvoiceDocCategory,
+  tenantId?: string,
+  companyId?: string,
+): string | null {
+  if (typeof window === 'undefined') return null;
+  const tid = tenantId || getTenantIdFromStorage();
+  const cid = companyId || localStorage.getItem('bos_active_company_id');
+  try {
+    // 1. Per-category active-template id (dedicated keys from ACTIVE_DOC_TEMPLATE_KEYS or category key).
+    const direct = getActiveDocTemplateId(category, tid, cid || undefined);
+    if (direct) return direct;
+
+    // 2. Category slot written by setActiveInvoicePrintTemplateForCategory.
+    const slot = cid
+      ? localStorage.getItem(getInvoiceCategoryActiveKey(tid, cid, category))
+      : localStorage.getItem(getInvoiceCategoryActiveKey(tid, null, category));
+    if (slot) return slot;
+
+    // 3. Fall back to the master invoice slot only when category has no custom selection.
+    if (category !== 'invoice') {
+      const inv =
+        (cid ? localStorage.getItem(`bos_active_invoice_template_id_${tid}_${cid}`) : null) ||
+        localStorage.getItem(`bos_active_invoice_template_id_${tid}`);
+      if (inv) return inv;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Invoice category link to master ───────────────────────────────────────
+// Every non-master invoice category (quotation, proforma, estimate, credit /
+// debit note) LINKS to the master "invoice" category by default: it follows
+// whatever template is active for invoices, so the whole invoice family stays
+// consistent across save / print / PDF / email / WhatsApp with zero extra
+// setup. A category can be explicitly "unlinked" to pin its own template
+// (then it stops following the master). This mirrors the receipt/barcode
+// live-link, but operates at the invoice document-category level.
+export function getInvoiceCategoryLinkKey(tid: string, cid?: string | null, category?: string): string {
+  const base = `bos_invoice_category_link_${tid}`;
+  const catSuffix = category && category !== 'invoice' ? `_${category}` : '';
+  return cid ? `${base}${catSuffix}_${cid}` : `${base}${catSuffix}`;
+}
+
+/** True when the category explicitly pins its own template (unlinked). */
+export function isInvoiceCategoryUnlinked(category: InvoiceDocCategory, tenantId?: string, companyId?: string): boolean {
+  if (category === 'invoice') return false;
+  if (typeof window === 'undefined') return false;
+  try {
+    const tid = tenantId || getTenantIdFromStorage();
+    const cid = companyId || localStorage.getItem('bos_active_company_id');
+    if (cid) {
+      return localStorage.getItem(getInvoiceCategoryLinkKey(tid, cid, category)) === 'unlinked';
+    }
+    return localStorage.getItem(getInvoiceCategoryLinkKey(tid, null, category)) === 'unlinked';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Set the link state of an invoice category to the master.
+ *  - linked  (true):  clear the pin so the category follows the master invoice
+ *                    template automatically.
+ *  - unlinked (false): pin the category to `templateId` (or the currently
+ *                    resolved one) so it stops following the master.
+ */
+export function setInvoiceCategoryLinked(
+  category: InvoiceDocCategory,
+  linked: boolean,
+  pinTemplateId?: string,
+  tenantId?: string,
+  companyId?: string,
+): void {
+  if (typeof window === 'undefined' || category === 'invoice') return;
+  const tid = tenantId || getTenantIdFromStorage();
+  const cid = companyId || localStorage.getItem('bos_active_company_id') || undefined;
+  try {
+    const key = getInvoiceCategoryLinkKey(tid, cid, category);
+    const baseKey = ACTIVE_DOC_TEMPLATE_KEYS[category] || '';
+    if (linked) {
+      // Re-link: drop the unlinked pin AND clear this category's own active
+      // key so the resolver dynamically follows the CURRENT master invoice
+      // template (a frozen master ID would stop tracking later master changes).
+      if (cid) {
+        safeRemoveItem(key);
+        safeRemoveItem(getInvoiceCategoryActiveKey(tid, cid, category));
+        if (baseKey) safeRemoveItem(`${baseKey}_${tid}_${cid}`);
+      } else {
+        safeRemoveItem(getInvoiceCategoryLinkKey(tid, null, category));
+        safeRemoveItem(getInvoiceCategoryActiveKey(tid, null, category));
+        if (baseKey) safeRemoveItem(`${baseKey}_${tid}`);
+      }
+      const masterId = getActiveInvoicePrintTemplateForCategory('invoice', tid, cid);
+      if (masterId) {
+        // Keep the shared backend in step with the master's current pick.
+        invoicesApi.setActivePrintTemplate(masterId, category).catch(() => {});
+      }
+    } else {
+      // Unlink: pin this category to its own template so it stops following.
+      if (cid) {
+        safeSetItem(key, 'unlinked');
+      } else {
+        safeSetItem(getInvoiceCategoryLinkKey(tid, null, category), 'unlinked');
+      }
+      const pin = pinTemplateId || getActiveInvoicePrintTemplateForCategory(category, tid, cid);
+      if (pin) {
+        safeSetItem(getInvoiceCategoryActiveKey(tid, cid, category), pin);
+        // Pin the dedicated per-category key family in lockstep.
+        setActiveDocTemplateId(category, pin, tid, cid);
+        invoicesApi.setActivePrintTemplate(pin, category).catch(() => {});
+      }
+    }
+    window.dispatchEvent(new CustomEvent('bos_invoice_category_link_changed', { detail: { category, linked } }));
+    window.dispatchEvent(new Event('storage'));
+  } catch (err) {
+    console.error('Error setting invoice category link state:', err);
+  }
+}
+
+/** Convenience helper to explicitly unlink a category from master */
+export function setInvoiceCategoryUnlinked(
+  category: InvoiceDocCategory,
+  pinTemplateId?: string,
+  tenantId?: string,
+  companyId?: string,
+): void {
+  setInvoiceCategoryLinked(category, false, pinTemplateId, tenantId, companyId);
+}
+
+/**
+ * Helper to get the fully resolved active template object (with store & billing details merged)
+ * for a specific document category (e.g. proforma, quotation, challan).
+ */
+export function getActiveInvoicePrintTemplateForDocCategory(
+  category: InvoiceDocCategory,
+  tenantId?: string,
+  companyId?: string,
+): any {
+  const tid = tenantId || getTenantIdFromStorage();
+  const cid = companyId || (typeof window !== 'undefined' ? localStorage.getItem('bos_active_company_id') : undefined);
+  const activeGst = getActiveBillingGst(tid, cid || undefined);
+  const categoryActiveId = getActiveInvoicePrintTemplateForCategory(category, tid, cid || undefined);
+
+  if (typeof window !== 'undefined' && categoryActiveId) {
+    try {
+      const storageKey = getTenantTemplatesKey(tid);
+      const invTemplatesRaw = localStorage.getItem(storageKey);
+      if (invTemplatesRaw) {
+        const invTemplates = pruneTemplateList(JSON.parse(invTemplatesRaw));
+        const matched = invTemplates.find((t: any) => t.id === categoryActiveId || t.themeName === categoryActiveId);
+        if (matched) {
+          const isProddatur = matched.storeAddress && (matched.storeAddress.includes('KK Street, Proddatur') || matched.storeAddress.includes('Proddatur, YSR Cuddapah'));
+          const isDummyGst = matched.gstin && matched.gstin.includes('37AABCCH694G1Z4');
+          const isDummyPhone = matched.storePhone && matched.storePhone.includes('+91 9849344919');
+
+          const cleanAddress = isProddatur ? '' : (matched.storeAddress || '');
+          const cleanGstin = isDummyGst ? '' : (matched.gstin || '');
+          const cleanPhone = isDummyPhone ? '' : (matched.storePhone || '');
+
+          if (activeGst) {
+            const res = {
+              ...matched,
+              gstin: activeGst.gstin || cleanGstin,
+              storeName: activeGst.trade_name || activeGst.legal_name || '',
+              storeAddress: activeGst.address || cleanAddress,
+              storePhone: activeGst.phone || cleanPhone,
+              storeEmail: activeGst.email || matched.storeEmail,
+              cin: activeGst.cin || matched.cin,
+              logoUrl: activeGst.logo_url || '',
+              signatureUrl: activeGst.signature_url || matched.signatureUrl || matched.signature_url || null,
+              stampUrl: activeGst.stamp_url || matched.stampUrl || matched.stamp_url || null,
+              signatureTitle: activeGst.signature_title || matched.signatureTitle || matched.signature_title || 'Authorized Signatory',
+              signatureCompanyName: activeGst.signature_company_name || `For ${activeGst.trade_name || activeGst.legal_name || 'Organization'}`,
+            };
+            if (res.wordConfig && typeof res.wordConfig === 'object') {
+              res.wordConfig = {
+                ...res.wordConfig,
+                companyName: activeGst.trade_name || activeGst.legal_name || res.storeName,
+                companyAddress: activeGst.address || res.storeAddress,
+                companyGstin: activeGst.gstin || res.gstin,
+                companyPhone: activeGst.phone || res.storePhone,
+                companyEmail: activeGst.email || res.storeEmail,
+              };
+            }
+            return res;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error loading active template for category:', category, e);
+    }
+  }
+
+  return getActiveInvoicePrintTemplate(tid, cid || undefined);
+}
+
 export function getTenantReceiptTemplatesKey(tenantId?: string): string {
   if (typeof window === 'undefined') return 'bos_pos_active_receipt_templates_v1';
   let tid = tenantId;
@@ -2836,7 +3577,7 @@ export function saveReceiptTemplates(templates: ReceiptTemplate[], tenantId?: st
   if (typeof window === 'undefined') return;
   try {
     const key = getTenantReceiptTemplatesKey(tenantId);
-    localStorage.setItem(key, JSON.stringify(templates));
+    safeSetItem(key, JSON.stringify(pruneTemplateList(templates as any[])));
   } catch (err) {
     console.error('Failed to save receipt templates:', err);
   }
@@ -2862,19 +3603,18 @@ export function saveActiveReceiptTemplate(updated: ReceiptTemplate, tenantId?: s
   if (typeof window !== 'undefined') {
     try {
       const defKey = getTenantDefaultsKey(tenantId);
-      const rawActive = tenantId ? localStorage.getItem(defKey) : null;
-      const activeMap = rawActive ? JSON.parse(rawActive) : {};
+      const activeMap = readActiveDefaults(defKey);
       activeMap.thermal = updated.id;
       activeMap.receipt = updated.id;
       if (tenantId) {
-        localStorage.setItem(defKey, JSON.stringify(activeMap));
-        localStorage.setItem(`bos_active_receipt_template_id_${tenantId}`, updated.id);
-        localStorage.setItem(`bos_active_thermal_template_id_${tenantId}`, updated.id);
+        safeSetItem(defKey, JSON.stringify(activeMap));
+        safeSetItem(`bos_active_receipt_template_id_${tenantId}`, updated.id);
+        safeSetItem(`bos_active_thermal_template_id_${tenantId}`, updated.id);
       }
 
       const tplKey = getTenantTemplatesKey(tenantId);
       const rawInv = tenantId ? localStorage.getItem(tplKey) : null;
-      let invList = rawInv ? JSON.parse(rawInv) : [];
+      let invList = prunedTemplatesFromRaw(rawInv);
       if (!Array.isArray(invList)) invList = [];
 
       const mappedInvTemplate = {
@@ -2912,6 +3652,11 @@ export function saveActiveReceiptTemplate(updated: ReceiptTemplate, tenantId?: s
         signatoryLabel: updated.signatoryLabel,
         customFields: updated.customFields || [],
         customItemColumns: updated.customItemColumns || [],
+        // Editable label words (receipt Texts & Labels editor) + master-link state.
+        texts: updated.texts || {},
+        customTexts: updated.customTexts || updated.texts || {},
+        linkedToMaster: updated.linkedToMaster !== false,
+        bankDetails: updated.bankDetails || '',
         fields: {
           showLogo: updated.showLogo,
           showStoreName: updated.showStoreName !== false,
@@ -2982,7 +3727,7 @@ export function saveActiveReceiptTemplate(updated: ReceiptTemplate, tenantId?: s
         invList.push(mappedInvTemplate);
       }
       // Write only to the workspace-scoped key — never to the unsuffixed global key
-      localStorage.setItem(tplKey, JSON.stringify(invList));
+      safeSetItem(tplKey, JSON.stringify(invList));
 
       // Persist to backend
       printTemplatesApi.saveTemplate(mappedInvTemplate, true).catch(() => {});
@@ -2994,4 +3739,87 @@ export function saveActiveReceiptTemplate(updated: ReceiptTemplate, tenantId?: s
       console.error('Failed to sync active template with inventory store:', e);
     }
   }
+}
+
+/**
+ * Wipe ALL device-local print-template state for a tenant: the template lists,
+ * the active-template id map, every per-document-category active key (invoice /
+ * quotation / proforma / estimate / challan / credit note / debit note / purchase
+ * invoice / purchase order / receipt / thermal / barcode / custom), the
+ * category-slot + link-pin key families, and the legacy unsuffixed global keys.
+ * Use this to "start from scratch" so the UI reloads a clean slate (the backend
+ * copy is cleared separately via reset_print_templates.py).
+ */
+export function resetAllPrintTemplatesForTenant(tenantId?: string): string[] {
+  if (typeof window === "undefined") return [];
+  const tid = tenantId || getTenantIdFromStorage();
+  const cid = localStorage.getItem("bos_active_company_id");
+  const removed: string[] = [];
+  const matchPrefixes = [
+    "businessos_print_templates_v1",
+    "user_active_print_templates_v1",
+    "businessos_active_template_ids",
+    "bos_active_invoice_template_id",
+    "bos_active_quotation_template_id",
+    "bos_active_proforma_template_id",
+    "bos_active_estimate_template_id",
+    "bos_active_challan_template_id",
+    "bos_active_credit_note_template_id",
+    "bos_active_debit_note_template_id",
+    "bos_active_purchase_invoice_template_id",
+    "bos_active_purchase_order_template_id",
+    "bos_active_purchase_template_id",
+    "bos_active_receipt_template_id",
+    "bos_active_thermal_template_id",
+    "bos_active_barcode_template_id",
+    "bos_active_custom_doc_template_id",
+    "bos_active_invoice_category_template",
+    "bos_invoice_category_link",
+    "bos_active_custom_doc_template_id",
+  ];
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+    const scoped =
+      key === "businessos_print_templates_v1" ||
+      key === "user_active_print_templates_v1" ||
+      matchPrefixes.some((p) => key.startsWith(p));
+    if (!scoped) continue;
+    // For tenant-scoped families, only delete this tenant's (or the global /
+    // company-scoped variant of it) keys; never another tenant's data.
+    const isGlobalOrThisTenant =
+      key === "businessos_print_templates_v1" ||
+      key === "user_active_print_templates_v1" ||
+      key.includes(`_${tid}`) ||
+      key.includes(`${tid}_${cid}`) ||
+      key.endsWith(tid) ||
+      !key.includes("_");
+    if (!isGlobalOrThisTenant) continue;
+    try {
+      localStorage.removeItem(key);
+      removed.push(key);
+    } catch { /* ignore individual failures */ }
+  }
+  // Also clear ACTIVE_DOC_TEMPLATE_KEYS dedicated families explicitly.
+  for (const base of Object.values(ACTIVE_DOC_TEMPLATE_KEYS)) {
+    try {
+      localStorage.removeItem(`${base}_${tid}`);
+      if (cid) localStorage.removeItem(`${base}_${tid}_${cid}`);
+      localStorage.removeItem(`${base}`);
+    } catch { /* ignore */ }
+  }
+  // Clear the canonical template-list + active-default keys exactly as the
+  // loader writes them (these can be company-scoped when the tenant resolves
+  // to "default"), so stale lists cannot merge back in on the next load.
+  try {
+    localStorage.removeItem(getTenantTemplatesKey());
+    localStorage.removeItem(getTenantDefaultsKey());
+    localStorage.removeItem(`businessos_print_templates_v1_${tid}`);
+    localStorage.removeItem(`user_active_print_templates_v1_${tid}`);
+    localStorage.removeItem("businessos_print_templates_v1");
+    localStorage.removeItem("user_active_print_templates_v1");
+  } catch { /* ignore */ }
+  window.dispatchEvent(new Event("storage"));
+  window.dispatchEvent(new Event("print_templates_updated"));
+  return removed;
 }

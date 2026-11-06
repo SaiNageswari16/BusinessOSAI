@@ -31,6 +31,7 @@ class CustomerBase(BaseModel):
     date_of_birth: date | str | None = None
     anniversary_date: date | str | None = None
     gender: str | None = None
+    age: int | None = None
     preferred_language: str | None = "English"
     credit_limit: float | None = 0.0
     outstanding_balance: float | None = 0.0
@@ -67,6 +68,7 @@ class CustomerUpdate(BaseModel):
     date_of_birth: date | str | None = None
     anniversary_date: date | str | None = None
     gender: str | None = None
+    age: int | None = None
     preferred_language: str | None = None
     credit_limit: float | None = None
     outstanding_balance: float | None = None
@@ -101,6 +103,7 @@ class CustomerResponse(ORMModel):
     date_of_birth: date | str | None = None
     anniversary_date: date | str | None = None
     gender: str | None = None
+    age: int | None = None
     preferred_language: str | None = None
     credit_limit: float | None = 0.0
     lifetime_value: float | None = 0.0
@@ -240,6 +243,9 @@ class BulkImportCustomerItem(BaseModel):
     address: str | None = None
     gst_number: str | None = None
     assigned_email: str | None = None
+    gender: str | None = None
+    date_of_birth: date | str | None = None
+    age: int | None = None
 
 
 class BulkImportCustomersRequest(BaseModel):

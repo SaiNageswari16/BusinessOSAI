@@ -27,7 +27,7 @@ except ImportError:
     FPDF = None
 
 from src.models import Tenant, Customer, Lead, LeadActivity, CRMQuotation, Company
-from src.services.invoice_pdf import get_active_invoice_template
+from src.services.invoice_pdf import get_active_invoice_template, _find_logo_path, _generate_qr_code_file
 from src.utils.email import send_email
 from src.utils.notifications import add_system_notification
 from src.utils.clock import clock
@@ -88,6 +88,17 @@ def _safe_text(value: Any, max_length: int = 300) -> str:
     return text[:max_length]
 
 
+def _upi_pay_url(vpa: str, payee: str, amount: float) -> str:
+    """Build a standard UPI deep-link that GPay/PhonePe/Paytm/BHIM can scan."""
+    from urllib.parse import quote
+    parts = [f"upi://pay?pa={quote(str(vpa or '').strip())}"]
+    if payee:
+        parts.append(f"pn={quote(str(payee).strip())}")
+    if amount:
+        parts.append(f"am={float(amount):.2f}")
+    return "&".join(parts)
+
+
 def _hex_to_rgb(hex_color: str | None) -> tuple[int, int, int]:
     if not hex_color:
         return (0, 168, 132)  # Teal/Emerald default
@@ -146,13 +157,75 @@ def render_quotation_pdf(
     primary_rgb = _hex_to_rgb(tpl.get("primaryColor") or "#00a884")
     font_name = "Helvetica"
 
+    # ── Template-driven rendering (mirrors the browser preview) ──────────
+    # Honor the full template: section/column toggles (`fields`), editable
+    # words (`texts`), bank details, payment QR, signature/stamp and logo —
+    # so the server-side PDF matches the design the user actually picked,
+    # instead of this file's old hard-coded layout.
+    fields = tpl.get("fields") or {}
+
+    def _on(key: str, default: bool = True) -> bool:
+        return bool(fields.get(key, default))
+
+    # Editable label words: template `texts` override < sensible default.
+    _TEXTS_BASE = {
+        "quotationTitle": "TAX QUOTATION / ESTIMATE",
+        "copyTag": "ORIGINAL FOR RECIPIENT",
+        "quoteNoLabel": "Quote No",
+        "quoteDateLabel": "Quote Date",
+        "partyTitle": "PREPARED FOR (CUSTOMER)",
+        "addressLabel": "Address",
+        "gstinLabel": "GSTIN",
+        "phoneLabel": "Ph",
+        "emailLabel": "Email",
+        "colSno": "#",
+        "colDescription": "Product / Item Description",
+        "colHsn": "SKU / HSN",
+        "colUom": "UOM",
+        "colMrp": "MRP",
+        "colQty": "Qty",
+        "colRate": "Unit Price",
+        "colDiscount": "Disc",
+        "colTaxRate": "Tax %",
+        "colAmount": "Amount",
+        "subtotalLabel": "Subtotal (Base)",
+        "taxableLabel": "Taxable Amount",
+        "totalTaxLabel": "Total Tax",
+        "grandTotalLabel": "Quotation Grand Total",
+        "roundOffLabel": "Round Off",
+        "amountInWordsLabel": "Amount in Words",
+        "bankDetailsLabel": "Bank Details",
+        "scanToPayLabel": "Scan to Pay",
+        "upiLabel": "UPI",
+        "termsLabel": "Terms & Conditions",
+        "declarationLabel": "Declaration",
+        "signatureTitle": "Authorised Signatory",
+        "thankYouLabel": "Thank you for your valued business!",
+    }
+    user_texts = tpl.get("texts") or tpl.get("customTexts") or {}
+    _texts = {**_TEXTS_BASE, **(user_texts if isinstance(user_texts, dict) else {})}
+
+    def _T(key: str, fallback: str) -> str:
+        val = _texts.get(key, fallback)
+        return val if val and str(val).strip() else fallback
+
+    # Bank / payment-QR / signature / logo — all template-driven.
+    bank_details = _safe_text(tpl.get("bankDetails") or tpl.get("bank_details") or "", 400)
+    upi_vpa = _safe_text(tpl.get("upiId") or tpl.get("upi_vpa") or "", 60)
+    payee_name = _safe_text(tpl.get("payeeName") or tpl.get("upi_payee_name") or "", 60)
+    custom_qr = tpl.get("customQrUrl") or ""
+    signature_url = tpl.get("signatureUrl") or ""
+    stamp_url = tpl.get("stampUrl") or ""
+    signatory_label = _safe_text(tpl.get("signatoryLabel") or tpl.get("signatureTitle") or "", 60)
+    logo_url = tpl.get("logoUrl") or tpl.get("logo_url") or ""
+
     # Resolve store / org branding
     tenant_settings = (tenant.settings if tenant and isinstance(tenant.settings, dict) else {})
     store_name = _safe_text(tpl.get("storeName") or tenant_settings.get("trade_name") or (tenant.name if tenant else "BusinessOS AI Global"), 80)
-    store_address = _safe_text(tpl.get("storeAddress") or tenant_settings.get("address") or "KK Street, Proddatur, YSR Cuddapah, Andhra Pradesh - 516360", 160)
-    store_phone = _safe_text(tpl.get("storePhone") or tenant_settings.get("phone") or "+91 98493 44919", 40)
-    store_email = _safe_text(tenant_settings.get("email") or "sales@businessos.ai", 60)
-    gstin = _safe_text(tpl.get("gstin") or tenant_settings.get("gstin") or tenant_settings.get("tax_id") or "37AABCCH694G1Z4", 30)
+    store_address = _safe_text(tpl.get("storeAddress") or tenant_settings.get("address") or "", 160)
+    store_phone = _safe_text(tpl.get("storePhone") or tenant_settings.get("phone") or "", 40)
+    store_email = _safe_text(tpl.get("storeEmail") or tenant_settings.get("email") or "", 60)
+    gstin = _safe_text(tpl.get("gstin") or tenant_settings.get("gstin") or tenant_settings.get("tax_id") or "", 30)
 
     # Resolve quote metadata from items dict
     items_data = quote.items if isinstance(quote.items, dict) else {}
@@ -189,34 +262,51 @@ def render_quotation_pdf(
     pdf.set_fill_color(*primary_rgb)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font(font_name, "B", 13)
-    quote_title = _safe_text(items_data.get("header_title") or tpl.get("headerTitle") or "TAX QUOTATION / ESTIMATE", 40)
+    quote_title = _safe_text(items_data.get("header_title") or tpl.get("headerTitle") or _T("quotationTitle", "TAX QUOTATION / ESTIMATE"), 40)
     pdf.cell(0, 18, quote_title, ln=1, align="R", fill=True)
 
-    # ── STORE INFO BLOCK ────────────────────────────────────────────────
+    # Optional logo (template-driven, when the field is enabled).
+    if logo_url and _on("showLogo", True):
+        logo_path = _find_logo_path(logo_url)
+        if logo_path:
+            try:
+                pdf.image(logo_path, 10, 12, w=22, h=22)
+            except Exception:
+                pass
+
+    # ── STORE INFO BLOCK (hides lines when empty / toggled off) ─────────
     pdf.set_text_color(15, 23, 42)
-    pdf.set_font(font_name, "B", 11)
-    pdf.cell(0, 5, store_name, ln=1)
+    pdf.set_y(14 if (logo_url and _on("showLogo", True)) else 10)
+    if _on("showStoreName", True):
+        pdf.set_font(font_name, "B", 11)
+        pdf.cell(0, 5, store_name, ln=1)
     pdf.set_font(font_name, "", 8)
-    if store_address:
+    if store_address and _on("showStoreAddress", True):
         pdf.multi_cell(0, 4, store_address)
-    contact_str = " | ".join([p for p in [f"Ph: {store_phone}" if store_phone else "", f"Email: {store_email}" if store_email else "", f"GSTIN: {gstin}" if gstin else ""] if p])
-    if contact_str:
-        pdf.cell(0, 4, contact_str, ln=1)
+    contact_parts = []
+    if store_phone and _on("showStoreContact", True):
+        contact_parts.append(f"{_T('phoneLabel', 'Ph')}: {store_phone}")
+    if store_email and _on("showStoreContact", True):
+        contact_parts.append(f"{_T('emailLabel', 'Email')}: {store_email}")
+    if gstin and _on("showTaxId", True):
+        contact_parts.append(f"{_T('gstinLabel', 'GSTIN')}: {gstin}")
+    if contact_parts:
+        pdf.cell(0, 4, "  |  ".join(contact_parts), ln=1)
     pdf.ln(3)
 
     # ── METADATA & CUSTOMER GRID ─────────────────────────────────────────
     y_start = pdf.get_y()
     pdf.set_font(font_name, "B", 8)
     pdf.set_text_color(*primary_rgb)
-    pdf.cell(95, 5, "PREPARED FOR (CLIENT):", ln=0)
+    pdf.cell(95, 5, _T("partyTitle", "PREPARED FOR (CLIENT):"), ln=0)
     pdf.cell(95, 5, "QUOTATION DETAILS:", ln=1)
     pdf.set_text_color(30, 41, 59)
 
     client_lines = [
         cust_name,
-        f"Phone: +{cust_phone}" if cust_phone else "",
-        f"Email: {cust_email}" if cust_email else "",
-        f"GSTIN: {cust_gstin}" if cust_gstin else "",
+        f"{_T('phoneLabel', 'Phone')}: +{cust_phone}" if cust_phone else "",
+        f"{_T('emailLabel', 'Email')}: {cust_email}" if cust_email else "",
+        f"{_T('gstinLabel', 'GSTIN')}: {cust_gstin}" if cust_gstin else "",
         cust_address,
     ]
     client_lines = [l for l in client_lines if l]
@@ -228,8 +318,8 @@ def render_quotation_pdf(
         pdf.cell(95, 4, line, ln=1)
 
     quote_meta = [
-        ("Quote Number:", _safe_text(quote.quote_number, 30)),
-        ("Quote Date:", quote_date),
+        (f"{_T('quoteNoLabel', 'Quote No')}:", _safe_text(quote.quote_number, 30)),
+        (f"{_T('quoteDateLabel', 'Quote Date')}:", quote_date),
         ("Valid Until:", valid_until),
         ("Payment Terms:", payment_terms),
         ("Status:", _safe_text(quote.status or "Draft", 20)),
@@ -249,67 +339,121 @@ def render_quotation_pdf(
     pdf.line(10, pdf.get_y(), page_w - 10, pdf.get_y())
     pdf.ln(3)
 
-    # ── LINE ITEMS TABLE ────────────────────────────────────────────────
+    # ── LINE ITEMS TABLE (columns & headers driven by the template) ─────
+    # Build the visible column set from the template's field toggles, so
+    # unchecking a column in the designer removes it here too. Widths are
+    # proportional; the widest is the description.
+    usable_w = page_w - 20  # 10mm margins both sides
+
+    def _item_extract(it: dict, key: str):
+        if key == "description":
+            return _safe_text(it.get("product_name") or it.get("name") or "Product Item", 60)
+        if key == "desc_detail":
+            return _safe_text(it.get("description") or "", 120)
+        if key == "sku":
+            return _safe_text(it.get("sku") or it.get("hsn_code") or "-", 15)
+        if key == "qty":
+            return f"{float(it.get('quantity') or it.get('qty') or 1):g}"
+        if key == "unit":
+            return _safe_text(it.get("uom") or it.get("unit") or "", 10)
+        if key == "mrp":
+            v = it.get("mrp")
+            return _fmt_amount(v) if v not in (None, "") else ""
+        if key == "rate":
+            return _fmt_amount(it.get("unit_price") or it.get("price") or 0)
+        if key == "discount":
+            raw_disc = it.get("discount_percent") if it.get("discount_percent") is not None else (it.get("discount") if it.get("discount") is not None else (it.get("discount_rate") if it.get("discount_rate") is not None else 0.0))
+            return f"{float(raw_disc):g}%" if float(raw_disc) > 0 else "-"
+        if key == "tax":
+            raw_tax = it.get("tax_percent") if it.get("tax_percent") is not None else (it.get("tax_rate") if it.get("tax_rate") is not None else (it.get("tax") if it.get("tax") is not None else 0.0))
+            return f"{float(raw_tax):g}%"
+        if key == "amount":
+            qty = float(it.get("quantity") or it.get("qty") or 1)
+            price = float(it.get("unit_price") or it.get("price") or 0)
+            raw_tax = it.get("tax_percent") or it.get("tax_rate") or it.get("tax") or 0.0
+            raw_disc = it.get("discount_percent") or it.get("discount") or it.get("discount_rate") or 0.0
+            return _fmt_amount(float(it.get("line_total") or (qty * price * (1 - float(raw_disc) / 100) * (1 + float(raw_tax) / 100))))
+        return ""
+
+    # key -> (default header, width-weight, align, enabled-by-toggle)
+    col_defs = [
+        ("sno", _T("colSno", "#"), 5, "C", _on("showItemIndex", True)),
+        ("description", _T("colDescription", "Product / Item Description"), 40, "L", _on("showItemName", True)),
+        ("desc_detail", "", 0, "L", False),  # folded into description cell
+        ("sku", _T("colHsn", "SKU / HSN"), 14, "C", _on("showSKU", True)),
+        ("mrp", _T("colMrp", "MRP"), 14, "R", _on("showMRP", True)),
+        ("unit", _T("colUom", "UOM"), 12, "C", _on("showSecondaryUnit", True)),
+        ("qty", _T("colQty", "Qty"), 10, "C", _on("showItemQty", True)),
+        ("rate", _T("colRate", "Unit Price"), 18, "R", _on("showItemRate", True)),
+        ("discount", _T("colDiscount", "Disc %"), 12, "C", _on("showDiscountCol", True)),
+        ("tax", _T("colTaxRate", "Tax %"), 14, "C", _on("showGstRateCol", True)),
+        ("amount", _T("colAmount", "Amount (Rs.)"), 24, "R", _on("showItemAmount", True)),
+    ]
+    visible_cols = [(k, h, w, al) for (k, h, w, al, on) in col_defs if on and k != "desc_detail"]
+    # If the user disabled everything, fall back to a minimal set so it still renders.
+    if not visible_cols:
+        visible_cols = [
+            ("sno", _T("colSno", "#"), 5, "C"),
+            ("description", _T("colDescription", "Product / Item Description"), 45, "L"),
+            ("qty", _T("colQty", "Qty"), 10, "C"),
+            ("rate", _T("colRate", "Unit Price"), 20, "R"),
+            ("amount", _T("colAmount", "Amount (Rs.)"), 25, "R"),
+        ]
+    total_weight = sum(w for (_, _, w, _) in visible_cols)
+    # Show the item's secondary description line when the description-toggle is on
+    # AND that column is visible; it renders folded under the product name.
+    show_desc_detail = _on("showItemDescription", True) and any(k == "description" for (k, _, _, _) in visible_cols)
+
     pdf.set_font(font_name, "B", 7.5)
     pdf.set_fill_color(*primary_rgb)
     pdf.set_text_color(255, 255, 255)
-    pdf.cell(8, 6, "#", border=1, fill=True, align="C")
-    pdf.cell(70, 6, "Product / Item Description", border=1, fill=True, align="L")
-    pdf.cell(18, 6, "SKU / HSN", border=1, fill=True, align="C")
-    pdf.cell(12, 6, "Qty", border=1, fill=True, align="C")
-    pdf.cell(22, 6, "Unit Price", border=1, fill=True, align="R")
-    pdf.cell(14, 6, "Disc %", border=1, fill=True, align="C")
-    pdf.cell(16, 6, "Tax %", border=1, fill=True, align="C")
-    pdf.cell(30, 6, "Amount (Rs.)", border=1, fill=True, align="R")
+    for (k, h, w, al) in visible_cols:
+        cw = usable_w * (w / total_weight)
+        pdf.cell(cw, 6, h, border=1, fill=True, align=al)
     pdf.ln()
 
     pdf.set_text_color(15, 23, 42)
     for idx, it in enumerate(raw_items, start=1):
-        p_name = _safe_text(it.get("product_name") or it.get("name") or "Product Item", 60)
-        desc = _safe_text(it.get("description") or "", 120)
-        sku = _safe_text(it.get("sku") or it.get("hsn_code") or "-", 15)
-        qty = float(it.get("quantity") or it.get("qty") or 1)
-        price = float(it.get("unit_price") or it.get("price") or 0)
-        raw_tax = it.get("tax_percent") if it.get("tax_percent") is not None else (it.get("tax_rate") if it.get("tax_rate") is not None else (it.get("tax") if it.get("tax") is not None else 0.0))
-        tax = float(raw_tax) if raw_tax is not None else 0.0
-        raw_disc = it.get("discount_percent") if it.get("discount_percent") is not None else (it.get("discount") if it.get("discount") is not None else (it.get("discount_rate") if it.get("discount_rate") is not None else 0.0))
-        disc = float(raw_disc) if raw_disc is not None else 0.0
-        ltotal = float(it.get("line_total") or (qty * price * (1 - disc / 100) * (1 + tax / 100)))
-
-        row_h = 9 if desc else 6
+        row_h = 9 if show_desc_detail else 6
         y_curr = pdf.get_y()
-
         if y_curr + row_h > 270:
             pdf.add_page()
             y_curr = pdf.get_y()
 
         pdf.set_font(font_name, "", 7)
-        pdf.cell(8, row_h, str(idx), border=1, align="C")
-
-        if desc:
-            x_after_num = pdf.get_x()
-            pdf.set_xy(x_after_num, y_curr)
-            pdf.set_font(font_name, "B", 7)
-            pdf.cell(70, 4.5, p_name, border="LTR", align="L")
-            pdf.set_xy(x_after_num, y_curr + 4.5)
-            pdf.set_font(font_name, "I", 6.5)
-            pdf.set_text_color(100, 116, 139)
-            pdf.cell(70, 4.5, desc[:50], border="LBR", align="L")
-            pdf.set_text_color(15, 23, 42)
-            pdf.set_xy(x_after_num + 70, y_curr)
-        else:
-            pdf.set_font(font_name, "B", 7)
-            pdf.cell(70, row_h, p_name, border=1, align="L")
-
-        pdf.set_font(font_name, "", 7)
-        pdf.cell(18, row_h, sku, border=1, align="C")
-        pdf.cell(12, row_h, f"{qty:g}", border=1, align="C")
-        pdf.cell(22, row_h, _fmt_amount(price), border=1, align="R")
-        pdf.cell(14, row_h, f"{disc:g}%" if disc > 0 else "-", border=1, align="C")
-        pdf.cell(16, row_h, f"{tax:g}%", border=1, align="C")
-        pdf.set_font(font_name, "B", 7)
-        pdf.cell(30, row_h, _fmt_amount(ltotal), border=1, align="R")
-        pdf.ln(row_h)
+        x_row = 10
+        for (k, h, w, al) in visible_cols:
+            cw = usable_w * (w / total_weight)
+            if k == "description":
+                p_name = _item_extract(it, "description")
+                detail = _item_extract(it, "desc_detail")
+                if detail:
+                    pdf.set_xy(x_row, y_curr)
+                    pdf.set_font(font_name, "B", 7)
+                    pdf.cell(cw, 4.5, p_name, border="LTR", align="L")
+                    pdf.set_xy(x_row, y_curr + 4.5)
+                    pdf.set_font(font_name, "I", 6.5)
+                    pdf.set_text_color(100, 116, 139)
+                    pdf.cell(cw, 4.5, detail[:50], border="LBR", align="L")
+                    pdf.set_text_color(15, 23, 42)
+                else:
+                    pdf.set_xy(x_row, y_curr)
+                    pdf.set_font(font_name, "B", 7)
+                    pdf.cell(cw, row_h, p_name, border=1, align="L")
+            elif k == "sno":
+                pdf.set_xy(x_row, y_curr)
+                pdf.set_font(font_name, "", 7)
+                pdf.cell(cw, row_h, str(idx), border=1, align="C")
+            elif k == "amount":
+                pdf.set_xy(x_row, y_curr)
+                pdf.set_font(font_name, "B", 7)
+                pdf.cell(cw, row_h, _item_extract(it, "amount"), border=1, align="R")
+            else:
+                pdf.set_xy(x_row, y_curr)
+                pdf.set_font(font_name, "", 7)
+                pdf.cell(cw, row_h, _item_extract(it, k), border=1, align=al)
+            x_row += cw
+        pdf.set_y(y_curr + row_h)
 
     pdf.ln(3)
 
@@ -317,23 +461,42 @@ def render_quotation_pdf(
     totals_x = page_w - 10 - 75
     terms_w = totals_x - 15
 
+    # ── BANK DETAILS (template-driven; only shown when enabled & present) ──
+    show_bank = _on("showBankDetails", True) and bool(bank_details or upi_vpa)
+    if show_bank:
+        pdf.set_y(min(pdf.get_y(), 210))
+        pdf.set_font(font_name, "B", 8)
+        pdf.set_text_color(*primary_rgb)
+        pdf.cell(0, 4, _T("bankDetailsLabel", "Bank Details"), ln=1)
+        pdf.set_font(font_name, "", 7)
+        pdf.set_text_color(30, 41, 59)
+        pdf.multi_cell(0, 3.5, bank_details)
+        if upi_vpa:
+            pdf.cell(0, 3.5, f"{_T('upiLabel', 'UPI')}: {upi_vpa}", ln=1)
+        pdf.ln(2)
+
     y_before_totals = pdf.get_y()
+
+    # Left column: terms / declaration (gated by toggles, editable labels).
     pdf.set_font(font_name, "B", 7.5)
-    pdf.cell(terms_w, 4, "Terms & Conditions:", ln=1)
-    pdf.set_font(font_name, "", 7)
-    pdf.multi_cell(terms_w, 3.5, notes)
-    if delivery_terms:
-        pdf.multi_cell(terms_w, 3.5, f"Delivery Terms: {delivery_terms}")
+    if _on("showTerms", True) and (notes or delivery_terms):
+        pdf.set_text_color(15, 23, 42)
+        pdf.cell(terms_w, 4, _T("termsLabel", "Terms & Conditions:") + ":", ln=1)
+        pdf.set_font(font_name, "", 7)
+        pdf.multi_cell(terms_w, 3.5, notes)
+        if delivery_terms:
+            pdf.multi_cell(terms_w, 3.5, f"Delivery Terms: {delivery_terms}")
     y_after_terms = pdf.get_y()
 
+    # Right column: totals (editable labels).
     pdf.set_xy(totals_x, y_before_totals)
     pdf.set_font(font_name, "", 8)
-    pdf.cell(40, 5, "Subtotal (Base):", border=0, align="L")
+    pdf.cell(40, 5, _T("subtotalLabel", "Subtotal (Base):") + ":", border=0, align="L")
     pdf.cell(35, 5, f"Rs. {_fmt_amount(quote.subtotal)}", border=0, align="R")
     pdf.ln()
 
     pdf.set_x(totals_x)
-    pdf.cell(40, 5, "Estimated GST Tax:", border=0, align="L")
+    pdf.cell(40, 5, _T("totalTaxLabel", "Estimated GST Tax:") + ":", border=0, align="L")
     pdf.cell(35, 5, f"+Rs. {_fmt_amount(quote.tax)}", border=0, align="R")
     pdf.ln()
 
@@ -344,26 +507,73 @@ def render_quotation_pdf(
     pdf.set_x(totals_x)
     pdf.set_font(font_name, "B", 9)
     pdf.set_text_color(*primary_rgb)
-    pdf.cell(40, 6, "Quotation Grand Total:", border=0, align="L")
+    pdf.cell(40, 6, _T("grandTotalLabel", "Quotation Grand Total:") + ":", border=0, align="L")
     pdf.cell(35, 6, f"Rs. {_fmt_amount(quote.total)}", border=0, align="R")
     pdf.ln()
     pdf.set_text_color(15, 23, 42)
 
     pdf.set_y(max(y_after_terms, pdf.get_y()) + 6)
 
-    # ── SIGNATURE ──────────────────────────────────────────────────────
+    # ── PAYMENT QR (template-driven; honors showQR + UPI VPA) ──────────
+    show_qr = _on("showQR", True) and bool(upi_vpa or custom_qr)
+    if show_qr:
+        qr_content = custom_qr or (upi_vpa and _upi_pay_url(upi_vpa, payee_name, float(quote.total or 0))) or ""
+        qr_img = _generate_qr_code_file(qr_content, f"qpdf_{str(quote.id)[:8]}") if qr_content else None
+        qr_x = 10
+        if qr_img:
+            pdf.image(qr_img, qr_x, pdf.get_y(), w=30, h=30)
+            qr_note_x = qr_x + 33
+            qr_note_y = pdf.get_y()
+            pdf.set_xy(qr_note_x, qr_note_y + 2)
+            pdf.set_font(font_name, "B", 7.5)
+            pdf.set_text_color(*primary_rgb)
+            pdf.cell(0, 4, _T("scanToPayLabel", "Scan to Pay"), ln=1)
+            pdf.set_font(font_name, "", 7)
+            pdf.set_text_color(30, 41, 59)
+            if upi_vpa:
+                pdf.cell(0, 4, f"{_T('upiLabel', 'UPI')}: {upi_vpa}", ln=1)
+            pdf.cell(0, 4, f"Rs. {_fmt_amount(quote.total)}", ln=1)
+            pdf.set_y(qr_note_y + 18)
+        else:
+            pdf.cell(0, 4, f"UPI: {upi_vpa}", ln=1)
+        pdf.ln(6)
+
+    # ── SIGNATURE (template-driven: uploaded sig/stamp image + labels) ─
     sig_x = page_w - 10 - 65
     sig_y = pdf.get_y()
-    pdf.set_xy(10, sig_y)
-    pdf.set_font(font_name, "", 7)
-    pdf.cell(70, 4, "Customer Acceptance Signature: __________________", ln=0)
-    pdf.set_xy(sig_x, sig_y)
-    pdf.line(sig_x, sig_y + 12, sig_x + 65, sig_y + 12)
-    pdf.set_xy(sig_x, sig_y + 13)
-    pdf.set_font(font_name, "B", 7.5)
-    pdf.cell(65, 4, f"For {store_name}", align="C")
+    if _on("showSignature", True):
+        img_y = sig_y
+        if signature_url:
+            sig_path = _find_logo_path(signature_url)
+            if sig_path:
+                try:
+                    pdf.image(sig_path, sig_x, img_y, w=40, h=18)
+                    img_y += 20
+                except Exception:
+                    pass
+        pdf.set_xy(10, sig_y)
+        pdf.set_font(font_name, "", 7)
+        pdf.cell(70, 4, "Customer Acceptance Signature: __________________", ln=0)
+        pdf.set_xy(sig_x, img_y)
+        pdf.line(sig_x, img_y + 12, sig_x + 65, img_y + 12)
+        pdf.set_xy(sig_x, img_y + 13)
+        pdf.set_font(font_name, "B", 7.5)
+        pdf.cell(65, 4, signatory_label or f"For {store_name}", align="C")
+        if stamp_url:
+            stamp_path = _find_logo_path(stamp_url)
+            if stamp_path:
+                try:
+                    pdf.image(stamp_path, sig_x + 40, img_y - 2, w=22, h=22, align="C")
+                except Exception:
+                    pass
 
-    # ── FOOTER ─────────────────────────────────────────────────────────
+    # ── THANK-YOU / FOOTER (template-driven) ───────────────────────────
+    if _on("showThankYou", True):
+        ty = _safe_text(tpl.get("thankYouNote") or tpl.get("footerText") or "", 120)
+        if ty:
+            pdf.set_font(font_name, "I", 7)
+            pdf.set_text_color(80, 90, 110)
+            pdf.cell(0, 4, ty, ln=1)
     pdf.set_y(-12)
     pdf.set_font(font_name, "I", 6.5)
     pdf.set_text_color(148, 163, 184)
@@ -402,22 +612,56 @@ async def get_or_create_quotation_pdf(
     """
     safe_number = "".join(c if c.isalnum() or c in "-_" else "_" for c in (quote.quote_number or str(quote.id)))
     file_path = QUOTATION_PDF_DIR / f"Quotation_{safe_number}.pdf"
+    meta_path = file_path.with_name(f"Quotation_{safe_number}.pdf.meta")
+
+    tenant = await db.get(Tenant, quote.tenant_id)
+    # Pick the template by document category (quotation / proforma / estimate),
+    # so a category-specific template choice is honored instead of always the
+    # master invoice template. The CRMQuotation model has no doc_type column, so
+    # derive it from the quote number prefix.
+    items = quote.items if isinstance(quote.items, dict) else {}
+    raw_cat = str(
+        items.get("doc_type") or items.get("docType") or items.get("document_type") or ""
+    ).lower().strip()
+    num_prefix = str(quote.quote_number or "").upper()
+    if raw_cat in ("proforma", "proforma_invoice", "pi"):
+        cat = "proforma"
+    elif raw_cat in ("estimate", "estimate_non_gst", "est"):
+        cat = "estimate"
+    elif num_prefix.startswith("PI-") or raw_cat.startswith("proforma"):
+        cat = "proforma"
+    elif num_prefix.startswith("EST-") or raw_cat.startswith("est"):
+        cat = "estimate"
+    else:
+        cat = "quotation"
+    template = await get_active_invoice_template(db, quote.tenant_id, category=cat)
+
+    # A cached PDF is only valid while the active template for this category is
+    # the one it was rendered from. Tag the file with a marker; when the marker
+    # no longer matches the current template, re-render instead of serving a
+    # stale layout ("the second time it looks different" bug).
+    template_marker = str(
+        template.get("id")
+        or template.get("themeName")
+        or template.get("updatedAt")
+        or json.dumps(template, sort_keys=True, default=str)
+    )
 
     if file_path.exists() and not force_regenerate:
         try:
-            pdf_bytes = file_path.read_bytes()
-            if len(pdf_bytes) > 100:
-                return pdf_bytes, file_path
+            cached_marker = meta_path.read_text() if meta_path.exists() else ""
+            if cached_marker == template_marker:
+                pdf_bytes = file_path.read_bytes()
+                if len(pdf_bytes) > 100:
+                    return pdf_bytes, file_path
         except Exception as e:
-            logger.warning("Failed to read saved PDF from %s: %s", file_path, e)
+            logger.warning("Failed to read cached quotation PDF from %s: %s", file_path, e)
 
-    tenant = await db.get(Tenant, quote.tenant_id)
-    template = await get_active_invoice_template(db, quote.tenant_id)
     cust = await db.get(Customer, quote.customer_id) if quote.customer_id else None
-
     pdf_bytes = render_quotation_pdf(quote, template=template, tenant=tenant, customer=cust)
     try:
         file_path.write_bytes(pdf_bytes)
+        meta_path.write_text(template_marker)
     except Exception as e:
         logger.warning("Could not persist quotation PDF to disk: %s", e)
 

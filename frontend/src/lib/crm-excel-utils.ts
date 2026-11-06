@@ -23,6 +23,29 @@ export interface ParsedCustomerRow {
   address?: string;
   gst_number?: string;
   assigned_email?: string;
+  gender?: string;
+  date_of_birth?: string; // YYYY-MM-DD
+  age?: number;
+}
+
+/** Normalize a DOB cell (Excel serial, ISO string, or DD/MM/YYYY) to YYYY-MM-DD. */
+function normalizeCustomerDate(raw: unknown): string | undefined {
+  if (raw === null || raw === undefined || raw === "") return undefined;
+  // Excel date serial (number) → UTC date
+  if (typeof raw === "number") {
+    const d = new Date(Math.round((raw - 25569) * 86400 * 1000));
+    return isNaN(d.getTime()) ? undefined : d.toISOString().slice(0, 10);
+  }
+  const s = String(raw).trim();
+  if (!s) return undefined;
+  // Already ISO
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // DD/MM/YYYY
+  const dm = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (dm && Number(dm[1]) > 12) return `${dm[3]}-${dm[2].padStart(2, "0")}-${dm[1].padStart(2, "0")}`;
+  // MM/DD/YYYY or DD-MM-YY fallbacks
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? undefined : d.toISOString().slice(0, 10);
 }
 
 /**
@@ -98,6 +121,9 @@ export function downloadCustomersTemplateExcel() {
       "Status": "Active",
       "GST Number": "27AAAAA0000A1Z5",
       "Address": "Plot 12, MIDC Industrial Area, Pune 411018",
+      "Gender": "Male",
+      "Date of Birth": "1985-04-12",
+      "Age": 41,
       "Assigned Executive Email": "sales.exec@yourdomain.com",
     },
     {
@@ -109,6 +135,9 @@ export function downloadCustomersTemplateExcel() {
       "Status": "Active",
       "GST Number": "07AAAAA0000A1Z5",
       "Address": "Shop 4, Commercial Complex, Connaught Place, New Delhi",
+      "Gender": "Female",
+      "Date of Birth": "1990-08-25",
+      "Age": 35,
       "Assigned Executive Email": "",
     },
   ];
@@ -123,6 +152,9 @@ export function downloadCustomersTemplateExcel() {
     { wch: 12 }, // Status
     { wch: 20 }, // GST Number
     { wch: 45 }, // Address
+    { wch: 12 }, // Gender
+    { wch: 15 }, // Date of Birth
+    { wch: 8 },  // Age
     { wch: 30 }, // Assigned Executive Email
   ];
 
@@ -187,6 +219,81 @@ export async function parseLeadsFile(file: File): Promise<{ leads: ParsedLeadRow
 }
 
 /**
+ * Downloads ALL customer data as an .xlsx file.
+ * Primary columns use the exact import headers ("Customer Name *", "Gender",
+ * "Date of Birth", "Age", ...) so the file round-trips through the importer;
+ * extra columns carry the remaining customer data for reference.
+ */
+export function downloadCustomersExportExcel(
+  rows: Array<Record<string, unknown>>,
+  filename?: string
+) {
+  const data = rows.map((r) => ({
+    "Customer Name *": r["name"] ?? "",
+    "Company Name": r["company_name"] ?? "",
+    Email: r["email"] ?? "",
+    "Phone *": r["phone"] ?? "",
+    "Alternate Phone": r["alternate_phone"] ?? "",
+    "WhatsApp Number": r["whatsapp_number"] ?? "",
+    "Customer Type": r["customer_type"] ?? "",
+    Status: r["status"] ?? "",
+    Source: r["source"] ?? "",
+    Address: r["address"] ?? "",
+    City: r["city"] ?? "",
+    State: r["state"] ?? "",
+    Country: r["country"] ?? "",
+    "Postal Code": r["postal_code"] ?? "",
+    "GST Number": r["gst_number"] ?? "",
+    "PAN Number": r["pan_number"] ?? "",
+    Gender: r["gender"] ?? "",
+    "Date of Birth": r["date_of_birth"] ?? "",
+    Age: r["age"] ?? "",
+    "Anniversary Date": r["anniversary_date"] ?? "",
+    "Preferred Language": r["preferred_language"] ?? "",
+    "Credit Limit": r["credit_limit"] ?? "",
+    "Outstanding Balance": r["outstanding_balance"] ?? "",
+    "Opening Balance": r["opening_balance"] ?? "",
+    "Lifetime Value": r["lifetime_value"] ?? "",
+    "Total Orders": r["total_orders"] ?? "",
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(data.length ? data : [{ "Customer Name *": "" }]);
+  ws["!cols"] = [
+    { wch: 26 }, // Name
+    { wch: 28 }, // Company
+    { wch: 28 }, // Email
+    { wch: 18 }, // Phone
+    { wch: 18 }, // Alternate Phone
+    { wch: 18 }, // WhatsApp
+    { wch: 15 }, // Customer Type
+    { wch: 12 }, // Status
+    { wch: 18 }, // Source
+    { wch: 45 }, // Address
+    { wch: 15 }, // City
+    { wch: 15 }, // State
+    { wch: 12 }, // Country
+    { wch: 12 }, // Postal Code
+    { wch: 20 }, // GST Number
+    { wch: 15 }, // PAN
+    { wch: 12 }, // Gender
+    { wch: 15 }, // Date of Birth
+    { wch: 8 }, // Age
+    { wch: 15 }, // Anniversary
+    { wch: 18 }, // Preferred Language
+    { wch: 14 }, // Credit Limit
+    { wch: 18 }, // Outstanding Balance
+    { wch: 15 }, // Opening Balance
+    { wch: 14 }, // Lifetime Value
+    { wch: 12 }, // Total Orders
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Customers");
+  const today = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, filename || `BusinessOS_Customers_Export_${today}.xlsx`);
+}
+
+/**
  * Parses an uploaded Excel or CSV file into Customers array.
  */
 export async function parseCustomersFile(file: File): Promise<{ customers: ParsedCustomerRow[]; errors: string[] }> {
@@ -218,6 +325,12 @@ export async function parseCustomersFile(file: File): Promise<{ customers: Parse
     const address = row["Address"] || row["address"] || row["Full Address"];
     const gst_number = row["GST Number"] || row["GSTIN"] || row["gst_number"];
     const assigned_email = row["Assigned Executive Email"] || row["assigned_email"] || row["Owner Email"];
+    const gender = row["Gender"] || row["gender"] || row["Sex"];
+    const date_of_birth = normalizeCustomerDate(
+      row["Date of Birth"] || row["DOB"] || row["dob"] || row["date_of_birth"] || row["Birth Date"]
+    );
+    const age_raw = row["Age"] || row["age"];
+    const age_num = age_raw !== "" && age_raw != null ? Number(age_raw) : undefined;
 
     if (!name || String(name).trim().length < 2) {
       errors.push(`Row ${idx + 2}: Missing or invalid Customer Name`);
@@ -234,6 +347,9 @@ export async function parseCustomersFile(file: File): Promise<{ customers: Parse
       address: address ? String(address).trim() : undefined,
       gst_number: gst_number ? String(gst_number).trim() : undefined,
       assigned_email: assigned_email ? String(assigned_email).trim() : undefined,
+      gender: gender ? String(gender).trim() : undefined,
+      date_of_birth,
+      age: Number.isFinite(age_num as number) && (age_num as number) >= 0 ? (age_num as number) : undefined,
     });
   });
 

@@ -942,8 +942,12 @@ export function PosInvoicesHistory() {
               eway_bill_date: inv.eway_bill_date || inv.custom_fields?.eway_bill_date || undefined,
               challan_number: inv.challan_number || inv.delivery_challan_number || inv.custom_fields?.challan_number || inv.custom_fields?.challan_no || inv.custom_fields?.delivery_challan || undefined,
               delivery_challan_number: inv.delivery_challan_number || inv.challan_number || inv.custom_fields?.delivery_challan || inv.custom_fields?.challan_number || undefined,
-              print_template_id: isThermal ? "thermal" : (inv.print_template_id || inv.template_id || "a4"),
-              template_id: isThermal ? "thermal" : (inv.template_id || inv.print_template_id || "a4"),
+              // "a4" is NOT a template id — it's a print-mode sentinel. Stamping
+              // it into print_template_id made old records shadow the user's
+              // live template selection, so emit undefined when no real stamp
+              // exists and let the per-category active template win.
+              print_template_id: isThermal ? "thermal" : (inv.print_template_id || inv.template_id || undefined),
+              template_id: isThermal ? "thermal" : (inv.template_id || inv.print_template_id || undefined),
               is_pos: isThermal,
               receipt_format: isThermal ? "thermal" : undefined,
               custom_fields: inv.custom_fields,
@@ -1345,8 +1349,8 @@ export function PosInvoicesHistory() {
           ? {
               ...inv,
               print_status: newStatus,
-              print_template_id: newStatus === "Thermal Printed" ? "thermal" : (inv.print_template_id || "a4"),
-              template_id: newStatus === "Thermal Printed" ? "thermal" : (inv.template_id || "a4"),
+              print_template_id: newStatus === "Thermal Printed" ? "thermal" : inv.print_template_id,
+              template_id: newStatus === "Thermal Printed" ? "thermal" : inv.template_id,
             }
           : inv
       );
@@ -1455,6 +1459,9 @@ export function PosInvoicesHistory() {
       customerEmail: fullInvRecord.customer_email || '',
       customerCompany: fullInvRecord.customer_company || '',
       customerGST: fullInvRecord.customer_gstin || '',
+      customerGender: (fullInvRecord as any).customer_gender || fullInvRecord.custom_fields?.customer_gender || '',
+      customerDOB: (fullInvRecord as any).customer_dob || fullInvRecord.custom_fields?.customer_dob || '',
+      customerAge: (fullInvRecord as any).customer_age ?? fullInvRecord.custom_fields?.customer_age ?? null,
       customerAddress: fullInvRecord.customer_billing_address || fullInvRecord.billing_address || '',
       customerBillingAddress: fullInvRecord.customer_billing_address || fullInvRecord.billing_address || '',
       customerShippingAddress: fullInvRecord.customer_shipping_address || fullInvRecord.shipping_address || '',
@@ -1499,7 +1506,7 @@ export function PosInvoicesHistory() {
       print_template_id: (() => {
         const rawTpl = fullInvRecord.print_template_id || fullInvRecord.template_id || (fullInvRecord as any).templateId || (fullInvRecord as any)?.custom_fields?.print_template_id || (fullInvRecord as any)?.custom_fields?.template_id || (inv as any)?.print_template_id || (inv as any)?.template_id;
         const s = String(rawTpl || "").toLowerCase().trim();
-        if (s && s !== "thermal" && s !== "pos" && !s.startsWith("tpl-thm-") && !s.includes("receipt")) {
+        if (s && s !== "thermal" && s !== "pos" && s !== "a4" && !s.startsWith("tpl-thm-") && !s.includes("receipt")) {
           return rawTpl;
         }
         return undefined;
@@ -1507,7 +1514,7 @@ export function PosInvoicesHistory() {
       template_id: (() => {
         const rawTpl = fullInvRecord.template_id || fullInvRecord.print_template_id || (fullInvRecord as any).templateId || (fullInvRecord as any)?.custom_fields?.template_id || (inv as any)?.template_id || (inv as any)?.print_template_id;
         const s = String(rawTpl || "").toLowerCase().trim();
-        if (s && s !== "thermal" && s !== "pos" && !s.startsWith("tpl-thm-") && !s.includes("receipt")) {
+        if (s && s !== "thermal" && s !== "pos" && s !== "a4" && !s.startsWith("tpl-thm-") && !s.includes("receipt")) {
           return rawTpl;
         }
         return undefined;

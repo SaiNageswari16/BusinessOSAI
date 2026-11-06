@@ -932,11 +932,11 @@ export function ReportsHub() {
   const isPurchaseSummaryReport = Boolean(activeReport && activeReport.id === "purchase_summary");
 
   return (
-    <div className="flex flex-1 min-h-[calc(100vh-58px)] w-full bg-slate-50 font-sans">
+    <div className="flex flex-1 h-full min-h-0 w-full bg-slate-50 font-sans">
       {/* ──────────────────────────────────────────────────────────────────────────
           LEFT NAVIGATION SIDEBAR (Categorized Hub - Sticky & Clean)
       ────────────────────────────────────────────────────────────────────────── */}
-      <aside className="w-72 sm:w-80 shrink-0 border-r border-slate-200 bg-white flex flex-col sticky top-0 h-[calc(100vh-58px)] shadow-sm z-20">
+      <aside className="w-72 sm:w-80 shrink-0 border-r border-slate-200 bg-white flex flex-col h-full shadow-sm z-20">
         {/* Sidebar Search Bar (Clean Top without Heading) */}
         <div className="p-3 border-b border-slate-100 bg-white shrink-0">
           <div className="relative">
@@ -1108,7 +1108,7 @@ export function ReportsHub() {
         </main>
       ) : (
         /* ── REPORT VIEW: Selected report opened in the main page place ── */
-        <div className="flex-1 flex flex-col min-w-0 h-[calc(100vh-58px)] overflow-hidden bg-slate-50">
+        <div className="flex-1 flex flex-col min-w-0 h-full min-h-0 overflow-hidden bg-slate-50">
           {/* Top Breadcrumb & Navigation Bar */}
           <div className="bg-white border-b border-slate-200 px-5 py-2.5 flex items-center justify-between shrink-0 shadow-2xs z-10">
             <div className="flex items-center gap-3">

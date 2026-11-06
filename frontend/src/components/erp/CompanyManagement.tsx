@@ -1433,6 +1433,24 @@ function CompanyFormModal({
 
           {activeModalTab === "gsp" && (
             <div className="space-y-5">
+              {/* Educational Gateway Notice Banner */}
+              <div className="p-3.5 bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/60 rounded-xl flex items-start gap-3">
+                <div className="size-8 rounded-lg bg-sky-100 dark:bg-sky-900/60 text-sky-600 dark:text-sky-300 grid place-items-center shrink-0 mt-0.5">
+                  <Server className="size-4" />
+                </div>
+                <div className="space-y-1 text-xs">
+                  <div className="font-bold text-sky-900 dark:text-sky-200">
+                    {t("Platform GSP Gateway Managed by IoTRONCS", "Platform GSP Gateway Managed by IoTRONCS")}
+                  </div>
+                  <p className="text-sky-800/80 dark:text-sky-300/80 leading-relaxed text-[11px]">
+                    {t(
+                      "You do NOT need your own Whitebooks account or API keys. IoTRONCS provides the verified GSP Gateway. Leave Client ID and Client Secret blank to use the platform gateway. You only need to enter your Government NIC GSP Username & Password created on ewaybillgst.gov.in (by choosing 'Whitebooks' as your GSP).",
+                      "You do NOT need your own Whitebooks account or API keys. IoTRONCS provides the verified GSP Gateway. Leave Client ID and Client Secret blank to use the platform gateway. You only need to enter your Government NIC GSP Username & Password created on ewaybillgst.gov.in (by choosing 'Whitebooks' as your GSP)."
+                    )}
+                  </p>
+                </div>
+              </div>
+
               <div className="p-4 bg-muted/20 border rounded-xl space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
@@ -1472,28 +1490,28 @@ function CompanyFormModal({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t">
                   <div>
                     <label className="block text-[11px] font-bold mb-1 text-muted-foreground">
-                      Whitebooks Registered Account Email *
+                      Whitebooks Account Email <span className="text-[10px] font-normal text-muted-foreground">(Optional / Platform Default)</span>
                     </label>
                     <input
                       type="email"
                       value={gspCreds.registered_email || ""}
                       onChange={(e) => setGspCreds((p) => ({ ...p, registered_email: e.target.value }))}
-                      placeholder="email@company.com"
+                      placeholder="Leave blank for Platform Default"
                       className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
                     />
-                    <p className="text-[10px] text-muted-foreground mt-0.5">{t("Must match the account where Production Client ID was generated.", "Must match the account where Production Client ID was generated.")}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{t("Pre-configured by platform. Leave empty unless using your own license.", "Pre-configured by platform. Leave empty unless using your own license.")}</p>
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold mb-1 text-muted-foreground">
-                      Whitelisted Server IP Address
+                      Whitelisted Server IP Address <span className="text-[10px] font-normal text-muted-foreground">(Platform Managed)</span>
                     </label>
                     <input
                       value={gspCreds.ip_address || ""}
                       onChange={(e) => setGspCreds((p) => ({ ...p, ip_address: e.target.value }))}
-                      placeholder="106.213.64.83"
+                      placeholder="106.213.64.83 (Platform Default)"
                       className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background font-mono focus:ring-2 focus:ring-primary/20 outline-none"
                     />
-                    <p className="text-[10px] text-muted-foreground mt-0.5">{t("Whitelisted in Whitebooks Dashboard IP Access List.", "Whitelisted in Whitebooks Dashboard IP Access List.")}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{t("Fixed static outbound IP of IoTRONCS servers.", "Fixed static outbound IP of IoTRONCS servers.")}</p>
                   </div>
                 </div>
               </div>
@@ -1534,35 +1552,44 @@ function CompanyFormModal({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-muted-foreground">EWB Client ID</label>
+                    <label className="block text-[11px] font-semibold mb-1 text-muted-foreground">
+                      EWB Client ID <span className="text-[10px] font-normal text-muted-foreground">(Optional / Platform Default)</span>
+                    </label>
                     <input
                       value={gspCreds.ewb?.client_id || ""}
                       onChange={(e) => setGspModuleField("ewb", "client_id", e.target.value)}
-                      placeholder="EWB..."
+                      placeholder="Leave blank to use Platform Gateway"
                       className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background font-mono focus:ring-2 focus:ring-primary/20 outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-muted-foreground">EWB Client Secret</label>
+                    <label className="block text-[11px] font-semibold mb-1 text-muted-foreground">
+                      EWB Client Secret <span className="text-[10px] font-normal text-muted-foreground">(Optional / Platform Default)</span>
+                    </label>
                     <input
                       type="password"
                       value={gspCreds.ewb?.client_secret || ""}
                       onChange={(e) => setGspModuleField("ewb", "client_secret", e.target.value)}
-                      placeholder="••••••••••••"
+                      placeholder="Leave blank to use Platform Gateway"
                       className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background font-mono focus:ring-2 focus:ring-primary/20 outline-none"
                     />
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-muted-foreground">NIC GSP Username</label>
+                  <div className="bg-indigo-50/50 dark:bg-indigo-950/20 p-2.5 rounded-lg border border-indigo-100 dark:border-indigo-900/50">
+                    <label className="block text-[11px] font-bold mb-1 text-indigo-900 dark:text-indigo-200">
+                      NIC GSP Username <span className="text-rose-500 font-bold">*</span>
+                    </label>
                     <input
                       value={gspCreds.ewb?.username || ""}
                       onChange={(e) => setGspModuleField("ewb", "username", e.target.value)}
-                      placeholder="GSP User from ewaybillgst.gov.in"
+                      placeholder="Username from ewaybillgst.gov.in"
                       className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
                     />
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Created under Registration → For GSP (Whitebooks)</p>
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-muted-foreground">NIC GSP Password</label>
+                  <div className="bg-indigo-50/50 dark:bg-indigo-950/20 p-2.5 rounded-lg border border-indigo-100 dark:border-indigo-900/50">
+                    <label className="block text-[11px] font-bold mb-1 text-indigo-900 dark:text-indigo-200">
+                      NIC GSP Password <span className="text-rose-500 font-bold">*</span>
+                    </label>
                     <input
                       type="password"
                       value={gspCreds.ewb?.password || ""}
@@ -1570,6 +1597,7 @@ function CompanyFormModal({
                       placeholder="••••••••••••"
                       className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
                     />
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Password set for this GSP user on govt portal</p>
                   </div>
                 </div>
               </div>
@@ -1610,35 +1638,44 @@ function CompanyFormModal({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-muted-foreground">e-Invoice Client ID</label>
+                    <label className="block text-[11px] font-semibold mb-1 text-muted-foreground">
+                      e-Invoice Client ID <span className="text-[10px] font-normal text-muted-foreground">(Optional / Platform Default)</span>
+                    </label>
                     <input
                       value={gspCreds.einv?.client_id || ""}
                       onChange={(e) => setGspModuleField("einv", "client_id", e.target.value)}
-                      placeholder="EIN..."
+                      placeholder="Leave blank to use Platform Gateway"
                       className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background font-mono focus:ring-2 focus:ring-primary/20 outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-muted-foreground">e-Invoice Client Secret</label>
+                    <label className="block text-[11px] font-semibold mb-1 text-muted-foreground">
+                      e-Invoice Client Secret <span className="text-[10px] font-normal text-muted-foreground">(Optional / Platform Default)</span>
+                    </label>
                     <input
                       type="password"
                       value={gspCreds.einv?.client_secret || ""}
                       onChange={(e) => setGspModuleField("einv", "client_secret", e.target.value)}
-                      placeholder="••••••••••••"
+                      placeholder="Leave blank to use Platform Gateway"
                       className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background font-mono focus:ring-2 focus:ring-primary/20 outline-none"
                     />
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-muted-foreground">IRP API Username</label>
+                  <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-2.5 rounded-lg border border-emerald-100 dark:border-emerald-900/50">
+                    <label className="block text-[11px] font-bold mb-1 text-emerald-900 dark:text-emerald-200">
+                      IRP API Username <span className="text-rose-500 font-bold">*</span>
+                    </label>
                     <input
                       value={gspCreds.einv?.username || ""}
                       onChange={(e) => setGspModuleField("einv", "username", e.target.value)}
                       placeholder="API User from einvoice1.gst.gov.in"
                       className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
                     />
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Created under einvoice1.gst.gov.in → API Registration</p>
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-muted-foreground">IRP API Password</label>
+                  <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-2.5 rounded-lg border border-emerald-100 dark:border-emerald-900/50">
+                    <label className="block text-[11px] font-bold mb-1 text-emerald-900 dark:text-emerald-200">
+                      IRP API Password <span className="text-rose-500 font-bold">*</span>
+                    </label>
                     <input
                       type="password"
                       value={gspCreds.einv?.password || ""}
@@ -1646,6 +1683,7 @@ function CompanyFormModal({
                       placeholder="••••••••••••"
                       className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
                     />
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Password set for this IRP API user</p>
                   </div>
                 </div>
               </div>
@@ -1757,26 +1795,32 @@ function CompanyFormModal({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-muted-foreground">GST API Client ID</label>
+                    <label className="block text-[11px] font-semibold mb-1 text-muted-foreground">
+                      GST API Client ID <span className="text-[10px] font-normal text-muted-foreground">(Optional / Platform Default)</span>
+                    </label>
                     <input
                       value={gspCreds.gst?.client_id || ""}
                       onChange={(e) => setGspModuleField("gst", "client_id", e.target.value)}
-                      placeholder="GST..."
+                      placeholder="Leave blank to use Platform Gateway"
                       className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background font-mono focus:ring-2 focus:ring-primary/20 outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-muted-foreground">GST API Client Secret</label>
+                    <label className="block text-[11px] font-semibold mb-1 text-muted-foreground">
+                      GST API Client Secret <span className="text-[10px] font-normal text-muted-foreground">(Optional / Platform Default)</span>
+                    </label>
                     <input
                       type="password"
                       value={gspCreds.gst?.client_secret || ""}
                       onChange={(e) => setGspModuleField("gst", "client_secret", e.target.value)}
-                      placeholder="••••••••••••"
+                      placeholder="Leave blank to use Platform Gateway"
                       className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background font-mono focus:ring-2 focus:ring-primary/20 outline-none"
                     />
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-muted-foreground">GSTN Portal Username</label>
+                  <div className="bg-purple-50/50 dark:bg-purple-950/20 p-2.5 rounded-lg border border-purple-100 dark:border-purple-900/50">
+                    <label className="block text-[11px] font-bold mb-1 text-purple-900 dark:text-purple-200">
+                      GSTN Portal Username <span className="text-rose-500 font-bold">*</span>
+                    </label>
                     <input
                       value={gspCreds.gst?.username || ""}
                       onChange={(e) => setGspModuleField("gst", "username", e.target.value)}
@@ -1784,8 +1828,10 @@ function CompanyFormModal({
                       className="w-full h-8 px-2.5 text-xs rounded-lg border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
                     />
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold mb-1 text-muted-foreground">GSTN Portal Password</label>
+                  <div className="bg-purple-50/50 dark:bg-purple-950/20 p-2.5 rounded-lg border border-purple-100 dark:border-purple-900/50">
+                    <label className="block text-[11px] font-bold mb-1 text-purple-900 dark:text-purple-200">
+                      GSTN Portal Password
+                    </label>
                     <input
                       type="password"
                       value={gspCreds.gst?.password || ""}

@@ -369,6 +369,7 @@ async def init_database() -> None:
         "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS date_of_birth DATE;",
         "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS anniversary_date DATE;",
         "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS gender VARCHAR(50);",
+        "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS age INTEGER;",
         "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS preferred_language VARCHAR(50) DEFAULT 'English';",
         "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS credit_limit NUMERIC(14, 2) DEFAULT 0.0;",
         "ALTER TABLE crm_customers ADD COLUMN IF NOT EXISTS outstanding_balance NUMERIC(14, 2) DEFAULT 0.0;",

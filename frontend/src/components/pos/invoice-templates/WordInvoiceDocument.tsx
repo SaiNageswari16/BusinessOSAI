@@ -13,6 +13,9 @@ import { generateQRCodeSVG, buildUpiPayUrl } from "@/lib/qr-generator";
 import { computeGstBreakdown, checkIsInterstate } from "@/lib/gst-utils";
 import { getActiveBillingGst, getOrgSignatureSettings } from "@/lib/receipt-template-store";
 import { loadStoredPurchaseInvoiceSettings } from "@/components/procurement/PurchaseInvoiceQuickSettingsModal";
+import { type InvoiceTexts, resolveInvoiceTexts, resolveTemplateColumns, cellValueForColumn, resolveCustomFieldRows, type NormalizedTemplateColumn } from "@/lib/invoice-template-config";
+import { type PaymentQrContext } from "./PaymentQrBlock";
+import { CustomerExtrasBlock } from "./CustomerExtrasBlock";
 
 export interface WordInvoiceDocumentProps {
   invoice: FullInvoiceData;
@@ -27,6 +30,8 @@ export interface WordInvoiceDocumentProps {
   dynamicBank?: string;
   currency?: { symbol: string; code: string };
   f?: any;
+  texts?: InvoiceTexts;
+  paymentQr?: PaymentQrContext;
   template?: any;
   paperSize?: 'A4' | 'A5';
   orientation?: 'portrait' | 'landscape';
@@ -112,10 +117,13 @@ export function WordInvoiceDocument({
   currency = { symbol: "₹", code: "INR" },
   template,
   f,
+  texts,
+  paymentQr,
   paperSize = 'A4',
   orientation = 'portrait',
 }: WordInvoiceDocumentProps) {
   const { t } = useI18n();
+  void paymentQr; // reserved for full parity with the A4 text layer
 
   const activeCompanyId = typeof window !== 'undefined' ? localStorage.getItem('bos_active_company_id') : undefined;
   const activeGst = getActiveBillingGst(undefined, activeCompanyId || undefined) as any;
@@ -362,6 +370,8 @@ export function WordInvoiceDocument({
         hsn: it.hsn_code || it.hsn || it.hsn_sac || (it as any).hsnCode || (it.product && (it.product.hsn_code || it.product.hsn)) || "",
         quantity: qty,
         unit: it.selected_uom || it.uom || it.measuring_unit || it.unit || "PCS",
+        // Alias so shared cell resolvers (cellValueForColumn) can read the unit.
+        uom: it.selected_uom || it.uom || it.measuring_unit || it.unit || "PCS",
         batch: it.batch_number || it.batch || (it as any).batchNo || "",
         expiry: it.expiry_date || it.exp_date || (it as any).expiryDate || "",
         unit_type: it.secondary_uom && it.selected_uom === it.secondary_uom ? "Secondary Unit" : "Primary Unit",
@@ -698,7 +708,19 @@ export function WordInvoiceDocument({
   const enabledCols = React.useMemo(() => {
     let baseCols = (config?.columns || DEFAULT_WORD_COLUMNS).filter((c) => c.enabled);
     if (!isPurchaseDoc) {
-      // Honored Design-tab "Table Columns & Fields" toggles so the printed
+      // Template-driven columns: the shared resolver returns the DYNAMIC
+      // header titles / widths / aligns / custom columns from the template's
+      // own `columns` (or `wordConfig.columns` / `body.columns`), falling
+      // back to standard columns built from the `f` field toggles. Cell
+      // values are read through cellValueForColumn so custom + freeform
+      // columns resolve their data correctly (see the items-table body).
+      const resolved: NormalizedTemplateColumn[] = resolveTemplateColumns(
+        template,
+        (template as any)?.columns,
+        f,
+        texts
+      );
+      // Honor the Design-tab "Table Columns & Fields" toggles so the printed
       // columns always match what the user selected on the template page.
       if (f) {
         const salesAllowed = (key: string) => {
@@ -718,23 +740,11 @@ export function WordInvoiceDocument({
           if (key === "image") return f.showProductImage !== false;
           return true;
         };
-        /* removed dummy
-          switch (key) {
-            case "hsn":
-              return f.showHSN !== false;
-            case "mrp":
-              return f.showMRP !== false;
-            case "tax_rate":
-              return f.showTaxSplit !== false;
-            case "description":
-              return f.showItemDescription !== false;
-            default:
-              return true;
-          }
-        };
-        */ baseCols = baseCols.filter((c) => salesAllowed(c.fieldKey));
+        // Gate the standard built-in columns on the live toggles; user-added
+        // custom columns always show when enabled.
+        return resolved.filter((c) => (c.isCustom ? true : salesAllowed(c.fieldKey)));
       }
-      return baseCols;
+      return resolved;
     }
     const pSettings = loadStoredPurchaseInvoiceSettings();
 
@@ -793,7 +803,7 @@ export function WordInvoiceDocument({
       }));
     }
     return combined;
-  }, [config, isPurchaseDoc, f]);
+  }, [config, isPurchaseDoc, f, template, texts]);
   const enabledSections = [...(config?.sections || DEFAULT_WORD_SECTIONS)].sort((a, b) => a.order - b.order).filter((s) => s.enabled);
 
   // Accent Color Helpers
@@ -802,13 +812,15 @@ export function WordInvoiceDocument({
 
   const isA5 = paperSize === 'A5';
   const effectiveFontSize = isA5 ? Math.max(7, (config.fontSizePt || 9.5) - 2) : (config.fontSizePt || 9.5);
+  // Printable-area heights (page − @page margins, mm so print is exact):
+  // A4 289mm · A4-landscape 202mm · A5 205mm · A5-landscape 143mm.
   const containerDimensions = isA5
-    ? (orientation === 'landscape' ? 'max-w-[794px] min-h-[559px] p-4 sm:p-5' : 'max-w-[559px] min-h-[794px] p-4 sm:p-5')
-    : 'max-w-[794px] min-h-[1123px] p-8 sm:p-10';
+    ? (orientation === 'landscape' ? 'max-w-[794px] min-h-[143mm] p-4 sm:p-5' : 'max-w-[559px] min-h-[205mm] p-4 sm:p-5')
+    : (orientation === 'landscape' ? 'max-w-[1123px] min-h-[202mm] p-8 sm:p-10' : 'max-w-[794px] min-h-[289mm] p-8 sm:p-10');
 
   return (
     <div
-      className={`relative bg-white text-slate-900 mx-auto select-text print:p-0 print:shadow-none print:border-none print:rounded-none print:min-h-0 print:w-full print:max-w-none w-full ${containerDimensions} shadow-2xl border border-slate-200/90 rounded-2xl flex flex-col justify-between`}
+      className={`relative bg-white text-slate-900 mx-auto select-text print:p-0 print:shadow-none print:border-none print:rounded-none print:w-full print:max-w-none w-full tpl-sheet-full ${containerDimensions} shadow-2xl border border-slate-200/90 rounded-2xl flex flex-col justify-between`}
       style={{
         fontFamily: config.fontFamily,
         fontSize: `${effectiveFontSize}pt`,
@@ -1268,6 +1280,34 @@ export function WordInvoiceDocument({
               });
             }
 
+            // Shared resolver for template customFields + known dispatch/shipping
+            // rows (driver, transporter, LR no, dispatch mode, …) so the meta
+            // area matches exactly what the print path renders. Deduped against
+            // the rows already collected above. Only meta-section custom fields
+            // belong here (party / footer sections render elsewhere).
+            const resolvedRows = resolveCustomFieldRows(
+              {
+                ...config,
+                customFields: (config?.customFields || []).filter((cf) => cf && cf.enabled && (cf.section === "meta" || !cf.section)),
+              },
+              invoice,
+              f
+            );
+            const existingLabelKeys = new Set(metaCustomFields.map((m) => String(m?.label || (m as any)?.name || "").toLowerCase()));
+            resolvedRows.forEach((row) => {
+              const k = String(row.label || "").toLowerCase();
+              if (!row.value || existingLabelKeys.has(k)) return;
+              existingLabelKeys.add(k);
+              metaCustomFields.push({
+                id: `meta_resolved_${k.replace(/\s+/g, "_")}`,
+                label: row.label,
+                value: row.value,
+                enabled: true,
+                section: "meta",
+                resolvedVal: String(row.value),
+              } as any);
+            });
+
             const hasMetaDetails = Boolean(poVal || vehVal || ewayVal || challanVal || metaCustomFields.length > 0);
             if (!hasMetaDetails) return null;
 
@@ -1375,6 +1415,7 @@ export function WordInvoiceDocument({
                         Phone: <strong className="text-slate-800">{customerPhone}</strong>
                       </span>
                     )}
+                    <CustomerExtrasBlock invoice={invoice} texts={texts || resolveInvoiceTexts(template, "word_studio")} className="text-slate-600" />
                   </div>
                 </div>
 
@@ -1413,6 +1454,12 @@ export function WordInvoiceDocument({
                 className="rounded-2xl overflow-hidden border border-slate-200 shadow-xs bg-white"
               >
                 <table className="w-full border-collapse text-[10.5px]">
+                  {/* Dynamic column widths from the template config */}
+                  <colgroup>
+                    {enabledCols.map((col) => (
+                      <col key={col.id} style={{ width: col.widthPercent ? `${col.widthPercent}%` : "auto" }} />
+                    ))}
+                  </colgroup>
                   {/* Table Header */}
                   <thead>
                     <tr
@@ -1422,7 +1469,7 @@ export function WordInvoiceDocument({
                       {enabledCols.map((col) => (
                         <th
                           key={col.id}
-                          style={{ width: `${col.widthPercent}%`, textAlign: col.align }}
+                          style={{ textAlign: col.align }}
                           className="py-3 px-3 border-r border-white/10 last:border-r-0 font-extrabold"
                         >
                           {col.headerTitle}
@@ -1494,12 +1541,12 @@ export function WordInvoiceDocument({
                           }
 
                           // Quantity & Measuring Unit
-                          if (col.fieldKey === "quantity") {
+                          if (col.fieldKey === "quantity" || col.fieldKey === "qty") {
                             return (
                               <td key={col.id} className="py-3 px-2 text-center font-bold">
                                 <div className="inline-flex items-center gap-1 font-mono">
-                                  <span className="text-slate-900 font-extrabold text-[11px]">{item.quantity}</span>
-                                  <span className="text-slate-500 font-bold text-[9px] uppercase">{item.unit}</span>
+                                  <span className="text-slate-900 font-extrabold text-[11px]">{cellValueForColumn(col, item, invoice).text}</span>
+                                  <span className="text-slate-500 font-bold text-[9px] uppercase">{cellValueForColumn({ ...col, fieldKey: "uom" }, item, invoice).text}</span>
                                 </div>
                               </td>
                             );
@@ -1507,7 +1554,7 @@ export function WordInvoiceDocument({
 
                           // MRP (retail shelf price — read-only informational, not used in totals)
                           if (col.fieldKey === "mrp") {
-                            const mrpVal = Number((item as any).mrp || 0);
+                            const mrpVal = Number(cellValueForColumn(col, item, invoice).raw || 0);
                             return (
                               <td key={col.id} className="py-3 px-3 text-right font-mono text-[10.5px] text-slate-500">
                                 {mrpVal > 0 ? (
@@ -1520,8 +1567,8 @@ export function WordInvoiceDocument({
                           }
 
                           // Selling Price (user-editable retail price, defaults to MRP)
-                          if (col.fieldKey === "selling_price") {
-                            const sellVal = Number((item as any).selling_price || (item as any).mrp || 0);
+                          if (col.fieldKey === "selling_price" || col.fieldKey === "sell_price") {
+                            const sellVal = Number(cellValueForColumn(col, item, invoice).raw || (item as any).mrp || 0);
                             return (
                               <td key={col.id} className="py-3 px-3 text-right font-mono text-[10.5px] text-slate-700 font-semibold">
                                 {sellVal > 0 ? (
@@ -1534,7 +1581,9 @@ export function WordInvoiceDocument({
                           }
 
                           // Unit Price
-                          if (col.fieldKey === "unit_price") {
+                          if (col.fieldKey === "unit_price" || col.fieldKey === "rate") {
+                            const rateRaw = cellValueForColumn(col, item, invoice).raw;
+                            const rateVal = Number(rateRaw ?? 0);
                             return (
                               <td key={col.id} className="py-3 px-3 text-right font-mono text-[11px] text-slate-700 font-medium">
                                 {item.isFree ? (
@@ -1547,7 +1596,7 @@ export function WordInvoiceDocument({
                                     <span className="text-emerald-700 font-bold">{currency.symbol}0.00</span>
                                   </span>
                                 ) : (
-                                  <span>{currency.symbol}{(Number(item.unit_price) || 0).toFixed(2)}</span>
+                                  <span>{currency.symbol}{rateVal.toFixed(2)}</span>
                                 )}
                               </td>
                             );
@@ -1563,8 +1612,8 @@ export function WordInvoiceDocument({
                           }
 
                           // BATCH (procurement column)
-                          if (col.fieldKey === "batch") {
-                            const bv = String((item as any).batch || "").trim();
+                          if (col.fieldKey === "batch" || col.fieldKey === "batch_no") {
+                            const bv = String(cellValueForColumn(col, item, invoice).text || "").trim();
                             return (
                               <td key={col.id} className="py-3 px-1.5 text-center font-mono text-[9.5px] text-slate-600">
                                 {bv ? <span className="bg-slate-100/80 px-1 py-0.5 rounded border border-slate-200/50">{bv}</span> : <span className="text-slate-400">—</span>}
@@ -1573,8 +1622,8 @@ export function WordInvoiceDocument({
                           }
 
                           // Expiry Date (procurement column)
-                          if (col.fieldKey === "expiry_date" || col.fieldKey === "exp_date") {
-                            const ev = String((item as any).expiry || "").trim();
+                          if (col.fieldKey === "expiry_date" || col.fieldKey === "exp_date" || col.fieldKey === "exp") {
+                            const ev = String(cellValueForColumn(col, item, invoice).text || "").trim();
                             return (
                               <td key={col.id} className="py-3 px-1.5 text-center font-mono text-[9.5px] text-slate-600">
                                 {ev ? ev : <span className="text-slate-400">—</span>}
@@ -1596,16 +1645,17 @@ export function WordInvoiceDocument({
                           }
 
                           // Discount — percent-aware (matches the extracted DISC % column)
-                          if (col.fieldKey === "discount") {
+                          if (col.fieldKey === "discount" || col.fieldKey === "disc") {
                             const discType = String((item as any).discount_type || "percent").toLowerCase();
                             const isAmt = discType === "amount" || discType === "fixed" || discType === "rs";
+                            const discVal = Number(cellValueForColumn(col, item, invoice).raw || 0);
                             return (
                               <td key={col.id} className="py-3 px-2 text-center font-mono text-[10.5px]">
                                 {item.isFree ? (
                                   <span className="text-slate-300">—</span>
-                                ) : Number(item.discount || 0) > 0 ? (
+                                ) : discVal > 0 ? (
                                   <span className="text-emerald-600 font-semibold">
-                                    {isAmt ? `${currency.symbol}${Number(item.discount).toFixed(2)}` : `${Number(item.discount)}%`}
+                                    {isAmt ? `${currency.symbol}${discVal.toFixed(2)}` : `${discVal}%`}
                                   </span>
                                 ) : (
                                   <span className="text-slate-300">—</span>
@@ -1615,16 +1665,18 @@ export function WordInvoiceDocument({
                           }
 
                           // GST % Tax Rate
-                          if (col.fieldKey === "tax_rate") {
+                          if (col.fieldKey === "tax_rate" || col.fieldKey === "gst_rate" || col.fieldKey === "gst") {
+                            const taxPct = Number(cellValueForColumn(col, item, invoice).raw || 0);
                             return (
                               <td key={col.id} className="py-3 px-2 text-center font-medium text-slate-600 text-[10.5px]">
-                                {item.isFree ? "0%" : `${Number(item.tax_rate || 0)}%`}
+                                {item.isFree ? "0%" : `${taxPct}%`}
                               </td>
                             );
                           }
 
                           // Line Item Amount
-                          if (col.fieldKey === "total_amount") {
+                          if (col.fieldKey === "total_amount" || col.fieldKey === "amount" || col.fieldKey === "amt") {
+                            const amtVal = Number(cellValueForColumn(col, item, invoice).raw || 0);
                             return (
                               <td
                                 key={col.id}
@@ -1635,20 +1687,23 @@ export function WordInvoiceDocument({
                                     FREE ({currency.symbol}0.00)
                                   </span>
                                 ) : (
-                                  <span>{currency.symbol}{(Number(item.total_amount) || 0).toFixed(2)}</span>
+                                  <span>{currency.symbol}{amtVal.toFixed(2)}</span>
                                 )}
                               </td>
                             );
                           }
 
-                          // Custom Table Column Fallback
+                          // Custom / freeform column — resolved through the shared
+                          // cell resolver (item field → item custom_fields →
+                          // template static value → invoice custom_fields).
+                          const cell = cellValueForColumn(col, item, invoice);
                           return (
                             <td
                               key={col.id}
                               className="py-3 px-2 text-slate-700 font-medium"
                               style={{ textAlign: col.align }}
                             >
-                              {typeof (item as any)[col.fieldKey] === 'object' ? JSON.stringify((item as any)[col.fieldKey]) : String((item as any)[col.fieldKey] || "—")}
+                              {cell.raw && typeof cell.raw === "object" ? JSON.stringify(cell.raw) : String(cell.text || "—")}
                             </td>
                           );
                         })}
@@ -1976,7 +2031,10 @@ export function WordInvoiceDocument({
           }
 
           // ── 7. UPI QR CODE & BANK PAYMENT DETAILS ──
-          if (section.id === "bank_qr_block" && config.showPaymentQr) {
+          // The block only renders when the template option is on (f.showQR,
+          // defaults true) AND the config ships it — so unchecking "UPI QR" on a
+          // template actually removes it instead of printing a hard-coded bank QR.
+          if (section.id === "bank_qr_block" && config.showPaymentQr && f?.showQR !== false) {
             return (
               <div
                 key={section.id}
@@ -2001,7 +2059,7 @@ export function WordInvoiceDocument({
                     <img
                       src={generateQRCodeSVG(
                         buildUpiPayUrl({
-                          vpa: activeGst?.upi_vpa || "merchant@upi",
+                          vpa: (template as any)?.upiId || (template as any)?.wordConfig?.upiVpa || activeGst?.upi_vpa || "",
                           payeeName: config.companyName || "Merchant",
                           amount: balanceDue,
                           invoiceNumber: invoiceNumber,

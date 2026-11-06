@@ -555,13 +555,15 @@ export function Code128Svg({
  */
 export function RealBarcodeSvg({
   code,
+  value,
   format = "Auto",
   width,
   height = 48,
   unitPx = 2,
   displayValue = true,
 }: {
-  code: string;
+  code?: string;
+  value?: string;
   format?: string;
   width?: number;
   height?: number;
@@ -569,7 +571,7 @@ export function RealBarcodeSvg({
   displayValue?: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const clean = String(code || "").trim();
+  const clean = String(code || value || "").trim();
 
   useEffect(() => {
     if (svgRef.current && clean) {
@@ -643,6 +645,8 @@ export function RealBarcodeSvg({
     <div className="flex flex-col items-center justify-center bg-white p-0 rounded overflow-hidden select-none w-full">
       <svg
         ref={svgRef}
+        data-barcode-value={clean}
+        data-format={format}
         style={{
           display: "block",
           background: "#ffffff",
@@ -650,7 +654,9 @@ export function RealBarcodeSvg({
           shapeRendering: "crispEdges",
           imageRendering: "pixelated",
         }}
-      />
+      >
+        <text className="hidden" fill="transparent">{clean}</text>
+      </svg>
     </div>
   );
 }

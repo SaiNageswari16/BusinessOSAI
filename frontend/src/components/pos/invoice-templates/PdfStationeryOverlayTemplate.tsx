@@ -4,6 +4,10 @@ import { computeGstBreakdown, extractGstState } from '@/lib/gst-utils';
 import { generateQRCodeSVG, buildUpiPayUrl } from '@/lib/qr-generator';
 import { getOrgPaymentQrSettings, getOrgSignatureSettings, getActiveBillingGst } from '@/lib/receipt-template-store';
 import type { FullInvoiceData } from '../FullInvoicePrinter';
+import type { InvoiceTexts } from '@/lib/invoice-template-config';
+import { resolveInvoiceTexts, resolveCustomFieldRows, resolveTemplateColumns, cellValueForColumn } from '@/lib/invoice-template-config';
+import { CustomerExtrasBlock } from './CustomerExtrasBlock';
+import type { PaymentQrContext } from './PaymentQrBlock';
 
 export interface PdfOverlayLayout {
   headerTopOffsetMm?: number;
@@ -42,6 +46,8 @@ interface PdfStationeryOverlayTemplateProps {
   dynamicBank?: string;
   currency: { symbol: string; code: string };
   f: Record<string, boolean>;
+  texts?: InvoiceTexts;
+  paymentQr?: PaymentQrContext;
   template: any;
   isEditable?: boolean;
   onCustomTextChange?: (key: string, value: string) => void;
@@ -59,10 +65,14 @@ export function PdfStationeryOverlayTemplate({
   dynamicBank,
   currency,
   f,
+  texts,
+  paymentQr,
   template,
   isEditable = false,
   onCustomTextChange,
 }: PdfStationeryOverlayTemplateProps) {
+  void texts; // reserved for full parity with the A4 text layer
+  void paymentQr; // QR already gated via f.showQR in the paymentQrSrc computation
   const layout: PdfOverlayLayout = template?.overlayLayout || {};
   const bgDataUrl = template?.pdfBackgroundDataUrl || template?.backgroundUrl || '';
   const showBgInPrint = layout.showBackgroundInPrint !== false;
@@ -88,6 +98,16 @@ export function PdfStationeryOverlayTemplate({
   const editClass = isEditable
     ? 'hover:bg-blue-50/70 hover:outline-dashed hover:outline-1 hover:outline-blue-400 focus:outline-solid focus:outline-2 focus:outline-blue-600 focus:bg-blue-50/40 rounded px-0.5 transition-all cursor-text select-text outline-none'
     : '';
+
+  // Freeform / custom + dispatch fields (PO, e-Way, Challan, Vehicle, bound
+  // fields, …) resolved exactly like the other A4 themes, so every configured
+  // field prints on this overlay template too.
+  const customRows = resolveCustomFieldRows(template, invoice, f);
+
+  // User-added CUSTOM item-table columns (additive) — rendered as extra columns
+  // after the fixed Amount column, matching the dynamic-engine behaviour of the
+  // other themes. Standard columns stay fixed; only isCustom ones are appended.
+  const customItemCols = resolveTemplateColumns(template, undefined, f).filter((c) => c.isCustom);
 
   // 1. Calculate GST breakdown
   const rawItems = invoice.items || [];
@@ -191,7 +211,9 @@ export function PdfStationeryOverlayTemplate({
       })
     : '';
 
-  const paymentQrSrc = paymentQrSettings.enabled
+  // Honor the per-template "UPI QR" option (f.showQR): unchecking it on the
+  // template removes the QR even when the org setting is enabled.
+  const paymentQrSrc = paymentQrSettings.enabled && f?.showQR !== false
     ? paymentQrSettings.type === 'custom_image' && paymentQrSettings.customImageUrl
       ? paymentQrSettings.customImageUrl
       : upiIntentUrl
@@ -224,7 +246,7 @@ export function PdfStationeryOverlayTemplate({
 
   return (
     <div
-      className="relative w-full min-h-[297mm] bg-white text-slate-900 print:min-h-0 print:h-auto select-text"
+      className="relative w-full min-h-[289mm] bg-white text-slate-900 print:h-auto select-text flex flex-col tpl-sheet-full"
       style={{
         fontFamily: fontFamily,
         fontSize: `${fontSizePt}pt`,
@@ -270,7 +292,7 @@ export function PdfStationeryOverlayTemplate({
 
       {/* ── Word Document Layout Content ── */}
       <div
-        className="relative z-10 w-full flex flex-col justify-between select-text"
+        className="relative z-10 w-full flex-1 flex flex-col justify-between select-text"
         style={{
           paddingLeft: `${paddingLeftMm}mm`,
           paddingRight: `${paddingRightMm}mm`,
@@ -543,6 +565,17 @@ export function PdfStationeryOverlayTemplate({
                     </span>
                   </p>
                 )}
+                <CustomerExtrasBlock invoice={invoice} texts={texts || resolveInvoiceTexts(template, 'pdf_stationery_overlay')} className="text-slate-600" />
+                {customRows.length > 0 && (
+                  <div className="mt-1 space-y-0.5 border-t border-slate-200 pt-1">
+                    {customRows.map((row, rIdx) => (
+                      <p key={rIdx} className="text-[8.5pt] leading-tight text-slate-700">
+                        <span className="font-bold text-slate-800">{row.label}: </span>
+                        <span className="font-mono">{row.value}</span>
+                      </p>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Shipped To Column */}
@@ -708,6 +741,16 @@ export function PdfStationeryOverlayTemplate({
                   >
                     Amount
                   </th>
+                  {customItemCols.map((col) => (
+                    <th
+                      key={col.id}
+                      contentEditable={isEditable}
+                      suppressContentEditableWarning
+                      className={`${padClass} ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'} min-w-20 border-l border-slate-300/30 ${editClass}`}
+                    >
+                      {col.headerTitle || col.fieldKey}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 bg-white text-slate-900">
@@ -811,6 +854,20 @@ export function PdfStationeryOverlayTemplate({
                       >
                         {currency.symbol}{netAmount.toFixed(2)}
                       </td>
+                      {customItemCols.map((col) => {
+                        const cv = cellValueForColumn(col, item, invoice);
+                        const isMoney = ['unit_price', 'rate', 'mrp', 'selling_price', 'discount', 'total_amount'].includes(col.fieldKey);
+                        return (
+                          <td
+                            key={col.id}
+                            contentEditable={isEditable}
+                            suppressContentEditableWarning
+                            className={`${padClass} ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'} border-l border-slate-200 text-slate-800 ${editClass}`}
+                          >
+                            {isMoney && Number.isFinite(Number(cv.raw)) && cv.text !== '-' ? `${currency.symbol}${cv.text}` : cv.text}
+                          </td>
+                        );
+                      })}
                     </tr>
                   );
                 })}

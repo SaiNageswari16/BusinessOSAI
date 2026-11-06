@@ -2693,6 +2693,7 @@ export interface CrmCustomer {
   date_of_birth: string | null;
   anniversary_date: string | null;
   gender: string | null;
+  age: number | null;
   preferred_language: string | null;
   customer_code?: string | null;
   first_name?: string | null;

@@ -138,6 +138,34 @@ def _safe_text(value: Any, max_length: int = 300) -> str:
     return text[:max_length]
 
 
+def _customer_personal_lines(invoice: Any) -> list[str]:
+    """Optional customer Gender / DOB / Age lines for the PDF customer block.
+
+    Values were snapshotted from the selected CRM customer at billing time into
+    the invoice's custom_fields (or passed straight through on ad-hoc objects).
+    Returns [] when none are present so the PDF never shows empty fields.
+    """
+    cf = getattr(invoice, "custom_fields", None) or {}
+    if not isinstance(cf, dict):
+        cf = {}
+    gender = _safe_text(cf.get("customer_gender") or getattr(invoice, "customer_gender", None) or "", 25)
+    age = cf.get("customer_age")
+    if age in (None, ""):
+        age = getattr(invoice, "customer_age", None)
+    dob = _safe_text(cf.get("customer_dob") or getattr(invoice, "customer_dob", None) or "", 25)
+    if isinstance(dob, (datetime, date)):
+        dob = dob.strftime("%d/%m/%Y")
+
+    lines: list[str] = []
+    if gender:
+        lines.append(f"GENDER: {gender}")
+    if dob:
+        lines.append(f"DOB: {dob}")
+    if age not in (None, ""):
+        lines.append(f"AGE: {age}")
+    return lines
+
+
 def _hex_to_rgb(hex_color: str | None) -> tuple[int, int, int]:
     """Convert #RRGGBB to (r, g, b) tuple."""
     if not hex_color:
@@ -385,17 +413,36 @@ async def get_active_invoice_template(
         )
         company = company_res.scalars().first()
 
-    # 2. Get configured template for the requested category (invoices or thermal receipts)
+    # 2. Get configured template for the requested category.
+    # Thermal receipts are their own bucket. Sales-doc sub-categories
+    # (quotation / proforma / estimate / credit / debit) each get their OWN
+    # bucket so a per-category template choice is honored; when that bucket has
+    # nothing set, fall back to the master "invoices" bucket so every document
+    # still always renders through exactly one chosen design.
     print_templates = tenant_settings.get("print_templates", {})
-    is_thermal_cat = category.lower() in ("thermal", "thermals", "receipt", "receipts")
-    cat_key = "thermal" if is_thermal_cat else "invoices"
+    cat_norm = category.lower().strip()
+    is_thermal_cat = cat_norm in ("thermal", "thermals", "receipt", "receipts")
+    SALES_SUB_CATEGORIES = ("quotation", "proforma", "estimate", "credit_note", "debit_note", "quote", "proforma_invoice")
+    is_sales_sub = cat_norm in SALES_SUB_CATEGORIES
+
+    if is_thermal_cat:
+        cat_key = "thermal"
+    elif is_sales_sub:
+        cat_key = cat_norm
+    else:
+        cat_key = "invoices"
 
     comp_id_str = str(company.id) if company else (str(company_id) if company_id else None)
     company_cat_config = {}
     if comp_id_str and isinstance(print_templates.get("companies"), dict):
         comp_templates = print_templates["companies"].get(comp_id_str, {})
         if isinstance(comp_templates, dict):
-            company_cat_config = comp_templates.get(cat_key) or (comp_templates.get("receipt") if is_thermal_cat else {}) or {}
+            if is_thermal_cat:
+                company_cat_config = comp_templates.get(cat_key) or comp_templates.get("receipt") or {}
+            elif is_sales_sub:
+                company_cat_config = comp_templates.get(cat_key) or {}
+            else:
+                company_cat_config = comp_templates.get("invoices") or {}
 
     if is_thermal_cat:
         cat_config = company_cat_config or print_templates.get("thermal") or print_templates.get("receipt") or {}
@@ -417,18 +464,30 @@ async def get_active_invoice_template(
                 "termsText": "Thank you for shopping with us! Please keep this receipt handy for returns.",
             }
     else:
-        invoice_config = company_cat_config or print_templates.get("invoices", {})
-        active_id = invoice_config.get("active")
-        templates_map = invoice_config.get("templates", {})
-
-        if active_id and active_id in templates_map:
-            tpl = dict(templates_map[active_id])
-        elif active_id and active_id in _BUILTIN_TEMPLATES:
-            tpl = dict(_BUILTIN_TEMPLATES[active_id])
-        elif templates_map:
-            tpl = dict(next(iter(templates_map.values())))
+        # A specific sales-doc sub-category: use its own bucket when it has an
+        # active template, else fall back to the master "invoices" bucket.
+        sub_config = company_cat_config or print_templates.get(cat_key, {})
+        sub_active = sub_config.get("active")
+        sub_map = sub_config.get("templates", {})
+        if is_sales_sub and sub_active and (sub_active in sub_map or sub_active in _BUILTIN_TEMPLATES):
+            if sub_active in sub_map:
+                tpl = dict(sub_map[sub_active])
+            else:
+                tpl = dict(_BUILTIN_TEMPLATES[sub_active])
         else:
-            tpl = dict(_DEFAULT_INVOICE_TEMPLATE)
+            invoice_config = company_cat_config if cat_key == "invoices" else {}
+            invoice_config = invoice_config or print_templates.get("invoices", {})
+            active_id = invoice_config.get("active")
+            templates_map = invoice_config.get("templates", {})
+
+            if active_id and active_id in templates_map:
+                tpl = dict(templates_map[active_id])
+            elif active_id and active_id in _BUILTIN_TEMPLATES:
+                tpl = dict(_BUILTIN_TEMPLATES[active_id])
+            elif templates_map:
+                tpl = dict(next(iter(templates_map.values())))
+            else:
+                tpl = dict(_DEFAULT_INVOICE_TEMPLATE)
 
     # 3. Dynamic organization details override (replaces hardcoded defaults)
     tenant_name = (tenant.name if tenant else "") or ""
@@ -704,6 +763,7 @@ def _render_fmcg_pdf(invoice: Any, template: dict) -> bytes:
     cust_name = _safe_text(getattr(invoice, "customer_name", None) or "Nagi", 40)
     cust_phone = _safe_text(getattr(invoice, "customer_phone", None) or "", 25)
     cust_gstin = _safe_text(getattr(invoice, "customer_gstin", None) or "UNREGISTERED", 25)
+    cust_personal_lines = _customer_personal_lines(invoice)
     billing_addr = _safe_text(getattr(invoice, "billing_address", None) or "Andhra Pradesh", 100)
     shipping_addr = _safe_text(getattr(invoice, "shipping_address", None) or billing_addr, 100)
     payment_method = _safe_text(getattr(invoice, "payment_method", None) or "Cash", 20)
@@ -789,7 +849,8 @@ def _render_fmcg_pdf(invoice: Any, template: dict) -> bytes:
 
     pdf.set_xy(12, 44.5)
     pdf.set_font("Helvetica", "B", 7)
-    pdf.cell(90, 3.5, f"GSTIN : {cust_gstin}", ln=1)
+    _personal_tail = (f"  |  {' | '.join(cust_personal_lines)}" if cust_personal_lines else "")
+    pdf.cell(90, 3.5, f"GSTIN : {cust_gstin}{_personal_tail}"[:60], ln=1)
 
     pdf.set_xy(12, 48)
     pdf.set_font("Helvetica", "", 6.5)
@@ -1022,6 +1083,7 @@ def _render_parle_pdf(invoice: Any, template: dict) -> bytes:
     cust_name = _safe_text(getattr(invoice, "customer_name", None) or "Nagi", 40)
     cust_phone = _safe_text(getattr(invoice, "customer_phone", None) or "", 25)
     cust_gstin = _safe_text(getattr(invoice, "customer_gstin", None) or "UNREGISTERED", 25)
+    cust_personal_lines = _customer_personal_lines(invoice)
     billing_addr = _safe_text(getattr(invoice, "billing_address", None) or "Andhra Pradesh", 100)
     shipping_addr = _safe_text(getattr(invoice, "shipping_address", None) or billing_addr, 100)
     payment_method = _safe_text(getattr(invoice, "payment_method", None) or "Cash", 20)
@@ -1137,7 +1199,8 @@ def _render_parle_pdf(invoice: Any, template: dict) -> bytes:
     pdf.set_xy(140, 28.5)
     pdf.set_font("Helvetica", "B", 7)
     pdf.set_text_color(0, 0, 0)
-    pdf.cell(58, 3.5, f"GST : {cust_gstin}", ln=1)
+    _personal_tail = (f"  |  {' | '.join(cust_personal_lines)}" if cust_personal_lines else "")
+    pdf.cell(58, 3.5, f"GST : {cust_gstin}{_personal_tail}"[:62], ln=1)
 
     pdf.line(10, 34, 200, 34)
 
@@ -1519,6 +1582,7 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
     cust_phone = _safe_text(getattr(invoice, "customer_phone", None) or getattr(invoice, "phone", None) or "", 20)
     cust_gstin = _safe_text(getattr(invoice, "customer_gstin", None) or getattr(invoice, "gst_number", None) or "", 25)
     cust_addr = _safe_text(getattr(invoice, "billing_address", None) or getattr(invoice, "customer_address", None) or "", 80)
+    cust_personal_lines = _customer_personal_lines(invoice)
     raw_date = getattr(invoice, "invoice_date", None) or getattr(invoice, "created_at", None) or clock.today()
     if isinstance(raw_date, datetime):
         inv_date = raw_date.strftime("%d/%m/%Y")
@@ -1639,6 +1703,8 @@ def _render_thermal_receipt_pdf(invoice: Any, template: dict) -> bytes:
             pdf.cell(usable_w, 3.0, f"MOB: {cust_phone}", align="L", new_x="LMARGIN", new_y="NEXT")
         if show_customer_gstin and cust_gstin:
             pdf.cell(usable_w, 3.0, f"GSTIN: {cust_gstin}", align="L", new_x="LMARGIN", new_y="NEXT")
+        for _pline in cust_personal_lines:
+            pdf.cell(usable_w, 2.8, _pline, align="L", new_x="LMARGIN", new_y="NEXT")
         if show_customer_address and cust_addr:
             pdf.multi_cell(usable_w, 2.8, f"ADDR: {cust_addr}", align="L")
 
@@ -2159,6 +2225,12 @@ def _render_stylish_pdf(invoice: Any, template: dict) -> bytes:
         pdf.set_font("Helvetica", "B", 7)
         pdf.set_text_color(30, 41, 59)
         pdf.cell(56, 3.5, f"GSTIN: {cust_gstin}", ln=1)
+
+    if cust_personal_lines:
+        pdf.set_xy(c1_x, y_card + 20.5)
+        pdf.set_font("Helvetica", "", 6.5)
+        pdf.set_text_color(100, 116, 139)
+        pdf.cell(56, 3, " · ".join(cust_personal_lines)[:58], ln=1)
 
     # Col 1 | Col 2 Divider
     pdf.set_draw_color(226, 232, 240)

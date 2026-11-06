@@ -1404,9 +1404,9 @@ async def generate_custom_report(
             tx_list = [
                 tx for tx in tx_list
                 if not (
-                    str(tx.get("invoice_no", "")).upper().startswith(("CN-", "CN ", "DN-", "DN ", "OPN-"))
+                    str(tx.get("invoice_no", "")).upper().startswith(("CN-", "CN ", "DN-", "DN ", "OPN-", "PI-", "PI ", "QT-", "QT ", "EST-", "EST "))
                     or tx.get("is_credit_note") is True
-                    or str(tx.get("invoice_type", "")).lower() in ["credit_note", "debit_note", "opening_balance"]
+                    or str(tx.get("invoice_type", "")).lower() in ["credit_note", "debit_note", "opening_balance", "proforma", "proforma_invoice", "quotation", "quote", "estimate"]
                     or "credit note" in str(tx.get("source", "")).lower()
                     or "debit note" in str(tx.get("source", "")).lower()
                 )
@@ -6333,6 +6333,7 @@ async def get_payment_mode_purchases_report(
     cash_bills = []
     upi_bills = []
     bank_bills = []
+    cheque_bills = []
     credit_bills = []
     debit_notes_list = []
     cancelled_bills = []
@@ -6388,12 +6389,15 @@ async def get_payment_mode_purchases_report(
         elif any(k in comb_methods for k in ["upi", "gpay", "phonepe", "paytm", "qr"]):
             cat = "upi"
             cat_label = "UPI / QR"
-        elif any(k in comb_methods for k in ["bank", "card", "neft", "rtgs", "cheque", "online", "transfer"]):
+        elif any(k in comb_methods for k in ["cheque", "check"]):
+            cat = "cheque"
+            cat_label = "Cheque"
+        elif any(k in comb_methods for k in ["bank", "card", "neft", "rtgs", "online", "transfer"]):
             cat = "bank"
             cat_label = "Bank / NEFT"
         elif paid_amt > 0.01:
             cat = "bank"
-            cat_label = "Bank Transfer"
+            cat_label = "Bank / NEFT"
         else:
             cat = "credit"
             cat_label = "Credit / Payables"
@@ -6426,6 +6430,8 @@ async def get_payment_mode_purchases_report(
             cash_bills.append(bill_item)
         elif cat == "upi":
             upi_bills.append(bill_item)
+        elif cat == "cheque":
+            cheque_bills.append(bill_item)
         elif cat == "bank":
             bank_bills.append(bill_item)
         else:
@@ -6487,6 +6493,11 @@ async def get_payment_mode_purchases_report(
     bank_dues = sum(x["pending_amount"] for x in bank_bills)
     bank_dues_cnt = sum(1 for x in bank_bills if x["pending_amount"] > 0.01)
 
+    cheque_total = sum(x["total_amount"] for x in cheque_bills)
+    cheque_paid = sum(x["paid_amount"] for x in cheque_bills)
+    cheque_dues = sum(x["pending_amount"] for x in cheque_bills)
+    cheque_dues_cnt = sum(1 for x in cheque_bills if x["pending_amount"] > 0.01)
+
     credit_total = sum(x["total_amount"] for x in credit_bills)
     credit_paid = sum(x["paid_amount"] for x in credit_bills)
     credit_dues = sum(x["pending_amount"] for x in credit_bills)
@@ -6533,6 +6544,17 @@ async def get_payment_mode_purchases_report(
             "average_ticket": round(bank_total / max(1, len(bank_bills)), 2),
         },
         {
+            "mode_key": "cheque",
+            "payment_mode": "Cheque Payouts",
+            "invoices_count": len(cheque_bills),
+            "percentage_share": round((cheque_total / max(1.0, grand_total_procurement)) * 100, 1),
+            "total_billed": round(cheque_total, 2),
+            "collected_amount": round(cheque_paid, 2),
+            "dues_amount": round(cheque_dues, 2),
+            "dues_invoices_count": cheque_dues_cnt,
+            "average_ticket": round(cheque_total / max(1, len(cheque_bills)), 2),
+        },
+        {
             "mode_key": "credit",
             "payment_mode": "Credit / Payables (Net Terms)",
             "invoices_count": len(credit_bills),
@@ -6552,6 +6574,8 @@ async def get_payment_mode_purchases_report(
         detailed_list = upi_bills
     elif mode_str_arg in ["bank", "card"]:
         detailed_list = bank_bills
+    elif mode_str_arg in ["cheque", "check"]:
+        detailed_list = cheque_bills
     elif mode_str_arg in ["credit", "due"]:
         detailed_list = credit_bills
     elif mode_str_arg == "dues":
@@ -6575,6 +6599,9 @@ async def get_payment_mode_purchases_report(
             "bank_total": round(bank_total, 2),
             "bank_count": len(bank_bills),
             "bank_pct": round((bank_total / max(1.0, grand_total_procurement)) * 100, 1),
+            "cheque_total": round(cheque_total, 2),
+            "cheque_count": len(cheque_bills),
+            "cheque_pct": round((cheque_total / max(1.0, grand_total_procurement)) * 100, 1),
             "credit_total": round(credit_total, 2),
             "credit_count": len(credit_bills),
             "credit_pct": round((credit_total / max(1.0, grand_total_procurement)) * 100, 1),

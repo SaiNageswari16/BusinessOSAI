@@ -42,6 +42,10 @@ export function numberToIndianWords(num: number): string {
   const integerPart = Math.floor(Math.abs(num));
   const decimalPart = Math.round((Math.abs(num) - integerPart) * 100);
 
+  if (integerPart === 0 && decimalPart > 0) {
+    return "Rs. " + inWords(decimalPart).trim() + " Paise Only";
+  }
+
   let result = "Rs. " + inWords(integerPart).trim() + " Rupees";
   if (decimalPart > 0) {
     result += " and " + inWords(decimalPart).trim() + " Paise";

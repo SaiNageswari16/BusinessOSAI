@@ -4,6 +4,20 @@ import type { FullInvoiceData } from '../FullInvoicePrinter';
 import { numberToIndianWords } from '@/lib/number-to-words';
 import { formatDisplayDate } from '@/lib/utils';
 import { getOrgSignatureSettings, getActiveBillingGst } from '@/lib/receipt-template-store';
+import {
+  resolveInvoiceTexts,
+  docTitleFor,
+  docNoLabelFor,
+  docDateLabelFor,
+  type InvoiceTexts,
+  resolveTemplateColumns,
+  type NormalizedTemplateColumn,
+  cellValueForColumn,
+  resolveCustomFieldRows,
+} from '@/lib/invoice-template-config';
+import { generateQRCodeSVG } from '@/lib/qr-generator';
+import { PaymentQrBlock, type PaymentQrContext } from './PaymentQrBlock';
+import { CustomerExtrasBlock } from './CustomerExtrasBlock';
 
 interface TemplateProps {
   invoice: FullInvoiceData;
@@ -14,8 +28,12 @@ interface TemplateProps {
   dynamicEmail: string;
   sellerGstin: string;
   sellerStateCode: string;
+  dynamicBank?: string;
   currency: { symbol: string; code: string };
   f?: any;
+  texts?: InvoiceTexts;
+  paymentQr?: PaymentQrContext;
+  template?: any;
   paperSize?: 'A4' | 'A5';
   orientation?: 'portrait' | 'landscape';
 }
@@ -29,12 +47,89 @@ export function ParleDistributorTemplate({
   dynamicEmail,
   sellerGstin,
   sellerStateCode,
+  dynamicBank,
   currency,
   f = {},
+  texts,
+  paymentQr,
+  template,
   paperSize = 'A4',
   orientation = 'portrait',
 }: TemplateProps) {
   const { t } = useI18n();
+  const texts_ = texts || resolveInvoiceTexts(template, 'parle_teal');
+  const templateColumns: NormalizedTemplateColumn[] = resolveTemplateColumns(template, (template as any)?.columns, f, texts_);
+  const customRows = resolveCustomFieldRows(template, invoice, f);
+  const parleColAlign = (col: NormalizedTemplateColumn) =>
+    col.align === 'left' ? 'text-left' : col.align === 'right' ? 'text-right' : 'text-center';
+  const parleColWidth = (col: NormalizedTemplateColumn) =>
+    col.widthPercent ? { width: col.widthPercent + '%' } : undefined;
+
+  // Per-item cell renderer: preserves Parle's compound rendering (description
+  // sub-lines, qty with Pri/Sec unit) for standard fieldKeys and falls back to
+  // the generic value resolver for custom / user-defined columns.
+  const renderParleCell = (
+    tok: { kind: 'img' } | { kind: 'data'; col: NormalizedTemplateColumn },
+    ctx: { it: any; idx: number; qty: number; mrp: number; displayRate: number; disc: number; totalAmt: number; taxable: number; halfTax: number; taxVal: number; taxRate: number }
+  ): React.ReactNode => {
+    if (tok.kind === 'img') {
+      return (
+        <div className="w-5 h-5 rounded bg-slate-100 border border-slate-300 mx-auto flex items-center justify-center text-[8px]">
+          🍪
+        </div>
+      );
+    }
+    const { it, idx, qty, mrp, displayRate, disc, totalAmt, taxable, halfTax, taxVal, taxRate } = ctx;
+    switch (tok.col.fieldKey) {
+      case 'sno': return <span className="font-sans">{idx + 1}.</span>;
+      case 'description':
+        return (
+          <>
+            <span className="font-sans font-bold">{it.product_name || 'Goods'}</span>
+            {f.showItemDescription !== false && (it.custom_note || it.description || it.notes) && (
+              <span className="text-[8px] text-gray-600 block mt-0.5 font-normal leading-tight">
+                {it.custom_note || it.description || it.notes}
+              </span>
+            )}
+            {f.showSKU && (
+              <span className="text-[7px] text-gray-500 block mt-0.5 font-mono">
+                SKU: {(it as any).sku || `PARLE-${idx + 101}`}
+              </span>
+            )}
+          </>
+        );
+      case 'quantity':
+        return (
+          <>
+            <div className="font-bold">{qty.toFixed(3)}</div>
+            {it.secondary_uom && (
+              <span className="block text-[7px] font-black text-gray-600">
+                {it.selected_uom === it.secondary_uom ? 'Sec' : 'Pri'}
+              </span>
+            )}
+          </>
+        );
+      case 'unit_price':
+      case 'selling_price': return displayRate.toFixed(2);
+      case 'mrp': return mrp.toFixed(2);
+      case 'discount': return disc > 0 ? disc.toFixed(2) : '0.00';
+      case 'gross_amount': return taxable.toFixed(2);
+      case 'tax_rate': return `${taxRate}%`;
+      case 'cgst': return <span className="font-bold">{halfTax.toFixed(2)} {taxVal.toFixed(2)}</span>;
+      case 'sgst': return <span className="font-bold">{halfTax.toFixed(2)} {taxVal.toFixed(2)}</span>;
+      case 'igst': return <span className="font-bold">{taxVal.toFixed(2)}</span>;
+      case 'total_amount': return <span className="font-bold">{totalAmt.toFixed(2)}</span>;
+      default: return cellValueForColumn(tok.col, it, invoice).text;
+    }
+  };
+
+  type ParleTok = { kind: 'img' } | { kind: 'data'; col: NormalizedTemplateColumn };
+  // Parle plan: static image column (when enabled) + user-driven data columns.
+  const parleCells: ParleTok[] = [
+    ...(f.showProductImage ? [{ kind: 'img' as const }] : []),
+    ...templateColumns.map((col) => ({ kind: 'data' as const, col })),
+  ];
+
   const isA5 = paperSize === 'A5';
   const items = invoice.items || [];
   const grandTotal = Number(invoice.grand_total || invoice.total_amount || 0);
@@ -110,13 +205,19 @@ export function ParleDistributorTemplate({
     invoice.doc_type === "estimate" ||
     invoice.invoice_type === "ESTIMATE_NON_GST" ||
     String(invoice.invoice_number || "").toUpperCase().startsWith("EST-");
-  const docTitle = invoice.header_title || (isEstimate ? "TAX ESTIMATE / ESTIMATE" : isQuotation ? "TAX QUOTATION / ESTIMATE" : (invoice.documentTitle || "GST TAX INVOICE"));
-  const docStripTitle = isEstimate ? "TAX ESTIMATE" : isQuotation ? "TAX QUOTATION" : t("GST INVOICE", "GST INVOICE");
-  const docNumLabel = isEstimate ? "Estimate No. : " : isQuotation ? "Quote No. : " : "Invoice No. : ";
-  const docDateLabel = isEstimate ? "Estimate Date : " : isQuotation ? "Quote Date : " : "Date : ";
+  const docTitle = docTitleFor(invoice, texts_, template);
+  const docStripTitle = isEstimate ? texts_.estimateTitle : isQuotation ? texts_.quotationTitle : t("GST INVOICE", "GST INVOICE");
+  const docNumLabel = `${docNoLabelFor(invoice, texts_)} : `;
+  const docDateLabel = `${docDateLabelFor(invoice, texts_)} : `;
 
+  // Full-page sheet (mm = print-physical, matches @page): A4 289mm,
+  // A4-land 202mm, A5 205mm, A5-land 143mm. `tpl-sheet-full` exempts this
+  // from the print rule that zeroes min-heights (the ~75% sheet bug).
+  const sheetMinH = isA5
+    ? (orientation === 'landscape' ? 'min-h-[143mm]' : 'min-h-[205mm]')
+    : (orientation === 'landscape' ? 'min-h-[202mm]' : 'min-h-[289mm]');
   return (
-    <div className={`w-full bg-transparent text-black font-sans ${isA5 ? 'text-[8px] leading-tight p-0.5' : 'text-[10px] leading-tight p-1'} border border-black/40 rounded-md selection:bg-none`}>
+    <div className={`w-full bg-transparent text-black font-sans ${isA5 ? 'text-[8px] leading-tight p-0.5' : 'text-[10px] leading-tight p-1'} border border-black/40 rounded-md selection:bg-none flex flex-col tpl-sheet-full ${sheetMinH}`}>
       {/* ─── TOP COPY TYPE BAR ─── */}
       <div className={`flex justify-between items-center ${isA5 ? 'text-[7.5px] pb-0.5 mb-0.5 px-0.5' : 'text-[9px] pb-0.5 mb-1 px-1'} font-bold border-b border-black`}>
         <span className="font-extrabold uppercase text-blue-900 bg-black/5 px-1.5 py-0.5 rounded border border-gray-400">
@@ -158,9 +259,26 @@ export function ParleDistributorTemplate({
               )}
             </div>
             <div className="text-[9px] font-mono text-left w-full pl-2 space-y-0.5 mt-1">
-              <p><span className="font-sans font-bold">PO / Order Ref: </span>{invoice.po_number || invoice.order_number || '-'}</p>
-              <p><span className="font-sans font-bold">Vehicle No: </span>{invoice.vehicle_number || '-'}</p>
+              {f.showPoNumber !== false && (
+                <p><span className="font-sans font-bold">PO / Order Ref: </span>{invoice.po_number || invoice.order_number || '-'}</p>
+              )}
+              {f.showVehicleNumber !== false && (
+                <p><span className="font-sans font-bold">Vehicle No: </span>{invoice.vehicle_number || '-'}</p>
+              )}
+              {f.showEwayBill !== false && (
+                <p><span className="font-sans font-bold">e-Way Bill: </span>{invoice.eway_bill_number || '-'}</p>
+              )}
+              {f.showChallanNumber !== false && invoice.challan_number && (
+                <p><span className="font-sans font-bold">Challan No: </span>{invoice.challan_number}</p>
+              )}
               <p><span className="font-sans font-bold">Transport: </span>{invoice.transporter_name || invoice.driver_phone || 'Road'}</p>
+              {customRows.length > 0 && (
+                <div className="pt-0.5 space-y-0.5 border-t border-black/20">
+                  {customRows.map((row, rIdx) => (
+                    <p key={rIdx}><span className="font-sans font-bold">{row.label}: </span><span>{row.value}</span></p>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -182,9 +300,10 @@ export function ParleDistributorTemplate({
                 <p className="font-bold text-[9px]">
                   GST : <span className="font-mono">{invoice.customerGST || 'UNREGISTERED'}</span>
                 </p>
+                <CustomerExtrasBlock invoice={invoice} texts={texts_} className="text-teal-900" />
                 {f.showPartyBalance && (
                   <p className="text-[8.5px] font-bold text-red-600 mt-0.5">
-                    Party Balance: {currency.symbol}14,200.00
+                    {texts_.partyBalanceLabel}: {currency.symbol}{Number(invoice.party_previous_balance ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </p>
                 )}
               </div>
@@ -214,19 +333,16 @@ export function ParleDistributorTemplate({
           <table className="w-full border-collapse text-[9px] font-mono">
             <thead>
               <tr className="bg-teal-700 text-white font-sans font-bold text-center border-b border-black">
-                <th className="py-1 px-1 border-r border-teal-800 w-6">Sn.</th>
-                {f.showProductImage && <th className="py-1 px-1 border-r border-teal-800 w-8">IMG</th>}
-                {f.showHSN !== false && <th className="py-1 px-1 border-r border-teal-800 w-16">HSNCODE</th>}
-                <th className="py-1 px-2 border-r border-teal-800 text-left">DESCRIPTION</th>
-                {f.showMRP !== false && <th className="py-1 px-1 border-r border-teal-800 text-right w-12">MRP</th>}
-                <th className="py-1 px-1 border-r border-teal-800 text-right w-12">QTY</th>
-                <th className="py-1 px-1 border-r border-teal-800 text-center w-10">UOM</th>
-                <th className="py-1 px-1 border-r border-teal-800 text-right w-12">RATE</th>
-                <th className="py-1 px-1 border-r border-teal-800 text-right w-14">AMT</th>
-                <th className="py-1 px-1 border-r border-teal-800 text-right w-10">DIS</th>
-                {f.showTaxSplit !== false && <th className="py-1 px-1 border-r border-teal-800 text-right w-14">CGST%</th>}
-                {f.showTaxSplit !== false && <th className="py-1 px-1 border-r border-teal-800 text-right w-14">SGST%</th>}
-                <th className="py-1 px-2 text-right w-16">Amount</th>
+                {parleCells.map((tok, ti) => {
+                  const isLast = ti === parleCells.length - 1;
+                  if (tok.kind === 'img') {
+                    return <th key={ti} className={`py-1 px-1 ${isLast ? '' : 'border-r border-teal-800'} w-8 text-center`}>{texts_.imgLabel}</th>;
+                  }
+                  const align = parleColAlign(tok.col);
+                  const width = parleColWidth(tok.col);
+                  const cls = `py-1 px-1 ${isLast ? '' : 'border-r border-teal-800'} ${align} ${tok.col.fieldKey === 'description' ? 'px-2' : ''}`;
+                  return <th key={ti} className={cls} style={width}>{tok.col.headerTitle}</th>;
+                })}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -256,46 +372,21 @@ export function ParleDistributorTemplate({
                   displayRate = rate;
                 }
 
+                const ctx = { it, idx, qty, mrp, displayRate, disc, totalAmt, taxable, halfTax, taxVal, taxRate };
                 return (
                   <tr key={idx} className="border-b border-gray-200 hover:bg-teal-50/20">
-                    <td className="py-0.5 px-1 text-center border-r border-black font-sans">{idx + 1}.</td>
-                    {f.showProductImage && (
-                      <td className="py-0.5 px-1 text-center border-r border-black">
-                        <div className="w-5 h-5 rounded bg-slate-100 border border-slate-300 mx-auto flex items-center justify-center text-[8px]">
-                          🍪
-                        </div>
-                      </td>
-                    )}
-                    {f.showHSN !== false && <td className="py-0.5 px-1 text-center border-r border-black">{it.hsn_code || '19059020'}</td>}
-                    <td className="py-0.5 px-2 font-sans font-bold border-r border-black text-left">
-                      <span>{it.product_name || 'Goods'}</span>
-                      {f.showItemDescription !== false && (it.custom_note || it.description || it.notes) && (
-                        <span className="text-[8px] text-gray-600 block mt-0.5 font-normal leading-tight">
-                          {it.custom_note || it.description || it.notes}
-                        </span>
-                      )}
-                      {f.showSKU && (
-                        <span className="text-[7px] text-gray-500 block mt-0.5 font-mono">
-                          SKU: {(it as any).sku || `PARLE-${idx + 101}`}
-                        </span>
-                      )}
-                    </td>
-                    {f.showMRP !== false && <td className="py-0.5 px-1 text-right border-r border-black">{mrp.toFixed(2)}</td>}
-                    <td className="py-0.5 px-1 text-right font-bold border-r border-black">
-                      <div>{qty.toFixed(3)}</div>
-                      {it.secondary_uom && (
-                        <span className="block text-[7px] font-black text-gray-600">
-                          {it.selected_uom === it.secondary_uom ? "Sec" : "Pri"}
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-0.5 px-1 text-center border-r border-black font-sans">{it.selected_uom || it.uom || '90G'}</td>
-                    <td className="py-0.5 px-1 text-right border-r border-black">{displayRate.toFixed(2)}</td>
-                    <td className="py-0.5 px-1 text-right border-r border-black">{taxable.toFixed(2)}</td>
-                    <td className="py-0.5 px-1 text-right border-r border-black">{disc > 0 ? disc.toFixed(2) : '0.00'}</td>
-                    {f.showTaxSplit !== false && <td className="py-0.5 px-1 text-right border-r border-black">{halfTax.toFixed(2)} {taxVal.toFixed(2)}</td>}
-                    {f.showTaxSplit !== false && <td className="py-0.5 px-1 text-right border-r border-black">{halfTax.toFixed(2)} {taxVal.toFixed(2)}</td>}
-                    <td className="py-0.5 px-2 text-right font-bold">{totalAmt.toFixed(2)}</td>
+                    {parleCells.map((tok, ti) => {
+                      const isLast = ti === parleCells.length - 1;
+                      let cls = `py-0.5 px-1 ${isLast ? '' : 'border-r border-black'} ${tok.kind === 'data' ? parleColAlign(tok.col) : 'text-center'}`;
+                      if (tok.kind === 'data' && tok.col.fieldKey === 'description') cls += ' font-sans font-bold text-left px-2';
+                      else if (tok.kind === 'data' && tok.col.fieldKey === 'sno') cls += ' font-sans';
+                      else if (tok.kind === 'data' && tok.col.fieldKey === 'uom') cls += ' font-sans';
+                      return (
+                        <td key={ti} className={cls}>
+                          {renderParleCell(tok, ctx)}
+                        </td>
+                      );
+                    })}
                   </tr>
                 );
               })}
@@ -305,24 +396,19 @@ export function ParleDistributorTemplate({
       )}
 
       {/* ─── BARCODE & QR CODE SECTION ─── */}
-      {(f.showBarcode || f.showQR) && (
+      {f.showBarcode && (
         <div className="flex items-center justify-center gap-6 py-1 border-t border-black bg-black/[0.02]">
-          {f.showBarcode && (
-            <div className="flex flex-col items-center">
-              <div className="font-mono text-[8px] tracking-widest bg-white px-2 py-0.5 border border-black">
-                ||||| | |||| ||| |||||||
-              </div>
-              <span className="text-[7px] font-mono">{invoice.invoice_number || 'B000738'}</span>
+          <div className="flex flex-col items-center">
+            <div className="font-mono text-[8px] tracking-widest bg-white px-2 py-0.5 border border-black">
+              ||||| | |||| ||| |||||||
             </div>
-          )}
-          {f.showQR && (
-            <div className="flex items-center gap-1.5 bg-white border border-black p-1 rounded">
-              <div className="size-7 bg-black text-white text-[6px] font-mono flex items-center justify-center font-bold">
-                UPI
-              </div>
-              <div className="text-[7px] font-sans font-bold">Scan to Pay</div>
-            </div>
-          )}
+            <span className="text-[7px] font-mono">{invoice.invoice_number || 'B000738'}</span>
+          </div>
+        </div>
+      )}
+      {paymentQr && (
+        <div className="flex items-center justify-center py-1 border-t border-black bg-black/[0.02]">
+          <PaymentQrBlock paymentQr={paymentQr} texts={texts_} currency={currency} compact />
         </div>
       )}
 
@@ -388,7 +474,7 @@ export function ParleDistributorTemplate({
       )}
 
       {/* ─── TERMS, PAYMENT & SIGNATURES ─── */}
-      <div className="grid grid-cols-12 border-t-2 border-black pt-1 mt-1 text-[8px]">
+      <div className="grid grid-cols-12 border-t-2 border-black pt-1 mt-auto text-[8px]">
         <div className="col-span-5 pr-2 space-y-0.5 text-gray-700">
           {f.showTerms !== false && (
             <div>
@@ -399,8 +485,8 @@ export function ParleDistributorTemplate({
           )}
           {f.showPaymentDetails !== false && (
             <div className="pt-1 font-mono text-[7.5px] text-gray-800">
-              <span className="font-bold text-black font-sans">Payment Details: </span>
-              <span>Bank: HDFC Bank | A/C: 502000492811 | IFSC: HDFC0000003</span>
+              <span className="font-bold text-black font-sans">{texts_.bankDetailsLabel}: </span>
+              <span>{dynamicBank || '—'}</span>
             </div>
           )}
         </div>

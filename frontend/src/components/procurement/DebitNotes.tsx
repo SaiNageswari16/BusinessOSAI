@@ -19,7 +19,7 @@ import {
   CheckCircle2,
   Filter,
 } from "lucide-react";
-import { inventoryApi } from "../../lib/api-client";
+import { inventoryApi, numberSeriesApi } from "../../lib/api-client";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/use-currency";
 import { useStoreLocations } from "@/hooks/use-store-locations";
@@ -27,6 +27,7 @@ import { useTenant } from "@/contexts/tenant-context";
 import { formatDisplayDate } from "@/lib/utils";
 import { printHtmlInPage } from "@/lib/print-helper";
 import { getActiveBillingGst } from "@/lib/receipt-template-store";
+import { renderNoteDocument, resolveNotePrintTemplate } from "@/lib/note-document-renderer";
 import { PaginationControl } from "@/components/ui/PaginationControl";
 
 export interface VendorDebitNoteItem {
@@ -149,9 +150,20 @@ export function DebitNotes() {
     }
   }, [tenant?.id]);
 
-  const handleOpenNew = (preSelectedBillId?: string) => {
-    const nextSeq = String(notes.length + 1).padStart(4, "0");
-    setDnNo(`DN-2026-${nextSeq}`);
+  const handleOpenNew = async (preSelectedBillId?: string) => {
+    // Pre-fill with the configured NumberSeries next number (Settings → Credit/Debit Note
+    // prefix + sequence) rather than a hard-coded DN-2026-xxxx. Falls back to a locally
+    // detected sequence when the peek is unavailable.
+    let dnNum = "";
+    try {
+      const peek = await numberSeriesApi.peekNextNumber("debit_notes");
+      if (peek?.formatted_number) dnNum = peek.formatted_number;
+    } catch { /* fall through */ }
+    if (!dnNum) {
+      const nextSeq = String(notes.length + 1).padStart(4, "0");
+      dnNum = `DN-2026-${nextSeq}`;
+    }
+    setDnNo(dnNum);
     setAmount(1000);
     setReasonCategory("Purchase Return / Defective Goods");
     setNotesText("");
@@ -275,6 +287,10 @@ export function DebitNotes() {
   const paginatedNotes = filteredNotes.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   // Print Debit Note Handler
+  // Respects the user's selected print template for the "debit_note" category
+  // (when one is set), and falls back to a clean uniform layout built from the
+  // active billing GST branding when none is selected. All rendering lives in
+  // the shared note-document-renderer helper.
   const handlePrint = (dn: VendorDebitNoteItem) => {
     const activeBillingGst = getActiveBillingGst(tenant?.id);
     const orgName = activeBillingGst?.trade_name || activeBillingGst?.legal_name || tenant?.name || "BusinessOS AI";
@@ -282,89 +298,30 @@ export function DebitNotes() {
     const orgAddress = activeBillingGst?.address || (tenant as any)?.settings?.address || "Corporate Office";
     const orgPhone = activeBillingGst?.phone || (tenant as any)?.settings?.phone || "+91 98493 44919";
 
-    const printHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Debit Note - ${dn.note_number}</title>
-        <style>
-          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 30px; color: #1e293b; line-height: 1.5; }
-          .header { display: flex; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; }
-          .title { font-size: 26px; font-weight: 800; color: #e11d48; text-transform: uppercase; margin: 0; }
-          .badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; background: #ffe4e6; color: #be123c; margin-top: 6px; }
-          .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 24px 0; }
-          .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; }
-          .card h4 { margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; }
-          .detail-val { font-size: 14px; font-weight: 600; }
-          table { width: 100%; border-collapse: collapse; margin: 24px 0; }
-          th { background: #f1f5f9; padding: 10px 14px; text-align: left; font-size: 12px; color: #475569; text-transform: uppercase; }
-          td { padding: 12px 14px; border-bottom: 1px solid #e2e8f0; font-size: 13px; }
-          .total-box { margin-left: auto; width: 300px; background: #fff1f2; border: 1px solid #fecdd3; border-radius: 8px; padding: 16px; margin-top: 20px; text-align: right; }
-          .total-box h3 { margin: 0; color: #be123c; font-size: 22px; }
-          .footer { margin-top: 40px; border-top: 1px dashed #cbd5e1; padding-top: 15px; font-size: 11px; color: #94a3b8; text-align: center; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div>
-            <h1 class="title">Debit Note (DN)</h1>
-            <span class="badge">${dn.status.toUpperCase()}</span>
-            <p style="margin: 6px 0 0 0; font-size: 13px; color: #64748b;">Voucher Ref: <strong>${dn.note_number}</strong></p>
-          </div>
-          <div style="text-align: right;">
-            <h2 style="margin: 0; font-size: 18px; color: #0f172a;">${orgName}</h2>
-            ${orgGstin ? `<p style="margin: 2px 0; font-size: 12px; color: #475569;">GSTIN: ${orgGstin}</p>` : ""}
-            <p style="margin: 2px 0; font-size: 12px; color: #64748b;">${orgAddress}</p>
-            <p style="margin: 2px 0; font-size: 12px; color: #64748b;">Tel: ${orgPhone}</p>
-          </div>
-        </div>
-
-        <div class="grid">
-          <div class="card">
-            <h4>Issued To Supplier / Vendor</h4>
-            <div class="detail-val" style="font-size: 16px; color: #0f172a;">${dn.supplier_name}</div>
-            <div style="font-size: 12px; color: #64748b; margin-top: 4px;">Registered Business Partner</div>
-          </div>
-          <div class="card">
-            <h4>Debit Details & Reference</h4>
-            <div>Date Issued: <strong>${dn.created_at ? formatDisplayDate(dn.created_at) : "Today"}</strong></div>
-            <div style="margin-top: 4px;">Purchase Invoice Ref: <strong>${dn.bill_number || dn.reference_number || "Direct Adjustment"}</strong></div>
-          </div>
-        </div>
-
-        <table>
-          <thead>
-            <tr>
-              <th>Description / Purpose</th>
-              <th>Reference Document</th>
-              <th style="text-align: right;">Debit Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>
-                <strong>${dn.notes || "Debit adjustment against vendor account"}</strong>
-                <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Deduction applied to supplier accounts payable ledger</div>
-              </td>
-              <td>${dn.bill_number || dn.reference_number || "Direct"}</td>
-              <td style="text-align: right; font-weight: 700; color: #e11d48; font-size: 15px;">
-                ${currency.symbol}${dn.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="total-box">
-          <div style="font-size: 12px; color: #9f1239; margin-bottom: 4px;">NET DEBIT CLAIM</div>
-          <h3>${currency.symbol}${dn.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</h3>
-        </div>
-
-        <div class="footer">
-          This is a computer-generated debit note document authorized under BusinessOS AI.
-        </div>
-      </body>
-      </html>
-    `;
+    const template = resolveNotePrintTemplate("debit_note", tenant?.id);
+    const printHtml = renderNoteDocument("debit_note", {
+      note_number: dn.note_number,
+      amount: Number(dn.amount || 0),
+      status: dn.status,
+      party: dn.supplier_name || "Vendor / Supplier",
+      reference_no: dn.bill_number || dn.reference_number || "Direct Adjustment",
+      reference_label: "Purchase Invoice Ref",
+      reason: dn.notes || "Debit adjustment against vendor account",
+      date_iso: dn.created_at,
+    }, {
+      name: orgName,
+      gstin: orgGstin,
+      address: orgAddress,
+      phone: orgPhone,
+      logo_url: activeBillingGst?.logo_url || null,
+      currency_symbol: currency.symbol,
+      upi_vpa: activeBillingGst?.upi_vpa || null,
+      bank_name: activeBillingGst?.bank_name || null,
+      bank_account_number: activeBillingGst?.bank_account_number || null,
+      bank_ifsc: activeBillingGst?.bank_ifsc || null,
+      signature_url: activeBillingGst?.signature_url || null,
+      terms_and_conditions: activeBillingGst?.terms_and_conditions || null,
+    }, template);
     printHtmlInPage(printHtml, 300);
   };
 
@@ -573,6 +530,8 @@ export function DebitNotes() {
             <PaginationControl
               currentPage={currentPage}
               totalPages={totalPages}
+              totalItems={filteredNotes.length}
+              pageSize={pageSize}
               onPageChange={setCurrentPage}
             />
           </div>

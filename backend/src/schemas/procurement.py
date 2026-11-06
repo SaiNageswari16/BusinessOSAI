@@ -313,7 +313,7 @@ class PurchaseOrderBase(BaseModel):
 
 
 class PurchaseOrderCreate(BaseModel):
-    po_number: str
+    po_number: Optional[str] = None  # optional — backend generates from NumberSeries when not supplied
     supplier_id: uuid.UUID
     purchase_request_id: Optional[uuid.UUID] = None
     delivery_date: Optional[datetime] = None
@@ -489,13 +489,14 @@ class VendorBillItemOverride(BaseModel):
 
 
 class VendorBillCreate(BaseModel):
-    bill_number: str
+    bill_number: Optional[str] = None  # optional — backend generates from NumberSeries (PINV) when not supplied
     purchase_order_id: uuid.UUID
     grn_id: Optional[uuid.UUID] = None  # 3-way match: link bill to GRN
     due_date: Optional[datetime] = None
     total_amount: float
     paid_amount: Optional[float] = 0.0
     status: Optional[str] = "Unpaid"
+    payment_method: Optional[str] = None  # settlement mode chosen at entry (Cash/UPI/Bank/Cheque/...)
     item_overrides: Optional[List[VendorBillItemOverride]] = None  # persist exact per-line values shown at entry
 
 
@@ -560,7 +561,7 @@ class VendorPaymentResponse(VendorPaymentBase):
 # --- Notes schemas ---
 
 class VendorCreditNoteBase(BaseModel):
-    note_number: str = Field(..., max_length=100)
+    note_number: Optional[str] = None  # optional — backend generates from NumberSeries (CN) when not supplied
     supplier_id: uuid.UUID
     amount: float
     status: Optional[str] = "Unapplied"
@@ -584,7 +585,7 @@ class VendorCreditNoteResponse(VendorCreditNoteBase):
 
 
 class VendorDebitNoteBase(BaseModel):
-    note_number: str = Field(..., max_length=100)
+    note_number: Optional[str] = None  # optional — backend generates from NumberSeries (DN) when not supplied
     supplier_id: uuid.UUID
     amount: float
     status: Optional[str] = "Draft"
