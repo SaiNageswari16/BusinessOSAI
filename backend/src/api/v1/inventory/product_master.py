@@ -822,6 +822,8 @@ async def list_products(
     )
     products = result.scalars().all()
 
+    await _enrich_products_from_procurement_and_batches(db, products, ctx.tenant_id)
+
     out = []
     for p in products:
         d = ProductResponse.model_validate(p)
@@ -833,6 +835,206 @@ async def list_products(
         out.append(d)
         
     return paginate(out, total or 0, page, page_size)
+
+
+async def _enrich_products_from_procurement_and_batches(
+    db: AsyncSession,
+    products: list[Product],
+    tenant_id: uuid.UUID,
+) -> None:
+    """Backfill missing HSN, batch, expiry, MRP, selling price, and GST from VendorBills, PurchaseOrderItems, InventoryBatches, and MasterCatalog."""
+    if not products:
+        return
+    try:
+        from src.models.procurement import VendorBill, PurchaseOrderItem
+        from src.models.inventory import MasterCatalogProduct
+
+        need_enrichment = []
+        for p in products:
+            specs = p.specifications if isinstance(p.specifications, dict) else {}
+            if not p.hsn_code and specs.get("hsn_code"):
+                p.hsn_code = str(specs["hsn_code"]).strip()
+            has_batch = bool(specs.get("stock_batch_number") or specs.get("batch_number"))
+            if not p.hsn_code or not has_batch or not p.mrp or float(p.mrp or 0) <= 0:
+                need_enrichment.append(p)
+
+        if not need_enrichment:
+            return
+
+        prod_ids = [p.id for p in need_enrichment if p.id]
+        ov_by_pid: dict[str, dict] = {}
+        ov_by_name: dict[str, dict] = {}
+
+        # 1. Check recent VendorBills item_overrides for this tenant
+        vb_res = await db.execute(
+            select(VendorBill.item_overrides)
+            .where(VendorBill.tenant_id == tenant_id, VendorBill.item_overrides.isnot(None))
+            .order_by(VendorBill.created_at.desc())
+            .limit(200)
+        )
+        for (overrides_list,) in vb_res.all():
+            if not isinstance(overrides_list, list):
+                continue
+            for ov in overrides_list:
+                if not isinstance(ov, dict):
+                    continue
+                pid_str = str(ov.get("product_id") or "").strip().lower()
+                pname_str = str(ov.get("product_name") or "").strip().lower()
+                if pid_str and pid_str not in ov_by_pid:
+                    ov_by_pid[pid_str] = dict(ov)
+                elif pid_str:
+                    for k, v in ov.items():
+                        if v and not ov_by_pid[pid_str].get(k):
+                            ov_by_pid[pid_str][k] = v
+                if pname_str and pname_str not in ov_by_name:
+                    ov_by_name[pname_str] = dict(ov)
+                elif pname_str:
+                    for k, v in ov.items():
+                        if v and not ov_by_name[pname_str].get(k):
+                            ov_by_name[pname_str][k] = v
+
+        # 2. Check PurchaseOrderItems for these products
+        poi_by_pid: dict[str, PurchaseOrderItem] = {}
+        if prod_ids:
+            poi_res = await db.execute(
+                select(PurchaseOrderItem)
+                .where(PurchaseOrderItem.product_id.in_(prod_ids))
+                .order_by(PurchaseOrderItem.created_at.desc())
+            )
+            for poi in poi_res.scalars().all():
+                key = str(poi.product_id).lower()
+                if key not in poi_by_pid or (not poi_by_pid[key].hsn_code and poi.hsn_code):
+                    poi_by_pid[key] = poi
+
+        # 3. Check InventoryBatches for these products
+        batch_by_pid: dict[str, InventoryBatch] = {}
+        if prod_ids:
+            b_res = await db.execute(
+                select(InventoryBatch)
+                .where(InventoryBatch.tenant_id == tenant_id, InventoryBatch.product_id.in_(prod_ids))
+                .order_by(InventoryBatch.remaining_quantity.desc(), InventoryBatch.created_at.desc())
+            )
+            for b in b_res.scalars().all():
+                key = str(b.product_id).lower()
+                if key not in batch_by_pid:
+                    batch_by_pid[key] = b
+
+        # 4. Check MasterCatalogProduct for any still missing HSN
+        mc_by_name: dict[str, MasterCatalogProduct] = {}
+        mc_by_barcode: dict[str, MasterCatalogProduct] = {}
+        still_missing_hsn_names = [
+            p.name.strip().lower()
+            for p in need_enrichment
+            if not p.hsn_code
+            and not (ov_by_pid.get(str(p.id).lower(), {}).get("hsn_code") or ov_by_name.get((p.name or "").strip().lower(), {}).get("hsn_code"))
+            and not (poi_by_pid.get(str(p.id).lower()) and poi_by_pid[str(p.id).lower()].hsn_code)
+            and p.name
+        ]
+        if still_missing_hsn_names:
+            mc_res = await db.execute(
+                select(MasterCatalogProduct)
+                .where(
+                    MasterCatalogProduct.tenant_id == tenant_id,
+                    MasterCatalogProduct.hsn_code.isnot(None),
+                    MasterCatalogProduct.hsn_code != "",
+                )
+                .limit(2000)
+            )
+            for mc in mc_res.scalars().all():
+                if mc.name:
+                    mc_by_name[mc.name.strip().lower()] = mc
+                if mc.barcode:
+                    mc_by_barcode[mc.barcode.strip().lower()] = mc
+
+        dirty = False
+        for p in need_enrichment:
+            pid_key = str(p.id).lower()
+            pname_key = (p.name or "").strip().lower()
+            bcode_key = (p.barcode or "").strip().lower()
+
+            ov = ov_by_pid.get(pid_key) or ov_by_name.get(pname_key) or {}
+            poi = poi_by_pid.get(pid_key)
+            bat = batch_by_pid.get(pid_key)
+            mc = (mc_by_barcode.get(bcode_key) if bcode_key else None) or mc_by_name.get(pname_key)
+
+            specs = dict(p.specifications) if isinstance(p.specifications, dict) else {}
+            specs_changed = False
+
+            # Enrich HSN
+            if not p.hsn_code:
+                found_hsn = (
+                    ov.get("hsn_code")
+                    or (poi.hsn_code if poi else None)
+                    or specs.get("hsn_code")
+                    or specs.get("hsn")
+                    or (mc.hsn_code if mc else None)
+                )
+                if found_hsn and str(found_hsn).strip():
+                    p.hsn_code = str(found_hsn).strip()
+                    specs["hsn_code"] = p.hsn_code
+                    specs_changed = True
+                    dirty = True
+
+            # Enrich Batch & Expiry & Mfg Date
+            found_batch = (
+                specs.get("stock_batch_number")
+                or specs.get("batch_number")
+                or (bat.batch_number if bat else None)
+                or ov.get("batch_number")
+            )
+            if found_batch and str(found_batch).strip() and not specs.get("stock_batch_number"):
+                b_str = str(found_batch).strip()
+                specs["stock_batch_number"] = b_str
+                specs["batch_number"] = b_str
+                specs_changed = True
+
+            found_exp = (
+                specs.get("stock_batch_expiry_date")
+                or specs.get("expiry_date")
+                or (bat.expiry_date.strftime("%Y-%m-%d") if bat and bat.expiry_date else None)
+                or ov.get("expiry_date")
+            )
+            if found_exp and str(found_exp).strip() and not specs.get("stock_batch_expiry_date"):
+                e_str = str(found_exp).strip()[:10]
+                specs["stock_batch_expiry_date"] = e_str
+                specs["expiry_date"] = e_str
+                specs_changed = True
+
+            found_mfg = (
+                specs.get("mfg_date")
+                or (bat.manufacturing_date.strftime("%Y-%m-%d") if bat and bat.manufacturing_date else None)
+            )
+            if found_mfg and str(found_mfg).strip() and not specs.get("mfg_date"):
+                specs["mfg_date"] = str(found_mfg).strip()[:10]
+                specs_changed = True
+
+            # Enrich MRP & Selling Price & Tax
+            if not p.mrp or float(p.mrp or 0) <= 0:
+                found_mrp = float(ov.get("mrp") or (poi.mrp if poi and poi.mrp else 0) or (bat.mrp if bat and bat.mrp else 0) or (mc.mrp if mc and mc.mrp else 0) or 0)
+                if found_mrp > 0:
+                    p.mrp = found_mrp
+                    dirty = True
+
+            if not p.selling_price or float(p.selling_price or 0) <= 0:
+                found_sell = float(ov.get("selling_price") or (poi.selling_price if poi and poi.selling_price else 0) or (bat.selling_price if bat and bat.selling_price else 0) or p.mrp or 0)
+                if found_sell > 0:
+                    p.selling_price = found_sell
+                    dirty = True
+
+            if (p.tax_percent is None or float(p.tax_percent or 0) <= 0):
+                found_tax = ov.get("tax_percent") if ov.get("tax_percent") is not None else (poi.tax_percent if poi and poi.tax_percent is not None else (bat.tax_percent if bat and bat.tax_percent is not None else (mc.tax if mc and mc.tax is not None else None)))
+                if found_tax is not None and float(found_tax or 0) > 0:
+                    p.tax_percent = float(found_tax)
+                    dirty = True
+
+            if specs_changed:
+                p.specifications = specs
+                dirty = True
+
+        if dirty:
+            await db.commit()
+    except Exception as e:
+        print(f"Warning: product enrichment skipped: {e}")
 
 
 def _parse_date_safe(val: Any) -> Optional[datetime]:

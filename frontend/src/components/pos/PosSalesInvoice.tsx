@@ -2249,8 +2249,37 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const rawFactor = p.conversion_factor ?? specs.conversion_factor;
         const conversionFactor = Number(rawFactor) > 0 ? Number(rawFactor) : 1;
 
+        const resolvedHsn = String(
+          p.hsn_code || p.hsn || p.sac_code || p.hsn_sac || specs.hsn_code || specs.hsn || specs.sac_code || ""
+        ).trim();
+        const resolvedBatch = String(
+          p.batch_number || p.stock_batch_number || specs.stock_batch_number || specs.opening_stock_batch_number || specs.batch_number || specs.batch_no || ""
+        ).trim();
+        const rawExp =
+          p.expiry_date || p.exp_date || specs.stock_batch_expiry_date || specs.opening_stock_batch_expiry_date || specs.expiry_date || specs.exp_date || "";
+        const resolvedExpiry = rawExp ? String(rawExp).slice(0, 10) : "";
+        const rawMfg =
+          p.mfg_date || p.manufacturing_date || specs.mfg_date || specs.manufacturing_date || "";
+        const resolvedMfg = rawMfg ? String(rawMfg).slice(0, 10) : "";
+        const resolvedSerial = String(
+          p.imei || p.serial_no || p.serial_number || specs.serial_no || specs.serial_number || specs.imei || ""
+        ).trim();
+        const resolvedWarranty = String(
+          p.warranty || specs.warranty || specs.warranty_period || ""
+        ).trim();
+        const resolvedBrand = String(
+          p.brand_name || (typeof p.brand === "object" ? p.brand?.name : p.brand) || specs.brand || ""
+        ).trim();
+
         combined.push({
           ...p,
+          hsn_code: resolvedHsn,
+          batch_number: resolvedBatch,
+          expiry_date: resolvedExpiry,
+          mfg_date: resolvedMfg,
+          serial_number: resolvedSerial,
+          warranty: resolvedWarranty,
+          brand_name: resolvedBrand,
           wholesale_price: rawWholesale,
           b2b_price: rawB2B,
           min_wholesale_qty: Number(p.min_wholesale_qty || specs.min_wholesale_qty || 1),
@@ -2287,6 +2316,105 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         console.warn("posApi.getProducts error:", e);
       }
 
+      // 3. Also load Inventory Batches & Vendor Bills in parallel to enrich any missing HSN / Batch / Expiry / MRP / GST
+      try {
+        const [batchesRes, billsRes] = await Promise.all([
+          inventoryApi.getBatches().catch(() => []),
+          inventoryApi.getVendorBills().catch(() => []),
+        ]);
+        const bList = (batchesRes as any)?.items || (Array.isArray(batchesRes) ? batchesRes : []);
+        if (Array.isArray(bList) && bList.length > 0) {
+          setBatches(bList);
+        }
+
+        const vBills = (billsRes as any)?.items || (Array.isArray(billsRes) ? billsRes : []);
+        const ovByPid = new Map<string, any>();
+        const ovByName = new Map<string, any>();
+
+        if (Array.isArray(vBills)) {
+          vBills.forEach((bill: any) => {
+            const lineSources = [
+              ...(Array.isArray(bill.item_overrides) ? bill.item_overrides : []),
+              ...(Array.isArray(bill.items) ? bill.items : []),
+            ];
+            lineSources.forEach((ov: any) => {
+              if (!ov) return;
+              const pid = ov.product_id ? String(ov.product_id).trim().toLowerCase() : "";
+              const pname = ov.product_name ? String(ov.product_name).trim().toLowerCase() : "";
+              if (pid) {
+                const prev = ovByPid.get(pid) || {};
+                ovByPid.set(pid, {
+                  ...prev,
+                  hsn_code: prev.hsn_code || ov.hsn_code,
+                  batch_number: prev.batch_number || ov.batch_number,
+                  expiry_date: prev.expiry_date || ov.expiry_date,
+                  mrp: Number(prev.mrp) > 0 ? prev.mrp : ov.mrp,
+                  selling_price: Number(prev.selling_price) > 0 ? prev.selling_price : ov.selling_price,
+                  tax_percent: prev.tax_percent !== undefined ? prev.tax_percent : ov.tax_percent,
+                  uom: prev.uom || ov.uom,
+                });
+              }
+              if (pname) {
+                const prev = ovByName.get(pname) || {};
+                ovByName.set(pname, {
+                  ...prev,
+                  hsn_code: prev.hsn_code || ov.hsn_code,
+                  batch_number: prev.batch_number || ov.batch_number,
+                  expiry_date: prev.expiry_date || ov.expiry_date,
+                  mrp: Number(prev.mrp) > 0 ? prev.mrp : ov.mrp,
+                  selling_price: Number(prev.selling_price) > 0 ? prev.selling_price : ov.selling_price,
+                  tax_percent: prev.tax_percent !== undefined ? prev.tax_percent : ov.tax_percent,
+                  uom: prev.uom || ov.uom,
+                });
+              }
+            });
+          });
+        }
+
+        if (ovByPid.size > 0 || ovByName.size > 0 || (Array.isArray(bList) && bList.length > 0)) {
+          combined.forEach((prod) => {
+            const pidKey = String(prod.id || "").trim().toLowerCase();
+            const pnameKey = String(prod.name || "").trim().toLowerCase();
+            const ov = ovByPid.get(pidKey) || ovByName.get(pnameKey);
+            const matchBatch = Array.isArray(bList)
+              ? bList.find(
+                  (b: any) =>
+                    (b.product_id && String(b.product_id).toLowerCase() === pidKey) ||
+                    (b.product_name && String(b.product_name).trim().toLowerCase() === pnameKey)
+                )
+              : null;
+
+            if (!prod.hsn_code && (ov?.hsn_code || matchBatch?.hsn_code)) {
+              prod.hsn_code = String(ov?.hsn_code || matchBatch?.hsn_code).trim();
+            }
+            if (!prod.batch_number && (matchBatch?.batch_number || ov?.batch_number)) {
+              prod.batch_number = String(matchBatch?.batch_number || ov?.batch_number).trim();
+            }
+            if (!prod.expiry_date && (matchBatch?.expiry_date || ov?.expiry_date)) {
+              prod.expiry_date = String(matchBatch?.expiry_date || ov?.expiry_date).slice(0, 10);
+            }
+            if (!prod.mfg_date && (matchBatch?.mfg_date || matchBatch?.manufacturing_date)) {
+              prod.mfg_date = String(matchBatch?.mfg_date || matchBatch?.manufacturing_date).slice(0, 10);
+            }
+            if ((!prod.mrp || Number(prod.mrp) <= 0) && (Number(ov?.mrp) > 0 || Number(matchBatch?.mrp) > 0)) {
+              prod.mrp = Number(ov?.mrp) || Number(matchBatch?.mrp);
+            }
+            if ((!prod.selling_price || Number(prod.selling_price) <= 0) && (Number(ov?.selling_price) > 0 || Number(matchBatch?.selling_price) > 0 || Number(prod.mrp) > 0)) {
+              prod.selling_price = Number(ov?.selling_price) || Number(matchBatch?.selling_price) || Number(prod.mrp);
+              prod.price = prod.selling_price;
+            }
+            if ((prod.tax_percent === undefined || prod.tax_percent === null || Number(prod.tax_percent) <= 0) && (ov?.tax_percent !== undefined || matchBatch?.tax_percent !== undefined)) {
+              const effT = ov?.tax_percent !== undefined ? Number(ov.tax_percent) : Number(matchBatch?.tax_percent);
+              if (!isNaN(effT) && effT > 0) {
+                prod.tax_percent = effT;
+              }
+            }
+          });
+        }
+      } catch (enrichErr) {
+        console.warn("Could not enrich products from bills/batches:", enrichErr);
+      }
+
       setProducts(combined);
     } catch (err) {
       console.error("Failed to load products for sales invoice:", err);
@@ -2295,7 +2423,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     }
   };
 
-  // Synchronize / enrich invoice items with inventory values (GST & Discount) as soon as products finish loading
+  // Synchronize / enrich invoice items with all available inventory & batch values (HSN, Batch, Expiry, Mfg, MRP, Price, UOM, GST & Discount)
   useEffect(() => {
     if (!products || products.length === 0) return;
     setItems((prevItems) => {
@@ -2309,22 +2437,37 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         // Strictly match by unique ID, barcode, or exact product name — NEVER by shared SKU alone!
         const matched = products.find(
           (p) =>
-            (rawProdId && p.id === rawProdId) ||
+            (rawProdId && String(p.id) === String(rawProdId)) ||
             (rawBarcode && p.barcode && String(p.barcode).toLowerCase().trim() === rawBarcode) ||
             (rawProdName && p.name && p.name.toLowerCase().trim() === rawProdName)
         );
         if (!matched || item.is_free) return item;
 
+        const batchInfo = getProductBatchInfo(matched, Number(item.quantity) || 1);
+        const uomInfo = extractProductUomInfo(matched);
         const invTaxRate = getEffectiveTaxRate(matched);
         const invDisc = extractProductDiscount(matched);
         const invTaxInclusive = matched.is_tax_inclusive !== undefined ? (matched.is_tax_inclusive === true) : item.is_tax_inclusive;
-        const invHsn = matched.hsn_code || item.hsn_code || "";
+        const invHsn = batchInfo.hsn_code || matched.hsn_code || item.hsn_code || "";
 
         let newItem = { ...item };
         let itemModified = false;
 
         if (!newItem.product_id && matched.id) {
           newItem.product_id = matched.id;
+          itemModified = true;
+        }
+        if (!newItem.sku && matched.sku) {
+          newItem.sku = matched.sku;
+          itemModified = true;
+        }
+        if (!newItem.barcode && matched.barcode) {
+          newItem.barcode = matched.barcode;
+          itemModified = true;
+        }
+        if (!newItem.brand && (matched.brand_name || matched.brand)) {
+          newItem.brand = matched.brand_name || (typeof matched.brand === "object" ? matched.brand?.name : matched.brand) || "";
+          newItem.brand_name = newItem.brand;
           itemModified = true;
         }
 
@@ -2348,6 +2491,43 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           itemModified = true;
         }
 
+        // Update Batch, Expiry, Mfg Date, Serial, Warranty if missing on the line item
+        if (!newItem.batch_number && batchInfo.batch_number) {
+          newItem.batch_number = batchInfo.batch_number;
+          if (!newItem.batch_id && batchInfo.batch_id) newItem.batch_id = batchInfo.batch_id;
+          itemModified = true;
+        }
+        if (!newItem.expiry_date && batchInfo.expiry_date) {
+          newItem.expiry_date = batchInfo.expiry_date;
+          itemModified = true;
+        }
+        if (!newItem.mfg_date && batchInfo.mfg_date) {
+          newItem.mfg_date = batchInfo.mfg_date;
+          itemModified = true;
+        }
+        if (!(newItem as any).serial_number && batchInfo.serial_number) {
+          (newItem as any).serial_number = batchInfo.serial_number;
+          itemModified = true;
+        }
+        if (!(newItem as any).warranty && batchInfo.warranty) {
+          (newItem as any).warranty = batchInfo.warranty;
+          itemModified = true;
+        }
+        if ((!newItem.mrp || Number(newItem.mrp) <= 0) && batchInfo.mrp > 0) {
+          newItem.mrp = batchInfo.mrp;
+          itemModified = true;
+        }
+        if ((!newItem.unit_price || Number(newItem.unit_price) <= 0) && batchInfo.unit_price > 0) {
+          newItem.unit_price = batchInfo.unit_price;
+          itemModified = true;
+        }
+        if (!newItem.uom && uomInfo.uom) {
+          newItem.uom = uomInfo.uom;
+          newItem.secondary_uom = uomInfo.secondary_uom;
+          newItem.conversion_factor = uomInfo.conversion_factor;
+          itemModified = true;
+        }
+
         if (itemModified) {
           hasChanges = true;
           return newItem;
@@ -2357,7 +2537,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
 
       return hasChanges ? updated : prevItems;
     });
-  }, [products]);
+  }, [products, batches, items.length]);
 
   useEffect(() => {
     loadUnpaidInvoices();
@@ -2580,30 +2760,124 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   };
 
   const getProductBatchInfo = (prod: any, qty: number = 1, activePricingMode = pricingMode) => {
-    if (!prod) return { batch_number: "", expiry_date: "", mrp: 0, unit_price: 0 };
+    if (!prod) {
+      return {
+        batch_id: undefined,
+        batch_number: "",
+        expiry_date: "",
+        mfg_date: "",
+        hsn_code: "",
+        serial_number: "",
+        warranty: "",
+        warehouse_id: undefined,
+        warehouse_name: "",
+        mrp: 0,
+        unit_price: 0,
+      };
+    }
+    let specs: any = {};
+    if (typeof prod.specifications === "string") {
+      try {
+        specs = JSON.parse(prod.specifications || "{}");
+      } catch {
+        specs = {};
+      }
+    } else if (prod.specifications && typeof prod.specifications === "object") {
+      specs = prod.specifications;
+    }
+
     const basePrice = Number(prod.selling_price || prod.price || prod.mrp || 0);
     const targetPrice = getProductTierPrice(prod, qty, activePricingMode);
 
-    const matchingBatches = batches.filter(
+    const allProductBatches = batches.filter(
       (b) =>
-        (b.product_id === prod.id ||
-          (b.product_name && prod.name && b.product_name.toLowerCase() === prod.name.toLowerCase())) &&
-        Number(b.remaining_quantity || b.quantity || 0) > 0
-    ).sort(
-      (a, b) =>
-        new Date(a.expiry_date || "2099-12-31").getTime() -
-        new Date(b.expiry_date || "2099-12-31").getTime()
+        (b.product_id && prod.id && String(b.product_id) === String(prod.id)) ||
+        (b.product_name && prod.name && b.product_name.toLowerCase().trim() === prod.name.toLowerCase().trim())
     );
 
-    const activeBatch = matchingBatches[0];
+    const inStockBatches = allProductBatches
+      .filter((b) => Number(b.remaining_quantity ?? b.quantity ?? 0) > 0)
+      .sort(
+        (a, b) =>
+          new Date(a.expiry_date || "2099-12-31").getTime() -
+          new Date(b.expiry_date || "2099-12-31").getTime()
+      );
+
+    const activeBatch = inStockBatches[0] || allProductBatches[0];
     const finalPrice =
       activePricingMode === "Retail" && Number(activeBatch?.selling_price) > 0
         ? Number(activeBatch.selling_price)
         : targetPrice;
 
+    const resolvedBatchNumber = String(
+      activeBatch?.batch_number ||
+        prod.batch_number ||
+        prod.stock_batch_number ||
+        specs.stock_batch_number ||
+        specs.opening_stock_batch_number ||
+        specs.batch_number ||
+        specs.batch_no ||
+        ""
+    ).trim();
+
+    const rawExp =
+      activeBatch?.expiry_date ||
+      prod.expiry_date ||
+      prod.exp_date ||
+      specs.stock_batch_expiry_date ||
+      specs.opening_stock_batch_expiry_date ||
+      specs.expiry_date ||
+      specs.exp_date ||
+      "";
+    const resolvedExpiryDate = rawExp ? String(rawExp).slice(0, 10) : "";
+
+    const rawMfg =
+      activeBatch?.mfg_date ||
+      activeBatch?.manufacturing_date ||
+      prod.mfg_date ||
+      prod.manufacturing_date ||
+      specs.mfg_date ||
+      specs.manufacturing_date ||
+      "";
+    const resolvedMfgDate = rawMfg ? String(rawMfg).slice(0, 10) : "";
+
+    const resolvedHsn = String(
+      prod.hsn_code ||
+        prod.hsn ||
+        prod.sac_code ||
+        prod.hsn_sac ||
+        specs.hsn_code ||
+        specs.hsn ||
+        specs.sac_code ||
+        activeBatch?.hsn_code ||
+        ""
+    ).trim();
+
+    const resolvedSerial = String(
+      activeBatch?.imei ||
+        prod.imei ||
+        prod.serial_no ||
+        prod.serial_number ||
+        specs.serial_no ||
+        specs.serial_number ||
+        specs.imei ||
+        ""
+    ).trim();
+
+    const resolvedWarranty = String(
+      prod.warranty || specs.warranty || specs.warranty_period || ""
+    ).trim();
+
     return {
-      batch_number: activeBatch?.batch_number || "",
-      expiry_date: activeBatch?.expiry_date ? String(activeBatch.expiry_date).slice(0, 10) : "",
+      batch_id: activeBatch?.id,
+      batch_number: resolvedBatchNumber,
+      expiry_date: resolvedExpiryDate,
+      mfg_date: resolvedMfgDate,
+      hsn_code: resolvedHsn,
+      serial_number: resolvedSerial,
+      warranty: resolvedWarranty,
+      warehouse_id: activeBatch?.warehouse_id,
+      warehouse_name: activeBatch?.warehouse_name || prod.warehouse || specs.warehouse || "",
       mrp: Number(activeBatch?.mrp) > 0 ? Number(activeBatch.mrp) : (Number(prod.mrp) > 0 ? Number(prod.mrp) : basePrice),
       unit_price: finalPrice,
     };
@@ -2951,9 +3225,13 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       const discInfo = extractProductDiscount(prod);
 
       const chosenBatch = selectedProductBatches[pid];
-      const batchNumber = chosenBatch?.batch_number || batchInfo.batch_number;
-      const expiryDate = chosenBatch?.expiry_date || batchInfo.expiry_date;
-      const mfgDate = chosenBatch?.mfg_date;
+      const batchNumber = chosenBatch?.batch_number || batchInfo.batch_number || "";
+      const rawExpiry = chosenBatch?.expiry_date || batchInfo.expiry_date || "";
+      const expiryDate = rawExpiry ? String(rawExpiry).slice(0, 10) : "";
+      const rawMfg = chosenBatch?.mfg_date || chosenBatch?.manufacturing_date || batchInfo.mfg_date || "";
+      const mfgDate = rawMfg ? String(rawMfg).slice(0, 10) : "";
+      const hsnCode = String(chosenBatch?.hsn_code || batchInfo.hsn_code || prod.hsn_code || "").trim();
+      const brandStr = prod.brand_name || (typeof prod.brand === "object" ? prod.brand?.name : prod.brand) || "";
       const effectiveSellingPrice =
         chosenBatch?.selling_price && Number(chosenBatch.selling_price) > 0
           ? Number(chosenBatch.selling_price)
@@ -2970,6 +3248,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         product_name: prod.name,
         sku: prod.sku || "",
         barcode: prod.barcode || "",
+        brand: brandStr,
+        brand_name: brandStr,
+        hsn_code: hsnCode,
+        serial_number: batchInfo.serial_number || "",
+        warranty: batchInfo.warranty || "",
+        purchase_price: Number(prod.purchase_price || prod.cost_price || 0),
         quantity: qty,
         primary_qty: qty,
         secondary_qty: 0,
@@ -2981,12 +3265,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         base_mrp: rateInfo.base_mrp,
         unit_price: rateInfo.unit_price,
         mrp: rateInfo.mrp,
-        batch_id: chosenBatch?.id,
+        batch_id: chosenBatch?.id || batchInfo.batch_id,
         batch_number: batchNumber,
         expiry_date: expiryDate,
         mfg_date: mfgDate,
-        warehouse_name: chosenBatch?.warehouse_name,
-        warehouse_id: chosenBatch?.warehouse_id,
+        warehouse_name: chosenBatch?.warehouse_name || batchInfo.warehouse_name,
+        warehouse_id: chosenBatch?.warehouse_id || batchInfo.warehouse_id,
         discount_value: discInfo.discount_value,
         discount_type: discInfo.discount_type,
         tax_rate: getEffectiveTaxRate(prod),
@@ -3078,7 +3362,13 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
             ...existingItem,
             sku: existingItem.sku || product.sku || "",
             barcode: existingItem.barcode || String(product.barcode || queryCode).trim(),
-            brand: existingItem.brand || product.brand || product.brand_name || "",
+            brand: existingItem.brand || product.brand_name || (typeof product.brand === "object" ? product.brand?.name : product.brand) || "",
+            hsn_code: existingItem.hsn_code || batchInfo.hsn_code || product.hsn_code || "",
+            batch_number: existingItem.batch_number || incomingBatch,
+            expiry_date: existingItem.expiry_date || batchInfo.expiry_date || "",
+            mfg_date: existingItem.mfg_date || batchInfo.mfg_date || "",
+            serial_number: (existingItem as any).serial_number || batchInfo.serial_number || "",
+            warranty: (existingItem as any).warranty || batchInfo.warranty || "",
             quantity: newQty,
             primary_qty: newPrimaryQty,
             secondary_qty: newSecondaryQty,
@@ -3095,6 +3385,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const uomInfo = extractProductUomInfo(product);
         const discInfo = extractProductDiscount(product);
         const rateInfo = computeItemUomRates(batchInfo.unit_price, batchInfo.mrp, uomInfo);
+        const brandStr = product.brand_name || (typeof product.brand === "object" ? product.brand?.name : product.brand) || "";
 
         const newItem: InvoiceItem = {
           id: targetItemId,
@@ -3102,8 +3393,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           product_name: product.name,
           sku: product.sku || "",
           barcode: String(product.barcode || queryCode).trim(),
-          brand: product.brand || product.brand_name || "",
-          brand_name: product.brand || product.brand_name || "",
+          brand: brandStr,
+          brand_name: brandStr,
+          hsn_code: batchInfo.hsn_code || product.hsn_code || "",
+          serial_number: batchInfo.serial_number || "",
+          warranty: batchInfo.warranty || "",
+          purchase_price: Number(product.purchase_price || product.cost_price || 0),
           quantity: 1,
           primary_qty: 1,
           secondary_qty: 0,
@@ -3115,8 +3410,12 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
           base_mrp: rateInfo.base_mrp,
           unit_price: rateInfo.unit_price,
           mrp: rateInfo.mrp,
+          batch_id: batchInfo.batch_id,
           batch_number: batchInfo.batch_number,
           expiry_date: batchInfo.expiry_date,
+          mfg_date: batchInfo.mfg_date,
+          warehouse_id: batchInfo.warehouse_id,
+          warehouse_name: batchInfo.warehouse_name,
           discount_value: discInfo.discount_value,
           discount_type: discInfo.discount_type,
           tax_rate: getEffectiveTaxRate(product),
@@ -3196,8 +3495,13 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               const currentQty = Number(updated.quantity) || 1;
               const batchInfo = getProductBatchInfo(product, currentQty);
               const rateInfo = computeItemUomRates(batchInfo.unit_price, batchInfo.mrp, uomInfo);
+              const brandStr = product.brand_name || (typeof product.brand === "object" ? product.brand?.name : product.brand) || "";
 
               updated.product_name = product.name;
+              updated.sku = product.sku || "";
+              updated.barcode = product.barcode || "";
+              updated.brand = brandStr;
+              updated.brand_name = brandStr;
               updated.uom = rateInfo.uom;
               updated.secondary_uom = rateInfo.secondary_uom;
               updated.conversion_factor = rateInfo.conversion_factor;
@@ -3206,13 +3510,20 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
               updated.base_mrp = rateInfo.base_mrp;
               updated.unit_price = rateInfo.unit_price;
               updated.mrp = rateInfo.mrp;
-              updated.hsn_code = product.hsn_code || "1905";
+              updated.hsn_code = batchInfo.hsn_code || product.hsn_code || "";
               updated.tax_rate = getEffectiveTaxRate(product);
               updated.is_tax_inclusive = product.is_tax_inclusive === true;
               updated.discount_value = discInfo.discount_value;
               updated.discount_type = discInfo.discount_type;
+              updated.batch_id = batchInfo.batch_id;
               updated.batch_number = batchInfo.batch_number;
               updated.expiry_date = batchInfo.expiry_date;
+              updated.mfg_date = batchInfo.mfg_date;
+              (updated as any).serial_number = batchInfo.serial_number;
+              (updated as any).warranty = batchInfo.warranty;
+              updated.warehouse_id = batchInfo.warehouse_id;
+              updated.warehouse_name = batchInfo.warehouse_name;
+              (updated as any).purchase_price = Number(product.purchase_price || product.cost_price || 0);
               if (!updated.quantity || updated.quantity === 0) {
                 updated.quantity = 1;
                 updated.primary_qty = 1;
@@ -6757,7 +7068,9 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                         e.preventDefault();
                         const curQty = Number(openItem.quantity) || 1;
                         const applyProduct = () => {
-                          const batchInfo = getProductBatchInfo(prod);
+                          const batchInfo = getProductBatchInfo(prod, curQty);
+                          const rateInfo = computeItemUomRates(batchInfo.unit_price, batchInfo.mrp, uomInfo);
+                          const brandStr = prod.brand_name || (typeof prod.brand === "object" ? prod.brand?.name : prod.brand) || "";
                           setItems((prev) =>
                             prev.map((it) => {
                               if (it.id !== dropdownAnchor.itemId) return it;
@@ -6767,23 +7080,32 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
                                 product_name: prod.name,
                                 sku: prod.sku || "",
                                 barcode: prod.barcode || "",
+                                brand: brandStr,
+                                brand_name: brandStr,
                                 search_query: prod.name,
-                                uom: uomInfo.uom,
-                                secondary_uom: uomInfo.secondary_uom,
-                                conversion_factor: uomInfo.conversion_factor,
-                                selected_uom: uomInfo.uom,
-                                base_unit_price: batchInfo.unit_price,
-                                base_mrp: batchInfo.mrp,
+                                uom: rateInfo.uom,
+                                secondary_uom: rateInfo.secondary_uom,
+                                conversion_factor: rateInfo.conversion_factor,
+                                selected_uom: rateInfo.selected_uom,
+                                base_unit_price: rateInfo.base_unit_price,
+                                base_mrp: rateInfo.base_mrp,
                                 primary_qty: curQty,
                                 secondary_qty: 0,
                                 quantity: curQty,
-                                unit_price: batchInfo.unit_price,
-                                mrp: batchInfo.mrp,
+                                unit_price: rateInfo.unit_price,
+                                mrp: rateInfo.mrp,
+                                batch_id: batchInfo.batch_id,
                                 batch_number: batchInfo.batch_number,
                                 expiry_date: batchInfo.expiry_date,
-                                hsn_code: prod.hsn_code || "1905",
+                                mfg_date: batchInfo.mfg_date,
+                                serial_number: batchInfo.serial_number,
+                                warranty: batchInfo.warranty,
+                                warehouse_id: batchInfo.warehouse_id,
+                                warehouse_name: batchInfo.warehouse_name,
+                                purchase_price: Number(prod.purchase_price || prod.cost_price || 0),
+                                hsn_code: batchInfo.hsn_code || prod.hsn_code || "",
                                 tax_rate: getEffectiveTaxRate(prod),
-                                is_tax_inclusive: prod.is_tax_inclusive !== false,
+                                is_tax_inclusive: prod.is_tax_inclusive === true,
                                 discount_value: discInfo.discount_value,
                                 discount_type: discInfo.discount_type,
                                 is_search_open: false,

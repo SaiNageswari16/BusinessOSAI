@@ -125,6 +125,12 @@ async def list_products(
     result = await db.execute(stmt)
     products = result.scalars().all()
 
+    try:
+        from src.api.v1.inventory.product_master import _enrich_products_from_procurement_and_batches
+        await _enrich_products_from_procurement_and_batches(db, products, ctx.tenant_id)
+    except Exception:
+        pass
+
     # Enrich with category name and tier specifications
     out = []
     for p in products:

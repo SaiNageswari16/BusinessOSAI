@@ -1325,39 +1325,98 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
         }
       }
 
-      // Helper to ensure line items have a valid UUID product_id without fallbacks
+      // Helper to ensure line items have a valid UUID product_id without fallbacks and sync all fields to Product Master
       const resolvedItems = await Promise.all(
         items.map(async (it) => {
           let pId = it.product_id;
           const isProdUUID = pId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pId);
-          if (!isProdUUID) {
-            // Find in loaded products
-            const existingProd = products.find(
-              (p) => p.id === pId || p.name.toLowerCase() === (it.product_name || "").toLowerCase()
-            );
-            if (existingProd) {
-              pId = existingProd.id;
-              if (it.hsn_code && !existingProd.hsn_code) {
-                try {
-                  await inventoryApi.updateProduct(existingProd.id, { hsn_code: it.hsn_code });
-                  existingProd.hsn_code = it.hsn_code;
-                } catch { }
-              }
-            } else {
-              // Create actual product on the fly with extracted details (no fallback to products[0].id)
-              const created = await inventoryApi.createProduct({
-                name: (it.product_name || "Procured Item").trim(),
-                hsn_code: it.hsn_code || undefined,
-                uom_name: it.uom || undefined,
-                purchase_price: Number(it.unit_price) || 0,
-                mrp: Number(it.mrp) || 0,
-                selling_price: Number(it.selling_price) || Number(it.mrp) || Number(it.unit_price) || 0,
-                tax_percent: Number(it.tax_rate) || 0,
-                status: "active",
-              });
-              pId = created.id;
-              setProducts((prev) => [created, ...prev]);
+          const existingProd = products.find(
+            (p) => (pId && p.id === pId) || (it.product_name && p.name && p.name.toLowerCase().trim() === it.product_name.toLowerCase().trim())
+          );
+
+          if (existingProd) {
+            pId = existingProd.id;
+            const updatePayload: Record<string, any> = {};
+            if (it.hsn_code && String(it.hsn_code).trim()) {
+              updatePayload.hsn_code = String(it.hsn_code).trim();
+              existingProd.hsn_code = updatePayload.hsn_code;
             }
+            if (Number(it.mrp) > 0) {
+              updatePayload.mrp = Number(it.mrp);
+              (existingProd as any).mrp = updatePayload.mrp;
+            }
+            if (Number(it.selling_price) > 0 || Number(it.mrp) > 0) {
+              updatePayload.selling_price = Number(it.selling_price) || Number(it.mrp);
+              existingProd.selling_price = updatePayload.selling_price;
+            }
+            if (Number(it.unit_price) > 0) {
+              updatePayload.purchase_price = Number(it.unit_price);
+              (existingProd as any).purchase_price = updatePayload.purchase_price;
+            }
+            if (it.tax_rate !== undefined && it.tax_rate !== null && Number(it.tax_rate) >= 0) {
+              updatePayload.tax_percent = Number(it.tax_rate);
+              existingProd.tax_percent = updatePayload.tax_percent;
+            }
+            if (it.uom && String(it.uom).trim()) {
+              updatePayload.uom_name = String(it.uom).trim();
+            }
+            const curSpecs = typeof (existingProd as any).specifications === "object" && (existingProd as any).specifications ? { ...(existingProd as any).specifications } : {};
+            let specsUpdated = false;
+            if (it.hsn_code && String(it.hsn_code).trim()) {
+              curSpecs.hsn_code = String(it.hsn_code).trim();
+              specsUpdated = true;
+            }
+            if (it.batch_number && String(it.batch_number).trim()) {
+              curSpecs.stock_batch_number = String(it.batch_number).trim();
+              curSpecs.batch_number = String(it.batch_number).trim();
+              curSpecs.has_manual_batch = true;
+              updatePayload.stock_batch_number = String(it.batch_number).trim();
+              specsUpdated = true;
+            }
+            if (it.expiry_date && String(it.expiry_date).trim()) {
+              curSpecs.stock_batch_expiry_date = String(it.expiry_date).trim();
+              curSpecs.expiry_date = String(it.expiry_date).trim();
+              updatePayload.stock_batch_expiry_date = String(it.expiry_date).trim();
+              specsUpdated = true;
+            }
+            if (specsUpdated) {
+              updatePayload.specifications = curSpecs;
+              (existingProd as any).specifications = curSpecs;
+            }
+            if (Object.keys(updatePayload).length > 0) {
+              try {
+                await inventoryApi.updateProduct(existingProd.id, updatePayload);
+              } catch { }
+            }
+          } else if (!isProdUUID) {
+            // Create actual product on the fly with all extracted details (no fallback to products[0].id)
+            const newSpecs: Record<string, any> = {};
+            if (it.hsn_code) newSpecs.hsn_code = String(it.hsn_code).trim();
+            if (it.uom) newSpecs.uom = String(it.uom).trim();
+            if (it.batch_number) {
+              newSpecs.stock_batch_number = String(it.batch_number).trim();
+              newSpecs.batch_number = String(it.batch_number).trim();
+              newSpecs.has_manual_batch = true;
+            }
+            if (it.expiry_date) {
+              newSpecs.stock_batch_expiry_date = String(it.expiry_date).trim();
+              newSpecs.expiry_date = String(it.expiry_date).trim();
+            }
+            const created = await inventoryApi.createProduct({
+              name: (it.product_name || "Procured Item").trim(),
+              hsn_code: it.hsn_code || undefined,
+              uom_name: it.uom || undefined,
+              purchase_price: Number(it.unit_price) || 0,
+              mrp: Number(it.mrp) || 0,
+              selling_price: Number(it.selling_price) || Number(it.mrp) || Number(it.unit_price) || 0,
+              tax_percent: Number(it.tax_rate) || 0,
+              stock_batch_number: it.batch_number || undefined,
+              stock_batch_expiry_date: it.expiry_date || undefined,
+              specifications: newSpecs,
+              status: "active",
+            } as any);
+            pId = created.id;
+            setProducts((prev) => [created, ...prev]);
           }
           return {
             product_id: pId,
@@ -1370,6 +1429,8 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             uom: it.uom || undefined,
             mrp: Number(it.mrp) || 0,
             selling_price: Number(it.selling_price) || Number(it.mrp) || 0,
+            batch_number: it.batch_number || undefined,
+            expiry_date: it.expiry_date || undefined,
           };
         })
       );
@@ -1685,7 +1746,8 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
           product_name: foundProd ? foundProd.name : pName,
           hsn_code: it.hsn_code || foundProd?.hsn_code || "",
           uom: it.uom || (foundProd as any)?.uom_name || "PCS",
-          batch_number: it.batch_number || "",
+          batch_number: it.batch_number || (foundProd as any)?.specifications?.stock_batch_number || (foundProd as any)?.specifications?.batch_number || "",
+          expiry_date: it.expiry_date || it.exp_date || (foundProd as any)?.specifications?.stock_batch_expiry_date || (foundProd as any)?.specifications?.expiry_date || "",
           mrp: mrpVal,
           selling_price: sellingVal,
           quantity: Number(it.quantity) || 1,

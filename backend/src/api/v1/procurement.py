@@ -2602,6 +2602,17 @@ async def create_vendor_bill(
         )
         db.add(v_payment)
     
+    # Index item_overrides by product_id and product_name for product & batch enrichment
+    ov_by_pid: dict[str, dict] = {}
+    ov_by_name: dict[str, dict] = {}
+    if payload.item_overrides:
+        for ov_obj in payload.item_overrides:
+            ov_dict = ov_obj.model_dump(mode="json") if hasattr(ov_obj, "model_dump") else dict(ov_obj)
+            if ov_dict.get("product_id"):
+                ov_by_pid[str(ov_dict["product_id"]).lower()] = ov_dict
+            if ov_dict.get("product_name"):
+                ov_by_name[str(ov_dict["product_name"]).strip().lower()] = ov_dict
+
     # Update PO status to Billed
     po = await db.get(PurchaseOrder, payload.purchase_order_id)
     po_items = []
@@ -2613,7 +2624,15 @@ async def create_vendor_bill(
         items = items_res.scalars().all()
         for it in items:
             prod = await db.get(Product, it.product_id)
-            
+            ov = (
+                ov_by_pid.get(str(it.product_id).lower())
+                if it.product_id
+                else None
+            )
+            if not ov and prod and prod.name:
+                ov = ov_by_name.get(prod.name.strip().lower())
+            ov = ov or {}
+
             # Ensure GRN line item is recorded
             if resolved_grn_id:
                 grn_it = GoodsReceivedNoteItem(
@@ -2625,9 +2644,9 @@ async def create_vendor_bill(
                     quantity_rejected=0
                 )
                 db.add(grn_it)
-            
+
             # DIRECT PURCHASE INVOICE:
-            # Automatically increment product stock and update cost!
+            # Automatically increment product stock and update cost, HSN, MRP, Selling Price, GST, and Batch!
             if bill_status in ("Paid", "Partial", "Unpaid", "Received", "Billed"):
                 if prod:
                     add_qty = int(it.quantity)
@@ -2636,7 +2655,71 @@ async def create_vendor_bill(
                         prod.on_hand_stock = (prod.on_hand_stock or 0) + add_qty
                     if it.unit_price and float(it.unit_price) > 0:
                         prod.purchase_price = it.unit_price
-                    
+
+                    eff_hsn = (ov.get("hsn_code") or it.hsn_code or "").strip()
+                    if eff_hsn:
+                        prod.hsn_code = eff_hsn
+                        if not it.hsn_code:
+                            it.hsn_code = eff_hsn
+
+                    eff_mrp = float(ov.get("mrp") or it.mrp or 0.0)
+                    if eff_mrp > 0:
+                        prod.mrp = eff_mrp
+                        if not it.mrp:
+                            it.mrp = eff_mrp
+
+                    eff_sell = float(ov.get("selling_price") or it.selling_price or eff_mrp or 0.0)
+                    if eff_sell > 0:
+                        prod.selling_price = eff_sell
+                        if not it.selling_price:
+                            it.selling_price = eff_sell
+
+                    eff_tax = ov.get("tax_percent") if ov.get("tax_percent") is not None else it.tax_percent
+                    if eff_tax is not None and float(eff_tax) >= 0:
+                        prod.tax_percent = float(eff_tax)
+
+                    eff_uom = (ov.get("uom") or it.uom or "").strip()
+                    eff_batch = (ov.get("batch_number") or getattr(it, "batch_number", None) or "").strip()
+                    eff_expiry = (ov.get("expiry_date") or getattr(it, "expiry_date", None) or "").strip()
+
+                    specs = dict(prod.specifications) if isinstance(prod.specifications, dict) else {}
+                    if eff_hsn:
+                        specs["hsn_code"] = eff_hsn
+                    if eff_uom:
+                        specs["uom"] = eff_uom
+                        specs.setdefault("primary_uom", eff_uom)
+                    if eff_batch:
+                        specs["stock_batch_number"] = eff_batch
+                        specs["batch_number"] = eff_batch
+                        specs["has_manual_batch"] = True
+                    if eff_expiry:
+                        specs["stock_batch_expiry_date"] = eff_expiry
+                        specs["expiry_date"] = eff_expiry
+                    if ov.get("discount_value") is not None and float(ov.get("discount_value") or 0) > 0:
+                        specs["discount_value"] = float(ov["discount_value"])
+                        specs["discount_type"] = ov.get("discount_type") or "percent"
+                    prod.specifications = specs
+
+                    # Sync InventoryBatch if batch_number or expiry_date was captured on the Purchase Invoice
+                    if eff_batch or eff_expiry:
+                        try:
+                            from src.api.v1.inventory.product_master import _sync_product_inventory_batch
+                            await _sync_product_inventory_batch(
+                                db,
+                                prod,
+                                {
+                                    "batch_number": eff_batch,
+                                    "stock_batch_number": eff_batch,
+                                    "expiry_date": eff_expiry,
+                                    "stock_batch_expiry_date": eff_expiry,
+                                    "supplier_invoice_number": bill.bill_number,
+                                    "has_manual_batch": True,
+                                },
+                                ctx,
+                            )
+                        except Exception:
+                            pass
+
                     try:
                         from src.models.inventory import StockMovement
                         movement_num = f"SM-PINV-{uuid.uuid4().hex[:6].upper()}"
@@ -2661,13 +2744,15 @@ async def create_vendor_bill(
                     id=it.id,
                     product_id=it.product_id,
                     product_name=prod.name if prod else "Unknown Product",
-                    hsn_code=it.hsn_code or (prod.hsn_code if prod else None),
-                    uom=it.uom,
-                    mrp=float(it.mrp) if it.mrp is not None else None,
-                    selling_price=float(it.selling_price) if it.selling_price is not None else None,
+                    hsn_code=ov.get("hsn_code") or it.hsn_code or (prod.hsn_code if prod else None),
+                    uom=ov.get("uom") or it.uom,
+                    mrp=float(ov["mrp"]) if ov.get("mrp") is not None else (float(it.mrp) if it.mrp is not None else None),
+                    selling_price=float(ov["selling_price"]) if ov.get("selling_price") is not None else (float(it.selling_price) if it.selling_price is not None else None),
                     quantity=float(it.quantity),
                     unit_price=float(it.unit_price),
-                    tax_percent=float(it.tax_percent)
+                    tax_percent=float(it.tax_percent),
+                    batch_number=ov.get("batch_number"),
+                    expiry_date=ov.get("expiry_date"),
                 )
             )
 
@@ -5077,9 +5162,13 @@ Extract the following JSON structure:
           "item_number": 1,
           "product_name": "AP APEX AB2 1 LT",
           "hsn_code": "32091090",
+          "batch_number": "BAT-2026-01",
+          "expiry_date": "2028-08-31",
+          "mfg_date": "2026-08-01",
           "quantity": 3.0,
           "uom": "Nos",
           "mrp": 379.0,
+          "discount_value": 0.0,
           "tax_inclusive_rate": 368.16,
           "tax_exclusive_rate": 312.00,
           "unit_price": 312.00,
@@ -5335,10 +5424,15 @@ Extract the following JSON structure:
           "product_name": "AP APEX AB2 1 LT",
           "description": "AP APEX AB2 1 LT",
           "hsn_code": "32091090",
+          "batch_number": "BAT-2026-01",
+          "expiry_date": "2028-08-31",
+          "mfg_date": "2026-08-01",
           "quantity": 3.0,
           "uom": "Nos",
           "units": "Nos",
           "packing": "1 LT",
+          "mrp": 379.0,
+          "discount_value": 0.0,
           "tax_inclusive_rate": 368.16,
           "tax_exclusive_rate": 312.00,
           "unit_price": 312.00,
