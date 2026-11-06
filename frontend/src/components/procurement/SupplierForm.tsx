@@ -47,6 +47,7 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
   const [type, setType] = useState<string>("Manufacturer");
   const [categoryId, setCategoryId] = useState<string>("");
   const [creditLimit, setCreditLimit] = useState<number>(500000);
+  const [openingBalance, setOpeningBalance] = useState<number>(0);
   const [rating, setRating] = useState<number>(5.0);
   const [statusVal, setStatusVal] = useState<string>("Active");
 
@@ -132,6 +133,7 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
         if (existingMatch.type) setType(existingMatch.type);
         if (existingMatch.category_id) setCategoryId(existingMatch.category_id);
         if (existingMatch.credit_limit) setCreditLimit(Number(existingMatch.credit_limit));
+        if (existingMatch.opening_balance) setOpeningBalance(Number(existingMatch.opening_balance));
         if (existingMatch.rating) setRating(Number(existingMatch.rating));
         if (existingMatch.status) setStatusVal(existingMatch.status);
         if (existingMatch.phone) setPhone(existingMatch.phone);
@@ -246,6 +248,7 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
             setType(existing.type || "Manufacturer");
             setCategoryId(existing.category_id || "");
             setCreditLimit(existing.credit_limit || 500000);
+            setOpeningBalance(existing.opening_balance || 0);
             setRating(existing.rating || 5.0);
             setStatusVal(existing.status || "Active");
             setProductsDesc(existing.products_desc || "");
@@ -345,6 +348,7 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
           type,
           company_name: companyName || name,
           credit_limit: Number(creditLimit),
+          opening_balance: Number(openingBalance) || 0,
           rating: Number(rating),
           products_desc: finalDesc,
           category_id: categoryId || undefined,
@@ -359,6 +363,7 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
           type,
           company_name: companyName || name,
           credit_limit: Number(creditLimit),
+          opening_balance: Number(openingBalance) || 0,
           rating: Number(rating),
           products_desc: finalDesc,
           category_id: categoryId || undefined,
@@ -771,13 +776,30 @@ export function SupplierForm({ supplierId, onClose, onSaved }: SupplierFormProps
               <div>
                 <label className="text-[11px] font-semibold text-slate-500 block mb-1">
                   Credit Limit Amount ({currency.symbol})
-                                                  </label>
+                </label>
                 <input
                   type="number"
                   value={creditLimit}
                   onChange={(e) => setCreditLimit(Number(e.target.value) || 0)}
                   className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-teal-500"
                 />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+                  Opening Balance ({currency.symbol})
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={openingBalance}
+                  onChange={(e) => setOpeningBalance(Number(e.target.value) || 0)}
+                  placeholder="0.00"
+                  className="w-full h-9 bg-slate-50 border border-slate-300 rounded-xl px-3 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-teal-500"
+                />
+                <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">
+                  Carry-forward amount already due to this supplier (added to outstanding bills in AP / payments).
+                </p>
               </div>
 
               <div>

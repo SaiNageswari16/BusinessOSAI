@@ -303,11 +303,17 @@ class VendorBill(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
 
 class VendorPayment(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     __tablename__ = "erp_vendor_payments"
-    
-    vendor_bill_id = mapped_column(ForeignKey("erp_vendor_bills.id", ondelete="CASCADE"), nullable=False)
+
+    # Nullable: supplier-level payments (e.g. settling the supplier's opening
+    # balance) have no vendor bill behind them.
+    vendor_bill_id = mapped_column(ForeignKey("erp_vendor_bills.id", ondelete="CASCADE"), nullable=True)
     vendor_bill: Mapped[VendorBill] = relationship(back_populates="payments")
     company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
-    
+
+    # Optional links for supplier-level (non-bill) payments
+    supplier_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    applies_to_opening_balance: Mapped[bool] = mapped_column(Boolean, default=False)
+
     payment_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     payment_method: Mapped[str] = mapped_column(String(100), default="Bank Transfer") # Cash, Bank Transfer, Card, UPI
     amount_paid: Mapped[float] = mapped_column(Numeric(15, 2), default=0.0)

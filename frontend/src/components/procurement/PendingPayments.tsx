@@ -21,6 +21,40 @@ export function PendingPayments() {
   const [referenceNumber, setReferenceNumber] = useState("");
   const [printedPayment, setPrintedPayment] = useState<any>(null);
 
+  // ── Opening-balance (carry-forward AP) settlement ──
+  const [openingSuppliers, setOpeningSuppliers] = useState<any[]>([]);
+  const [openingSettle, setOpeningSettle] = useState<{ supplier: any; amount: number } | null>(null);
+
+  const fetchOpeningPayables = async () => {
+    try {
+      const list = await inventoryApi.getSupplierPayables();
+      setOpeningSuppliers((list || []).filter((s: any) => Number(s.opening_balance || 0) > 0));
+    } catch { /* opening balance section is optional */ }
+  };
+
+  const settleOpeningBalance = async () => {
+    if (!openingSettle || openingSettle.amount <= 0) return;
+    try {
+      await inventoryApi.createVendorPayment({
+        supplier_name: openingSettle.supplier.name,
+        amount_paid: Number(openingSettle.amount),
+        payment_method: "Bank Transfer",
+        reference_number: `OPEN-${Math.floor(100000 + Math.random() * 900000)}`,
+        applies_to_opening_balance: true,
+        notes: "Opening balance settlement",
+      });
+      toast.success(`Opening balance settled for ${openingSettle.supplier.name}`);
+      setOpeningSettle(null);
+      fetchOpeningPayables();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to settle opening balance");
+    }
+  };
+
+  useEffect(() => {
+    fetchOpeningPayables();
+  }, []);
+
   const fetchPendingBills = async () => {
     setLoading(true);
     try {
@@ -100,6 +134,56 @@ export function PendingPayments() {
         </h2>
         <p className="text-sm text-muted-foreground">Manage accounts payable, dues, and vendor aging.</p>
       </div>
+
+      {/* ── Opening-balance (carry-forward AP) settlement ── */}
+      {openingSuppliers.length > 0 && (
+        <div className="bg-card border border-amber-500/30 p-5 rounded-xl shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-600 border border-amber-500/30">
+              Opening Balance AP
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {openingSuppliers.length} supplier{openingSuppliers.length > 1 ? "s" : ""} with carry-forward payable. Settling an opening balance decrements the supplier's stored balance.
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {openingSuppliers.map((s) => (
+              <div
+                key={s.supplier_id}
+                className={`p-3 rounded-lg border flex items-center justify-between gap-3 ${
+                  openingSettle?.supplier.supplier_id === s.supplier_id ? "border-amber-500 bg-amber-50/40" : "border-border bg-muted/30"
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-bold truncate">{s.name}</div>
+                  <div className="text-[11px] text-muted-foreground font-mono">{s.code}</div>
+                  <div className="mt-1 flex items-center gap-3 text-[11px]">
+                    <span className="text-rose-600 font-bold">Opening {currency.symbol}{Number(s.opening_balance || 0).toLocaleString("en-IN")}</span>
+                    <span className="text-amber-600 font-bold">Payable {currency.symbol}{Number(s.total_payable || 0).toLocaleString("en-IN")}</span>
+                  </div>
+                </div>
+                {openingSettle && openingSettle.supplier.supplier_id === s.supplier_id ? (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <input
+                      type="number"
+                      min={0}
+                      value={openingSettle.amount}
+                      onChange={(e) => setOpeningSettle({ supplier: s, amount: Number(e.target.value) || 0 })}
+                      className="w-28 h-8 px-2 rounded-lg border border-amber-400 bg-white text-xs font-mono focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                    <Button size="sm" onClick={settleOpeningBalance} className="h-8 text-xs">Settle</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setOpeningSettle(null)} className="h-8 text-xs">✕</Button>
+                  </div>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => setOpeningSettle({ supplier: s, amount: Number(s.opening_balance || 0) })} className="h-8 text-xs shrink-0">
+                    Settle
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="py-16 text-center text-muted-foreground">

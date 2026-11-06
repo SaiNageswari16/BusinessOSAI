@@ -5026,6 +5026,7 @@ export const inventoryApi = {
 
   getVendorPayments: () => request<any[]>("GET", "/inventory/procurement/vendor-payments"),
   createVendorPayment: (data: any) => request<any>("POST", "/inventory/procurement/vendor-payments", data),
+  getSupplierPayables: () => request<any[]>("GET", "/inventory/procurement/suppliers/payables"),
 
   getVendorCreditNotes: () => request<any[]>("GET", "/inventory/procurement/credit-notes"),
   createVendorCreditNote: (data: any) => request<any>("POST", "/inventory/procurement/credit-notes", data),

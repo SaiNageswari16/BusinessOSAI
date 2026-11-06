@@ -33,6 +33,7 @@ class SupplierBase(BaseModel):
     type: Optional[str] = "Manufacturer"
     products_desc: Optional[str] = None
     credit_limit: Optional[float] = 0.0
+    opening_balance: Optional[float] = 0.0
     rating: Optional[float] = 5.0
     status: Optional[str] = "Active"
     company_name: Optional[str] = None
@@ -61,6 +62,7 @@ class SupplierUpdate(BaseModel):
     type: Optional[str] = None
     products_desc: Optional[str] = None
     credit_limit: Optional[float] = None
+    opening_balance: Optional[float] = None
     rating: Optional[float] = None
     status: Optional[str] = None
     company_name: Optional[str] = None
@@ -540,6 +542,9 @@ class VendorPaymentBase(BaseModel):
     amount_paid: float
     reference_number: Optional[str] = Field(None, max_length=100)
     notes: Optional[str] = None
+    # True → this payment settles the supplier's opening (carry-forward)
+    # balance directly instead of a vendor bill. No bill is created.
+    applies_to_opening_balance: bool = False
 
 
 class VendorPaymentCreate(VendorPaymentBase):

@@ -248,6 +248,47 @@ async def create_supplier_category(
 
 # ─── Suppliers / Vendors CRUD ─────────────────────────────────────
 
+@router.get("/suppliers/payables")
+async def get_supplier_payables(
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("view:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Per-supplier accounts-payable totals: opening (carry-forward) balance +
+    outstanding vendor bills. The opening balance is first-class here so AP
+    figures include prior-period payables, not just current-period bills."""
+    suppliers = await db.scalars(
+        select(Supplier).where(Supplier.tenant_id == ctx.tenant_id).order_by(Supplier.name)
+    )
+    unpaid = await db.scalars(
+        select(VendorBill).where(
+            VendorBill.tenant_id == ctx.tenant_id,
+            VendorBill.status.in_(["Unpaid", "Partially Paid", "Overdue", "Draft"]),
+        )
+    )
+    bills_by_supplier: dict[uuid.UUID, list] = {}
+    for b in unpaid:
+        po = await db.get(PurchaseOrder, b.purchase_order_id)
+        if po and po.supplier_id:
+            bills_by_supplier.setdefault(po.supplier_id, []).append(b)
+
+    out = []
+    for s in suppliers:
+        s_bills = bills_by_supplier.get(s.id, [])
+        bills_outstanding = round(sum(float(b.total_amount or 0) - float(b.paid_amount or 0) for b in s_bills), 2)
+        opening = float(s.opening_balance or 0.0)
+        out.append({
+            "supplier_id": s.id,
+            "name": s.name,
+            "code": s.code,
+            "opening_balance": opening,
+            "bills_outstanding": bills_outstanding,
+            "out_bills_count": len(s_bills),
+            "total_payable": round(opening + bills_outstanding, 2),
+            "credit_limit": float(s.credit_limit or 0.0),
+        })
+    return out
+
+
 @router.get("/suppliers", response_model=List[SupplierResponse])
 @router.get("/vendors", response_model=List[SupplierResponse])
 async def list_suppliers(
@@ -295,6 +336,7 @@ async def list_suppliers(
                 type=s.type,
                 products_desc=s.products_desc,
                 credit_limit=float(s.credit_limit),
+                opening_balance=float(getattr(s, "opening_balance", 0.0) or 0.0),
                 rating=float(s.rating),
                 status=s.status,
                 company_name=s.company_name,
@@ -619,6 +661,7 @@ async def onboard_supplier(
         type=payload.type,
         products_desc=payload.products_desc,
         credit_limit=payload.credit_limit,
+        opening_balance=payload.opening_balance or 0.0,
         rating=payload.rating,
         status=payload.status or "Active",
         company_name=payload.company_name,
@@ -2990,6 +3033,49 @@ async def create_vendor_payment(
     bill = None
     resolved_supplier_name = payload.supplier_name
     target_bill_id = payload.vendor_bill_id
+
+    # ── Supplier-level settlement: pay down the supplier's opening balance ──
+    # No vendor bill is synthesized; the payment is logged with the supplier
+    # link and the opening balance itself is decremented.
+    if payload.applies_to_opening_balance and not target_bill_id:
+        _supp = await db.scalar(
+            select(Supplier).where(
+                Supplier.tenant_id == ctx.tenant_id,
+                Supplier.name.ilike(f"%{(payload.supplier_name or '').strip()}%")
+            )
+        )
+        if not _supp:
+            raise HTTPException(status_code=404, detail="Supplier not found to settle opening balance.")
+        _new_opening = max(0.0, float(_supp.opening_balance or 0.0) - float(payload.amount_paid))
+        _supp.opening_balance = _new_opening
+        _op = VendorPayment(
+            tenant_id=ctx.tenant_id,
+            company_id=ctx.active_company_id,
+            vendor_bill_id=None,
+            supplier_id=_supp.id,
+            applies_to_opening_balance=True,
+            payment_date=(payload.payment_date.replace(tzinfo=None) if payload.payment_date else clock.utc_naive()),
+            payment_method=payload.payment_method or "Bank Transfer",
+            amount_paid=payload.amount_paid,
+            reference_number=payload.reference_number,
+        )
+        db.add(_op)
+        await db.commit()
+        await db.refresh(_op)
+        return VendorPaymentResponse(
+            id=_op.id,
+            vendor_bill_id=None,
+            bill_number="Opening Balance Settlement",
+            supplier_name=_supp.name,
+            payment_date=_op.payment_date,
+            payment_method=_op.payment_method,
+            amount_paid=float(_op.amount_paid),
+            reference_number=_op.reference_number,
+            notes=payload.notes or f"Opening balance settlement: {_new_opening:,.2f} remaining",
+            created_at=_op.created_at,
+            updated_at=_op.updated_at,
+        )
+
     if target_bill_id:
         bill = await db.get(VendorBill, target_bill_id)
         if not bill:
