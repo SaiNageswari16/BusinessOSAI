@@ -18,6 +18,8 @@ import {
   Eye,
   CheckCircle2,
   Filter,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { inventoryApi, numberSeriesApi } from "../../lib/api-client";
 import { toast } from "sonner";
@@ -63,8 +65,9 @@ export function DebitNotes() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
-  // Modal State for Generating DN
+  // Modal State for Generating / Editing DN
   const [isOpen, setIsOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dnNo, setDnNo] = useState("");
   const [supplierId, setSupplierId] = useState("");
@@ -73,6 +76,7 @@ export function DebitNotes() {
   const [amount, setAmount] = useState<number | string>(1000);
   const [reasonCategory, setReasonCategory] = useState("Purchase Return / Defective Goods");
   const [notesText, setNotesText] = useState("");
+  const [noteStatus, setNoteStatus] = useState("Issued");
 
   // Voucher Detail View Modal State
   const [viewingVoucher, setViewingVoucher] = useState<VendorDebitNoteItem | null>(null);
@@ -152,6 +156,8 @@ export function DebitNotes() {
   }, [tenant?.id]);
 
   const handleOpenNew = async (preSelectedBillId?: string) => {
+    setEditingId(null);
+    setNoteStatus("Issued");
     // Pre-fill with the configured NumberSeries next number (Settings → Credit/Debit Note
     // prefix + sequence) rather than a hard-coded DN-2026-xxxx. Falls back to a locally
     // detected sequence when the peek is unavailable.
@@ -184,6 +190,46 @@ export function DebitNotes() {
     setIsOpen(true);
   };
 
+  const handleOpenEdit = (dn: VendorDebitNoteItem) => {
+    setEditingId(dn.id);
+    setDnNo(dn.note_number || "");
+    setSupplierId(dn.supplier_id || suppliers.find((s) => s.name === dn.supplier_name)?.id || "");
+    setSelectedBillId(dn.vendor_bill_id || "");
+    setBillReference(dn.bill_number || dn.reference_number || "");
+    setAmount(Number(dn.amount || 0));
+    setNoteStatus(dn.status || "Issued");
+    const catMatch = (dn.notes || "").match(/^\[Category:\s*([^\]]+)\]\s*(?:•\s*)?(.*)$/);
+    if (catMatch) {
+      setReasonCategory(catMatch[1].trim());
+      setNotesText(catMatch[2].trim());
+    } else {
+      setReasonCategory("Purchase Return / Defective Goods");
+      setNotesText(dn.notes || "");
+    }
+    setIsOpen(true);
+  };
+
+  const handleDelete = async (dn: VendorDebitNoteItem) => {
+    if (!window.confirm(`Delete Vendor Debit Note ${dn.note_number}?`)) return;
+    try {
+      if (dn.id && !String(dn.id).startsWith("dn-loc-")) {
+        await inventoryApi.deleteVendorDebitNote(dn.id);
+      }
+      try {
+        const existing = JSON.parse(localStorage.getItem(localStorageKey) || "[]");
+        const updated = existing.filter(
+          (it: any) => it.id !== dn.id && it.note_number !== dn.note_number
+        );
+        localStorage.setItem(localStorageKey, JSON.stringify(updated));
+      } catch (e) {}
+      setNotes((prev) => prev.filter((it) => it.id !== dn.id && it.note_number !== dn.note_number));
+      if (viewingVoucher?.id === dn.id) setViewingVoucher(null);
+      toast.success(`Vendor Debit Note ${dn.note_number} deleted.`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete Debit Note");
+    }
+  };
+
   const handleBillSelectionChange = (bId: string) => {
     setSelectedBillId(bId);
     if (!bId) {
@@ -208,47 +254,83 @@ export function DebitNotes() {
 
     setIsSubmitting(true);
     try {
-      await inventoryApi.createVendorDebitNote({
-        note_number: dnNo.trim(),
-        supplier_id: supplierId || undefined,
-        amount: Number(amount),
-        vendor_bill_id: selectedBillId || undefined,
-        reference_number: billReference.trim() || undefined,
-        notes: fullNotes,
-        status: "Issued",
-      });
+      if (editingId) {
+        if (!String(editingId).startsWith("dn-loc-")) {
+          await inventoryApi.updateVendorDebitNote(editingId, {
+            note_number: dnNo.trim(),
+            supplier_id: supplierId || undefined,
+            amount: Number(amount),
+            vendor_bill_id: selectedBillId || undefined,
+            reference_number: billReference.trim() || undefined,
+            notes: fullNotes,
+            status: noteStatus || "Issued",
+          });
+        }
+        try {
+          const existing = JSON.parse(localStorage.getItem(localStorageKey) || "[]");
+          const updated = existing.map((it: any) =>
+            it.id === editingId || it.note_number === dnNo.trim()
+              ? {
+                  ...it,
+                  note_number: dnNo.trim(),
+                  supplier_id: supplierId,
+                  supplier_name: suppObj.name,
+                  amount: Number(amount),
+                  status: noteStatus || "Issued",
+                  reference_number: billReference.trim() || undefined,
+                  bill_number: billReference.trim() || undefined,
+                  vendor_bill_id: selectedBillId || undefined,
+                  notes: fullNotes,
+                }
+              : it
+          );
+          localStorage.setItem(localStorageKey, JSON.stringify(updated));
+        } catch (e) {}
+        toast.success(`Vendor Debit Note ${dnNo} updated successfully.`);
+      } else {
+        await inventoryApi.createVendorDebitNote({
+          note_number: dnNo.trim(),
+          supplier_id: supplierId || undefined,
+          amount: Number(amount),
+          vendor_bill_id: selectedBillId || undefined,
+          reference_number: billReference.trim() || undefined,
+          notes: fullNotes,
+          status: "Issued",
+        });
 
-      // Save to localStorage for instant local reactivity
-      const newEntry: VendorDebitNoteItem = {
-        id: `dn-loc-${Date.now()}`,
-        note_number: dnNo.trim(),
-        supplier_id: supplierId,
-        supplier_name: suppObj.name,
-        amount: Number(amount),
-        status: "Issued",
-        reference_number: billReference.trim() || undefined,
-        bill_number: billReference.trim() || undefined,
-        vendor_bill_id: selectedBillId || undefined,
-        notes: fullNotes,
-        created_at: new Date().toISOString(),
-      };
+        // Save to localStorage for instant local reactivity
+        const newEntry: VendorDebitNoteItem = {
+          id: `dn-loc-${Date.now()}`,
+          note_number: dnNo.trim(),
+          supplier_id: supplierId,
+          supplier_name: suppObj.name,
+          amount: Number(amount),
+          status: "Issued",
+          reference_number: billReference.trim() || undefined,
+          bill_number: billReference.trim() || undefined,
+          vendor_bill_id: selectedBillId || undefined,
+          notes: fullNotes,
+          created_at: new Date().toISOString(),
+        };
 
-      try {
-        const existing = JSON.parse(localStorage.getItem(localStorageKey) || "[]");
-        localStorage.setItem(localStorageKey, JSON.stringify([newEntry, ...existing]));
-      } catch (e) {}
+        try {
+          const existing = JSON.parse(localStorage.getItem(localStorageKey) || "[]");
+          localStorage.setItem(localStorageKey, JSON.stringify([newEntry, ...existing]));
+        } catch (e) {}
 
-      const curInv = loadStoredInvoiceSettings(tenant?.id);
-      const trailingDigits = dnNo.trim().match(/(\d+)\D*$/);
-      const usedSeq = trailingDigits ? parseInt(trailingDigits[1], 10) : 0;
-      const nextDnSeq = usedSeq > 0 ? Math.max(Number(curInv.debitNoteSequenceNumber || 1) + 1, usedSeq + 1) : Number(curInv.debitNoteSequenceNumber || 1) + 1;
-      saveStoredInvoiceSettings({ ...curInv, debitNoteSequenceNumber: nextDnSeq }, tenant?.id);
-      toast.success(`Vendor Debit Note ${dnNo} generated successfully.`);
+        const curInv = loadStoredInvoiceSettings(tenant?.id);
+        const trailingDigits = dnNo.trim().match(/(\d+)\D*$/);
+        const usedSeq = trailingDigits ? parseInt(trailingDigits[1], 10) : 0;
+        const nextDnSeq = usedSeq > 0 ? Math.max(Number(curInv.debitNoteSequenceNumber || 1) + 1, usedSeq + 1) : Number(curInv.debitNoteSequenceNumber || 1) + 1;
+        saveStoredInvoiceSettings({ ...curInv, debitNoteSequenceNumber: nextDnSeq }, tenant?.id);
+        toast.success(`Vendor Debit Note ${dnNo} generated successfully.`);
+      }
       setIsOpen(false);
+      setEditingId(null);
       window.dispatchEvent(new CustomEvent("bos-tenant-changed"));
       fetchData();
     } catch (err: any) {
-      toast.error(err.message || "Failed to create Debit Note");
+      toast.error(err.message || "Failed to save Debit Note");
     } finally {
       setIsSubmitting(false);
     }
@@ -512,11 +594,29 @@ export function DebitNotes() {
                         <Button
                           size="sm"
                           variant="ghost"
+                          onClick={() => handleOpenEdit(dn)}
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-blue-600"
+                          title="Edit Debit Note"
+                        >
+                          <Pencil className="size-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
                           onClick={() => handlePrint(dn)}
                           className="h-8 w-8 p-0 text-muted-foreground hover:text-rose-600"
                           title="Print Debit Note"
                         >
                           <Printer className="size-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => void handleDelete(dn)}
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-rose-600"
+                          title="Delete Debit Note"
+                        >
+                          <Trash2 className="size-4" />
                         </Button>
                       </div>
                     </td>
@@ -548,10 +648,13 @@ export function DebitNotes() {
             <div className="flex justify-between items-center border-b pb-3">
               <h3 className="text-lg font-bold flex items-center gap-2 text-foreground">
                 <RotateCcw className="w-5 h-5 text-rose-600" />
-                Generate Vendor Debit Note (DN)
+                {editingId ? "Edit Vendor Debit Note (DN)" : "Generate Vendor Debit Note (DN)"}
               </h3>
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={() => {
+                  setIsOpen(false);
+                  setEditingId(null);
+                }}
                 className="text-muted-foreground hover:text-foreground rounded-lg p-1 hover:bg-muted"
               >
                 <X className="w-5 h-5" />
@@ -676,6 +779,8 @@ export function DebitNotes() {
                       <Loader2 className="size-4 animate-spin mr-2" />
                       Saving...
                     </>
+                  ) : editingId ? (
+                    "Update Debit Note"
                   ) : (
                     "Save & Issue Debit Note"
                   )}

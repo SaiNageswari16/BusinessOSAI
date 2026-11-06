@@ -26,7 +26,9 @@ import {
   AlertCircle,
   DollarSign,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Pencil,
+  Trash2
 } from "lucide-react";
 import { toast } from "sonner";
 import { inventoryApi } from "../../lib/api-client";
@@ -49,11 +51,13 @@ export function PaymentHistory() {
   const [bills, setBills] = useState<any[]>([]);
   const [debitNotes, setDebitNotes] = useState<any[]>([]);
   const [creditNotes, setCreditNotes] = useState<any[]>([]);
+  const [payables, setPayables] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Record Payment Out Drawer State
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [selectedSupplierName, setSelectedSupplierName] = useState<string>("");
   const [selectedBillId, setSelectedBillId] = useState<string>("");
   const [paymentPurpose, setPaymentPurpose] = useState<'settle_bill' | 'advance_payout' | 'debit_note_refund'>('settle_bill');
@@ -83,16 +87,18 @@ export function PaymentHistory() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [b, p, dn, cn] = await Promise.all([
+      const [b, p, dn, cn, payableRows] = await Promise.all([
         inventoryApi.getVendorBills().catch(() => []),
         inventoryApi.getVendorPayments().catch(() => []),
         inventoryApi.getVendorDebitNotes().catch(() => []),
-        inventoryApi.getVendorCreditNotes().catch(() => [])
+        inventoryApi.getVendorCreditNotes().catch(() => []),
+        inventoryApi.getSupplierPayables().catch(() => [])
       ]);
       setBills(b || []);
       setPayments(p || []);
       setDebitNotes(dn || []);
       setCreditNotes(cn || []);
+      setPayables(payableRows || []);
     } catch (err: any) {
       console.error("Failed to load vendor payment history:", err);
       toast.error(err.message || "Failed to load payment history");
@@ -106,13 +112,25 @@ export function PaymentHistory() {
     fetchData();
   }, [tenant?.id]);
 
-  // Extract unique supplier list with due balances
+  // Supplier opening (carry-forward) balances, keyed by supplier name. This is
+  // the pre-existing payable amount that is NOT tied to any vendor bill, so it
+  // must be added on top of the bill-level dues to get the true outstanding.
+  const openingByName = useMemo(() => {
+    const m = new Map<string, number>();
+    (payables || []).forEach((s: any) => {
+      const n = (s.name || "").trim();
+      if (n && Number(s.opening_balance || 0) > 0) m.set(n, Number(s.opening_balance));
+    });
+    return m;
+  }, [payables]);
+
+  // Extract unique supplier list with due balances (bill dues + opening balance)
   const suppliersList = useMemo(() => {
-    const map = new Map<string, { name: string; totalBilled: number; totalPaid: number; dueBalance: number; billCount: number }>();
-    
+    const map = new Map<string, { name: string; totalBilled: number; totalPaid: number; opening: number; dueBalance: number; billCount: number }>();
+
     (bills || []).forEach((b) => {
       const sName = (b.supplier_name || "Vendor").trim();
-      const existing = map.get(sName) || { name: sName, totalBilled: 0, totalPaid: 0, dueBalance: 0, billCount: 0 };
+      const existing = map.get(sName) || { name: sName, totalBilled: 0, totalPaid: 0, opening: 0, dueBalance: 0, billCount: 0 };
       const billed = Number(b.total_amount || 0);
       const paid = Number(b.paid_amount || 0);
       existing.totalBilled += billed;
@@ -122,8 +140,17 @@ export function PaymentHistory() {
       map.set(sName, existing);
     });
 
+    // Add opening balances (also surfaces suppliers that have an opening balance
+    // but no vendor bills yet).
+    openingByName.forEach((opening, sName) => {
+      const existing = map.get(sName) || { name: sName, totalBilled: 0, totalPaid: 0, opening: 0, dueBalance: 0, billCount: 0 };
+      existing.opening = opening;
+      existing.dueBalance += opening;
+      map.set(sName, existing);
+    });
+
     return Array.from(map.values()).sort((a, b) => b.dueBalance - a.dueBalance);
-  }, [bills]);
+  }, [bills, openingByName]);
 
   // Compute Combined Passbook Entries (Vendor Payments + Debit Notes + Credit Notes)
   const passbookEntries = useMemo(() => {
@@ -236,14 +263,21 @@ export function PaymentHistory() {
       totalPendingPayables += due;
     });
 
+    // Include carry-forward opening balances (pre-existing AP not tied to a bill).
+    let totalOpeningPayables = 0;
+    (payables || []).forEach((s: any) => {
+      totalOpeningPayables += Number(s.opening_balance || 0);
+    });
+
     return {
       totalDebits,
       totalAdvances,
       totalSettlements,
-      totalPendingPayables,
+      totalPendingPayables: totalPendingPayables + totalOpeningPayables,
+      totalOpeningPayables,
       count: passbookEntries.length,
     };
-  }, [passbookEntries, bills]);
+  }, [passbookEntries, bills, payables]);
 
   // Filtered Passbook Entries
   const filteredEntries = useMemo(() => {
@@ -326,6 +360,7 @@ export function PaymentHistory() {
 
   // Open Record Payment Drawer
   const handleOpenRecordPayment = (supplierName?: string, billId?: string) => {
+    setEditingPaymentId(null);
     const sName = supplierName || (suppliersList[0]?.name || "");
     setSelectedSupplierName(sName);
     setSelectedBillId(billId || "");
@@ -360,19 +395,30 @@ export function PaymentHistory() {
 
     setIsSubmitting(true);
     try {
-      // 1. Create payment in backend
+      // 1. Create or update payment in backend
       const targetBillId = selectedBillId || (supplierPendingBills[0]?.id || undefined);
       
-      await inventoryApi.createVendorPayment({
-        vendor_bill_id: targetBillId,
-        amount_paid: numAmt,
-        payment_method: paymentMethod,
-        reference_number: referenceNumber,
-        notes: paymentNotes || (selectedSupplierName ? `Payment Out to ${selectedSupplierName}` : "Vendor Payout"),
-        payment_date: paymentDate,
-      });
-
-      toast.success(`Recorded ${formatCurrency(numAmt)} Payment Out to ${selectedSupplierName || 'Supplier'} successfully!`);
+      if (editingPaymentId) {
+        await inventoryApi.updateVendorPayment(editingPaymentId, {
+          vendor_bill_id: targetBillId,
+          amount_paid: numAmt,
+          payment_method: paymentMethod,
+          reference_number: referenceNumber,
+          notes: paymentNotes || (selectedSupplierName ? `Payment Out to ${selectedSupplierName}` : "Vendor Payout"),
+          payment_date: paymentDate,
+        });
+        toast.success(`Updated Payment Out (${referenceNumber}) successfully!`);
+      } else {
+        await inventoryApi.createVendorPayment({
+          vendor_bill_id: targetBillId,
+          amount_paid: numAmt,
+          payment_method: paymentMethod,
+          reference_number: referenceNumber,
+          notes: paymentNotes || (selectedSupplierName ? `Payment Out to ${selectedSupplierName}` : "Vendor Payout"),
+          payment_date: paymentDate,
+        });
+        toast.success(`Recorded ${formatCurrency(numAmt)} Payment Out to ${selectedSupplierName || 'Supplier'} successfully!`);
+      }
 
       // 2. Set for Thermal Receipt
       setPrintedPayment({
@@ -719,15 +765,64 @@ export function PaymentHistory() {
                         </td>
 
                         <td className="py-3.5 px-4 text-right">
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10 cursor-pointer"
-                            onClick={() => handlePrintReceipt(p)}
-                            title="Print Thermal Payment Voucher"
-                          >
-                            <Printer className="h-4 w-4" />
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            {p.entry_type === "debit" && p.id && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50 cursor-pointer"
+                                onClick={() => {
+                                  setEditingPaymentId(p.id);
+                                  setSelectedSupplierName(p.supplier_name || "");
+                                  setSelectedBillId(p.bill_id || "");
+                                  setPaymentAmount(Number(p.amount || p.debit_amount || 0));
+                                  setPaymentDate(p.payment_date ? String(p.payment_date).slice(0, 10) : getTodayDateString());
+                                  setPaymentMethod(p.payment_method || "Bank Transfer");
+                                  setReferenceNumber(p.voucher_number || "");
+                                  setPaymentNotes(p.notes || "");
+                                  setIsRecordingPayment(true);
+                                }}
+                                title="Edit Payment Out"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            )}
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10 cursor-pointer"
+                              onClick={() => handlePrintReceipt(p)}
+                              title="Print Thermal Payment Voucher"
+                            >
+                              <Printer className="h-4 w-4" />
+                            </Button>
+                            {p.id && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50 cursor-pointer"
+                                onClick={async () => {
+                                  if (!window.confirm(`Delete ${p.voucher_number}?`)) return;
+                                  try {
+                                    if (p.badge === "Credit Note (Vendor)") {
+                                      await inventoryApi.deleteVendorCreditNote(p.id);
+                                    } else if (p.entry_type === "credit") {
+                                      await inventoryApi.deleteVendorDebitNote(p.id);
+                                    } else {
+                                      await inventoryApi.deleteVendorPayment(p.id);
+                                    }
+                                    toast.success(`Deleted ${p.voucher_number} successfully.`);
+                                    void fetchData();
+                                  } catch (err: any) {
+                                    toast.error(err?.message || "Failed to delete entry");
+                                  }
+                                }}
+                                title="Delete Entry"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))

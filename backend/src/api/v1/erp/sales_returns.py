@@ -811,6 +811,139 @@ async def get_sales_return(
     }
 
 
+class SalesReturnUpdate(BaseModel):
+    return_number: str | None = None
+    return_date: str | None = None
+    reason: str | None = None
+    status: str | None = None
+    total_amount: float | None = None
+    items: list[SalesReturnLineCreate] | None = None
+
+
+@router.put("/{return_id}")
+@router.patch("/{return_id}")
+async def update_sales_return(
+    return_id: str,
+    payload: SalesReturnUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Update a sales return by ID or return number."""
+    ret = None
+    try:
+        ret_uuid = uuid.UUID(str(return_id))
+        ret = await db.scalar(
+            select(InvoiceReturn)
+            .options(selectinload(InvoiceReturn.lines))
+            .where(InvoiceReturn.id == ret_uuid, InvoiceReturn.tenant_id == ctx.tenant_id)
+        )
+    except (ValueError, AttributeError):
+        pass
+
+    if not ret:
+        ret = await db.scalar(
+            select(InvoiceReturn)
+            .options(selectinload(InvoiceReturn.lines))
+            .where(
+                InvoiceReturn.return_number.ilike(str(return_id).strip()),
+                InvoiceReturn.tenant_id == ctx.tenant_id,
+            )
+        )
+
+    if not ret:
+        raise HTTPException(status_code=404, detail="Sales return not found")
+
+    if payload.return_number is not None and payload.return_number.strip():
+        ret.return_number = payload.return_number.strip()
+    if payload.reason is not None:
+        ret.reason = payload.reason
+    if payload.status is not None:
+        ret.status = payload.status
+    if payload.return_date is not None:
+        try:
+            ret.return_date = date.fromisoformat(payload.return_date[:10])
+        except Exception:
+            pass
+
+    if payload.items is not None:
+        for old_line in list(ret.lines or []):
+            await db.delete(old_line)
+        await db.flush()
+        total_return_amount = 0.0
+        for item in payload.items:
+            line_total = float(item.line_total or (item.quantity * item.unit_price - item.discount_amount))
+            tax_amount = float(item.tax_amount or (line_total * item.tax_rate / 100.0 if item.tax_rate else 0))
+            total_return_amount += line_total
+            product_id_val = None
+            if item.product_id:
+                try:
+                    product_id_val = uuid.UUID(str(item.product_id))
+                except Exception:
+                    pass
+            db.add(
+                InvoiceReturnLine(
+                    invoice_return_id=ret.id,
+                    product_id=product_id_val,
+                    product_name=item.product_name,
+                    quantity=item.quantity,
+                    unit_price=item.unit_price,
+                    line_total=round(line_total, 2),
+                    tax_amount=round(tax_amount, 2),
+                )
+            )
+        ret.total_amount = round(total_return_amount, 2)
+    elif payload.total_amount is not None:
+        ret.total_amount = round(float(payload.total_amount), 2)
+
+    await db.commit()
+    return {
+        "id": str(ret.id),
+        "return_number": ret.return_number,
+        "return_date": ret.return_date.isoformat() if ret.return_date else "",
+        "reason": ret.reason,
+        "total_amount": float(ret.total_amount or 0),
+        "status": ret.status or "processed",
+    }
+
+
+@router.delete("/{return_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_sales_return(
+    return_id: str,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:invoices"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Delete a sales return and its line items by ID or return number."""
+    ret = None
+    try:
+        ret_uuid = uuid.UUID(str(return_id))
+        ret = await db.scalar(
+            select(InvoiceReturn)
+            .options(selectinload(InvoiceReturn.lines))
+            .where(InvoiceReturn.id == ret_uuid, InvoiceReturn.tenant_id == ctx.tenant_id)
+        )
+    except (ValueError, AttributeError):
+        pass
+
+    if not ret:
+        ret = await db.scalar(
+            select(InvoiceReturn)
+            .options(selectinload(InvoiceReturn.lines))
+            .where(
+                InvoiceReturn.return_number.ilike(str(return_id).strip()),
+                InvoiceReturn.tenant_id == ctx.tenant_id,
+            )
+        )
+
+    if not ret:
+        raise HTTPException(status_code=404, detail="Sales return not found")
+
+    for line in list(ret.lines or []):
+        await db.delete(line)
+    await db.delete(ret)
+    await db.commit()
+    return None
+
+
 @router.get("/invoice/{invoice_id_or_number}")
 async def get_invoice_for_return(
     invoice_id_or_number: str,

@@ -2,7 +2,7 @@ import { toast } from "sonner";
 import React, { useState, useEffect } from "react";
 import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Search, Filter, ShoppingCart, Download, Printer, Box, CreditCard, Clock, CheckCircle2, RefreshCw, Truck, Store, Building, Tag, UserCheck, ShieldCheck, DollarSign, Award, X, Sparkles, Eye, ChevronDown, ChevronUp, FileText } from "lucide-react";
+import { Plus, Search, Filter, ShoppingCart, Download, Printer, Box, CreditCard, Clock, CheckCircle2, RefreshCw, Truck, Store, Building, Tag, UserCheck, ShieldCheck, DollarSign, Award, X, Sparkles, Eye, ChevronDown, ChevronUp, FileText, Pencil, Trash2 } from "lucide-react";
 import { crmSalesOrdersApi, type CrmSalesOrder, inventoryApi, posApi, employeesApi, fetchSalesEmployees } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
 import {
@@ -33,6 +33,7 @@ export function SalesOrders() {
   const [orders, setOrders] = useState<CrmSalesOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [isCreateProdModalOpen, setIsCreateProdModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -72,9 +73,11 @@ export function SalesOrders() {
   });
 
   useEffect(() => {
-    const seq = String(orders.length + 1).padStart(4, "0");
-    setNewOrder(prev => ({ ...prev, order_number: `SO-2026-${seq}` }));
-  }, [orders.length, isAddModalOpen]);
+    if (!editingOrderId) {
+      const seq = String(orders.length + 1).padStart(4, "0");
+      setNewOrder(prev => ({ ...prev, order_number: `SO-2026-${seq}` }));
+    }
+  }, [orders.length, isAddModalOpen, editingOrderId]);
 
   const totalChargesAmount = additionalCharges.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
   const calculatedGrandTotal = (Number(newOrder.subtotal) || 0) + totalChargesAmount;
@@ -121,30 +124,54 @@ export function SalesOrders() {
     setIsSubmitting(true);
     try {
       const finalPaymentStatus = paymentMode === "Credit" ? "Unpaid" : newOrder.payment_status;
-      await crmSalesOrdersApi.create({
-        order_number: newOrder.order_number,
-        customer_name: newOrder.customer_name || "Walk-in Customer",
-        total: calculatedGrandTotal,
-        status: newOrder.status,
-        payment_status: finalPaymentStatus,
-        customer_id: "00000000-0000-0000-0000-000000000000",
-      });
-      const selectedEmp = salesEmployees.find(e => e.full_name === salesRep);
-      if (selectedEmp && salesPointsEarned > 0) {
-        employeesApi.addSalesPoints(selectedEmp.id, salesPointsEarned).then((updatedEmp) => {
-          if (updatedEmp) {
-            setSalesEmployees(prev => prev.map(e => e.id === updatedEmp.id ? updatedEmp : e));
-          }
-        }).catch(console.error);
+      if (editingOrderId) {
+        await crmSalesOrdersApi.update(editingOrderId, {
+          order_number: newOrder.order_number,
+          customer_name: newOrder.customer_name || "Walk-in Customer",
+          subtotal: Number(newOrder.subtotal) || 0,
+          total: calculatedGrandTotal,
+          status: newOrder.status,
+          payment_status: finalPaymentStatus,
+        });
+        toast.success(`Sales Order ${newOrder.order_number} updated!`);
+      } else {
+        await crmSalesOrdersApi.create({
+          order_number: newOrder.order_number,
+          customer_name: newOrder.customer_name || "Walk-in Customer",
+          total: calculatedGrandTotal,
+          status: newOrder.status,
+          payment_status: finalPaymentStatus,
+          customer_id: "00000000-0000-0000-0000-000000000000",
+        });
+        const selectedEmp = salesEmployees.find(e => e.full_name === salesRep);
+        if (selectedEmp && salesPointsEarned > 0) {
+          employeesApi.addSalesPoints(selectedEmp.id, salesPointsEarned).then((updatedEmp) => {
+            if (updatedEmp) {
+              setSalesEmployees(prev => prev.map(e => e.id === updatedEmp.id ? updatedEmp : e));
+            }
+          }).catch(console.error);
+        }
+        toast.success(`Sales Order ${newOrder.order_number} created! +${salesPointsEarned} pts awarded to ${salesRep || 'Sales Rep'}.`);
       }
-      toast.success(`Sales Order ${newOrder.order_number} created! +${salesPointsEarned} pts awarded to ${salesRep || 'Sales Rep'}.`);
       setIsAddModalOpen(false);
+      setEditingOrderId(null);
       setNewOrder({ order_number: "", customer_name: "", subtotal: 0, total: 0, status: "Pending", payment_status: "Unpaid" });
       void fetchOrders();
     } catch(err: any) {
-      toast.error(err?.message || "Failed to create order");
+      toast.error(err?.message || "Failed to save order");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteOrder = async (o: CrmSalesOrder) => {
+    if (!window.confirm(`Delete Sales Order ${o.order_number}?`)) return;
+    try {
+      await crmSalesOrdersApi.delete(o.id);
+      setOrders(prev => prev.filter(item => item.id !== o.id));
+      toast.success(`Sales Order ${o.order_number} deleted.`);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to delete Sales Order");
     }
   };
 
@@ -503,24 +530,35 @@ export function SalesOrders() {
                           </td>
                           <td className="px-6 py-4 text-right font-bold font-mono">{currency.symbol}{Number(o.total || 0).toFixed(2)}</td>
                           <td className="px-6 py-4 text-right">
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              onClick={() => {
-                                setNewOrder({
-                                  order_number: o.order_number,
-                                  customer_name: (o as any).customer_name || "",
-                                  subtotal: (o as any).subtotal || 0,
-                                  total: o.total || 0,
-                                  status: o.status || "Pending",
-                                  payment_status: o.payment_status || "Unpaid"
-                                });
-                                setIsAddModalOpen(true);
-                              }}
-                              className="h-8 gap-1.5 font-bold rounded-lg hover:bg-primary/10 text-primary border-primary/30"
-                            >
-                              <Eye className="size-4" /> View / Edit Page
-                            </Button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => {
+                                  setEditingOrderId(o.id);
+                                  setNewOrder({
+                                    order_number: o.order_number,
+                                    customer_name: (o as any).customer_name || "",
+                                    subtotal: Number((o as any).subtotal || o.total || 0),
+                                    total: Number(o.total || 0),
+                                    status: o.status || "Pending",
+                                    payment_status: o.payment_status || "Unpaid"
+                                  });
+                                  setIsAddModalOpen(true);
+                                }}
+                                className="h-8 gap-1.5 font-bold rounded-lg hover:bg-primary/10 text-primary border-primary/30"
+                              >
+                                <Pencil className="size-3.5" /> Edit
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void handleDeleteOrder(o)}
+                                className="h-8 gap-1 font-bold rounded-lg border-rose-200 text-rose-600 bg-rose-50/50 hover:bg-rose-100"
+                              >
+                                <Trash2 className="size-3.5" /> Delete
+                              </Button>
+                            </div>
                           </td>
                         </tr>
 

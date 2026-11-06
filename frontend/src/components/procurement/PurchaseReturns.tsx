@@ -32,6 +32,7 @@ import {
   ChevronDown,
   Building,
   ScanBarcode,
+  Pencil,
 } from "lucide-react";
 import { inventoryApi } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
@@ -133,6 +134,11 @@ export function PurchaseReturns() {
 
   // Modal voucher state
   const [selectedVoucher, setSelectedVoucher] = useState<StandardVoucherData | null>(null);
+  const [editingReturn, setEditingReturn] = useState<PurchaseReturnRecord | null>(null);
+  const [editReturnNumber, setEditReturnNumber] = useState("");
+  const [editTotalValue, setEditTotalValue] = useState<number | string>("");
+  const [editSettlementMethod, setEditSettlementMethod] = useState<"debit_note" | "cash_refund" | "bank_refund" | "exchange">("debit_note");
+  const [editNotes, setEditNotes] = useState("");
 
   // ── "Create Purchase Return / Exchange" Workflow States ──
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -601,6 +607,71 @@ export function PurchaseReturns() {
     }
   };
 
+  const handleOpenEditReturn = (ret: PurchaseReturnRecord) => {
+    setEditingReturn(ret);
+    setEditReturnNumber(ret.return_number || "");
+    setEditTotalValue(Number(ret.total_return_value || 0));
+    setEditSettlementMethod(ret.settlement_method || "debit_note");
+    setEditNotes(ret.notes || "");
+  };
+
+  const handleSaveEditReturn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingReturn) return;
+    setIsSubmitting(true);
+    try {
+      if (editingReturn.id && !String(editingReturn.id).startsWith("ret-")) {
+        await inventoryApi.updatePurchaseReturn(editingReturn.id, {
+          return_number: editReturnNumber.trim(),
+          reason: editNotes.trim(),
+          total_amount: Number(editTotalValue || 0),
+        });
+      }
+      const updatedList = returnsList.map((r) =>
+        r.id === editingReturn.id || r.return_number === editingReturn.return_number
+          ? {
+              ...r,
+              return_number: editReturnNumber.trim(),
+              total_return_value: Number(editTotalValue || 0),
+              subtotal: Number(editTotalValue || 0),
+              settlement_method: editSettlementMethod,
+              notes: editNotes.trim(),
+            }
+          : r
+      );
+      setReturnsList(updatedList);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(updatedList));
+      } catch (err) {}
+      toast.success(`Purchase Return ${editReturnNumber} updated.`);
+      setEditingReturn(null);
+      void loadReturns();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update Purchase Return");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteReturn = async (ret: PurchaseReturnRecord) => {
+    if (!window.confirm(`Delete Purchase Return ${ret.return_number}?`)) return;
+    try {
+      if (ret.id && !String(ret.id).startsWith("ret-")) {
+        await inventoryApi.deletePurchaseReturn(ret.id).catch(() => null);
+      }
+      const updatedList = returnsList.filter(
+        (r) => r.id !== ret.id && r.return_number !== ret.return_number
+      );
+      setReturnsList(updatedList);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(updatedList));
+      } catch (err) {}
+      toast.success(`Purchase Return ${ret.return_number} deleted.`);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to delete Purchase Return");
+    }
+  };
+
   // Convert PurchaseReturnRecord into StandardVoucherData for printing & viewing
   const handleOpenVoucher = (record: PurchaseReturnRecord) => {
     const voucherData: StandardVoucherData = {
@@ -997,6 +1068,14 @@ export function PurchaseReturns() {
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
+                              onClick={() => handleOpenEditReturn(ret)}
+                              className="size-7 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-600 grid place-items-center cursor-pointer transition shadow-2xs"
+                              title="Edit Purchase Return"
+                            >
+                              <Pencil className="size-3.5" />
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => handleOpenVoucher(ret)}
                               className="size-7 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 grid place-items-center cursor-pointer transition shadow-2xs"
                               title="View & Print Voucher"
@@ -1010,6 +1089,14 @@ export function PurchaseReturns() {
                               title="View Details"
                             >
                               <Eye className="size-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteReturn(ret)}
+                              className="size-7 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 grid place-items-center cursor-pointer transition shadow-2xs"
+                              title="Delete Purchase Return"
+                            >
+                              <Trash2 className="size-3.5" />
                             </button>
                           </div>
                         </td>
@@ -1746,6 +1833,88 @@ export function PurchaseReturns() {
                   </div>
                 ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Purchase Return Modal */}
+      {editingReturn && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                <Pencil className="size-4 text-blue-600" />
+                Edit Purchase Return ({editingReturn.return_number})
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingReturn(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveEditReturn} className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-slate-600 uppercase text-[10px] block mb-1">Return Number</label>
+                <input
+                  type="text"
+                  required
+                  value={editReturnNumber}
+                  onChange={(e) => setEditReturnNumber(e.target.value)}
+                  className="w-full h-9 px-3 border border-slate-200 rounded-lg font-mono font-bold text-slate-900"
+                />
+              </div>
+              <div>
+                <label className="font-bold text-slate-600 uppercase text-[10px] block mb-1">Total Return Value ({currency.symbol})</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={editTotalValue}
+                  onChange={(e) => setEditTotalValue(e.target.value)}
+                  className="w-full h-9 px-3 border border-slate-200 rounded-lg font-mono font-bold text-rose-600"
+                />
+              </div>
+              <div>
+                <label className="font-bold text-slate-600 uppercase text-[10px] block mb-1">Settlement Method</label>
+                <select
+                  value={editSettlementMethod}
+                  onChange={(e) => setEditSettlementMethod(e.target.value as any)}
+                  className="w-full h-9 px-3 border border-slate-200 rounded-lg font-semibold text-slate-800 bg-white"
+                >
+                  <option value="debit_note">Debit Note</option>
+                  <option value="cash_refund">Cash Refund</option>
+                  <option value="bank_refund">Bank Transfer</option>
+                  <option value="exchange">Exchange</option>
+                </select>
+              </div>
+              <div>
+                <label className="font-bold text-slate-600 uppercase text-[10px] block mb-1">Reason / Notes</label>
+                <textarea
+                  rows={2}
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  className="w-full p-2.5 border border-slate-200 rounded-lg text-slate-800"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingReturn(null)}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 font-bold hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                >
+                  {isSubmitting ? "Saving..." : "Update Return"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

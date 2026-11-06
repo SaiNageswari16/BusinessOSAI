@@ -212,6 +212,15 @@ class PurchaseRequestCreate(BaseModel):
     items: List[PurchaseRequestItemCreate]
 
 
+class PurchaseRequestUpdate(BaseModel):
+    request_number: Optional[str] = None
+    requester_id: Optional[uuid.UUID] = None
+    request_date: Optional[datetime] = None
+    status: Optional[str] = None
+    total_amount: Optional[float] = None
+    items: Optional[List[PurchaseRequestItemCreate]] = None
+
+
 class PurchaseRequestResponse(PurchaseRequestBase):
     id: uuid.UUID
     items: List[PurchaseRequestItemResponse] = []
@@ -384,8 +393,12 @@ class GoodsReceivedNoteCreate(BaseModel):
 
 
 class GoodsReceivedNoteUpdate(BaseModel):
+    grn_number: Optional[str] = None
+    purchase_order_id: Optional[uuid.UUID] = None
+    received_by: Optional[uuid.UUID] = None
     received_date: Optional[datetime] = None
     status: Optional[str] = None
+    items: Optional[List[GoodsReceivedNoteItemCreate]] = None
 
 
 class GoodsReceivedNoteResponse(GoodsReceivedNoteBase):
@@ -446,6 +459,21 @@ class PurchaseReturnCreate(BaseModel):
     items: List[PurchaseReturnItemCreate]
 
 
+class PurchaseReturnUpdate(BaseModel):
+    return_number: Optional[str] = None
+    purchase_order_id: Optional[uuid.UUID] = None
+    supplier_id: Optional[uuid.UUID] = None
+    supplier_name: Optional[str] = None
+    vendor_bill_id: Optional[uuid.UUID] = None
+    debit_note_number: Optional[str] = None
+    settlement_method: Optional[str] = None
+    total_amount: Optional[float] = None
+    return_date: Optional[datetime] = None
+    reason: Optional[str] = None
+    status: Optional[str] = None
+    items: Optional[List[PurchaseReturnItemCreate]] = None
+
+
 class PurchaseReturnResponse(PurchaseReturnBase):
     id: uuid.UUID
     items: List[PurchaseReturnItemResponse] = []
@@ -502,6 +530,19 @@ class VendorBillCreate(BaseModel):
     item_overrides: Optional[List[VendorBillItemOverride]] = None  # persist exact per-line values shown at entry
 
 
+class VendorBillUpdate(BaseModel):
+    bill_number: Optional[str] = None
+    purchase_order_id: Optional[uuid.UUID] = None
+    grn_id: Optional[uuid.UUID] = None
+    bill_date: Optional[datetime] = None
+    due_date: Optional[datetime] = None
+    total_amount: Optional[float] = None
+    paid_amount: Optional[float] = None
+    status: Optional[str] = None
+    payment_method: Optional[str] = None
+    item_overrides: Optional[List[VendorBillItemOverride]] = None
+
+
 class CancelVendorBillPayload(BaseModel):
     reason: Optional[str] = None
 
@@ -551,6 +592,16 @@ class VendorPaymentCreate(VendorPaymentBase):
     pass
 
 
+class VendorPaymentUpdate(BaseModel):
+    vendor_bill_id: Optional[uuid.UUID] = None
+    supplier_name: Optional[str] = None
+    payment_date: Optional[datetime] = None
+    payment_method: Optional[str] = None
+    amount_paid: Optional[float] = None
+    reference_number: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class VendorPaymentResponse(VendorPaymentBase):
     id: uuid.UUID
     bill_number: Optional[str] = None
@@ -579,6 +630,16 @@ class VendorCreditNoteCreate(VendorCreditNoteBase):
     pass
 
 
+class VendorCreditNoteUpdate(BaseModel):
+    note_number: Optional[str] = None
+    supplier_id: Optional[uuid.UUID] = None
+    amount: Optional[float] = None
+    status: Optional[str] = None
+    reference_number: Optional[str] = None
+    vendor_bill_id: Optional[uuid.UUID] = None
+    notes: Optional[str] = None
+
+
 class VendorCreditNoteResponse(VendorCreditNoteBase):
     id: uuid.UUID
     supplier_name: Optional[str] = None
@@ -601,6 +662,16 @@ class VendorDebitNoteBase(BaseModel):
 
 class VendorDebitNoteCreate(VendorDebitNoteBase):
     pass
+
+
+class VendorDebitNoteUpdate(BaseModel):
+    note_number: Optional[str] = None
+    supplier_id: Optional[uuid.UUID] = None
+    amount: Optional[float] = None
+    status: Optional[str] = None
+    reference_number: Optional[str] = None
+    vendor_bill_id: Optional[uuid.UUID] = None
+    notes: Optional[str] = None
 
 
 class VendorDebitNoteResponse(VendorDebitNoteBase):

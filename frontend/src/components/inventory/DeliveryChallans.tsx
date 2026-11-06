@@ -962,6 +962,24 @@ export function DeliveryChallans() {
                         >
                           <Printer className="size-4" />
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={async () => {
+                            if (!window.confirm(`Delete Delivery Challan ${dc.challan_number}?`)) return;
+                            try {
+                              await deliveryChallanApi.deleteChallan(dc.id);
+                              toast.success(`Delivery Challan ${dc.challan_number} deleted.`);
+                              fetchData();
+                            } catch (err: any) {
+                              toast.error(err?.message || "Failed to delete Delivery Challan");
+                            }
+                          }}
+                          className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                          title="Delete Delivery Challan"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
                         {dc.status === 'draft' && (
                           <Button
                             variant="ghost" size="icon"

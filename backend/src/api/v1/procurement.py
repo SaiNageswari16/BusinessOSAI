@@ -45,15 +45,15 @@ from src.schemas.procurement import (
     SupplierContractCreate, SupplierContractResponse,
     SupplierPerformanceCreate, SupplierPerformanceResponse,
     BlacklistedSupplierCreate, BlacklistedSupplierResponse,
-    PurchaseRequestCreate, PurchaseRequestResponse,
+    PurchaseRequestCreate, PurchaseRequestUpdate, PurchaseRequestResponse,
     PurchaseQuotationCreate, PurchaseQuotationResponse,
     PurchaseOrderCreate, PurchaseOrderUpdate, PurchaseOrderResponse,
     GoodsReceivedNoteCreate, GoodsReceivedNoteUpdate, GoodsReceivedNoteResponse,
-    PurchaseReturnCreate, PurchaseReturnResponse,
-    VendorBillCreate, CancelVendorBillPayload, VendorBillResponse,
-    VendorPaymentCreate, VendorPaymentResponse,
-    VendorCreditNoteCreate, VendorCreditNoteResponse,
-    VendorDebitNoteCreate, VendorDebitNoteResponse,
+    PurchaseReturnCreate, PurchaseReturnUpdate, PurchaseReturnResponse,
+    VendorBillCreate, VendorBillUpdate, CancelVendorBillPayload, VendorBillResponse,
+    VendorPaymentCreate, VendorPaymentUpdate, VendorPaymentResponse,
+    VendorCreditNoteCreate, VendorCreditNoteUpdate, VendorCreditNoteResponse,
+    VendorDebitNoteCreate, VendorDebitNoteUpdate, VendorDebitNoteResponse,
     PurchaseInvoiceSettingsPayload
 )
 
@@ -1228,6 +1228,95 @@ async def create_purchase_request(
     )
 
 
+@router.put("/purchase-requests/{id}", response_model=PurchaseRequestResponse)
+@router.patch("/purchase-requests/{id}", response_model=PurchaseRequestResponse)
+async def update_purchase_request(
+    id: uuid.UUID,
+    payload: PurchaseRequestUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    pr = await db.get(PurchaseRequest, id)
+    if not pr or pr.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Purchase request not found.")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    items_data = update_data.pop("items", None)
+
+    for k, v in update_data.items():
+        if isinstance(v, datetime) and v.tzinfo is not None:
+            v = v.replace(tzinfo=None)
+        setattr(pr, k, v)
+
+    if items_data is not None:
+        await db.execute(
+            delete(PurchaseRequestItem).where(PurchaseRequestItem.purchase_request_id == pr.id)
+        )
+        total = 0.0
+        for it in items_data:
+            est_p = float(it.get("estimated_price") or 0.0)
+            qty = float(it["quantity"])
+            item = PurchaseRequestItem(
+                purchase_request_id=pr.id,
+                product_id=it["product_id"],
+                quantity=qty,
+                estimated_price=est_p,
+            )
+            db.add(item)
+            total += qty * est_p
+        pr.total_amount = total
+
+    pr.updated_at = clock.utcnow()
+    await db.commit()
+    await db.refresh(pr)
+
+    items_res = await db.execute(
+        select(PurchaseRequestItem).where(PurchaseRequestItem.purchase_request_id == pr.id)
+    )
+    pr_items = []
+    for it in items_res.scalars().all():
+        prod = await db.get(Product, it.product_id)
+        from src.schemas.procurement import PurchaseRequestItemResponse
+        pr_items.append(
+            PurchaseRequestItemResponse(
+                id=it.id,
+                product_id=it.product_id,
+                product_name=prod.name if prod else "Unknown Product",
+                quantity=float(it.quantity),
+                estimated_price=float(it.estimated_price or 0.0),
+            )
+        )
+
+    return PurchaseRequestResponse(
+        id=pr.id,
+        request_number=pr.request_number,
+        requester_id=pr.requester_id,
+        request_date=pr.request_date,
+        status=pr.status,
+        total_amount=float(pr.total_amount),
+        items=pr_items,
+        created_at=pr.created_at,
+        updated_at=pr.updated_at,
+    )
+
+
+@router.delete("/purchase-requests/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_purchase_request(
+    id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    pr = await db.get(PurchaseRequest, id)
+    if not pr or pr.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Purchase request not found.")
+    await db.execute(
+        delete(PurchaseRequestItem).where(PurchaseRequestItem.purchase_request_id == pr.id)
+    )
+    await db.delete(pr)
+    await db.commit()
+    return None
+
+
 # ─── Purchase Quotations CRUD ──────────────────────────────────────
 
 @router.get("/purchase-quotations", response_model=List[PurchaseQuotationResponse])
@@ -1659,11 +1748,17 @@ async def delete_purchase_order(
     po = await db.get(PurchaseOrder, id)
     if not po or po.tenant_id != ctx.tenant_id:
         raise HTTPException(status_code=404, detail="Purchase order not found.")
+    # Clean up dependent GRN items/GRNs or PurchaseReturns if linked so FK doesn't block PO delete
+    grns_res = await db.execute(select(GoodsReceivedNote).where(GoodsReceivedNote.purchase_order_id == po.id))
+    for g in grns_res.scalars().all():
+        await db.execute(delete(GoodsReceivedNoteItem).where(GoodsReceivedNoteItem.grn_id == g.id))
+        await db.delete(g)
     await db.execute(delete(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == po.id))
     await db.delete(po)
     await db.commit()
 
 
+@router.put("/purchase-orders/{id}", response_model=PurchaseOrderResponse)
 @router.patch("/purchase-orders/{id}", response_model=PurchaseOrderResponse)
 async def update_purchase_order(
     id: uuid.UUID,
@@ -1689,16 +1784,26 @@ async def update_purchase_order(
         )
         total = 0.0
         for it in items_data:
+            prod = await db.get(Product, it["product_id"])
+            eff_hsn = (it.get("hsn_code") or (prod.hsn_code if prod else None) or "").strip() or None
+            eff_uom = (it.get("uom") or (prod.uom if prod else None) or "").strip() or None
+            eff_mrp = it.get("mrp") if it.get("mrp") is not None else (prod.mrp if prod else None)
+            eff_sell = it.get("selling_price") if it.get("selling_price") is not None else (prod.selling_price if prod else None)
             item = PurchaseOrderItem(
                 purchase_order_id=po.id,
                 product_id=it["product_id"],
                 quantity=it["quantity"],
                 unit_price=it["unit_price"],
-                tax_percent=it.get("tax_percent", 0.0)
+                tax_percent=it.get("tax_percent", 0.0),
+                hsn_code=eff_hsn,
+                uom=eff_uom,
+                mrp=eff_mrp,
+                selling_price=eff_sell,
             )
             db.add(item)
             total += float(it["quantity"]) * float(it["unit_price"]) * (1.0 + float(it.get("tax_percent", 0.0) or 0.0) / 100.0)
-        po.total_amount = total
+        if payload.total_amount is None:
+            po.total_amount = total
 
     po.updated_at = clock.utcnow()
     await db.commit()
@@ -1718,7 +1823,10 @@ async def update_purchase_order(
                 id=it.id,
                 product_id=it.product_id,
                 product_name=prod.name if prod else "Unknown",
-                hsn_code=prod.hsn_code if prod else None,
+                hsn_code=it.hsn_code or (prod.hsn_code if prod else None),
+                uom=it.uom or (prod.uom if prod else None),
+                mrp=float(it.mrp) if it.mrp is not None else (float(prod.mrp) if prod and prod.mrp is not None else None),
+                selling_price=float(it.selling_price) if it.selling_price is not None else (float(prod.selling_price) if prod and prod.selling_price is not None else None),
                 quantity=float(it.quantity),
                 unit_price=float(it.unit_price),
                 tax_percent=float(it.tax_percent),
@@ -2147,6 +2255,129 @@ async def create_purchase_return(
     )
 
 
+@router.put("/purchase-returns/{id}", response_model=PurchaseReturnResponse)
+@router.patch("/purchase-returns/{id}", response_model=PurchaseReturnResponse)
+async def update_purchase_return(
+    id: uuid.UUID,
+    payload: PurchaseReturnUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    ret = await db.get(PurchaseReturn, id)
+    if not ret or ret.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Purchase return not found.")
+
+    if payload.return_number is not None:
+        ret.return_number = payload.return_number
+    if payload.purchase_order_id is not None:
+        ret.purchase_order_id = payload.purchase_order_id
+    if payload.reason is not None:
+        ret.reason = payload.reason
+    if payload.status is not None:
+        ret.status = payload.status
+    if payload.return_date is not None:
+        ret.return_date = payload.return_date.replace(tzinfo=None) if payload.return_date.tzinfo else payload.return_date
+
+    if payload.items is not None:
+        await db.execute(
+            delete(PurchaseReturnItem).where(PurchaseReturnItem.purchase_return_id == ret.id)
+        )
+        for it in payload.items:
+            db.add(
+                PurchaseReturnItem(
+                    purchase_return_id=ret.id,
+                    product_id=it.product_id,
+                    quantity_returned=it.quantity_returned,
+                )
+            )
+
+    ret.updated_at = clock.utcnow()
+    await db.commit()
+    await db.refresh(ret)
+
+    po = await db.get(PurchaseOrder, ret.purchase_order_id) if ret.purchase_order_id else None
+    supp = await db.get(Supplier, po.supplier_id) if po and po.supplier_id else None
+    items_res = await db.execute(
+        select(PurchaseReturnItem).where(PurchaseReturnItem.purchase_return_id == ret.id)
+    )
+    ret_items = []
+    calc_total = 0.0
+    for it in items_res.scalars().all():
+        prod = await db.get(Product, it.product_id)
+        if prod:
+            u_cost = float(getattr(prod, "purchase_price", 0) or getattr(prod, "cost_price", 0) or 0)
+            calc_total += u_cost * float(it.quantity_returned or 0)
+        from src.schemas.procurement import PurchaseReturnItemResponse
+        ret_items.append(
+            PurchaseReturnItemResponse(
+                id=it.id,
+                product_id=it.product_id,
+                product_name=prod.name if prod else "Unknown",
+                quantity_returned=float(it.quantity_returned),
+            )
+        )
+
+    return PurchaseReturnResponse(
+        id=ret.id,
+        return_number=ret.return_number,
+        purchase_order_id=ret.purchase_order_id,
+        po_number=po.po_number if po else None,
+        supplier_id=supp.id if supp else payload.supplier_id,
+        supplier_name=supp.name if supp else payload.supplier_name,
+        total_amount=float(payload.total_amount if payload.total_amount is not None else calc_total),
+        return_date=ret.return_date,
+        reason=ret.reason,
+        status=ret.status,
+        items=ret_items,
+        created_at=ret.created_at,
+        updated_at=ret.updated_at,
+    )
+
+
+@router.delete("/purchase-returns/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_purchase_return(
+    id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    ret = await db.get(PurchaseReturn, id)
+    if not ret or ret.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Purchase return not found.")
+
+    # Restore stock on returned items before deleting
+    items_res = await db.execute(
+        select(PurchaseReturnItem).where(PurchaseReturnItem.purchase_return_id == ret.id)
+    )
+    for it in items_res.scalars().all():
+        prod = await db.get(Product, it.product_id)
+        if prod:
+            prod.initial_stock = int((prod.initial_stock or 0) + float(it.quantity_returned or 0))
+            if prod.on_hand_stock is not None:
+                prod.on_hand_stock = int((prod.on_hand_stock or 0) + float(it.quantity_returned or 0))
+
+    # Also remove any auto-generated VendorDebitNote linked to this return
+    try:
+        synth_dn = f"DN-{ret.return_number.replace('PRN-', '')}"
+        await db.execute(
+            delete(VendorDebitNote).where(
+                VendorDebitNote.tenant_id == ctx.tenant_id,
+                or_(
+                    VendorDebitNote.reference_number == ret.return_number,
+                    VendorDebitNote.note_number == synth_dn,
+                ),
+            )
+        )
+    except Exception:
+        pass
+
+    await db.execute(
+        delete(PurchaseReturnItem).where(PurchaseReturnItem.purchase_return_id == ret.id)
+    )
+    await db.delete(ret)
+    await db.commit()
+    return None
+
+
 # ─── Vendor Bills CRUD ─────────────────────────────────────────────
 
 @router.get("/vendor-bills", response_model=List[VendorBillResponse])
@@ -2480,6 +2711,103 @@ async def delete_vendor_bill(
     await db.execute(delete(VendorPayment).where(VendorPayment.vendor_bill_id == bill.id))
     await db.delete(bill)
     await db.commit()
+
+
+@router.put("/vendor-bills/{bill_id}", response_model=VendorBillResponse)
+@router.patch("/vendor-bills/{bill_id}", response_model=VendorBillResponse)
+async def update_vendor_bill(
+    bill_id: str,
+    payload: VendorBillUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Update an existing purchase invoice / vendor bill and its line overrides."""
+    bill = None
+    try:
+        u_id = uuid.UUID(str(bill_id))
+        bill = await db.scalar(select(VendorBill).where(VendorBill.id == u_id, VendorBill.tenant_id == ctx.tenant_id))
+    except ValueError:
+        bill = await db.scalar(select(VendorBill).where(VendorBill.bill_number == str(bill_id), VendorBill.tenant_id == ctx.tenant_id))
+    if not bill:
+        raise HTTPException(status_code=404, detail="Vendor bill not found.")
+
+    if payload.bill_number is not None and payload.bill_number.strip():
+        bill.bill_number = payload.bill_number.strip()
+    if payload.purchase_order_id is not None:
+        bill.purchase_order_id = payload.purchase_order_id
+    if payload.grn_id is not None:
+        bill.grn_id = payload.grn_id
+    if payload.bill_date is not None:
+        bill.bill_date = payload.bill_date.replace(tzinfo=None) if payload.bill_date.tzinfo else payload.bill_date
+    if payload.due_date is not None:
+        bill.due_date = payload.due_date.replace(tzinfo=None) if payload.due_date.tzinfo else payload.due_date
+    if payload.total_amount is not None:
+        bill.total_amount = payload.total_amount
+    if payload.paid_amount is not None:
+        bill.paid_amount = payload.paid_amount
+    if payload.status is not None:
+        bill.status = payload.status
+    elif payload.total_amount is not None or payload.paid_amount is not None:
+        tot_v = float(bill.total_amount or 0.0)
+        paid_v = float(bill.paid_amount or 0.0)
+        if paid_v >= tot_v and tot_v > 0:
+            bill.status = "Paid"
+        elif paid_v > 0:
+            bill.status = "Partial"
+        else:
+            bill.status = "Unpaid"
+
+    if payload.item_overrides is not None:
+        bill.item_overrides = [o.model_dump(mode="json") for o in payload.item_overrides]
+
+    bill.updated_at = clock.utcnow()
+    await db.commit()
+    await db.refresh(bill)
+
+    po = await db.get(PurchaseOrder, bill.purchase_order_id) if bill.purchase_order_id else None
+    supp = await db.get(Supplier, po.supplier_id) if (po and po.supplier_id) else None
+    po_items = []
+    if po:
+        items_res = await db.execute(
+            select(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == po.id)
+        )
+        for it in items_res.scalars().all():
+            prod = await db.get(Product, it.product_id)
+            from src.schemas.procurement import PurchaseOrderItemResponse
+            po_items.append(
+                PurchaseOrderItemResponse(
+                    id=it.id,
+                    product_id=it.product_id,
+                    product_name=prod.name if prod else "Unknown Product",
+                    hsn_code=it.hsn_code or (prod.hsn_code if prod else None),
+                    uom=it.uom or (prod.uom if prod else None),
+                    mrp=float(it.mrp) if it.mrp is not None else (float(prod.mrp) if prod and prod.mrp is not None else None),
+                    selling_price=float(it.selling_price) if it.selling_price is not None else (float(prod.selling_price) if prod and prod.selling_price is not None else None),
+                    quantity=float(it.quantity),
+                    unit_price=float(it.unit_price),
+                    tax_percent=float(it.tax_percent),
+                )
+            )
+
+    return VendorBillResponse(
+        id=bill.id,
+        bill_number=bill.bill_number,
+        purchase_order_id=bill.purchase_order_id,
+        grn_id=bill.grn_id,
+        po_number=po.po_number if po else None,
+        supplier_id=supp.id if supp else None,
+        supplier_name=supp.name if supp else "Vendor / Supplier",
+        supplier_gstin=getattr(supp, "gst_number", None) if supp else None,
+        items=po_items,
+        item_overrides=getattr(bill, "item_overrides", None) or [],
+        bill_date=bill.bill_date,
+        due_date=bill.due_date,
+        total_amount=float(bill.total_amount or 0.0),
+        paid_amount=float(bill.paid_amount or 0.0),
+        status=bill.status,
+        created_at=bill.created_at,
+        updated_at=bill.updated_at,
+    )
 
 
 @router.post("/vendor-bills", response_model=VendorBillResponse, status_code=status.HTTP_201_CREATED)
@@ -3289,6 +3617,95 @@ async def create_vendor_payment(
     )
 
 
+@router.put("/vendor-payments/{id}", response_model=VendorPaymentResponse)
+@router.patch("/vendor-payments/{id}", response_model=VendorPaymentResponse)
+async def update_vendor_payment(
+    id: uuid.UUID,
+    payload: VendorPaymentUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    payment = await db.get(VendorPayment, id)
+    if not payment or payment.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Vendor payment not found.")
+
+    old_amount = float(payment.amount_paid or 0.0)
+    if payload.amount_paid is not None:
+        payment.amount_paid = payload.amount_paid
+    if payload.payment_method is not None:
+        payment.payment_method = payload.payment_method
+    if payload.reference_number is not None:
+        payment.reference_number = payload.reference_number
+    if payload.payment_date is not None:
+        payment.payment_date = payload.payment_date.replace(tzinfo=None) if payload.payment_date.tzinfo else payload.payment_date
+
+    bill = None
+    resolved_supplier_name = payload.supplier_name
+    if payment.vendor_bill_id:
+        bill = await db.get(VendorBill, payment.vendor_bill_id)
+        if bill:
+            if payload.amount_paid is not None:
+                diff = float(payload.amount_paid) - old_amount
+                bill.paid_amount = max(0.0, float(bill.paid_amount or 0.0) + diff)
+                tot_amt = float(bill.total_amount or 0.0)
+                if bill.paid_amount >= tot_amt and tot_amt > 0:
+                    bill.status = "Paid"
+                elif bill.paid_amount > 0:
+                    bill.status = "Partially Paid"
+                else:
+                    bill.status = "Unpaid"
+            if bill.purchase_order_id:
+                po = await db.get(PurchaseOrder, bill.purchase_order_id)
+                if po and po.supplier_id:
+                    supp = await db.get(Supplier, po.supplier_id)
+                    if supp:
+                        resolved_supplier_name = supp.name
+
+    await db.commit()
+    await db.refresh(payment)
+
+    return VendorPaymentResponse(
+        id=payment.id,
+        vendor_bill_id=payment.vendor_bill_id,
+        bill_number=bill.bill_number if bill else None,
+        supplier_name=resolved_supplier_name or "Vendor / Supplier",
+        payment_date=payment.payment_date,
+        payment_method=payment.payment_method,
+        amount_paid=float(payment.amount_paid),
+        reference_number=payment.reference_number,
+        notes=payload.notes,
+        created_at=payment.created_at,
+        updated_at=payment.updated_at,
+    )
+
+
+@router.delete("/vendor-payments/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_vendor_payment(
+    id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    payment = await db.get(VendorPayment, id)
+    if not payment or payment.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Vendor payment not found.")
+
+    if payment.vendor_bill_id:
+        bill = await db.get(VendorBill, payment.vendor_bill_id)
+        if bill:
+            bill.paid_amount = max(0.0, float(bill.paid_amount or 0.0) - float(payment.amount_paid or 0.0))
+            tot_amt = float(bill.total_amount or 0.0)
+            if bill.paid_amount >= tot_amt and tot_amt > 0:
+                bill.status = "Paid"
+            elif bill.paid_amount > 0:
+                bill.status = "Partially Paid"
+            else:
+                bill.status = "Unpaid"
+
+    await db.delete(payment)
+    await db.commit()
+    return None
+
+
 # ─── Credit / Debit Notes CRUD ─────────────────────────────────────
 
 @router.get("/credit-notes", response_model=List[VendorCreditNoteResponse])
@@ -3399,6 +3816,68 @@ async def create_credit_note(
         notes=cn.notes,
         created_at=cn.created_at
     )
+
+
+@router.put("/credit-notes/{id}", response_model=VendorCreditNoteResponse)
+@router.patch("/credit-notes/{id}", response_model=VendorCreditNoteResponse)
+async def update_credit_note(
+    id: uuid.UUID,
+    payload: VendorCreditNoteUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    cn = await db.get(VendorCreditNote, id)
+    if not cn or cn.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Vendor credit note not found.")
+
+    if payload.note_number is not None and payload.note_number.strip():
+        cn.note_number = payload.note_number.strip()
+    if payload.supplier_id is not None:
+        cn.supplier_id = payload.supplier_id
+    if payload.amount is not None:
+        cn.amount = payload.amount
+    if payload.status is not None:
+        cn.status = payload.status
+    if payload.reference_number is not None:
+        cn.reference_number = payload.reference_number
+    if payload.vendor_bill_id is not None:
+        cn.vendor_bill_id = payload.vendor_bill_id
+    if payload.notes is not None:
+        cn.notes = payload.notes
+
+    await db.commit()
+    await db.refresh(cn)
+
+    supp = await db.get(Supplier, cn.supplier_id) if cn.supplier_id else None
+    bill = await db.get(VendorBill, cn.vendor_bill_id) if cn.vendor_bill_id else None
+    resolved_bill_no = bill.bill_number if bill else cn.reference_number
+    return VendorCreditNoteResponse(
+        id=cn.id,
+        note_number=cn.note_number,
+        supplier_id=cn.supplier_id or uuid.UUID(int=0),
+        supplier_name=supp.name if supp else "Vendor / Supplier",
+        amount=float(cn.amount),
+        status=cn.status,
+        reference_number=cn.reference_number,
+        vendor_bill_id=cn.vendor_bill_id,
+        bill_number=resolved_bill_no,
+        notes=cn.notes,
+        created_at=cn.created_at,
+    )
+
+
+@router.delete("/credit-notes/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_credit_note(
+    id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    cn = await db.get(VendorCreditNote, id)
+    if not cn or cn.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=404, detail="Vendor credit note not found.")
+    await db.delete(cn)
+    await db.commit()
+    return None
 
 
 @router.get("/debit-notes", response_model=List[VendorDebitNoteResponse])
@@ -3556,6 +4035,98 @@ async def create_debit_note(
         notes=dn.notes,
         created_at=dn.created_at
     )
+
+
+@router.put("/debit-notes/{id}", response_model=VendorDebitNoteResponse)
+@router.patch("/debit-notes/{id}", response_model=VendorDebitNoteResponse)
+async def update_debit_note(
+    id: uuid.UUID,
+    payload: VendorDebitNoteUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    dn = await db.get(VendorDebitNote, id)
+    if not dn:
+        # May be a synthesized PurchaseReturn ID from list_debit_notes
+        pret = await db.get(PurchaseReturn, id)
+        if pret and pret.tenant_id == ctx.tenant_id:
+            po = await db.get(PurchaseOrder, pret.purchase_order_id) if pret.purchase_order_id else None
+            supp_id = payload.supplier_id or (po.supplier_id if po else None)
+            dn = VendorDebitNote(
+                tenant_id=ctx.tenant_id,
+                company_id=ctx.active_company_id,
+                note_number=payload.note_number or f"DN-{pret.return_number.replace('PRN-', '')}",
+                supplier_id=supp_id,
+                amount=payload.amount if payload.amount is not None else 0.0,
+                status=payload.status or "Issued",
+                reference_number=payload.reference_number or f"Return #{pret.return_number}",
+                vendor_bill_id=payload.vendor_bill_id,
+                notes=payload.notes or pret.reason,
+            )
+            db.add(dn)
+            await db.commit()
+            await db.refresh(dn)
+        else:
+            raise HTTPException(status_code=404, detail="Vendor debit note not found.")
+    else:
+        if dn.tenant_id != ctx.tenant_id:
+            raise HTTPException(status_code=404, detail="Vendor debit note not found.")
+        if payload.note_number is not None and payload.note_number.strip():
+            dn.note_number = payload.note_number.strip()
+        if payload.supplier_id is not None:
+            dn.supplier_id = payload.supplier_id
+        if payload.amount is not None:
+            dn.amount = payload.amount
+        if payload.status is not None:
+            dn.status = payload.status
+        if payload.reference_number is not None:
+            dn.reference_number = payload.reference_number
+        if payload.vendor_bill_id is not None:
+            dn.vendor_bill_id = payload.vendor_bill_id
+        if payload.notes is not None:
+            dn.notes = payload.notes
+        await db.commit()
+        await db.refresh(dn)
+
+    supp = await db.get(Supplier, dn.supplier_id) if dn.supplier_id else None
+    bill = await db.get(VendorBill, dn.vendor_bill_id) if dn.vendor_bill_id else None
+    resolved_bill_no = bill.bill_number if bill else dn.reference_number
+    return VendorDebitNoteResponse(
+        id=dn.id,
+        note_number=dn.note_number,
+        supplier_id=dn.supplier_id or uuid.UUID(int=0),
+        supplier_name=supp.name if supp else "Vendor / Supplier",
+        amount=float(dn.amount),
+        status=dn.status,
+        reference_number=dn.reference_number,
+        vendor_bill_id=dn.vendor_bill_id,
+        bill_number=resolved_bill_no,
+        notes=dn.notes,
+        created_at=dn.created_at,
+    )
+
+
+@router.delete("/debit-notes/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_debit_note(
+    id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:inventory"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    dn = await db.get(VendorDebitNote, id)
+    if dn and dn.tenant_id == ctx.tenant_id:
+        await db.delete(dn)
+        await db.commit()
+        return None
+    # Check if id refers to a synthesized PurchaseReturn debit note
+    pret = await db.get(PurchaseReturn, id)
+    if pret and pret.tenant_id == ctx.tenant_id:
+        await db.execute(
+            delete(PurchaseReturnItem).where(PurchaseReturnItem.purchase_return_id == pret.id)
+        )
+        await db.delete(pret)
+        await db.commit()
+        return None
+    raise HTTPException(status_code=404, detail="Vendor debit note not found.")
 
 
 # ─── Analytics / Intelligence Endpoints ───────────────────────────
@@ -5545,6 +6116,7 @@ i) Output Format: Return ONLY raw, valid JSON conforming to the schema above wit
 
 # ─── Goods Received Notes CRUD (continued) ─────────────────────────
 
+@router.put("/goods-received-notes/{id}", response_model=GoodsReceivedNoteResponse)
 @router.patch("/goods-received-notes/{id}", response_model=GoodsReceivedNoteResponse)
 async def update_goods_received_note(
     id: uuid.UUID,
@@ -5557,8 +6129,27 @@ async def update_goods_received_note(
         raise HTTPException(status_code=404, detail="Goods Received Note not found.")
 
     update_data = payload.model_dump(exclude_unset=True)
+    items_data = update_data.pop("items", None)
     for k, v in update_data.items():
+        if isinstance(v, datetime) and v.tzinfo is not None:
+            v = v.replace(tzinfo=None)
         setattr(grn, k, v)
+
+    if items_data is not None:
+        await db.execute(
+            delete(GoodsReceivedNoteItem).where(GoodsReceivedNoteItem.grn_id == grn.id)
+        )
+        for it in items_data:
+            db.add(
+                GoodsReceivedNoteItem(
+                    grn_id=grn.id,
+                    product_id=it["product_id"],
+                    quantity_ordered=it["quantity_ordered"],
+                    quantity_received=it["quantity_received"],
+                    quantity_accepted=it["quantity_accepted"],
+                    quantity_rejected=it["quantity_rejected"],
+                )
+            )
 
     grn.updated_at = clock.utcnow()
     await db.commit()
@@ -5618,6 +6209,9 @@ async def delete_goods_received_note(
     if po and po.status == "Fully Received":
         po.status = "Sent"
 
+    await db.execute(
+        delete(GoodsReceivedNoteItem).where(GoodsReceivedNoteItem.grn_id == grn.id)
+    )
     await db.delete(grn)
     await db.commit()
     return None

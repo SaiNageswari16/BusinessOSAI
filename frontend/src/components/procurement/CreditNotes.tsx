@@ -18,6 +18,8 @@ import {
   Eye,
   CheckCircle2,
   Filter,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { inventoryApi, numberSeriesApi } from "../../lib/api-client";
 import { toast } from "sonner";
@@ -60,8 +62,9 @@ export function CreditNotes() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
-  // Modal State for Generating CN
+  // Modal State for Generating / Editing CN
   const [isOpen, setIsOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cnNo, setCnNo] = useState("");
   const [supplierId, setSupplierId] = useState("");
@@ -70,6 +73,7 @@ export function CreditNotes() {
   const [amount, setAmount] = useState<number | string>(1000);
   const [reasonCategory, setReasonCategory] = useState("Vendor Rebate / Post-Sale Discount");
   const [notesText, setNotesText] = useState("");
+  const [noteStatus, setNoteStatus] = useState("Unapplied");
 
   // Voucher Detail View Modal State
   const [viewingVoucher, setViewingVoucher] = useState<VendorCreditNoteItem | null>(null);
@@ -143,6 +147,8 @@ export function CreditNotes() {
   }, [tenant?.id]);
 
   const handleOpenNew = async (preSelectedBillId?: string) => {
+    setEditingId(null);
+    setNoteStatus("Unapplied");
     // Pre-fill with the configured NumberSeries next number (Settings → Credit/Debit Note
     // prefix + sequence) rather than a hard-coded CN-2026-xxxx. Falls back to a locally
     // detected sequence when the peek is unavailable.
@@ -175,6 +181,46 @@ export function CreditNotes() {
     setIsOpen(true);
   };
 
+  const handleOpenEdit = (cn: VendorCreditNoteItem) => {
+    setEditingId(cn.id);
+    setCnNo(cn.note_number || "");
+    setSupplierId(cn.supplier_id || suppliers.find((s) => s.name === cn.supplier_name)?.id || "");
+    setSelectedBillId(cn.vendor_bill_id || "");
+    setBillReference(cn.bill_number || cn.reference_number || "");
+    setAmount(Number(cn.amount || 0));
+    setNoteStatus(cn.status || "Unapplied");
+    const catMatch = (cn.notes || "").match(/^\[Category:\s*([^\]]+)\]\s*(?:•\s*)?(.*)$/);
+    if (catMatch) {
+      setReasonCategory(catMatch[1].trim());
+      setNotesText(catMatch[2].trim());
+    } else {
+      setReasonCategory("Vendor Rebate / Post-Sale Discount");
+      setNotesText(cn.notes || "");
+    }
+    setIsOpen(true);
+  };
+
+  const handleDelete = async (cn: VendorCreditNoteItem) => {
+    if (!window.confirm(`Delete Vendor Credit Note ${cn.note_number}?`)) return;
+    try {
+      if (cn.id && !String(cn.id).startsWith("cn-loc-")) {
+        await inventoryApi.deleteVendorCreditNote(cn.id);
+      }
+      try {
+        const existing = JSON.parse(localStorage.getItem(localStorageKey) || "[]");
+        const updated = existing.filter(
+          (it: any) => it.id !== cn.id && it.note_number !== cn.note_number
+        );
+        localStorage.setItem(localStorageKey, JSON.stringify(updated));
+      } catch (e) {}
+      setNotes((prev) => prev.filter((it) => it.id !== cn.id && it.note_number !== cn.note_number));
+      if (viewingVoucher?.id === cn.id) setViewingVoucher(null);
+      toast.success(`Vendor Credit Note ${cn.note_number} deleted.`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete Credit Note");
+    }
+  };
+
   const handleBillSelectionChange = (bId: string) => {
     setSelectedBillId(bId);
     if (!bId) {
@@ -199,47 +245,83 @@ export function CreditNotes() {
 
     setIsSubmitting(true);
     try {
-      await inventoryApi.createVendorCreditNote({
-        note_number: cnNo.trim(),
-        supplier_id: supplierId || undefined,
-        amount: Number(amount),
-        vendor_bill_id: selectedBillId || undefined,
-        reference_number: billReference.trim() || undefined,
-        notes: fullNotes,
-        status: "Unapplied",
-      });
+      if (editingId) {
+        if (!String(editingId).startsWith("cn-loc-")) {
+          await inventoryApi.updateVendorCreditNote(editingId, {
+            note_number: cnNo.trim(),
+            supplier_id: supplierId || undefined,
+            amount: Number(amount),
+            vendor_bill_id: selectedBillId || undefined,
+            reference_number: billReference.trim() || undefined,
+            notes: fullNotes,
+            status: noteStatus || "Unapplied",
+          });
+        }
+        try {
+          const existing = JSON.parse(localStorage.getItem(localStorageKey) || "[]");
+          const updated = existing.map((it: any) =>
+            it.id === editingId || it.note_number === cnNo.trim()
+              ? {
+                  ...it,
+                  note_number: cnNo.trim(),
+                  supplier_id: supplierId,
+                  supplier_name: suppObj.name,
+                  amount: Number(amount),
+                  status: noteStatus || "Unapplied",
+                  reference_number: billReference.trim() || undefined,
+                  bill_number: billReference.trim() || undefined,
+                  vendor_bill_id: selectedBillId || undefined,
+                  notes: fullNotes,
+                }
+              : it
+          );
+          localStorage.setItem(localStorageKey, JSON.stringify(updated));
+        } catch (e) {}
+        toast.success(`Vendor Credit Note ${cnNo} updated successfully.`);
+      } else {
+        await inventoryApi.createVendorCreditNote({
+          note_number: cnNo.trim(),
+          supplier_id: supplierId || undefined,
+          amount: Number(amount),
+          vendor_bill_id: selectedBillId || undefined,
+          reference_number: billReference.trim() || undefined,
+          notes: fullNotes,
+          status: "Unapplied",
+        });
 
-      // Save to localStorage for instant local reactivity
-      const newEntry: VendorCreditNoteItem = {
-        id: `cn-loc-${Date.now()}`,
-        note_number: cnNo.trim(),
-        supplier_id: supplierId,
-        supplier_name: suppObj.name,
-        amount: Number(amount),
-        status: "Unapplied",
-        reference_number: billReference.trim() || undefined,
-        bill_number: billReference.trim() || undefined,
-        vendor_bill_id: selectedBillId || undefined,
-        notes: fullNotes,
-        created_at: new Date().toISOString(),
-      };
+        // Save to localStorage for instant local reactivity
+        const newEntry: VendorCreditNoteItem = {
+          id: `cn-loc-${Date.now()}`,
+          note_number: cnNo.trim(),
+          supplier_id: supplierId,
+          supplier_name: suppObj.name,
+          amount: Number(amount),
+          status: "Unapplied",
+          reference_number: billReference.trim() || undefined,
+          bill_number: billReference.trim() || undefined,
+          vendor_bill_id: selectedBillId || undefined,
+          notes: fullNotes,
+          created_at: new Date().toISOString(),
+        };
 
-      try {
-        const existing = JSON.parse(localStorage.getItem(localStorageKey) || "[]");
-        localStorage.setItem(localStorageKey, JSON.stringify([newEntry, ...existing]));
-      } catch (e) {}
+        try {
+          const existing = JSON.parse(localStorage.getItem(localStorageKey) || "[]");
+          localStorage.setItem(localStorageKey, JSON.stringify([newEntry, ...existing]));
+        } catch (e) {}
 
-      const curInv = loadStoredInvoiceSettings(tenant?.id);
-      const trailingDigits = cnNo.trim().match(/(\d+)\D*$/);
-      const usedSeq = trailingDigits ? parseInt(trailingDigits[1], 10) : 0;
-      const nextCnSeq = usedSeq > 0 ? Math.max(Number(curInv.creditNoteSequenceNumber || 1) + 1, usedSeq + 1) : Number(curInv.creditNoteSequenceNumber || 1) + 1;
-      saveStoredInvoiceSettings({ ...curInv, creditNoteSequenceNumber: nextCnSeq }, tenant?.id);
-      toast.success(`Vendor Credit Note ${cnNo} generated successfully.`);
+        const curInv = loadStoredInvoiceSettings(tenant?.id);
+        const trailingDigits = cnNo.trim().match(/(\d+)\D*$/);
+        const usedSeq = trailingDigits ? parseInt(trailingDigits[1], 10) : 0;
+        const nextCnSeq = usedSeq > 0 ? Math.max(Number(curInv.creditNoteSequenceNumber || 1) + 1, usedSeq + 1) : Number(curInv.creditNoteSequenceNumber || 1) + 1;
+        saveStoredInvoiceSettings({ ...curInv, creditNoteSequenceNumber: nextCnSeq }, tenant?.id);
+        toast.success(`Vendor Credit Note ${cnNo} generated successfully.`);
+      }
       setIsOpen(false);
+      setEditingId(null);
       window.dispatchEvent(new CustomEvent("bos-tenant-changed"));
       fetchData();
     } catch (err: any) {
-      toast.error(err.message || "Failed to create Credit Note");
+      toast.error(err.message || "Failed to save Credit Note");
     } finally {
       setIsSubmitting(false);
     }
@@ -503,11 +585,29 @@ export function CreditNotes() {
                         <Button
                           size="sm"
                           variant="ghost"
+                          onClick={() => handleOpenEdit(cn)}
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-blue-600"
+                          title="Edit Credit Note"
+                        >
+                          <Pencil className="size-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
                           onClick={() => handlePrint(cn)}
                           className="h-8 w-8 p-0 text-muted-foreground hover:text-emerald-600"
                           title="Print Credit Note"
                         >
                           <Printer className="size-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => void handleDelete(cn)}
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-rose-600"
+                          title="Delete Credit Note"
+                        >
+                          <Trash2 className="size-4" />
                         </Button>
                       </div>
                     </td>
@@ -539,10 +639,13 @@ export function CreditNotes() {
             <div className="flex justify-between items-center border-b pb-3">
               <h3 className="text-lg font-bold flex items-center gap-2 text-foreground">
                 <FileCheck className="w-5 h-5 text-emerald-600" />
-                Generate Vendor Credit Note (CN)
+                {editingId ? "Edit Vendor Credit Note (CN)" : "Generate Vendor Credit Note (CN)"}
               </h3>
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={() => {
+                  setIsOpen(false);
+                  setEditingId(null);
+                }}
                 className="text-muted-foreground hover:text-foreground rounded-lg p-1 hover:bg-muted"
               >
                 <X className="w-5 h-5" />
@@ -667,6 +770,8 @@ export function CreditNotes() {
                       <Loader2 className="size-4 animate-spin mr-2" />
                       Saving...
                     </>
+                  ) : editingId ? (
+                    "Update Credit Note"
                   ) : (
                     "Save & Record Credit Note"
                   )}

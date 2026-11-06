@@ -1739,6 +1739,7 @@ async def create_invoice(
     return invoice
 
 
+@router.put("/{invoice_id}", response_model=InvoiceResponse)
 @router.patch("/{invoice_id}", response_model=InvoiceResponse)
 async def update_invoice(
     invoice_id: uuid.UUID,
@@ -1754,9 +1755,6 @@ async def update_invoice(
     )
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
-
-    if invoice.status in ("voided", "cancelled"):
-        raise HTTPException(status_code=400, detail=f"Cannot update a {invoice.status} invoice")
 
     updates = payload.model_dump(exclude_unset=True, exclude={"lines"})
 

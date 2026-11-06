@@ -3114,16 +3114,14 @@ export function PosInvoicesHistory() {
                         )}
 
                         {/* Edit Invoice */}
-                        {inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && inv.payment_status !== "Returned" && inv.status !== "returned" && (
-                          <button
-                            type="button"
-                            title="Edit Invoice"
-                            onClick={() => handleEditInvoice(inv)}
-                            className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer shrink-0"
-                          >
-                            <Pencil className="size-4" />
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          title="Edit Invoice"
+                          onClick={() => handleEditInvoice(inv)}
+                          className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                        >
+                          <Pencil className="size-4" />
+                        </button>
 
                         {/* Cancel Invoice */}
                         {inv.payment_status !== "Cancelled" && inv.status !== "cancelled" && (
@@ -3136,6 +3134,16 @@ export function PosInvoicesHistory() {
                             <XCircle className="size-4" />
                           </button>
                         )}
+
+                        {/* Permanent Delete Invoice */}
+                        <button
+                          type="button"
+                          title="Delete Invoice Permanently"
+                          onClick={() => setDeleteTarget(inv)}
+                          className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
 
                         {/* More Options Dropdown Menu (3-dots) */}
                         <DropdownMenu>

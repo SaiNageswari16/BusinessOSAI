@@ -33,6 +33,7 @@ import {
   Sparkles,
   Percent,
   Tag,
+  Pencil,
 } from "lucide-react";
 import { invoicesApi, posApi, salesReturnsApi } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
@@ -1060,13 +1061,51 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
   };
 
   // Delete return record
-  const handleDeleteReturn = (id: string, e: React.MouseEvent) => {
+  const handleDeleteReturn = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm("Are you sure you want to remove this record?")) {
+      try {
+        if (id && !String(id).startsWith("ret-")) {
+          await salesReturnsApi.deleteReturn(id).catch(() => null);
+        }
+      } catch (err) {}
       const updated = returnsList.filter((r) => r.id !== id);
       setReturnsList(updated);
       localStorage.setItem(storageKey, JSON.stringify(updated));
-      toast.success("Record removed.");
+      toast.success("Sales Return record removed.");
+    }
+  };
+
+  const handleEditReturn = async (ret: SalesReturnRecord, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newReason = window.prompt("Update Return Reason / Notes:", ret.notes || "Customer Return");
+    if (newReason === null) return;
+    const newRefundStr = window.prompt("Update Refund / Credit Amount:", String(ret.total_refund || 0));
+    if (newRefundStr === null) return;
+    const newRefund = Number(newRefundStr);
+    if (isNaN(newRefund) || newRefund < 0) {
+      toast.error("Invalid refund amount.");
+      return;
+    }
+    try {
+      if (ret.id && !String(ret.id).startsWith("ret-")) {
+        await salesReturnsApi.updateReturn(ret.id, {
+          reason: newReason,
+          notes: newReason,
+          total_refund: newRefund,
+          subtotal: newRefund,
+        }).catch(() => null);
+      }
+      const updated = returnsList.map((r) =>
+        r.id === ret.id
+          ? { ...r, notes: newReason, total_refund: newRefund, subtotal: newRefund }
+          : r
+      );
+      setReturnsList(updated);
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+      toast.success(`Sales Return ${ret.return_number} updated.`);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update Sales Return");
     }
   };
 
@@ -1439,6 +1478,13 @@ export function PosSalesReturns({ tab }: { tab?: string }) {
                           </td>
                           <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={(e) => void handleEditReturn(ret, e)}
+                                className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                                title="Edit Return Record"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
                               <button
                                 onClick={() => handleDirectThermalPrint(ret)}
                                 className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"

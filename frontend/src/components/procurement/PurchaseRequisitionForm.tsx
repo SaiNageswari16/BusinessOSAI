@@ -403,7 +403,7 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
     setIsSaving(true);
     try {
       const requesterId = selectedEmployeeId || "00000000-0000-0000-0000-000000000000";
-      await inventoryApi.createPurchaseRequest({
+      const prPayload = {
         request_number: prNumber,
         requester_id: requesterId,
         status: prStatus || "Pending Approval",
@@ -412,9 +412,14 @@ export function PurchaseRequisitionForm({ onClose, onSaved, initialData }: Purch
           quantity: Number(it.quantity),
           estimated_price: Number(it.estimated_unit_cost),
         })),
-      });
-
-      toast.success(`Purchase Requisition ${prNumber} saved as ${prStatus}!`);
+      };
+      if (initialData?.id) {
+        await inventoryApi.updatePurchaseRequest(initialData.id, prPayload);
+        toast.success(`Purchase Requisition ${prNumber} updated successfully!`);
+      } else {
+        await inventoryApi.createPurchaseRequest(prPayload);
+        toast.success(`Purchase Requisition ${prNumber} saved as ${prStatus}!`);
+      }
       if (onSaved) onSaved();
       onClose();
     } catch (err: any) {

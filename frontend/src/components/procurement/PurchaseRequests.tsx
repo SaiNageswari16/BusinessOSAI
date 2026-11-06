@@ -15,7 +15,8 @@ import {
   IndianRupee, 
   CheckCircle2, 
   Clock, 
-  X 
+  X,
+  Trash2
 } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
@@ -599,6 +600,24 @@ export function PurchaseRequests() {
                           className="h-8 gap-1.5 font-bold rounded-lg hover:bg-primary/10 cursor-pointer"
                         >
                           <Eye className="size-4" /> View / Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            if (!window.confirm(`Delete Purchase Request ${req.request_number || req.id}?`)) return;
+                            try {
+                              await inventoryApi.deletePurchaseRequest(req.id);
+                              toast.success(`Purchase Request ${req.request_number || req.id} deleted.`);
+                              fetchData();
+                            } catch (err: any) {
+                              toast.error(err?.message || "Failed to delete Purchase Request");
+                            }
+                          }}
+                          className="h-8 gap-1 font-bold rounded-lg border-rose-200 text-rose-600 bg-rose-50/50 hover:bg-rose-100 cursor-pointer"
+                          title="Delete Purchase Request"
+                        >
+                          <Trash2 className="size-3.5" /> Delete
                         </Button>
                       </div>
                     </td>

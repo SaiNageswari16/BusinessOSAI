@@ -282,10 +282,23 @@ export function GoodsReceivedNoteForm({ onClose, onSaved, initialData }: GoodsRe
     setIsSaving(true);
     try {
       const inspectorId = selectedInspectorId || "00000000-0000-0000-0000-000000000000";
+      const grnItemsPayload = items.map((it) => ({
+        product_id: it.product_id || products[0]?.id,
+        quantity_ordered: Number(it.quantity_ordered),
+        quantity_received: Number(it.quantity_received),
+        quantity_accepted: Number(it.quantity_accepted),
+        quantity_rejected: Number(it.quantity_rejected),
+        batch_number: it.batch_number || undefined,
+        expiry_date: it.expiry_date || undefined,
+      }));
       if (isEditing) {
         await inventoryApi.updateGoodsReceivedNote(initialData.id, {
+          grn_number: grnNumber,
+          purchase_order_id: linkedPoId || undefined,
+          received_by: inspectorId,
           received_date: receivedDate ? new Date(receivedDate).toISOString() : undefined,
           status: "Verified",
+          items: grnItemsPayload,
         });
         toast.success(`GRN ${grnNumber} updated successfully.`);
       } else {
@@ -293,15 +306,7 @@ export function GoodsReceivedNoteForm({ onClose, onSaved, initialData }: GoodsRe
           grn_number: grnNumber,
           purchase_order_id: linkedPoId || undefined,
           received_by: inspectorId,
-          items: items.map((it) => ({
-            product_id: it.product_id || products[0]?.id,
-            quantity_ordered: Number(it.quantity_ordered),
-            quantity_received: Number(it.quantity_received),
-            quantity_accepted: Number(it.quantity_accepted),
-            quantity_rejected: Number(it.quantity_rejected),
-            batch_number: it.batch_number || undefined,
-            expiry_date: it.expiry_date || undefined,
-          })),
+          items: grnItemsPayload,
         });
         toast.success(`GRN ${grnNumber} logged! ${totalAccepted} units added to stock.`);
       }

@@ -18,6 +18,8 @@ import {
   Clock,
   CheckCircle,
   RefreshCw,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { invoicesApi } from "@/lib/api-client";
 import { useTenant } from "@/contexts/tenant-context";
@@ -66,6 +68,7 @@ export function PosDebitNotes() {
   const [debitNotes, setDebitNotes] = useState<PosDocumentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreatingNote, setIsCreatingNote] = useState(false);
+  const [editingNote, setEditingNote] = useState<PosDocumentRecord | null>(null);
   const [sendingWhatsappId, setSendingWhatsappId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -217,14 +220,47 @@ export function PosDebitNotes() {
 
   const totalDebitAmount = debitNotes.reduce((sum, n) => sum + Number(n.total || n.total_amount || 0), 0);
 
-  if (isCreatingNote) {
+  const handleDeleteDebitNote = async (note: PosDocumentRecord) => {
+    const label = note.invoice_number || note.id;
+    if (!window.confirm(`Delete Debit Note ${label}?`)) return;
+    try {
+      if (note.id && !String(note.id).startsWith("local-")) {
+        await invoicesApi.deleteInvoice(note.id).catch(() => null);
+      }
+      const currentTenantId = (tenant as any)?.raw?.tenant_id || (tenant as any)?.tenant_id || tenant?.id || "default";
+      const currentCompanyId = tenant?.id || (tenant as any)?.raw?.id || (tenant as any)?.company_id || "default";
+      const localKey = `pos_saved_invoices_${currentTenantId}_${currentCompanyId}`;
+      try {
+        const raw = localStorage.getItem(localKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const updated = parsed.filter(
+            (i: any) => i.id !== note.id && i.invoice_number !== note.invoice_number
+          );
+          localStorage.setItem(localKey, JSON.stringify(updated));
+        }
+      } catch (e) {}
+      setDebitNotes((prev) =>
+        prev.filter((i) => i.id !== note.id && i.invoice_number !== note.invoice_number)
+      );
+      toast.success(`Debit Note ${label} deleted.`);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to delete Debit Note.");
+    }
+  };
+
+  if (isCreatingNote || editingNote) {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between bg-amber-50/80 border border-amber-200 px-4 py-2.5 rounded-2xl">
           <div className="flex items-center gap-2">
             <span className="p-1 bg-amber-600 text-white rounded-lg font-bold text-xs">DN</span>
             <div>
-              <h3 className="font-bold text-xs text-amber-900">{t("New Customer Debit Note (Supplementary Invoice)", "New Customer Debit Note (Supplementary Invoice)")}</h3>
+              <h3 className="font-bold text-xs text-amber-900">
+                {editingNote
+                  ? `Edit Customer Debit Note (${editingNote.invoice_number || editingNote.id})`
+                  : t("New Customer Debit Note (Supplementary Invoice)", "New Customer Debit Note (Supplementary Invoice)")}
+              </h3>
               <p className="text-[11px] text-amber-700">Bill additional charges, freight, or rate differences to customer</p>
             </div>
           </div>
@@ -232,6 +268,7 @@ export function PosDebitNotes() {
             type="button"
             onClick={() => {
               setIsCreatingNote(false);
+              setEditingNote(null);
               void fetchDebitNotes();
             }}
             className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
@@ -240,7 +277,15 @@ export function PosDebitNotes() {
           </button>
         </div>
 
-        <PosSalesInvoice initialDocType="DEBIT_NOTE" />
+        <PosSalesInvoice
+          initialDocType="DEBIT_NOTE"
+          editingInvoice={editingNote || undefined}
+          onBack={() => {
+            setIsCreatingNote(false);
+            setEditingNote(null);
+            void fetchDebitNotes();
+          }}
+        />
       </div>
     );
   }
@@ -403,6 +448,15 @@ export function PosDebitNotes() {
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             type="button"
+                            onClick={() => setEditingNote(note)}
+                            className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 transition-colors cursor-pointer"
+                            title="Edit Debit Note"
+                          >
+                            <Pencil className="size-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
                             onClick={() => handlePrintDebitNote(note)}
                             className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
                             title="Print GST Debit Note"
@@ -418,6 +472,15 @@ export function PosDebitNotes() {
                             title="Send via WhatsApp"
                           >
                             <MessageCircle className="size-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteDebitNote(note)}
+                            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 transition-colors cursor-pointer"
+                            title="Delete Debit Note"
+                          >
+                            <Trash2 className="size-3.5" />
                           </button>
                         </div>
                       </td>

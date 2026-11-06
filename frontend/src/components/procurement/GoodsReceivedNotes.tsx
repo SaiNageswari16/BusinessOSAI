@@ -16,7 +16,8 @@ import {
   CheckCircle2, 
   AlertTriangle, 
   PackageCheck,
-  X 
+  X,
+  Trash2
 } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
@@ -587,6 +588,24 @@ export function GoodsReceivedNotes() {
                         className="h-8 gap-1.5 font-bold rounded-lg hover:bg-primary/10 cursor-pointer"
                       >
                         <Eye className="size-4" /> View / Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          if (!window.confirm(`Delete Goods Received Note ${grn.grn_number || grn.id}?`)) return;
+                          try {
+                            await inventoryApi.deleteGoodsReceivedNote(grn.id);
+                            toast.success(`GRN ${grn.grn_number || grn.id} deleted.`);
+                            fetchData();
+                          } catch (err: any) {
+                            toast.error(err?.message || "Failed to delete GRN");
+                          }
+                        }}
+                        className="h-8 gap-1 font-bold rounded-lg border-rose-200 text-rose-600 bg-rose-50/50 hover:bg-rose-100 cursor-pointer"
+                        title="Delete Goods Received Note"
+                      >
+                        <Trash2 className="size-3.5" /> Delete
                       </Button>
                     </td>
                   </tr>

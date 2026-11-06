@@ -16,7 +16,8 @@ import {
   IndianRupee, 
   PackageCheck, 
   Clock, 
-  X 
+  X,
+  Trash2
 } from "lucide-react";
 import { inventoryApi } from "../../lib/api-client";
 import { toast } from "sonner";
@@ -611,6 +612,24 @@ export function PurchaseOrders() {
                           className="h-8 gap-1.5 font-bold rounded-lg hover:bg-primary/10 cursor-pointer"
                         >
                           <Eye className="size-3.5" /> View / Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            if (!window.confirm(`Delete Purchase Order ${po.po_number || po.id}?`)) return;
+                            try {
+                              await inventoryApi.deletePurchaseOrder(po.id);
+                              toast.success(`Purchase Order ${po.po_number || po.id} deleted.`);
+                              fetchData();
+                            } catch (err: any) {
+                              toast.error(err?.message || "Failed to delete Purchase Order");
+                            }
+                          }}
+                          className="h-8 gap-1 font-bold rounded-lg border-rose-200 text-rose-600 bg-rose-50/50 hover:bg-rose-100 cursor-pointer"
+                          title="Delete Purchase Order"
+                        >
+                          <Trash2 className="size-3.5" /> Delete
                         </Button>
                       </div>
                     </td>

@@ -1437,16 +1437,23 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
 
       if (docType === "PR") {
         const requesterId = "00000000-0000-0000-0000-000000000000";
-        await inventoryApi.createPurchaseRequest({
+        const prPayload = {
           request_number: docNumber,
           requester_id: requesterId,
+          status: currentPoStatus || "Draft",
           items: resolvedItems.map((it) => ({
             product_id: it.product_id,
             quantity: it.quantity,
             estimated_price: it.estimated_price,
           })),
-        });
-        toast.success(`Purchase Requisition ${docNumber} created successfully!`);
+        };
+        if (initialData?.id) {
+          await inventoryApi.updatePurchaseRequest(initialData.id, prPayload);
+          toast.success(`Purchase Requisition ${docNumber} updated successfully!`);
+        } else {
+          await inventoryApi.createPurchaseRequest(prPayload);
+          toast.success(`Purchase Requisition ${docNumber} created successfully!`);
+        }
       } else if (docType === "PO") {
         if (linkedPrId) {
           const linkedPr = approvedPRs.find((pr) => pr.id === linkedPrId);
@@ -1456,53 +1463,72 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             return;
           }
         }
+        const poPayload = {
+          po_number: docNumber,
+          supplier_id: supplierIdToUse,
+          purchase_request_id: linkedPrId || undefined,
+          delivery_date: safeToIsoString(dueDate),
+          status: currentPoStatus || "Draft",
+          total_amount: roundedTotal,
+          items: resolvedItems.map((it) => ({
+            product_id: it.product_id,
+            quantity: it.quantity,
+            unit_price: it.unit_price,
+            tax_percent: it.tax_percent,
+            hsn_code: it.hsn_code || undefined,
+            uom: it.uom || undefined,
+            mrp: it.mrp > 0 ? it.mrp : undefined,
+            selling_price: it.selling_price > 0 ? it.selling_price : undefined,
+          })),
+        };
         if (initialData?.id) {
-          await inventoryApi.updatePurchaseOrderStatus(initialData.id, currentPoStatus || "Draft");
+          await inventoryApi.updatePurchaseOrder(initialData.id, poPayload);
           toast.success(`Purchase Order ${docNumber} updated successfully!`);
         } else {
-          await inventoryApi.createPurchaseOrder({
-            po_number: docNumber,
-            supplier_id: supplierIdToUse,
-            purchase_request_id: linkedPrId || undefined,
-            delivery_date: safeToIsoString(dueDate),
-            status: currentPoStatus || "Draft",
-            items: resolvedItems.map((it) => ({
-              product_id: it.product_id,
-              quantity: it.quantity,
-              unit_price: it.unit_price,
-              tax_percent: it.tax_percent,
-            })),
-          });
+          await inventoryApi.createPurchaseOrder(poPayload);
           toast.success(`Purchase Order ${docNumber} created as ${currentPoStatus || "Draft"}!`);
         }
       } else {
         // PINV: Purchase Invoice / Vendor Bill
-        let poIdToUse = linkedPoId;
+        let poIdToUse = linkedPoId || initialData?.purchase_order_id;
+        const poItemsPayload = resolvedItems.map((it) => ({
+          product_id: it.product_id,
+          quantity: it.quantity,
+          unit_price: it.unit_price,
+          tax_percent: it.tax_percent,
+          hsn_code: it.hsn_code || undefined,
+          uom: it.uom || undefined,
+          mrp: it.mrp > 0 ? it.mrp : undefined,
+          selling_price: it.selling_price > 0 ? it.selling_price : undefined,
+        }));
         if (!poIdToUse) {
           const createdPo = await inventoryApi.createPurchaseOrder({
             po_number: `PO-${docNumber.replace(/^PINV-/, '')}-${Math.floor(1000 + Math.random() * 9000)}`,
             supplier_id: supplierIdToUse,
             delivery_date: safeToIsoString(dueDate),
             status: currentPoStatus === "Paid" ? "Billed" : (currentPoStatus || "Received"),
-            items: resolvedItems.map((it) => ({
-              product_id: it.product_id,
-              quantity: it.quantity,
-              unit_price: it.unit_price,
-              tax_percent: it.tax_percent,
-              hsn_code: it.hsn_code || undefined,
-              uom: it.uom || undefined,
-              mrp: it.mrp > 0 ? it.mrp : undefined,
-              selling_price: it.selling_price > 0 ? it.selling_price : undefined,
-            })),
+            items: poItemsPayload,
           });
           poIdToUse = createdPo.id;
+        } else if (initialData?.id) {
+          // Keep linked PO supplier & line items synchronized when editing a Purchase Invoice
+          try {
+            await inventoryApi.updatePurchaseOrder(poIdToUse, {
+              supplier_id: supplierIdToUse,
+              delivery_date: safeToIsoString(dueDate),
+              total_amount: roundedTotal,
+              items: poItemsPayload,
+            });
+          } catch {
+            // non-blocking
+          }
         }
 
         const isPaid = currentPoStatus === "Paid" || Number(paidVal) >= roundedTotal;
         const finalPaidAmount = isPaid ? roundedTotal : Number(paidVal);
         const billStatus = isPaid ? "Paid" : (finalPaidAmount > 0 ? "Partial" : (currentPoStatus || "Unpaid"));
 
-        await inventoryApi.createVendorBill({
+        const billPayload = {
           bill_number: docNumber,
           purchase_order_id: poIdToUse,
           grn_id: linkedGrnId || undefined,
@@ -1531,8 +1557,15 @@ export function ProcurementDocumentForm({ docType, onClose, onSaved, initialData
             is_free: Boolean(it.is_free),
             is_tax_inclusive: isTaxInclusive,
           })),
-        });
-        toast.success(`Purchase Invoice ${docNumber} recorded successfully (Status: ${billStatus})!`);
+        };
+
+        if (initialData?.id) {
+          await inventoryApi.updateVendorBill(initialData.id, billPayload);
+          toast.success(`Purchase Invoice ${docNumber} updated successfully (Status: ${billStatus})!`);
+        } else {
+          await inventoryApi.createVendorBill(billPayload);
+          toast.success(`Purchase Invoice ${docNumber} recorded successfully (Status: ${billStatus})!`);
+        }
       }
 
       // Advance sequence number by +1 for new documents

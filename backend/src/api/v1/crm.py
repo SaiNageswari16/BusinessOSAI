@@ -4467,6 +4467,61 @@ async def create_sales_order(
     return order
 
 
+class SalesOrderUpdate(BaseModel):
+    customer_id: uuid.UUID | None = None
+    order_number: str | None = None
+    items: dict | None = None
+    total: float | None = None
+    status: str | None = None
+    payment_status: str | None = None
+
+
+@router.put("/sales-orders/{order_id}")
+@router.patch("/sales-orders/{order_id}")
+async def update_sales_order(
+    order_id: uuid.UUID,
+    payload: SalesOrderUpdate,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    order = await db.scalar(
+        select(CRMSalesOrder).where(CRMSalesOrder.id == order_id, CRMSalesOrder.tenant_id == ctx.tenant_id)
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Sales Order not found")
+    if payload.customer_id is not None:
+        order.customer_id = payload.customer_id
+    if payload.order_number is not None:
+        order.order_number = payload.order_number
+    if payload.items is not None:
+        order.items = payload.items
+    if payload.total is not None:
+        order.total = payload.total
+    if payload.status is not None:
+        order.status = payload.status
+    if payload.payment_status is not None:
+        order.payment_status = payload.payment_status
+    await db.commit()
+    await db.refresh(order)
+    return order
+
+
+@router.delete("/sales-orders/{order_id}")
+async def delete_sales_order(
+    order_id: uuid.UUID,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    order = await db.scalar(
+        select(CRMSalesOrder).where(CRMSalesOrder.id == order_id, CRMSalesOrder.tenant_id == ctx.tenant_id)
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Sales Order not found")
+    await db.delete(order)
+    await db.commit()
+    return {"message": "Sales Order deleted successfully", "id": str(order_id)}
+
+
 # ─── Universal AI Calling Engine ─────────────────────────────────────────────
 
 class InitiateCallRequest(BaseModel):

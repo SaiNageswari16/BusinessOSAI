@@ -3978,6 +3978,8 @@ export interface CrmSalesOrder {
 export const crmSalesOrdersApi = {
   list: () => request<CrmSalesOrder[]>("GET", "/crm/sales-orders"),
   create: (data: Record<string, unknown>) => request<CrmSalesOrder>("POST", "/crm/sales-orders", data),
+  update: (id: string, data: Record<string, unknown>) => request<CrmSalesOrder>("PATCH", `/crm/sales-orders/${id}`, data),
+  delete: (id: string) => request<{ message: string; id: string }>("DELETE", `/crm/sales-orders/${id}`),
 };
 
 // ─── Customer Intelligence API ────────────────────────────────────────────────
@@ -4985,6 +4987,8 @@ export const inventoryApi = {
 
   getPurchaseRequests: () => request<any[]>("GET", "/inventory/procurement/purchase-requests"),
   createPurchaseRequest: (data: any) => request<any>("POST", "/inventory/procurement/purchase-requests", data),
+  updatePurchaseRequest: (id: string, data: any) => request<any>("PATCH", `/inventory/procurement/purchase-requests/${id}`, data),
+  deletePurchaseRequest: (id: string) => request<void>("DELETE", `/inventory/procurement/purchase-requests/${id}`),
 
   getPurchaseQuotations: () => request<any[]>("GET", "/inventory/procurement/purchase-quotations"),
   createPurchaseQuotation: (data: any) => request<any>("POST", "/inventory/procurement/purchase-quotations", data),
@@ -4996,6 +5000,7 @@ export const inventoryApi = {
   updatePurchaseOrder: (id: string, data: any) => request<any>("PATCH", `/inventory/procurement/purchase-orders/${id}`, data),
   updatePurchaseOrderStatus: (id: string, status: string) => request<any>("PATCH", `/inventory/procurement/purchase-orders/${id}`, { status }),
   deletePurchaseOrder: (id: string) => request<void>("DELETE", `/inventory/procurement/purchase-orders/${id}`),
+  updateVendorBill: (id: string, data: any) => request<any>("PATCH", `/inventory/procurement/vendor-bills/${id}`, data),
   deleteVendorBill: (id: string) => request<void>("DELETE", `/inventory/procurement/vendor-bills/${id}`),
   sendVendorBillWhatsApp: (id: string, phone?: string) => request<{ success: boolean; status: string; detail?: any }>("POST", `/inventory/procurement/vendor-bills/${id}/send-whatsapp`, { phone }),
 
@@ -5032,6 +5037,8 @@ export const inventoryApi = {
 
   getPurchaseReturns: () => request<any[]>("GET", "/inventory/procurement/purchase-returns"),
   createPurchaseReturn: (data: any) => request<any>("POST", "/inventory/procurement/purchase-returns", data),
+  updatePurchaseReturn: (id: string, data: any) => request<any>("PATCH", `/inventory/procurement/purchase-returns/${id}`, data),
+  deletePurchaseReturn: (id: string) => request<void>("DELETE", `/inventory/procurement/purchase-returns/${id}`),
 
   getVendorBills: () => request<any[]>("GET", "/inventory/procurement/vendor-bills"),
   createVendorBill: (data: any) => request<any>("POST", "/inventory/procurement/vendor-bills", data),
@@ -5039,12 +5046,18 @@ export const inventoryApi = {
 
   getVendorPayments: () => request<any[]>("GET", "/inventory/procurement/vendor-payments"),
   createVendorPayment: (data: any) => request<any>("POST", "/inventory/procurement/vendor-payments", data),
+  updateVendorPayment: (id: string, data: any) => request<any>("PATCH", `/inventory/procurement/vendor-payments/${id}`, data),
+  deleteVendorPayment: (id: string) => request<void>("DELETE", `/inventory/procurement/vendor-payments/${id}`),
   getSupplierPayables: () => request<any[]>("GET", "/inventory/procurement/suppliers/payables"),
 
   getVendorCreditNotes: () => request<any[]>("GET", "/inventory/procurement/credit-notes"),
   createVendorCreditNote: (data: any) => request<any>("POST", "/inventory/procurement/credit-notes", data),
+  updateVendorCreditNote: (id: string, data: any) => request<any>("PATCH", `/inventory/procurement/credit-notes/${id}`, data),
+  deleteVendorCreditNote: (id: string) => request<void>("DELETE", `/inventory/procurement/credit-notes/${id}`),
   getVendorDebitNotes: () => request<any[]>("GET", "/inventory/procurement/debit-notes"),
   createVendorDebitNote: (data: any) => request<any>("POST", "/inventory/procurement/debit-notes", data),
+  updateVendorDebitNote: (id: string, data: any) => request<any>("PATCH", `/inventory/procurement/debit-notes/${id}`, data),
+  deleteVendorDebitNote: (id: string) => request<void>("DELETE", `/inventory/procurement/debit-notes/${id}`),
 
   getSpendAnalysis: () => request<any>("GET", "/inventory/procurement/analytics/spend-analysis"),
   getLeadTimeAnalysis: () => request<any[]>("GET", "/inventory/procurement/analytics/lead-time"),
@@ -5410,6 +5423,10 @@ export const salesReturnsApi = {
     request<PaginatedResponse<any>>("GET", "/sales-returns", undefined, params),
 
   getReturn: (id: string) => request<any>("GET", `/sales-returns/${id}`),
+
+  updateReturn: (id: string, data: any) => request<any>("PATCH", `/sales-returns/${id}`, data),
+
+  deleteReturn: (id: string) => request<void>("DELETE", `/sales-returns/${id}`),
 
   getInvoiceForReturn: (invoiceIdOrNumber: string) =>
     request<any>("GET", `/sales-returns/invoice/${encodeURIComponent(invoiceIdOrNumber)}`),
