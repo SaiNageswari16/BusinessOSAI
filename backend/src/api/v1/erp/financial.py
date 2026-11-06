@@ -772,9 +772,24 @@ async def update_number_series(
     if not ns:
         raise HTTPException(status_code=404, detail="Number series not found")
 
+    from src.utils.number_series import get_module_aliases
     updates = payload.model_dump(exclude_unset=True)
     for key, value in updates.items():
         setattr(ns, key, value)
+
+    # Keep any sibling alias rows for the same tenant & module in sync so peek_next_number never reads a stale row
+    aliases = get_module_aliases(ns.module_name)
+    sibling_rows = (await db.execute(
+        select(NumberSeries).where(
+            NumberSeries.tenant_id == ctx.tenant_id,
+            func.lower(NumberSeries.module_name).in_([a.lower() for a in aliases]),
+        )
+    )).scalars().all()
+    for sib in sibling_rows:
+        for key, value in updates.items():
+            if key in ("prefix", "current_number", "padding", "status") and value is not None:
+                setattr(sib, key, value)
+    await db.flush()
 
     await write_audit_log(
         db,

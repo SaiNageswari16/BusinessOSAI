@@ -274,11 +274,18 @@ export function loadStoredInvoiceSettings(tenantId?: string, companyId?: string)
   // default value in the more-specific company-scoped key — which is why the
   // right prefix surfaced but the number still started from 0001 instead of
   // the user's configured next sequence.
+  const isPoisonedSeq = (val: any) => Number(val) === 39157 || Number(val) === 39158;
   const mergeNumIfConfigured = (field: keyof InvoiceSettings, defaultVal: number) => {
     const cur = (base as any)[field];
-    if (cur === undefined || cur === null || Number(cur) === defaultVal) {
-      const found = altParsed.map((p) => p?.[field]).find((v) => v !== undefined && v !== null && Number(v) !== defaultVal);
-      if (found !== undefined && found !== null) (base as any)[field] = found;
+    if (cur === undefined || cur === null || Number(cur) === defaultVal || isPoisonedSeq(cur)) {
+      const found = altParsed
+        .map((p) => p?.[field])
+        .find((v) => v !== undefined && v !== null && Number(v) !== defaultVal && !isPoisonedSeq(v));
+      if (found !== undefined && found !== null) {
+        (base as any)[field] = Number(found);
+      } else if (isPoisonedSeq(cur)) {
+        (base as any)[field] = defaultVal;
+      }
     }
   };
   mergeNumIfConfigured("sequenceNumber", DEFAULT_INVOICE_SETTINGS.sequenceNumber as number);
@@ -324,14 +331,22 @@ function loadRawStoredInvoiceSettings(tenantId?: string, companyId?: string): In
 export function saveStoredInvoiceSettings(settings: InvoiceSettings, tenantId?: string, companyId?: string) {
   try {
     localStorage.setItem("pos_batch_explicitly_set", "true");
-    const key = getInvoiceSettingsStorageKey(tenantId, companyId);
-    localStorage.setItem(key, JSON.stringify(settings));
-    // Also update global fallback key
-    if (key !== "pos_invoice_quick_settings") {
-      localStorage.setItem("pos_invoice_quick_settings", JSON.stringify(settings));
+    const tid = tenantId || getTenantIdFromStorage();
+    const cid = companyId || getCompanyIdFromStorage();
+    const primaryKey = getInvoiceSettingsStorageKey(tid, cid);
+    const allKeys = Array.from(new Set([
+      primaryKey,
+      tid && cid ? `pos_invoice_quick_settings_${tid}_${cid}` : "",
+      tid ? `pos_invoice_quick_settings_${tid}` : "",
+      cid ? `pos_invoice_quick_settings_${cid}` : "",
+      "pos_invoice_quick_settings",
+    ].filter(Boolean)));
+    const serialized = JSON.stringify(settings);
+    for (const k of allKeys) {
+      localStorage.setItem(k, serialized);
     }
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("bos-invoice-settings-updated", { detail: { settings, key } }));
+      window.dispatchEvent(new CustomEvent("bos-invoice-settings-updated", { detail: { settings, key: primaryKey } }));
       window.dispatchEvent(new CustomEvent("bos-invoice-settings-changed", { detail: settings }));
     }
   } catch (err) {

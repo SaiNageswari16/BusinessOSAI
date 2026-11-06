@@ -449,7 +449,7 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [noteReason, setNoteReason] = useState<string>("Sales Return");
 
   const getNextSequentialInvoiceNumber = useCallback((type: DocumentType = invoiceType, currentSettings?: InvoiceSettings, targetTier?: "Retail" | "Wholesale" | "B2B") => {
-    const s = currentSettings || invoiceSettings || loadStoredInvoiceSettings();
+    const s = currentSettings || loadStoredInvoiceSettings(tenant?.id, currentCompanyId);
     const activeGst = getActiveBillingGst(tenant?.id);
     const isTaxInv = type === "TAX_INVOICE";
     const isProforma = type === "PROFORMA";
@@ -457,195 +457,99 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
     const isChallan = type === "DELIVERY_CHALLAN" || (type as string) === "CHALLAN";
     const effectiveTier = targetTier || pricingMode;
 
-    // 1. Identify valid Tax Invoice Prefix (strictly ignore PI-, QT-, CN-, DN-, EST-)
+    // 1. Identify valid Tax Invoice Prefix (strictly ignore PI-, QT-, CN-, DN-, EST-, DC-)
+    const isNonTaxPrefix = (p?: string | null) => {
+      if (!p) return true;
+      const u = p.trim().toUpperCase();
+      return u.startsWith("PI-") || u.startsWith("QT-") || u.startsWith("CN-") || u.startsWith("DN-") || u.startsWith("EST-") || u.startsWith("DC-");
+    };
+
+    const ensureSeparator = (p: string) => {
+      const trimmed = p.trim();
+      if (!trimmed) return "INV-";
+      return (trimmed.endsWith("-") || trimmed.endsWith("/")) ? trimmed : `${trimmed}-`;
+    };
+
     const rawOrgTaxPrefix = activeGst?.invoice_prefix?.trim() || getOrgDocumentPrefix("TAX_INVOICE", tenant?.id);
-    const validOrgTaxPrefix = (rawOrgTaxPrefix && !rawOrgTaxPrefix.toUpperCase().startsWith("PI-") && !rawOrgTaxPrefix.toUpperCase().startsWith("QT-") && !rawOrgTaxPrefix.toUpperCase().startsWith("CN-") && !rawOrgTaxPrefix.toUpperCase().startsWith("DN-") && !rawOrgTaxPrefix.toUpperCase().startsWith("EST-"))
-      ? (rawOrgTaxPrefix.endsWith("-") ? rawOrgTaxPrefix : `${rawOrgTaxPrefix}-`)
-      : null;
-
-    const validSettingsTaxPrefix = (s.prefix && !s.prefix.toUpperCase().startsWith("PI-") && !s.prefix.toUpperCase().startsWith("QT-") && !s.prefix.toUpperCase().startsWith("CN-") && !s.prefix.toUpperCase().startsWith("DN-") && !s.prefix.toUpperCase().startsWith("EST-"))
-      ? (s.prefix.endsWith("-") ? s.prefix : `${s.prefix}-`)
-      : null;
-
-    // 2. Scan saved invoices in localStorage to detect dominant active tax invoice prefix if needed
-    let detectedExistingTaxPrefix: string | null = null;
-    let highestActive = 0;
-    let detectedPadding = isTaxInv ? (s.padding ?? 4) : isProforma ? (s.proformaPadding ?? 4) : isQuotation ? (s.quotationPadding ?? 4) : isChallan ? (s.challanPadding ?? 4) : 4;
+    const validOrgTaxPrefix = !isNonTaxPrefix(rawOrgTaxPrefix) ? ensureSeparator(rawOrgTaxPrefix!) : null;
+    const validSettingsTaxPrefix = !isNonTaxPrefix(s.prefix) ? ensureSeparator(s.prefix) : null;
 
     let prefix = "INV-";
-    try {
-      const keysToScan = [posStorageKey, "pos_saved_invoices", "pos_saved_invoices_default"].filter(Boolean);
-      const matchedNums: number[] = [];
-      const seenScanned = new Set<string>();
+    let detectedPadding = 4;
+    let targetSeq = 1;
 
-      // First pass: if isTaxInv, detect prefix from existing genuine Tax Invoices (e.g. "2026-2027-", "INV-")
-      if (isTaxInv) {
-        for (const k of keysToScan) {
-          const rawSaved = localStorage.getItem(k);
-          if (rawSaved) {
-            try {
-              const list = JSON.parse(rawSaved);
-              if (Array.isArray(list)) {
-                for (const inv of list) {
-                  const invNum = String(inv.invoice_number || "").trim();
-                  if (!invNum) continue;
-                  const invUpper = invNum.toUpperCase();
-                  if (invUpper.startsWith("PI-") || invUpper.startsWith("QT-") || invUpper.startsWith("CN-") || invUpper.startsWith("DN-") || invUpper.startsWith("EST-")) continue;
-                  if (inv.invoice_type === "PROFORMA" || inv.invoice_type === "QUOTATION" || inv.doc_type === "PROFORMA" || inv.doc_type === "QUOTATION") continue;
+    if (isTaxInv) {
+      if (effectiveTier === "B2B" && (s.separateB2BSequenceEnabled || (s.b2bSequenceNumber && s.b2bSequenceNumber > 1))) {
+        prefix = ensureSeparator(s.b2bPrefix || "B2B-");
+        detectedPadding = s.b2bPadding ?? s.padding ?? 4;
+        targetSeq = s.b2bSequenceNumber || 1;
+      } else if (effectiveTier === "Wholesale" && (s.separateB2BSequenceEnabled || (s.wholesaleSequenceNumber && s.wholesaleSequenceNumber > 1))) {
+        prefix = ensureSeparator(s.wholesalePrefix || "WS-");
+        detectedPadding = s.wholesalePadding ?? s.padding ?? 4;
+        targetSeq = s.wholesaleSequenceNumber || 1;
+      } else {
+        // Standard / Retail Sales Invoice: always prioritize Standard Sales Invoice prefix & sequence
+        // unless B2C was explicitly customized away from default "INV-" / 1 while standard was left default.
+        const hasCustomStandardPrefix = Boolean(validSettingsTaxPrefix && validSettingsTaxPrefix !== "INV-");
+        const hasCustomStandardSeq = (s.sequenceNumber || 1) > 1;
+        const hasCustomB2cPrefix = Boolean(s.separateB2BSequenceEnabled && s.b2cPrefix && s.b2cPrefix !== "INV-" && s.b2cPrefix !== "RET-");
+        const hasCustomB2cSeq = Boolean(s.separateB2BSequenceEnabled && (s.b2cSequenceNumber || 1) > 1);
 
-                  const prefixMatch = invNum.match(/^(.*?)(\d+)$/);
-                  if (prefixMatch && prefixMatch[1]) {
-                    detectedExistingTaxPrefix = prefixMatch[1];
-                    break;
-                  }
-                }
-              }
-            } catch { }
-          }
-          if (detectedExistingTaxPrefix) break;
-        }
-      }
-
-      // Determine final prefix for current doc type
-      if (isTaxInv) {
-        if (s.separateB2BSequenceEnabled || effectiveTier === "B2B" || effectiveTier === "Wholesale") {
-          if (effectiveTier === "B2B") {
-            prefix = s.b2bPrefix || "B2B-";
-            if (!prefix.endsWith("-") && !prefix.endsWith("/")) prefix = `${prefix}-`;
-            if (s.b2bPadding) detectedPadding = s.b2bPadding;
-          } else if (effectiveTier === "Wholesale") {
-            prefix = s.wholesalePrefix || "WS-";
-            if (!prefix.endsWith("-") && !prefix.endsWith("/")) prefix = `${prefix}-`;
-            if (s.wholesalePadding) detectedPadding = s.wholesalePadding;
-          } else {
-            prefix = s.b2cPrefix || s.prefix || validSettingsTaxPrefix || "INV-";
-            if (!prefix.endsWith("-") && !prefix.endsWith("/")) prefix = `${prefix}-`;
-            if (s.b2cPadding) detectedPadding = s.b2cPadding;
-          }
-        } else if (validSettingsTaxPrefix && validSettingsTaxPrefix !== "INV-") {
-          prefix = validSettingsTaxPrefix;
-        } else if (validOrgTaxPrefix && validOrgTaxPrefix !== "INV-") {
-          prefix = validOrgTaxPrefix;
-        } else if (detectedExistingTaxPrefix) {
-          prefix = detectedExistingTaxPrefix;
+        if (hasCustomStandardPrefix || !hasCustomB2cPrefix) {
+          prefix = validSettingsTaxPrefix || validOrgTaxPrefix || ensureSeparator(s.b2cPrefix || "INV-");
         } else {
-          prefix = validOrgTaxPrefix || validSettingsTaxPrefix || "INV-";
+          prefix = ensureSeparator(s.b2cPrefix!);
         }
-      } else if (isQuotation) {
-        const qPfx = s.quotationPrefix || activeGst?.quotation_prefix || getDocPrefix("QUOTATION", tenant?.id) || "QT";
-        prefix = qPfx.endsWith("-") ? qPfx : `${qPfx}-`;
-      } else if (isProforma) {
-        const pPfx = s.proformaPrefix || activeGst?.proforma_prefix || getDocPrefix("PROFORMA", tenant?.id) || "PI";
-        prefix = pPfx.endsWith("-") ? pPfx : `${pPfx}-`;
-      } else if (isChallan) {
-        const cPfx = s.challanPrefix || activeGst?.challan_prefix || getDocPrefix("DELIVERY_CHALLAN", tenant?.id) || "DC";
-        prefix = cPfx.endsWith("-") ? cPfx : `${cPfx}-`;
-      } else {
-        const otherPfx = getDocPrefix(type, tenant?.id) || "DOC";
-        prefix = otherPfx.endsWith("-") ? otherPfx : `${otherPfx}-`;
-      }
 
-      const suffix = isTaxInv ? (s.suffix || "") : "";
+        detectedPadding = s.padding ?? s.b2cPadding ?? 4;
 
-      // Second pass: extract max sequence matching the selected prefix.
-      // IMPORTANT: only count records of the SAME document type. The saved
-      // invoice array also holds receipts / quotations / proformas / estimates /
-      // credit-debit notes (they all share pos_saved_invoices*). Without this
-      // filter a receipt-shaped number with the same leading prefix (or a legacy
-      // epoch-millisecond number that parses to a plausible <50000 value) would
-      // inflate the tax-invoice sequence to something like 39158.
-      const recInvType = (r: any) =>
-        String(r?.invoice_type || r?.doc_type || "").toUpperCase();
-      const isSameDocType = (r: any) => {
-        const rt = recInvType(r);
-        if (isTaxInv) {
-          // Tax invoices only — exclude receipts, quotations, proformas,
-          // estimates, credit/debit notes, and any explicitly non-invoice type.
-          if (rt && rt !== "TAX_INVOICE" && rt !== "INVOICE" && rt !== "SALES_INVOICE") return false;
-          const n = String(r?.invoice_number || "").trim().toUpperCase();
-          if (/^(REC|POS|QT|PI|EST|CN|DN|SR)/.test(n)) return false; // receipt/other-doc-shaped
-          return true;
+        if (hasCustomStandardSeq || !hasCustomB2cSeq) {
+          targetSeq = s.sequenceNumber || 1;
+        } else {
+          targetSeq = s.b2cSequenceNumber || 1;
         }
-        if (isQuotation) return rt === "" || rt === "QUOTATION" || rt === "QUOTE";
-        if (isProforma) return rt === "" || rt === "PROFORMA" || rt === "PROFORMA_INVOICE";
-        if (isChallan) return rt === "CHALLAN" || rt === "DELIVERY_CHALLAN" || rt === "DELIVERY_NOTE";
-        return true; // other doc types (credit/debit/estimate) — keep lenient
-      };
-
-      keysToScan.forEach((k) => {
-        const rawSaved = localStorage.getItem(k);
-        if (rawSaved) {
-          try {
-            const list = JSON.parse(rawSaved);
-            if (Array.isArray(list)) {
-              list.forEach((inv: any) => {
-                const invNum = String(inv.invoice_number || "").trim();
-                if (!invNum || seenScanned.has(invNum)) return;
-                seenScanned.add(invNum);
-                // Ignore cancelled invoices so they do not block sequence
-                if (inv.status === "cancelled" || inv.payment_status === "Cancelled") return;
-                if (!isSameDocType(inv)) return;
-                if (prefix && invNum.startsWith(prefix)) {
-                  const remainder = suffix && invNum.endsWith(suffix)
-                    ? invNum.slice(prefix.length, invNum.length - suffix.length)
-                    : invNum.slice(prefix.length);
-                  const digitsMatch = remainder.match(/\d+$/);
-                  if (digitsMatch) {
-                    const digitStr = digitsMatch[0];
-                    const num = parseInt(digitStr, 10);
-                    if (!isNaN(num) && num > 0) {
-                      matchedNums.push(num);
-                      if (digitStr.length > detectedPadding && num < 100000000) {
-                        detectedPadding = digitStr.length;
-                      }
-                    }
-                  }
-                }
-              });
-            }
-          } catch { }
-        }
-      });
-
-      const normalNums = matchedNums.filter((n) => n < 100000000);
-      if (normalNums.length > 0) {
-        highestActive = Math.max(...normalNums);
-      } else {
-        highestActive = 0;
       }
-
-      const configuredMinSeq = isTaxInv
-        ? (s.separateB2BSequenceEnabled
-          ? (effectiveTier === "B2B" ? (s.b2bSequenceNumber || 1) : (effectiveTier === "Wholesale" ? (s.wholesaleSequenceNumber || 1) : (s.b2cSequenceNumber || s.sequenceNumber || 1)))
-          : (s.sequenceNumber || 1))
-        : isProforma
-          ? (s.proformaSequenceNumber || 1)
-          : isQuotation
-            ? (s.quotationSequenceNumber || 1)
-            // Credit / Debit / Estimate notes: use their OWN configured
-            // sequence instead of borrowing quotationSequenceNumber.
-            : (type === "CREDIT_NOTE" ? (s.creditNoteSequenceNumber || 1)
-              : type === "DEBIT_NOTE" ? (s.debitNoteSequenceNumber || 1)
-              : type === "ESTIMATE_NON_GST" ? (s.estimateSequenceNumber || 1)
-              : isChallan ? (s.challanSequenceNumber || 1)
-              : (s.quotationSequenceNumber || 1));
-
-      let targetSeq = configuredMinSeq;
-      if (highestActive > 0) {
-        targetSeq = Math.max(configuredMinSeq, highestActive + 1);
-      }
-      // Real sequence: proceed from the maximum of user-configured floor and existing highest sequence + 1
-      if (highestActive > 0) {
-        targetSeq = Math.max(configuredMinSeq, highestActive + 1);
-      }
-
-      const formattedSeq = detectedPadding > 0 ? String(targetSeq).padStart(detectedPadding, "0") : String(targetSeq);
-      return `${prefix}${formattedSeq}${suffix}`;
-    } catch (e) {
-      console.warn("Could not scan pos storage for sequence:", e);
-      return `${prefix}0001`;
+    } else if (isQuotation) {
+      const qPfx = s.quotationPrefix || activeGst?.quotation_prefix || getDocPrefix("QUOTATION", tenant?.id) || "QT-";
+      prefix = ensureSeparator(qPfx);
+      detectedPadding = s.quotationPadding ?? 4;
+      targetSeq = s.quotationSequenceNumber || 1;
+    } else if (isProforma) {
+      const pPfx = s.proformaPrefix || activeGst?.proforma_prefix || getDocPrefix("PROFORMA", tenant?.id) || "PI-";
+      prefix = ensureSeparator(pPfx);
+      detectedPadding = s.proformaPadding ?? 4;
+      targetSeq = s.proformaSequenceNumber || 1;
+    } else if (isChallan) {
+      const cPfx = s.challanPrefix || activeGst?.challan_prefix || getDocPrefix("DELIVERY_CHALLAN", tenant?.id) || "DC-";
+      prefix = ensureSeparator(cPfx);
+      detectedPadding = s.challanPadding ?? 4;
+      targetSeq = s.challanSequenceNumber || 1;
+    } else if (type === "ESTIMATE_NON_GST") {
+      const ePfx = s.estimatePrefix || activeGst?.estimate_prefix || getDocPrefix("ESTIMATE_NON_GST", tenant?.id) || "EST-";
+      prefix = ensureSeparator(ePfx);
+      detectedPadding = s.estimatePadding ?? 4;
+      targetSeq = s.estimateSequenceNumber || 1;
+    } else if (type === "CREDIT_NOTE") {
+      const cnPfx = s.creditNotePrefix || activeGst?.credit_note_prefix || getDocPrefix("CREDIT_NOTE", tenant?.id) || "CN-";
+      prefix = ensureSeparator(cnPfx);
+      detectedPadding = s.creditNotePadding ?? 4;
+      targetSeq = s.creditNoteSequenceNumber || 1;
+    } else if (type === "DEBIT_NOTE") {
+      const dnPfx = s.debitNotePrefix || activeGst?.debit_note_prefix || getDocPrefix("DEBIT_NOTE", tenant?.id) || "DN-";
+      prefix = ensureSeparator(dnPfx);
+      detectedPadding = s.debitNotePadding ?? 4;
+      targetSeq = s.debitNoteSequenceNumber || 1;
+    } else {
+      const otherPfx = getDocPrefix(type, tenant?.id) || "DOC-";
+      prefix = ensureSeparator(otherPfx);
+      detectedPadding = s.padding ?? 4;
+      targetSeq = s.sequenceNumber || 1;
     }
-  }, [invoiceSettings, posStorageKey, tenant?.id, pricingMode]);
+
+    const suffix = isTaxInv ? (s.suffix || "") : "";
+    const formattedSeq = detectedPadding > 0 ? String(targetSeq).padStart(detectedPadding, "0") : String(targetSeq);
+    return `${prefix}${formattedSeq}${suffix}`;
+  }, [invoiceSettings, posStorageKey, tenant?.id, currentCompanyId, pricingMode]);
 
   const [invoiceNumber, setInvoiceNumber] = useState(() => {
     if (editingInvoice?.invoice_number) {
@@ -719,45 +623,8 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
   const [showDispatchSection, setShowDispatchSection] = useState(false);
 
   const fetchNextOrgDocNumber = useCallback(async (type: DocumentType, explicitSettings?: InvoiceSettings) => {
-    const s = explicitSettings || invoiceSettings || loadStoredInvoiceSettings();
+    const s = explicitSettings || loadStoredInvoiceSettings(tenant?.id, currentCompanyId);
     const localSeqNum = getNextSequentialInvoiceNumber(type, s);
-
-    const activeCompId = currentCompanyId && isValidUUID(currentCompanyId) ? currentCompanyId : undefined;
-    const moduleMap: Record<DocumentType, string> = {
-      TAX_INVOICE: "invoices",
-      QUOTATION: "quotations",
-      ESTIMATE_NON_GST: "estimates",
-      PROFORMA: "proforma",
-      CREDIT_NOTE: "credit_notes",
-      DEBIT_NOTE: "debit_notes",
-    };
-    const modName = moduleMap[type] || "invoices";
-    // Prefer the user-configured prefix (from Settings / Number Series) over a stale
-    // backend row. The locally-computed localSeqNum already carries the correct prefix,
-    // so only trust the backend peek when it resolves to the SAME prefix — otherwise a
-    // previously auto-initialized "INV-" series row would silently win and the user's
-    // configured prefix (e.g. "SVB/26-27-") would never be applied.
-    const localPrefix = localSeqNum.replace(/\d+$/g, "").replace(/[-/]+\s*$/, "") || null;
-
-    try {
-      const peek = await numberSeriesApi.peekNextNumber(modName, activeCompId, localPrefix || undefined);
-      if (peek?.formatted_number && peek?.configured && peek?.current_number > 0) {
-        const peekNum = String(peek.formatted_number).trim();
-        if (type === "TAX_INVOICE" && (peekNum.toUpperCase().startsWith("PI-") || peekNum.toUpperCase().startsWith("QT-"))) {
-          return localSeqNum;
-        }
-        // Prefix mismatch guard: if the configured prefix is known and the backend
-        // returned a number under a DIFFERENT prefix, keep the local one.
-        if (localPrefix && localPrefix.length > 1) {
-          const peekPrefix = peekNum.replace(/\d+$/g, "").replace(/[-/]+\s*$/, "");
-          if (peekPrefix && peekPrefix.toLowerCase() !== localPrefix.toLowerCase()) {
-            return localSeqNum;
-          }
-        }
-        return peekNum;
-      }
-    } catch (e) { }
-
     return localSeqNum;
   }, [currentCompanyId, getNextSequentialInvoiceNumber, invoiceSettings, tenant?.id]);
 
@@ -2055,96 +1922,6 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
       ]);
       let remoteUnpaid: any[] = [];
       if (apiRes && apiRes.items) {
-        // Auto-detect highest issued invoice number from database to prevent duplicate collisions
-        const isTax = invoiceType === "TAX_INVOICE";
-        const isProforma = invoiceType === "PROFORMA";
-        const isQuote = invoiceType === "QUOTATION";
-        const curPrefix = isTax
-          ? ((invoiceSettings?.prefix && !invoiceSettings.prefix.toUpperCase().startsWith("PI-") && !invoiceSettings.prefix.toUpperCase().startsWith("QT-")) ? invoiceSettings.prefix : "INV-")
-          : isProforma
-            ? (invoiceSettings?.proformaPrefix || "PI-")
-            : (invoiceSettings?.quotationPrefix || "QT-");
-        const curSuffix = isTax ? (invoiceSettings?.suffix || "") : "";
-        let maxRemoteSeq = 0;
-
-        if (isQuote) {
-          const quoteList: any[] = Array.isArray(quotesRes) ? quotesRes : (quotesRes as any)?.items || [];
-          quoteList.forEach((q: any) => {
-            const qNum = String(q.quote_number || q.invoice_number || "").trim();
-            if (curPrefix && qNum.startsWith(curPrefix)) {
-              const remainder = curSuffix && qNum.endsWith(curSuffix)
-                ? qNum.slice(curPrefix.length, qNum.length - curSuffix.length)
-                : qNum.slice(curPrefix.length);
-              const digitsMatch = remainder.match(/\d+$/);
-              if (digitsMatch) {
-                const parsed = parseInt(digitsMatch[0], 10);
-                if (!isNaN(parsed) && parsed > 0 && parsed < 100000000) {
-                  maxRemoteSeq = Math.max(maxRemoteSeq, parsed);
-                }
-              }
-            }
-          });
-        } else {
-          apiRes.items.forEach((inv: any) => {
-            const invNum = String(inv.invoice_number || "").trim();
-            if (curPrefix && invNum.startsWith(curPrefix)) {
-              const remainder = curSuffix && invNum.endsWith(curSuffix)
-                ? invNum.slice(curPrefix.length, invNum.length - curSuffix.length)
-                : invNum.slice(curPrefix.length);
-              const digitsMatch = remainder.match(/\d+$/);
-              if (digitsMatch) {
-                const parsed = parseInt(digitsMatch[0], 10);
-                if (!isNaN(parsed) && parsed > 0 && parsed < 100000000) {
-                  maxRemoteSeq = Math.max(maxRemoteSeq, parsed);
-                }
-              }
-            }
-          });
-        }
-
-        // Also calculate max remote sequence for quotations from backend quotesRes
-        let maxRemoteQuoteSeq = 0;
-        const qPrefix = invoiceSettings?.quotationPrefix || "QT-";
-        const quoteList: any[] = Array.isArray(quotesRes) ? quotesRes : (quotesRes as any)?.items || [];
-        quoteList.forEach((q: any) => {
-          const qNum = String(q.quote_number || q.invoice_number || "").trim();
-          if (qPrefix && qNum.startsWith(qPrefix)) {
-            const remainder = qNum.slice(qPrefix.length);
-            const digitsMatch = remainder.match(/\d+$/);
-            if (digitsMatch) {
-              const parsed = parseInt(digitsMatch[0], 10);
-              if (!isNaN(parsed) && parsed > 0 && parsed < 100000000) {
-                maxRemoteQuoteSeq = Math.max(maxRemoteQuoteSeq, parsed);
-              }
-            }
-          }
-        });
-
-        if ((maxRemoteSeq > 0 || maxRemoteQuoteSeq > 0) && !editingInvoice && !activeEditingInvoice && !isRecreatingInvoice) {
-          const currentConfigured = isTax
-            ? (invoiceSettings?.sequenceNumber || 1)
-            : isProforma
-              ? (invoiceSettings?.proformaSequenceNumber || 1)
-              : (invoiceSettings?.quotationSequenceNumber || 1);
-
-          const baseSettings = invoiceSettings || loadStoredInvoiceSettings();
-          const targetQuoteSeq = maxRemoteQuoteSeq > 0 ? Math.max(baseSettings.quotationSequenceNumber || 1, maxRemoteQuoteSeq + 1) : (baseSettings.quotationSequenceNumber || 1);
-
-          if (currentConfigured <= maxRemoteSeq || (isQuote && targetQuoteSeq > (baseSettings.quotationSequenceNumber || 1))) {
-            const updatedNext = Math.max(currentConfigured, maxRemoteSeq + 1);
-            const updated = {
-              ...baseSettings,
-              ...(isTax ? { sequenceNumber: updatedNext } : {}),
-              ...(isProforma ? { proformaSequenceNumber: updatedNext } : {}),
-              quotationSequenceNumber: targetQuoteSeq || (isQuote ? updatedNext : (baseSettings.quotationSequenceNumber || 1)),
-            };
-            saveStoredInvoiceSettings(updated);
-            setInvoiceSettings(updated);
-            const nextNum = getNextSequentialInvoiceNumber(invoiceType, updated);
-            setInvoiceNumber(nextNum);
-          }
-        }
-
         remoteUnpaid = apiRes.items
           .filter((inv: any) => {
             const st = String(inv.status || "").toLowerCase();
@@ -5433,12 +5210,19 @@ export function PosSalesInvoice({ initialDocType = "TAX_INVOICE", editingInvoice
         const updatedSettings: InvoiceSettings = {
           ...s,
           customSequenceEnabled: true,
-          ...(isTaxInv ? { sequenceNumber: nextSeq } : {}),
+          ...(isTaxInv ? {
+            sequenceNumber: nextSeq,
+            ...(s.separateB2BSequenceEnabled && pricingMode === "B2B" ? { b2bSequenceNumber: nextSeq } : {}),
+            ...(s.separateB2BSequenceEnabled && pricingMode === "Wholesale" ? { wholesaleSequenceNumber: nextSeq } : {}),
+          } : {}),
           ...(isQuoteDoc ? { quotationSequenceNumber: nextSeq } : {}),
           ...(isProformaDoc ? { proformaSequenceNumber: nextSeq } : {}),
           ...(isChallanDoc ? { challanSequenceNumber: nextSeq } : {}),
+          ...(invoiceType === "ESTIMATE_NON_GST" ? { estimateSequenceNumber: nextSeq } : {}),
+          ...(invoiceType === "CREDIT_NOTE" ? { creditNoteSequenceNumber: nextSeq } : {}),
+          ...(invoiceType === "DEBIT_NOTE" ? { debitNoteSequenceNumber: nextSeq } : {}),
         };
-        saveStoredInvoiceSettings(updatedSettings);
+        saveStoredInvoiceSettings(updatedSettings, tenant?.id, currentCompanyId);
         setInvoiceSettings(updatedSettings);
 
         // Auto-reset form state to prepare for next invoice transaction

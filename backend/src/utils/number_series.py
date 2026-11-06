@@ -46,6 +46,8 @@ def get_module_aliases(module: str) -> list[str]:
         return ["estimates", "estimate", "estimate_non_gst", "non_gst", "Estimates", "Estimate"]
     if clean in ["proforma", "proforma_invoice", "proforma_invoices"]:
         return ["proforma", "proforma_invoice", "proforma invoices", "Proforma", "Proforma Invoice"]
+    if clean in ["challan", "challans", "delivery_challan", "delivery_challans", "dc", "delivery_note"]:
+        return ["delivery_challans", "delivery_challan", "challan", "challans", "Delivery Challan", "Delivery Challans", "dc"]
     if clean in ["credit_note", "credit_notes", "creditnote", "cn"]:
         return ["credit_notes", "credit_note", "Credit Note", "Credit Notes", "cn"]
     if clean in ["debit_note", "debit_notes", "debitnote", "dn"]:
@@ -412,24 +414,17 @@ async def sync_series_from_document_number(
     if valid_cid:
         query = query.where(NumberSeries.company_id == valid_cid)
 
-    series = await db.scalar(query.limit(1))
-    if series:
-        if series.current_number >= 50000 and num_val < 50000:
-            # Self-heal poisoned series caused by legacy epoch timestamp fallbacks
-            series.current_number = num_val
-        elif num_val < 50000 and num_val > series.current_number:
-            series.current_number = num_val
-        elif num_val >= 50000:
-            # Ignore random legacy timestamps from updating sequence counter
-            pass
-
+    all_series = (await db.execute(query)).scalars().all()
+    if all_series:
         last_digits_str = digits[-1]
         last_idx = document_number.rfind(last_digits_str)
-        if last_idx > 0:
-            detected_prefix = document_number[:last_idx]
+        detected_prefix = document_number[:last_idx] if last_idx > 0 else None
+        for series in all_series:
+            if num_val < 100000000:
+                series.current_number = num_val
             if detected_prefix:
                 series.prefix = detected_prefix
-            if len(last_digits_str) > 1 and num_val < 50000:
+            if len(last_digits_str) > 1 and num_val < 100000000:
                 series.padding = len(last_digits_str)
         try:
             async with db.begin_nested():

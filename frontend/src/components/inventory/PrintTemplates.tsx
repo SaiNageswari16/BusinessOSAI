@@ -1454,21 +1454,34 @@ export function PrintTemplates() {
   const s = liveInvoiceSettings;
   const seqRef = React.useRef<string>("");
   useEffect(() => {
-    const key = [s.prefix, s.sequenceNumber, s.quotationPrefix, s.proformaPrefix, s.estimatePrefix,
-      s.creditNotePrefix, s.debitNotePrefix, s.purchaseInvoicePrefix, s.purchaseOrderPrefix,
-      s.receiptPrefix].join("|");
+    const key = [
+      s.prefix, s.sequenceNumber, s.padding,
+      s.b2bPrefix, s.b2bSequenceNumber, s.b2bPadding,
+      s.wholesalePrefix, s.wholesaleSequenceNumber, s.wholesalePadding,
+      s.b2cPrefix, s.b2cSequenceNumber, s.b2cPadding,
+      s.quotationPrefix, s.quotationSequenceNumber, s.quotationPadding,
+      s.proformaPrefix, s.proformaSequenceNumber, s.proformaPadding,
+      s.challanPrefix, s.challanSequenceNumber, s.challanPadding,
+      s.estimatePrefix, s.estimateSequenceNumber, s.estimatePadding,
+      s.creditNotePrefix, s.creditNoteSequenceNumber, s.creditNotePadding,
+      s.debitNotePrefix, s.debitNoteSequenceNumber, s.debitNotePadding,
+      s.purchaseInvoicePrefix, s.purchaseInvoiceSequenceNumber, s.purchaseInvoicePadding,
+      s.purchaseOrderPrefix, s.purchaseOrderSequenceNumber, s.purchaseOrderPadding,
+      s.receiptPrefix, s.receiptSequenceNumber, s.receiptPadding,
+    ].join("|");
     if (seqRef.current === key) return;
     seqRef.current = key;
     const tid = tenant?.id;
     if (!tid) return;
-    // 1. Org document-prefix store (debounced so typing a prefix doesn't fire a request
-    // per keystroke — only flushes when the value settles).
+    // 1. Org document-prefix store & unified localStorage settings
     const t = setTimeout(async () => {
       try {
+        saveStoredInvoiceSettings(s, tid);
         setOrgDocumentPrefixes({
           invoice_prefix: s.prefix || "INV-",
           quotation_prefix: s.quotationPrefix || "QT-",
           proforma_prefix: s.proformaPrefix || "PI-",
+          challan_prefix: s.challanPrefix || "DC-",
           estimate_prefix: s.estimatePrefix || "EST-",
           credit_note_prefix: s.creditNotePrefix || "CN-",
           debit_note_prefix: s.debitNotePrefix || "DN-",
@@ -1477,18 +1490,21 @@ export function PrintTemplates() {
           receipt_prefix: s.receiptPrefix || "REC-",
         }, tid);
 
-        // 2. Backend NumberSeries rows (authoritative). Reuse the exact module names the
-        //    POS quick-settings modal syncs, so the two UIs stay consistent.
+        // 2. Backend NumberSeries rows — update ALL matching rows across company/tenant so no stale row remains.
         const cid = (typeof localStorage !== "undefined" && localStorage.getItem("bos_active_company_id")) || undefined;
-        const seriesRes = await numberSeriesApi.list(1, 100, cid);
+        const seriesRes = await numberSeriesApi.list(1, 100);
         const seriesList: any[] = (seriesRes as any)?.items || (seriesRes as any)?.data || [];
-        const findSeries = (m: string) => seriesList.find((x: any) => x.module_name?.toLowerCase() === m)
-          || seriesList.find((x: any) => x.module_name?.toLowerCase().includes(m));
+        const findMatchingSeries = (m: string, fb: string) => seriesList.filter((x: any) => {
+          const mod = String(x.module_name || "").toLowerCase();
+          return mod === m || mod.includes(m) || (fb ? (mod === fb || mod.includes(fb)) : false);
+        });
         const syncOne = async (module: string, fallbackModule: string, prefix: string, seq: number, padding: number) => {
-          const existing = findSeries(module) || (fallbackModule ? findSeries(fallbackModule) : undefined);
+          const matches = findMatchingSeries(module, fallbackModule);
           const cur = Math.max(0, seq - 1);
-          if (existing) {
-            await numberSeriesApi.update(existing.id, { prefix, current_number: cur, padding }).catch(() => { });
+          if (matches.length > 0) {
+            for (const existing of matches) {
+              await numberSeriesApi.update(existing.id, { prefix, current_number: cur, padding }).catch(() => { });
+            }
           } else {
             await numberSeriesApi.create({ company_id: cid, module_name: module, prefix, current_number: cur, padding, status: "active" }).catch(() => { });
           }
