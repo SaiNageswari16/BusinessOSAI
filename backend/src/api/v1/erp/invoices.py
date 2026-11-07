@@ -1000,20 +1000,68 @@ async def create_invoice(
         prefix_type = "invoices"
         inv_type_str = "tax_invoice"
 
-    from src.utils.number_series import resolve_valid_company_id, sync_series_from_document_number, generate_number
+    from src.utils.number_series import resolve_valid_company_id, sync_series_from_document_number, generate_number, get_module_aliases
+    from src.models import NumberSeries
 
     raw_cid = getattr(payload, "company_id", None) or ctx.active_company_id
     active_cid = await resolve_valid_company_id(db, ctx.tenant_id, raw_cid)
 
+    # Authoritatively consult the active NumberSeries set by admin in the DB
+    mod_aliases = get_module_aliases(prefix_type)
+    db_inv_series = await db.scalar(
+        select(NumberSeries)
+        .where(
+            NumberSeries.tenant_id == ctx.tenant_id,
+            func.lower(NumberSeries.module_name).in_([a.lower() for a in mod_aliases]),
+            NumberSeries.status == "active",
+        )
+        .order_by(NumberSeries.updated_at.desc(), NumberSeries.created_at.desc())
+        .limit(1)
+    )
+    admin_db_prefix = db_inv_series.prefix if (db_inv_series and db_inv_series.prefix) else None
+
+    is_edit_request = bool(getattr(payload, "is_edit_mode", False) or getattr(payload, "id", None))
+
     if payload.invoice_number and payload.invoice_number.strip():
         invoice_number = payload.invoice_number.strip()
+        import re
+
+        # If admin configured an authoritative prefix in DB and client sent a mismatched/stale prefix on new doc, use DB series
+        if not is_edit_request and admin_db_prefix and not invoice_number.startswith(admin_db_prefix):
+            logger.info(f"Client sent stale invoice prefix '{invoice_number}'. Auto-generating using admin DB prefix '{admin_db_prefix}'.")
+            invoice_number = await generate_number(db, ctx.tenant_id, prefix_type, active_cid, fallback_prefix=admin_db_prefix)
+        elif not is_edit_request:
+            m_pfx = re.match(r'^(.*?)(\d+)$', invoice_number)
+            extracted_pfx = m_pfx.group(1) if m_pfx else (admin_db_prefix or "")
+            for _ in range(50):
+                exists = await db.scalar(
+                    select(func.count(Invoice.id)).where(
+                        Invoice.tenant_id == ctx.tenant_id,
+                        Invoice.invoice_number == invoice_number
+                    )
+                )
+                if not exists:
+                    break
+                logger.warning(f"Invoice number '{invoice_number}' already exists in tenant {ctx.tenant_id}. Auto-generating next valid sequence.")
+                invoice_number = await generate_number(db, ctx.tenant_id, prefix_type, active_cid, fallback_prefix=extracted_pfx)
+
         try:
             await sync_series_from_document_number(db, ctx.tenant_id, prefix_type, invoice_number, active_cid)
         except Exception:
             pass
     else:
         try:
-            invoice_number = await generate_number(db, ctx.tenant_id, prefix_type, active_cid)
+            invoice_number = await generate_number(db, ctx.tenant_id, prefix_type, active_cid, fallback_prefix=admin_db_prefix or "")
+            for _ in range(50):
+                exists = await db.scalar(
+                    select(func.count(Invoice.id)).where(
+                        Invoice.tenant_id == ctx.tenant_id,
+                        Invoice.invoice_number == invoice_number
+                    )
+                )
+                if not exists:
+                    break
+                invoice_number = await generate_number(db, ctx.tenant_id, prefix_type, active_cid, fallback_prefix=admin_db_prefix or "")
         except Exception as gen_err:
             logger.warning(f"generate_number fallback in create_invoice: {gen_err}")
             prefix_map = {

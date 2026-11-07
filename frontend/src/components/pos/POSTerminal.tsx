@@ -34,7 +34,7 @@ import { PineLabsEDCModal } from "./PineLabsEDCModal";
 import { RazorpayPOSModal } from "./RazorpayPOSModal";
 import { BatchSelectorModal } from "../inventory/BatchSelectorModal";
 import { getEffectiveTaxRate, extractProductDiscount } from "@/lib/gst-utils";
-import { loadStoredInvoiceSettings, saveStoredInvoiceSettings } from "./InvoiceQuickSettingsModal";
+import { loadStoredInvoiceSettings, saveStoredInvoiceSettings, syncAndHardResetSequencesFromServer } from "./InvoiceQuickSettingsModal";
 import { getActiveBillingGst, getActiveReceiptTemplate, setOrgDocumentPrefixes } from "../../lib/receipt-template-store";
 import { safeSetItem } from "@/lib/safe-storage";
 import { useStoreLocations } from "@/hooks/use-store-locations";
@@ -67,6 +67,16 @@ function PosTerminalInner() {
     window.addEventListener("bos-currency-changed", cb);
     return () => window.removeEventListener("bos-currency-changed", cb);
   }, []);
+
+  // Authoritatively sync sequential numbering state from server on mount & window focus
+  useEffect(() => {
+    syncAndHardResetSequencesFromServer(currentTenantId, currentCompanyId).catch(() => {});
+    const onFocus = () => {
+      syncAndHardResetSequencesFromServer(currentTenantId, currentCompanyId).catch(() => {});
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [currentTenantId, currentCompanyId]);
 
   const { user } = useAuth();
   const defaultSalesExecName = user?.name || (user as any)?.fullName || (user?.email ? user.email.split('@')[0] : "Sales Executive");
@@ -2231,8 +2241,19 @@ function PosTerminalInner() {
         ];
         safeSetItem(posStorageKey, JSON.stringify(mergedList.slice(0, 50)));
 
-        // Increment stored receipt sequence number
-        const nextRecSeq = recSeq + 1;
+        // Increment stored receipt sequence number based on actual server-assigned receipt number
+        let parsedServerSeq = recSeq;
+        const actualReceiptNo = response.receipt_number || targetReceiptNo;
+        if (actualReceiptNo && actualReceiptNo.startsWith(recPrefix)) {
+          const m = actualReceiptNo.slice(recPrefix.length).match(/(\d+)$/);
+          if (m) {
+            const v = parseInt(m[1], 10);
+            if (!isNaN(v) && v > 0) {
+              parsedServerSeq = v;
+            }
+          }
+        }
+        const nextRecSeq = Math.max(recSeq + 1, parsedServerSeq + 1);
         if (storedSettings) {
           saveStoredInvoiceSettings({
             ...storedSettings,
@@ -2248,6 +2269,8 @@ function PosTerminalInner() {
             receipt_padding: recPadding,
           } as any, currentTenantId);
         }
+        window.dispatchEvent(new Event("bos-invoice-settings-updated"));
+        syncAndHardResetSequencesFromServer(currentTenantId, currentCompanyId).catch(() => {});
       } catch (e) {
         console.warn("Could not save POS checkout bill to localStorage:", e);
       }

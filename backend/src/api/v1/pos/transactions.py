@@ -183,25 +183,61 @@ async def checkout(
     except Exception:
         resolved_rep_id = None
 
-    from src.utils.number_series import generate_number, sync_series_from_document_number
+    from src.utils.number_series import (
+        generate_number,
+        sync_series_from_document_number,
+        resolve_safe_next_sequence,
+        get_module_aliases,
+    )
+    from src.models import NumberSeries
+    import re
+
     transaction = None
-    pref_prefix = payload.receipt_prefix or "REC-"
-    for attempt in range(20):
-        if payload.receipt_number and attempt == 0:
-            candidate_no = payload.receipt_number
-        elif payload.receipt_sequence and attempt == 0:
-            candidate_no = f"{pref_prefix}{str(payload.receipt_sequence).zfill(5)}"
-        else:
-            candidate_no = await generate_number(db, ctx.tenant_id, "receipts", valid_cid, fallback_prefix=pref_prefix)
-        
-        # Verify global unique constraint before attempting insert
+
+    # Authoritatively consult the active NumberSeries set by admin in the DB
+    rec_aliases = get_module_aliases("receipts")
+    db_rec_series = await db.scalar(
+        select(NumberSeries)
+        .where(
+            NumberSeries.tenant_id == ctx.tenant_id,
+            func.lower(NumberSeries.module_name).in_([a.lower() for a in rec_aliases]),
+            NumberSeries.status == "active",
+        )
+        .order_by(NumberSeries.updated_at.desc(), NumberSeries.created_at.desc())
+        .limit(1)
+    )
+
+    pref_prefix = (db_rec_series.prefix if db_rec_series and db_rec_series.prefix else None) or payload.receipt_prefix or "REC-"
+    db_next_seq = (int(db_rec_series.current_number or 0) + 1) if db_rec_series else 1
+    client_seq = int(payload.receipt_sequence) if payload.receipt_sequence else 1
+    pref_seq = max(db_next_seq, client_seq)
+    pref_pad = (db_rec_series.padding if db_rec_series and db_rec_series.padding else None) or 5
+
+    # Pre-resolve guaranteed non-colliding safe sequence from DB high-water mark
+    safe_seq, candidate_no = await resolve_safe_next_sequence(
+        db, ctx.tenant_id, "receipts", pref_prefix, requested_next=pref_seq, padding=pref_pad
+    )
+
+    # Only accept client-provided receipt_number if it matches the active DB prefix
+    # AND is not already taken in the database, AND does not roll backwards
+    if payload.receipt_number and str(payload.receipt_number).startswith(pref_prefix):
+        is_client_taken = await db.scalar(
+            select(func.count()).select_from(POSTransaction).where(POSTransaction.receipt_number == payload.receipt_number)
+        )
+        if not is_client_taken:
+            m_client = re.match(r'^' + re.escape(pref_prefix) + r'(\d+)$', str(payload.receipt_number).strip())
+            if m_client and int(m_client.group(1)) >= safe_seq:
+                candidate_no = payload.receipt_number
+
+    for attempt in range(15):
+        # Verify global uniqueness before insert
         is_taken = await db.scalar(
             select(func.count()).select_from(POSTransaction).where(POSTransaction.receipt_number == candidate_no)
         )
         if is_taken:
-            receipt_no = await generate_number(db, ctx.tenant_id, "receipts", valid_cid, fallback_prefix=pref_prefix)
-        else:
-            receipt_no = candidate_no
+            safe_seq, candidate_no = await resolve_safe_next_sequence(
+                db, ctx.tenant_id, "receipts", pref_prefix, requested_next=safe_seq + 1, padding=5
+            )
 
         candidate_tx = POSTransaction(
             cashier_id=ctx.user.id,
@@ -209,7 +245,7 @@ async def checkout(
             company_id=valid_cid,
             session_id=payload.session_id,
             customer_id=payload.customer_id,
-            receipt_number=receipt_no,
+            receipt_number=candidate_no,
             subtotal=payload.subtotal,
             tax_amount=payload.tax_amount,
             discount_amount=payload.discount_amount,
@@ -228,7 +264,7 @@ async def checkout(
                 db.add(candidate_tx)
                 await db.flush()
             transaction = candidate_tx
-            await sync_series_from_document_number(db, ctx.tenant_id, "receipts", receipt_no, valid_cid)
+            await sync_series_from_document_number(db, ctx.tenant_id, "receipts", candidate_no, valid_cid)
             break
         except Exception:
             try:
@@ -236,11 +272,15 @@ async def checkout(
                     db.expunge(candidate_tx)
             except Exception:
                 pass
+            safe_seq += 1
+            candidate_no = f"{pref_prefix}{str(safe_seq).zfill(5)}"
             continue
 
     if not transaction:
-        import time, random
-        fallback_no = f"{pref_prefix}{int(time.time()) % 1000000:06d}-{random.randint(10, 99)}"
+        # Guaranteed sequential fallback (never hyphenated timestamps)
+        safe_seq, fallback_no = await resolve_safe_next_sequence(
+            db, ctx.tenant_id, "receipts", pref_prefix, requested_next=safe_seq + 1, padding=5
+        )
         transaction = POSTransaction(
             cashier_id=ctx.user.id,
             tenant_id=ctx.tenant_id,
@@ -263,6 +303,7 @@ async def checkout(
         )
         db.add(transaction)
         await db.flush()
+        await sync_series_from_document_number(db, ctx.tenant_id, "receipts", fallback_no, valid_cid)
 
     # Credit Sales Points to Employee
     try:
@@ -537,8 +578,18 @@ async def _create_invoice_from_pos_transaction(
 ) -> None:
     """Create an ERP Invoice record from the POS transaction."""
     try:
-        # Generate invoice number
+        # Generate invoice number with collision avoidance
         inv_number = await generate_number(db, ctx.tenant_id, "invoice", ctx.active_company_id)
+        for _ in range(50):
+            inv_exists = await db.scalar(
+                select(func.count(Invoice.id)).where(
+                    Invoice.tenant_id == ctx.tenant_id,
+                    Invoice.invoice_number == inv_number
+                )
+            )
+            if not inv_exists:
+                break
+            inv_number = await generate_number(db, ctx.tenant_id, "invoice", ctx.active_company_id)
 
         # Resolve customer details
         cust_name = "Walk-in Guest"
@@ -622,6 +673,10 @@ async def _create_invoice_from_pos_transaction(
         )
         db.add(invoice)
         await db.flush()
+        try:
+            await sync_series_from_document_number(db, ctx.tenant_id, "invoice", inv_number, ctx.active_company_id)
+        except Exception:
+            pass
 
         # If upfront partial/full payment was made, record InvoicePayment
         if actual_paid > 0.001:

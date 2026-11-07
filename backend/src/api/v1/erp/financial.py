@@ -745,7 +745,12 @@ async def get_number_series_sync_state(
     if not ctx or not ctx.tenant_id:
         return {"sequence_reset_epoch": 0, "series": {}}
     active_cid = company_id or ctx.active_company_id
-    return await get_tenant_canonical_sequences(db, ctx.tenant_id, active_cid)
+    result = await get_tenant_canonical_sequences(db, ctx.tenant_id, active_cid)
+    try:
+        await db.commit()
+    except Exception:
+        pass
+    return result
 
 
 @router.post("/number-series/hard-reset")

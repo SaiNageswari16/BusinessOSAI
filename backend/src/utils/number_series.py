@@ -14,12 +14,12 @@ async def _number_exists(
     is_receipt: bool,
     is_invoice: bool,
 ) -> int:
-    """Tenant-scoped existence check for a candidate document number (receipts or invoices)."""
+    """Check existence for a candidate document number (receipts or invoices)."""
     if is_receipt:
         from src.models import POSTransaction
+        # pos_transactions.receipt_number has a UNIQUE constraint across the table.
         return await db.scalar(
             select(func.count()).select_from(POSTransaction).where(
-                POSTransaction.tenant_id == tenant_id,
                 POSTransaction.receipt_number == candidate,
             )
         ) or 0
@@ -32,6 +32,162 @@ async def _number_exists(
             )
         ) or 0
     return 0
+
+
+async def resolve_safe_next_sequence(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    module: str,
+    prefix: str,
+    requested_next: int = 1,
+    padding: int = 4,
+) -> tuple[int, str]:
+    """Find the safe, non-colliding next sequence number and formatted string for a module & prefix."""
+    import re
+    clean_mod = module.lower()
+    recent_rows: list[str] = []
+
+    try:
+        if "invoice" in clean_mod and "purchase" not in clean_mod:
+            from src.models.erp import Invoice
+            recent_rows = (await db.scalars(
+                select(Invoice.invoice_number)
+                .where(
+                    Invoice.tenant_id == tenant_id,
+                    Invoice.invoice_number.ilike(f"{prefix}%")
+                )
+                .order_by(Invoice.created_at.desc())
+                .limit(200)
+            )).all()
+        elif "quot" in clean_mod:
+            from src.models.erp import Invoice
+            recent_rows = (await db.scalars(
+                select(Invoice.invoice_number)
+                .where(
+                    Invoice.tenant_id == tenant_id,
+                    Invoice.invoice_type.in_(["quotation", "quote"]),
+                    Invoice.invoice_number.ilike(f"{prefix}%")
+                )
+                .order_by(Invoice.created_at.desc())
+                .limit(200)
+            )).all()
+        elif "proforma" in clean_mod:
+            from src.models.erp import Invoice
+            recent_rows = (await db.scalars(
+                select(Invoice.invoice_number)
+                .where(
+                    Invoice.tenant_id == tenant_id,
+                    Invoice.invoice_type.in_(["proforma", "proforma_invoice"]),
+                    Invoice.invoice_number.ilike(f"{prefix}%")
+                )
+                .order_by(Invoice.created_at.desc())
+                .limit(200)
+            )).all()
+        elif "credit" in clean_mod:
+            from src.models.erp import Invoice
+            recent_rows = (await db.scalars(
+                select(Invoice.invoice_number)
+                .where(
+                    Invoice.tenant_id == tenant_id,
+                    Invoice.invoice_type.in_(["credit_note", "creditnote"]),
+                    Invoice.invoice_number.ilike(f"{prefix}%")
+                )
+                .order_by(Invoice.created_at.desc())
+                .limit(200)
+            )).all()
+        elif "debit" in clean_mod:
+            from src.models.erp import Invoice
+            recent_rows = (await db.scalars(
+                select(Invoice.invoice_number)
+                .where(
+                    Invoice.tenant_id == tenant_id,
+                    Invoice.invoice_type.in_(["debit_note", "debitnote"]),
+                    Invoice.invoice_number.ilike(f"{prefix}%")
+                )
+                .order_by(Invoice.created_at.desc())
+                .limit(200)
+            )).all()
+        elif "purchase_invoice" in clean_mod or "bill" in clean_mod:
+            from src.models.procurement import VendorBill
+            recent_rows = (await db.scalars(
+                select(VendorBill.bill_number)
+                .where(
+                    VendorBill.tenant_id == tenant_id,
+                    VendorBill.bill_number.ilike(f"{prefix}%")
+                )
+                .order_by(VendorBill.created_at.desc())
+                .limit(200)
+            )).all()
+        elif "purchase_order" in clean_mod or "po" in clean_mod:
+            from src.models.procurement import PurchaseOrder
+            recent_rows = (await db.scalars(
+                select(PurchaseOrder.po_number)
+                .where(
+                    PurchaseOrder.tenant_id == tenant_id,
+                    PurchaseOrder.po_number.ilike(f"{prefix}%")
+                )
+                .order_by(PurchaseOrder.created_at.desc())
+                .limit(200)
+            )).all()
+        elif "receipt" in clean_mod or "pos" in clean_mod:
+            from src.models import POSTransaction
+            recent_rows = (await db.scalars(
+                select(POSTransaction.receipt_number)
+                .where(
+                    POSTransaction.receipt_number.ilike(f"{prefix}%")
+                )
+                .order_by(POSTransaction.created_at.desc())
+                .limit(200)
+            )).all()
+    except Exception:
+        recent_rows = []
+
+    recent_val = 0
+    if recent_rows:
+        strict_pattern = re.compile(rf"^{re.escape(prefix)}(\d+)$", re.IGNORECASE)
+        strict_vals: list[int] = []
+        for r_num in recent_rows:
+            if not r_num:
+                continue
+            m = strict_pattern.match(str(r_num).strip())
+            if m:
+                try:
+                    val = int(m.group(1))
+                    if 0 < val < 100000000:
+                        strict_vals.append(val)
+                except ValueError:
+                    pass
+        if strict_vals:
+            recent_val = max(strict_vals)
+        else:
+            # Fallback only if no rows match prefix + pure digits (e.g. legacy alphanumeric)
+            for r_num in recent_rows[:10]:
+                if not r_num:
+                    continue
+                suffix = str(r_num).strip()[len(prefix):]
+                digits = re.findall(r'\d+', suffix)
+                if digits:
+                    try:
+                        val = int(digits[-1])
+                        if 0 < val < 100000000:
+                            recent_val = max(recent_val, val)
+                    except ValueError:
+                        pass
+
+    candidate_num = max(requested_next, recent_val + 1)
+
+    # Collision loop: ensure candidate document number does not already exist
+    is_receipt = "receipt" in clean_mod or "pos" in clean_mod
+    is_invoice = "invoice" in clean_mod and "purchase" not in clean_mod
+
+    for _ in range(500):
+        cand_str = f"{prefix}{str(candidate_num).zfill(padding)}"
+        exists = await _number_exists(db, tenant_id, cand_str, is_receipt, is_invoice)
+        if not exists:
+            return candidate_num, cand_str
+        candidate_num += 1
+
+    return candidate_num, f"{prefix}{str(candidate_num).zfill(padding)}"
 
 
 def get_module_aliases(module: str) -> list[str]:
@@ -161,23 +317,13 @@ async def generate_number(
 
     if series:
         prefix = series.prefix or fallback_prefix or "INV-"
-        padding = series.padding or 5
-        # Check collision and increment (tenant-scoped existence checks; the FOR UPDATE lock on
-        # the series row serializes concurrent callers, so the first free candidate is the winner)
-        for _ in range(50):
-            series.current_number += 1
-            candidate = f"{prefix}{str(series.current_number).zfill(padding)}"
-            if "receipt" in module.lower() or "pos" in module.lower():
-                exists = await _number_exists(db, tenant_id, candidate, True, False)
-                if not exists:
-                    return candidate
-            elif "invoice" in module.lower() and "purchase" not in module.lower():
-                exists = await _number_exists(db, tenant_id, candidate, False, True)
-                if not exists:
-                    return candidate
-            else:
-                return candidate
-        return candidate
+        padding = series.padding or 4
+        safe_next, safe_str = await resolve_safe_next_sequence(
+            db, tenant_id, module, prefix, requested_next=(series.current_number or 0) + 1, padding=padding
+        )
+        series.current_number = safe_next
+        await db.flush()
+        return safe_str
 
     # Determine standard prefix
     clean_prefix = fallback_prefix
@@ -205,60 +351,11 @@ async def generate_number(
         else:
             clean_prefix = "INV-"
 
-    is_receipt = "receipt" in module.lower() or "pos" in module.lower()
-    is_invoice = "invoice" in module.lower() and "purchase" not in module.lower()
+    padding = 4 if "receipt" not in module.lower() else 5
+    safe_next, safe_str = await resolve_safe_next_sequence(
+        db, tenant_id, module, clean_prefix, requested_next=1, padding=padding
+    )
 
-    start_num = 1
-    if is_receipt:
-        # Tenant-scoped count (previously global — cross-tenant skew under concurrency)
-        from src.models import POSTransaction
-        count = await db.scalar(
-            select(func.count()).select_from(POSTransaction).where(
-                POSTransaction.tenant_id == tenant_id
-            )
-        ) or 0
-        start_num = count + 1
-    elif is_invoice:
-        from src.models.erp import Invoice
-        count = await db.scalar(
-            select(func.count()).select_from(Invoice).where(Invoice.tenant_id == tenant_id)
-        ) or 0
-        start_num = count + 1
-
-    padding = 5
-    for offset in range(100):
-        candidate_num = start_num + offset
-        candidate = f"{clean_prefix}{str(candidate_num).zfill(padding)}"
-        if is_receipt:
-            from src.models import POSTransaction
-            exists = await db.scalar(
-                select(func.count()).select_from(POSTransaction).where(
-                    POSTransaction.tenant_id == tenant_id,
-                    POSTransaction.receipt_number == candidate
-                )
-            )
-            if not exists:
-                start_num = candidate_num
-                break
-        elif is_invoice:
-            from src.models.erp import Invoice
-            exists = await db.scalar(
-                select(func.count()).select_from(Invoice).where(
-                    Invoice.tenant_id == tenant_id,
-                    Invoice.invoice_number == candidate
-                )
-            )
-            if not exists:
-                start_num = candidate_num
-                break
-        else:
-            start_num = candidate_num
-            break
-
-    # Auto-initialize NumberSeries record for this org/module so subsequent requests stay synchronized.
-    # Wrapped in begin_nested(): under a concurrent first-invoice race, one writer commits the
-    # series row and the other hits a unique/insert conflict, rolls back the savepoint, re-reads
-    # the now-existing series, and falls through to the serialized path below.
     if valid_cid:
         try:
             async with db.begin_nested():
@@ -267,43 +364,17 @@ async def generate_number(
                     company_id=valid_cid,
                     module_name=aliases[0],
                     prefix=clean_prefix,
-                    current_number=start_num,
+                    current_number=safe_next,
                     padding=padding,
                     status="active",
                 )
                 db.add(new_series)
                 await db.flush()
-                return f"{clean_prefix}{str(start_num).zfill(padding)}"
-        except Exception:
-            pass
-        # Fallback: the series row may now exist (concurrent writer won the race). Re-read it and
-        # serialize on that row so two simultaneous callers cannot return the same number.
-        try:
-            series_now = await db.scalar(
-                select(NumberSeries)
-                .where(
-                    NumberSeries.tenant_id == tenant_id,
-                    func.lower(NumberSeries.module_name).in_([a.lower() for a in aliases]),
-                    NumberSeries.status == "active",
-                )
-                .order_by(NumberSeries.updated_at.desc(), NumberSeries.created_at.desc())
-                .with_for_update()
-                .limit(1)
-            )
-            if series_now:
-                # Bump past any number a concurrent caller may have already handed out.
-                for bump in range(100):
-                    candidate_num = series_now.current_number + 1
-                    candidate = f"{series_now.prefix or clean_prefix}{str(candidate_num).zfill(series_now.padding or 5)}"
-                    exists = await _number_exists(db, tenant_id, candidate, is_receipt, is_invoice)
-                    if not exists:
-                        series_now.current_number = candidate_num
-                        await db.flush()
-                        return candidate
+                return safe_str
         except Exception:
             pass
 
-    return f"{clean_prefix}{str(start_num).zfill(padding)}"
+    return safe_str
 
 
 async def peek_next_number(
@@ -344,16 +415,18 @@ async def peek_next_number(
         )
 
     if series:
-        next_val = series.current_number + 1
         prefix = series.prefix or fallback_prefix or "INV-"
-        formatted = f"{prefix}{str(next_val).zfill(series.padding)}"
+        padding = series.padding or 4
+        safe_next, formatted = await resolve_safe_next_sequence(
+            db, tenant_id, module, prefix, requested_next=(series.current_number or 0) + 1, padding=padding
+        )
         return {
             "series_id": str(series.id),
             "module_name": series.module_name,
-            "prefix": series.prefix,
-            "current_number": series.current_number,
-            "next_number": next_val,
-            "padding": series.padding,
+            "prefix": prefix,
+            "current_number": safe_next - 1,
+            "next_number": safe_next,
+            "padding": padding,
             "formatted_number": formatted,
             "configured": True,
         }
@@ -384,14 +457,17 @@ async def peek_next_number(
             clean_prefix = "INV-"
 
     default_pad = 5 if ("receipt" in module.lower() or "pos" in module.lower()) else 4
+    safe_next, formatted = await resolve_safe_next_sequence(
+        db, tenant_id, module, clean_prefix, requested_next=1, padding=default_pad
+    )
     return {
         "series_id": None,
         "module_name": module,
         "prefix": clean_prefix,
-        "current_number": 0,
-        "next_number": 1,
+        "current_number": safe_next - 1,
+        "next_number": safe_next,
         "padding": default_pad,
-        "formatted_number": f"{clean_prefix}{str(1).zfill(default_pad)}",
+        "formatted_number": formatted,
         "configured": False,
     }
 
@@ -418,6 +494,7 @@ async def sync_series_from_document_number(
         return
 
     aliases = get_module_aliases(module)
+    canonical_mod = aliases[0]
     valid_cid = await resolve_valid_company_id(db, tenant_id, company_id)
 
     query = (
@@ -432,16 +509,22 @@ async def sync_series_from_document_number(
         query = query.where(NumberSeries.company_id == valid_cid)
 
     all_series = (await db.execute(query)).scalars().all()
+    last_digits_str = digits[-1]
+    last_idx = document_number.rfind(last_digits_str)
+    detected_prefix = document_number[:last_idx] if last_idx > 0 else None
+
+    # Guard: if detected_prefix contains timestamped/random patterns (e.g. REC-031497-), do NOT overwrite
+    if detected_prefix and re.search(r'\d{4,}[-_]', detected_prefix):
+        return
+    if num_val >= 100000000:
+        return
+
     if all_series:
-        last_digits_str = digits[-1]
-        last_idx = document_number.rfind(last_digits_str)
-        detected_prefix = document_number[:last_idx] if last_idx > 0 else None
         for series in all_series:
-            if num_val < 100000000:
-                series.current_number = num_val
+            series.current_number = max(series.current_number or 0, num_val)
             if detected_prefix:
                 series.prefix = detected_prefix
-            if len(last_digits_str) > 1 and num_val < 100000000:
+            if len(last_digits_str) > 1:
                 series.padding = len(last_digits_str)
         try:
             async with db.begin_nested():
@@ -449,18 +532,16 @@ async def sync_series_from_document_number(
         except Exception:
             pass
     elif valid_cid:
-        last_digits_str = digits[-1]
-        last_idx = document_number.rfind(last_digits_str)
-        detected_prefix = document_number[:last_idx] if last_idx > 0 else "INV-"
+        detected_pfx = detected_prefix or "INV-"
         detected_padding = len(last_digits_str) if (len(last_digits_str) > 1 and num_val < 50000) else 4
-        clean_initial_num = num_val if num_val < 50000 else 1
+        clean_initial_num = num_val
         try:
             async with db.begin_nested():
                 new_series = NumberSeries(
                     tenant_id=tenant_id,
                     company_id=valid_cid,
-                    module_name=aliases[0],
-                    prefix=detected_prefix,
+                    module_name=canonical_mod,
+                    prefix=detected_pfx,
                     current_number=clean_initial_num,
                     padding=detected_padding,
                     status="active",
@@ -469,6 +550,28 @@ async def sync_series_from_document_number(
                 await db.flush()
         except Exception:
             pass
+
+    # Dynamically advance Tenant.settings canonical_sequences so getSyncState reflects it for all users
+    try:
+        from src.models import Tenant
+        from sqlalchemy.orm.attributes import flag_modified
+        import copy
+        tenant = await db.scalar(select(Tenant).where(Tenant.id == tenant_id))
+        if tenant:
+            t_settings = copy.deepcopy(tenant.settings or {})
+            canon = copy.deepcopy(t_settings.get("canonical_sequences") or {})
+            cur_next = int(canon.get(canonical_mod, {}).get("next_number") or 1)
+            canon[canonical_mod] = {
+                "prefix": detected_prefix or canon.get(canonical_mod, {}).get("prefix") or "INV-",
+                "next_number": max(cur_next, num_val + 1),
+                "padding": len(last_digits_str) if len(last_digits_str) > 1 else canon.get(canonical_mod, {}).get("padding", 4),
+            }
+            t_settings["canonical_sequences"] = canon
+            tenant.settings = t_settings
+            flag_modified(tenant, "settings")
+            await db.flush()
+    except Exception:
+        pass
 
 
 async def hard_reset_module_series(
@@ -616,9 +719,54 @@ async def get_tenant_canonical_sequences(
             if isinstance(cfg, dict):
                 series_out[c_mod] = {
                     "prefix": cfg.get("prefix") or series_out.get(c_mod, {}).get("prefix") or "INV-",
-                    "next_number": int(cfg.get("next_number") or series_out.get(c_mod, {}).get("next_number") or 1),
+                    "next_number": max(
+                        int(series_out.get(c_mod, {}).get("next_number") or 1),
+                        int(cfg.get("next_number") or 1)
+                    ),
                     "padding": int(cfg.get("padding") or series_out.get(c_mod, {}).get("padding") or 4),
                 }
+
+    # Ensure default core modules exist in series_out
+    core_modules = [
+        ("invoices", "INV-", 4),
+        ("quotations", "QT-", 4),
+        ("proforma", "PI-", 4),
+        ("delivery_challans", "DC-", 4),
+        ("estimates", "EST-", 4),
+        ("credit_notes", "CN-", 4),
+        ("debit_notes", "DN-", 4),
+        ("purchase_invoices", "PINV-", 4),
+        ("purchase_orders", "PO-", 4),
+        ("receipts", "REC-", 5),
+    ]
+    for c_mod, def_pfx, def_pad in core_modules:
+        if c_mod not in series_out:
+            series_out[c_mod] = {
+                "prefix": def_pfx,
+                "next_number": 1,
+                "padding": def_pad,
+            }
+
+    # Ensure next_number is strictly non-colliding and safely advances past any existing database documents
+    for c_mod in list(series_out.keys()):
+        cfg = series_out[c_mod]
+        pfx = cfg.get("prefix") or "INV-"
+        req_next = int(cfg.get("next_number") or 1)
+        pad = int(cfg.get("padding") or 4)
+
+        safe_next, safe_str = await resolve_safe_next_sequence(
+            db, tenant_id, c_mod, pfx, requested_next=req_next, padding=pad
+        )
+        series_out[c_mod]["next_number"] = safe_next
+
+        # Auto-heal NumberSeries in database if it was lagging behind
+        for r in rows:
+            if get_module_aliases(r.module_name or "")[0] == c_mod and (r.current_number or 0) < (safe_next - 1):
+                r.current_number = safe_next - 1
+                try:
+                    await db.flush()
+                except Exception:
+                    pass
 
     return {
         "sequence_reset_epoch": epoch,
