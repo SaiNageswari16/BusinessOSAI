@@ -2,7 +2,7 @@ import uuid
 import re
 import json
 from datetime import date, datetime, timezone
-from typing import Annotated
+from typing import Annotated, Optional, List, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, UploadFile, File
 import io
@@ -29,7 +29,7 @@ from src.schemas.crm import (
     CRMCallTurnResponse, CRMCallCompleteRequest, CRMCallLogResponse, CRMCallStatsResponse,
     CRMTelephonySettingsSchema, CRMTelephonySettingsUpdate,
     SalesExecutiveResponse, BulkAssignLeadsRequest, BulkImportLeadsRequest,
-    BulkImportCustomersRequest, ConvertLeadPipelineRequest, ConvertLeadPipelineResponse
+    BulkImportCustomersRequest, BulkDeleteCustomersRequest, ConvertLeadPipelineRequest, ConvertLeadPipelineResponse
 )
 from src.services.telephony_service import TelephonyService
 from src.utils.pagination import PaginatedResponse, paginate
@@ -1518,6 +1518,96 @@ async def delete_customer(
     return {"status": "success", "message": f"Customer '{cust_name}' deleted successfully", "deleted_id": str(customer_id)}
 
 
+@router.post("/customers/bulk-delete")
+async def bulk_delete_customers(
+    payload: BulkDeleteCustomersRequest,
+    request: Request,
+    ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Bulk delete multiple customers with safe foreign key cleanups and audit trail."""
+    if not payload.customer_ids:
+        raise HTTPException(status_code=400, detail="No customer IDs provided for bulk delete")
+
+    # Fetch customers belonging strictly to this tenant
+    customers = (await db.scalars(
+        select(Customer).where(
+            Customer.tenant_id == ctx.tenant_id,
+            Customer.id.in_(payload.customer_ids),
+        )
+    )).all()
+
+    if not customers:
+        return {"success": True, "deleted_count": 0, "message": "No matching customers found to delete."}
+
+    deleted_ids = [c.id for c in customers]
+    deleted_names = [c.name for c in customers[:5]]
+
+    # Safely nullify foreign keys in financial and support records to avoid breaking historical records
+    fks_nullify = [
+        ("ar_invoices", "customer_id"),
+        ("crm_support_tickets", "customer_id"),
+        ("crm_quotations", "customer_id"),
+        ("crm_sales_orders", "customer_id"),
+        ("crm_opportunities", "customer_id"),
+        ("payment_reminder_logs", "customer_id"),
+    ]
+    for tbl, col in fks_nullify:
+        try:
+            await db.execute(
+                text(f"UPDATE {tbl} SET {col} = NULL WHERE {col} = ANY(:cids)"),
+                {"cids": deleted_ids}
+            )
+        except Exception as e:
+            logger.warning(f"Could not nullify {tbl}.{col} during bulk delete: {e}")
+
+    # Safely delete dependent CRM child records (wallets, memberships, etc.)
+    fks_delete = [
+        ("crm_wallets", "customer_id"),
+        ("crm_wallet_transactions", "customer_id"),
+        ("crm_customer_wallets", "customer_id"),
+        ("crm_customer_group_members", "customer_id"),
+        ("crm_customer_memberships", "customer_id"),
+        ("crm_memberships", "customer_id"),
+        ("crm_loyalty_transactions", "customer_id"),
+    ]
+    for tbl, col in fks_delete:
+        try:
+            await db.execute(
+                text(f"DELETE FROM {tbl} WHERE {col} = ANY(:cids)"),
+                {"cids": deleted_ids}
+            )
+        except Exception as e:
+            logger.warning(f"Could not delete child rows in {tbl} during bulk delete: {e}")
+
+    for c in customers:
+        await db.delete(c)
+
+    await db.flush()
+    await write_audit_log(
+        db,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        module="crm",
+        action="customers_bulk_deleted",
+        entity_type="customer",
+        new_values={
+            "deleted_count": len(deleted_ids),
+            "sample_names": deleted_names,
+            "deleted_ids": [str(i) for i in deleted_ids],
+        },
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+
+    return {
+        "success": True,
+        "deleted_count": len(deleted_ids),
+        "message": f"Successfully deleted {len(deleted_ids)} customer(s).",
+    }
+
+
 @router.post("/verify-gstin")
 async def verify_gstin_crm(
     payload: dict,
@@ -1862,6 +1952,42 @@ async def bulk_import_leads(
     return {"success": True, "imported_count": len(imported), "message": f"Successfully imported {len(imported)} leads."}
 
 
+def _normalize_crm_phone(phone_val: str | None) -> str:
+    if not phone_val:
+        return ""
+    digits = "".join(filter(str.isdigit, str(phone_val)))
+    return digits[-10:] if len(digits) >= 10 else digits
+
+
+def _parse_crm_dob(raw_dob) -> date | None:
+    if not raw_dob:
+        return None
+    if isinstance(raw_dob, date) and not isinstance(raw_dob, datetime):
+        return raw_dob
+    if isinstance(raw_dob, datetime):
+        return raw_dob.date()
+    if isinstance(raw_dob, str):
+        clean = raw_dob.strip()
+        if not clean:
+            return None
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y", "%Y/%m/%d"):
+            try:
+                return datetime.strptime(clean[:10], fmt).date()
+            except Exception:
+                continue
+    return None
+
+
+def _parse_crm_age(raw_age) -> int | None:
+    if raw_age is None or raw_age == "":
+        return None
+    try:
+        val = int(raw_age)
+        return val if 0 <= val <= 150 else None
+    except Exception:
+        return None
+
+
 @router.post("/customers/bulk-import")
 async def bulk_import_customers(
     payload: BulkImportCustomersRequest,
@@ -1869,36 +1995,202 @@ async def bulk_import_customers(
     ctx: Annotated[CurrentUserContext, Depends(require_permission("manage:crm_customers"))],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    """Imports customers from parsed Excel/CSV data with automatic owner email resolution."""
+    """Imports customers from parsed Excel/CSV data with smart deduplication and upsert.
+    
+    If customer already exists by email or phone:
+    - Updates fields that have changed.
+    - Skips identical records without modifying or duplicating.
+    If customer is new:
+    - Inserts new customer.
+    """
     if not payload.customers:
         raise HTTPException(status_code=400, detail="No customer data provided")
 
     users = (await db.scalars(select(User).where(User.tenant_id == ctx.tenant_id))).all()
-    email_to_user_map = {u.email.lower(): u.id for u in users}
+    email_to_user_map = {u.email.lower().strip(): u.id for u in users if u.email}
 
-    imported = []
+    # Preload existing tenant customers to ensure zero duplicate collisions
+    existing_customers = (await db.scalars(
+        select(Customer).where(Customer.tenant_id == ctx.tenant_id)
+    )).all()
+
+    email_to_customer: dict[str, Customer] = {}
+    phone_to_customer: dict[str, Customer] = {}
+    phone_raw_to_customer: dict[str, Customer] = {}
+    gst_to_customer: dict[str, Customer] = {}
+    name_comp_to_customer: dict[tuple[str, str], Customer] = {}
+    name_to_customer: dict[str, Customer] = {}
+
+    def _register_lookup(c: Customer):
+        if c.email and c.email.strip():
+            email_to_customer[c.email.strip().lower()] = c
+        if c.phone and c.phone.strip():
+            raw_p = c.phone.strip().lower()
+            phone_raw_to_customer[raw_p] = c
+            p_n = _normalize_crm_phone(c.phone)
+            if p_n:
+                phone_to_customer[p_n] = c
+            raw_d = "".join(filter(str.isdigit, str(c.phone)))
+            if raw_d:
+                phone_to_customer[raw_d] = c
+        if c.gst_number and c.gst_number.strip():
+            gst_to_customer[c.gst_number.strip().upper()] = c
+        c_name = (c.name or "").strip().lower()
+        if c_name:
+            c_comp = (c.company_name or "").strip().lower()
+            name_comp_to_customer[(c_name, c_comp)] = c
+            if c_name not in name_to_customer:
+                name_to_customer[c_name] = c
+
+    for c in existing_customers:
+        _register_lookup(c)
+
+    created_count = 0
+    updated_count = 0
+    skipped_count = 0
+
     for item in payload.customers:
-        owner_id = payload.default_owner_user_id
-        if item.assigned_email and item.assigned_email.lower() in email_to_user_map:
-            owner_id = email_to_user_map[item.assigned_email.lower()]
+        clean_name = (item.name or "").strip()
+        if not clean_name:
+            skipped_count += 1
+            continue
 
-        cust = Customer(
-            tenant_id=ctx.tenant_id,
-            name=item.name,
-            company_name=item.company_name,
-            email=item.email,
-            phone=item.phone,
-            customer_type=item.customer_type or "Retail",
-            status=item.status or "Active",
-            address=item.address,
-            gst_number=item.gst_number,
-            gender=(item.gender or None),
-            date_of_birth=item.date_of_birth or None,
-            age=(int(item.age) if item.age is not None and item.age != "" else None),
-            owner_user_id=owner_id,
-        )
-        db.add(cust)
-        imported.append(cust)
+        clean_name_lower = clean_name.lower()
+        clean_email = item.email.strip().lower() if item.email and item.email.strip() else None
+        clean_phone = item.phone.strip() if item.phone and item.phone.strip() else None
+        p_norm = _normalize_crm_phone(clean_phone)
+        p_digits = "".join(filter(str.isdigit, clean_phone or ""))
+
+        owner_id = payload.default_owner_user_id
+        if item.assigned_email and item.assigned_email.lower().strip() in email_to_user_map:
+            owner_id = email_to_user_map[item.assigned_email.lower().strip()]
+
+        clean_comp = item.company_name.strip() if item.company_name and item.company_name.strip() else None
+        comp_key = clean_comp.lower() if clean_comp else ""
+        clean_type = (item.customer_type or "Retail").strip()
+        clean_status = (item.status or "Active").strip()
+        clean_addr = item.address.strip() if item.address and item.address.strip() else None
+        clean_gst = item.gst_number.strip().upper() if item.gst_number and item.gst_number.strip() else None
+        clean_gender = item.gender.strip() if item.gender and item.gender.strip() else None
+        parsed_dob = _parse_crm_dob(item.date_of_birth)
+        parsed_age = _parse_crm_age(item.age)
+
+        # Multi-tier match:
+        target_cust: Customer | None = None
+
+        # 1. Match by GST number
+        if clean_gst and clean_gst in gst_to_customer:
+            target_cust = gst_to_customer[clean_gst]
+
+        # 2. Match by Email
+        elif clean_email and clean_email in email_to_customer:
+            target_cust = email_to_customer[clean_email]
+
+        # 3. Match by Phone digits or raw phone string
+        elif p_norm and p_norm in phone_to_customer:
+            target_cust = phone_to_customer[p_norm]
+        elif p_digits and p_digits in phone_to_customer:
+            target_cust = phone_to_customer[p_digits]
+        elif clean_phone and clean_phone.lower() in phone_raw_to_customer:
+            target_cust = phone_raw_to_customer[clean_phone.lower()]
+
+        # 4. Match by Name (+ Company)
+        elif clean_name_lower:
+            candidate = name_comp_to_customer.get((clean_name_lower, comp_key))
+            if not candidate:
+                candidate = name_to_customer.get(clean_name_lower)
+            if candidate:
+                # Check for explicit conflict: both have different non-empty email or phone
+                is_conflicting = False
+                if clean_email and candidate.email and clean_email != candidate.email.strip().lower():
+                    is_conflicting = True
+                cand_p_digits = "".join(filter(str.isdigit, str(candidate.phone or "")))
+                if p_digits and cand_p_digits and len(p_digits) >= 10 and len(cand_p_digits) >= 10 and p_digits[-10:] != cand_p_digits[-10:]:
+                    is_conflicting = True
+
+                if not is_conflicting:
+                    target_cust = candidate
+
+        if target_cust:
+            # Check if any fields changed
+            has_changes = False
+
+            if clean_name and (target_cust.name or "").strip() != clean_name:
+                target_cust.name = clean_name
+                has_changes = True
+
+            if clean_comp is not None and (target_cust.company_name or "").strip() != clean_comp:
+                target_cust.company_name = clean_comp
+                has_changes = True
+
+            if clean_email and (target_cust.email or "").strip().lower() != clean_email:
+                other_cust = email_to_customer.get(clean_email)
+                if not other_cust or other_cust.id == target_cust.id:
+                    target_cust.email = clean_email
+                    has_changes = True
+
+            if clean_phone and (target_cust.phone or "").strip() != clean_phone:
+                target_cust.phone = clean_phone
+                has_changes = True
+
+            if clean_type and (target_cust.customer_type or "").strip().lower() != clean_type.lower():
+                target_cust.customer_type = clean_type
+                has_changes = True
+
+            if clean_status and (target_cust.status or "").strip().lower() != clean_status.lower():
+                target_cust.status = clean_status
+                has_changes = True
+
+            if clean_addr is not None and (target_cust.address or "").strip() != clean_addr:
+                target_cust.address = clean_addr
+                has_changes = True
+
+            if clean_gst is not None and (target_cust.gst_number or "").strip().upper() != clean_gst:
+                target_cust.gst_number = clean_gst
+                has_changes = True
+
+            if clean_gender is not None and (target_cust.gender or "").strip().lower() != clean_gender.lower():
+                target_cust.gender = clean_gender
+                has_changes = True
+
+            if parsed_dob and target_cust.date_of_birth != parsed_dob:
+                target_cust.date_of_birth = parsed_dob
+                has_changes = True
+
+            if parsed_age is not None and target_cust.age != parsed_age:
+                target_cust.age = parsed_age
+                has_changes = True
+
+            if owner_id and target_cust.owner_user_id != owner_id:
+                target_cust.owner_user_id = owner_id
+                has_changes = True
+
+            _register_lookup(target_cust)
+
+            if has_changes:
+                updated_count += 1
+            else:
+                skipped_count += 1
+        else:
+            cust = Customer(
+                tenant_id=ctx.tenant_id,
+                company_id=ctx.active_company_id,
+                name=clean_name,
+                company_name=clean_comp,
+                email=clean_email,
+                phone=clean_phone,
+                customer_type=clean_type,
+                status=clean_status,
+                address=clean_addr,
+                gst_number=clean_gst,
+                gender=clean_gender,
+                date_of_birth=parsed_dob,
+                age=parsed_age,
+                owner_user_id=owner_id,
+            )
+            db.add(cust)
+            created_count += 1
+            _register_lookup(cust)
 
     await db.flush()
     await write_audit_log(
@@ -1908,12 +2200,27 @@ async def bulk_import_customers(
         module="crm",
         action="customers_bulk_imported",
         entity_type="customer",
-        new_values={"count": len(imported)},
+        new_values={
+            "created_count": created_count,
+            "updated_count": updated_count,
+            "skipped_count": skipped_count,
+            "total_processed": len(payload.customers),
+        },
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
     await db.commit()
-    return {"success": True, "imported_count": len(imported), "message": f"Successfully imported {len(imported)} customers."}
+
+    total_imported = created_count + updated_count
+    msg = f"Bulk import complete: {created_count} added, {updated_count} updated, {skipped_count} skipped (identical / no changes)."
+    return {
+        "success": True,
+        "imported_count": total_imported,
+        "created_count": created_count,
+        "updated_count": updated_count,
+        "skipped_count": skipped_count,
+        "message": msg,
+    }
 
 
 @router.post("/leads/upload-photo")

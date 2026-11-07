@@ -1857,9 +1857,31 @@ async def update_invoice(
             line = InvoiceLine(invoice_id=invoice.id, line_number=idx + 1, **line_payload.model_dump())
             db.add(line)
 
+        old_total = float(invoice.total_amount or 0.0)
         totals = _compute_invoice_totals(payload.lines)
         for k, v in totals.items():
             setattr(invoice, k, v)
+
+        # Recompute balance_due considering existing amount_paid
+        paid = float(invoice.amount_paid or 0.0)
+        tot = float(invoice.total_amount or 0.0)
+        invoice.balance_due = max(0.0, round(tot - paid, 2))
+        if invoice.balance_due <= 0.01 and tot > 0:
+            invoice.status = "paid"
+        elif paid > 0:
+            invoice.status = "partially_paid"
+        elif tot > 0:
+            invoice.status = "unpaid"
+
+        # Cascade total difference to Customer.outstanding_balance if linked
+        if invoice.customer_id:
+            try:
+                cust = await db.get(Customer, invoice.customer_id)
+                if cust:
+                    diff = tot - old_total
+                    cust.outstanding_balance = max(0.0, round(float(cust.outstanding_balance or 0.0) + diff, 2))
+            except Exception as cust_err:
+                logger.warning(f"Could not cascade customer balance on invoice edit {invoice.invoice_number}: {cust_err}")
 
     await write_audit_log(
         db,

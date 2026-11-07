@@ -3056,6 +3056,8 @@ export const crmCustomersApi = {
   create: (data: Record<string, unknown>) => request<CrmCustomer>("POST", "/crm/customers", data),
   update: (id: string, data: Record<string, unknown>) => request<CrmCustomer>("PATCH", `/crm/customers/${id}`, data),
   delete: (id: string) => request<{ status: string; message: string; deleted_id?: string }>("DELETE", `/crm/customers/${id}`),
+  bulkDelete: (data: { customer_ids: string[] }) =>
+    request<{ success: boolean; deleted_count: number; message: string }>("POST", "/crm/customers/bulk-delete", data),
   verifyGstin: (gstin: string) => request<any>("POST", "/crm/verify-gstin", { gstin }),
   bulkImport: (data: { customers: any[]; default_owner_user_id?: string | null }) =>
     request<{ success: boolean; imported_count: number; message: string }>("POST", "/crm/customers/bulk-import", data),

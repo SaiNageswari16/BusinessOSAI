@@ -441,6 +441,23 @@ export function PurchaseStatementSuite({ onBack, initialSupplierName }: Purchase
     loadProcurementData();
   }, [tenant?.id]);
 
+  // Auto-refresh when payments, bills, or debits are updated across components
+  useEffect(() => {
+    const handleSync = () => {
+      void loadProcurementData();
+    };
+    window.addEventListener("vendor_payments_updated", handleSync);
+    window.addEventListener("procurement_updated", handleSync);
+    window.addEventListener("inventory_updated", handleSync);
+    window.addEventListener("focus", handleSync);
+    return () => {
+      window.removeEventListener("vendor_payments_updated", handleSync);
+      window.removeEventListener("procurement_updated", handleSync);
+      window.removeEventListener("inventory_updated", handleSync);
+      window.removeEventListener("focus", handleSync);
+    };
+  }, []);
+
   // Active Selected Supplier
   const activeSupplier = useMemo(() => {
     if (!selectedSupplierName) return suppliers[0] || null;

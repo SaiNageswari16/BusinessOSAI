@@ -3721,6 +3721,7 @@ async def update_vendor_payment(
         raise HTTPException(status_code=404, detail="Vendor payment not found.")
 
     old_amount = float(payment.amount_paid or 0.0)
+    old_bill_id = payment.vendor_bill_id
     if payload.amount_paid is not None:
         payment.amount_paid = payload.amount_paid
     if payload.payment_method is not None:
@@ -3732,27 +3733,71 @@ async def update_vendor_payment(
     if payload.payment_date is not None:
         payment.payment_date = payload.payment_date.replace(tzinfo=None) if payload.payment_date.tzinfo else payload.payment_date
 
-    bill = None
     resolved_supplier_name = payload.supplier_name
-    if payment.vendor_bill_id:
-        bill = await db.get(VendorBill, payment.vendor_bill_id)
+    if not payment.supplier_id and payload.supplier_name:
+        supp_by_name = await db.scalar(
+            select(Supplier).where(
+                Supplier.tenant_id == ctx.tenant_id,
+                Supplier.name.ilike(f"%{payload.supplier_name.strip()}%")
+            )
+        )
+        if supp_by_name:
+            payment.supplier_id = supp_by_name.id
+            resolved_supplier_name = supp_by_name.name
+
+    # Handle bill reallocation or amount adjustment
+    new_bill_id = payload.vendor_bill_id if payload.vendor_bill_id is not None else old_bill_id
+    bill = None
+
+    if old_bill_id and new_bill_id != old_bill_id:
+        # Revert paid amount on old bill
+        old_bill = await db.get(VendorBill, old_bill_id)
+        if old_bill:
+            old_bill.paid_amount = max(0.0, float(old_bill.paid_amount or 0.0) - old_amount)
+            tot_amt = float(old_bill.total_amount or 0.0)
+            if old_bill.paid_amount >= tot_amt and tot_amt > 0:
+                old_bill.status = "Paid"
+            elif old_bill.paid_amount > 0:
+                old_bill.status = "Partially Paid"
+            else:
+                old_bill.status = "Unpaid"
+
+    if new_bill_id:
+        payment.vendor_bill_id = new_bill_id
+        bill = await db.get(VendorBill, new_bill_id)
         if bill:
-            if payload.amount_paid is not None:
+            if new_bill_id != old_bill_id:
+                # Add full amount to new bill
+                bill.paid_amount = max(0.0, float(bill.paid_amount or 0.0) + float(payment.amount_paid))
+            elif payload.amount_paid is not None:
                 diff = float(payload.amount_paid) - old_amount
                 bill.paid_amount = max(0.0, float(bill.paid_amount or 0.0) + diff)
-                tot_amt = float(bill.total_amount or 0.0)
-                if bill.paid_amount >= tot_amt and tot_amt > 0:
-                    bill.status = "Paid"
-                elif bill.paid_amount > 0:
-                    bill.status = "Partially Paid"
-                else:
-                    bill.status = "Unpaid"
+            
+            tot_amt = float(bill.total_amount or 0.0)
+            if bill.paid_amount >= tot_amt and tot_amt > 0:
+                bill.status = "Paid"
+            elif bill.paid_amount > 0:
+                bill.status = "Partially Paid"
+            else:
+                bill.status = "Unpaid"
+
             if bill.purchase_order_id:
                 po = await db.get(PurchaseOrder, bill.purchase_order_id)
                 if po and po.supplier_id:
+                    if not payment.supplier_id:
+                        payment.supplier_id = po.supplier_id
                     supp = await db.get(Supplier, po.supplier_id)
                     if supp:
                         resolved_supplier_name = supp.name
+
+    # Handle Opening Balance adjustment if applies_to_opening_balance is True
+    if payment.applies_to_opening_balance and payment.supplier_id and payload.amount_paid is not None:
+        diff = float(payload.amount_paid) - old_amount
+        supp = await db.get(Supplier, payment.supplier_id)
+        if supp:
+            supp.opening_balance = max(0.0, float(supp.opening_balance or 0.0) - diff)
+            if not resolved_supplier_name:
+                resolved_supplier_name = supp.name
 
     await db.commit()
     await db.refresh(payment)
@@ -3800,6 +3845,11 @@ async def delete_vendor_payment(
                 bill.status = "Partially Paid"
             else:
                 bill.status = "Unpaid"
+
+    if payment.applies_to_opening_balance and payment.supplier_id:
+        supp = await db.get(Supplier, payment.supplier_id)
+        if supp:
+            supp.opening_balance = max(0.0, float(supp.opening_balance or 0.0) + float(payment.amount_paid or 0.0))
 
     await db.delete(payment)
     await db.commit()

@@ -253,6 +253,10 @@ class BulkImportCustomersRequest(BaseModel):
     default_owner_user_id: uuid.UUID | None = None
 
 
+class BulkDeleteCustomersRequest(BaseModel):
+    customer_ids: list[uuid.UUID]
+
+
 class ConvertLeadPipelineRequest(BaseModel):
     deal_name: str | None = None
     deal_amount: float | None = None

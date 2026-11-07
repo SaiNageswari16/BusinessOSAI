@@ -809,6 +809,11 @@ export function PaymentHistory() {
 
       setIsRecordingPayment(false);
 
+      // Dispatch cross-component sync events so reports & ledger update immediately
+      window.dispatchEvent(new CustomEvent("vendor_payments_updated"));
+      window.dispatchEvent(new CustomEvent("procurement_updated"));
+      window.dispatchEvent(new CustomEvent("inventory_updated"));
+
       await fetchData();
 
     } catch (err: any) {
@@ -1522,6 +1527,10 @@ export function PaymentHistory() {
                                     }
 
                                     toast.success(`Deleted ${p.voucher_number} successfully.`);
+
+                                    window.dispatchEvent(new CustomEvent("vendor_payments_updated"));
+                                    window.dispatchEvent(new CustomEvent("procurement_updated"));
+                                    window.dispatchEvent(new CustomEvent("inventory_updated"));
 
                                     void fetchData();
 

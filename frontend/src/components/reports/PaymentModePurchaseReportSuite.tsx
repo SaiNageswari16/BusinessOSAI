@@ -489,6 +489,23 @@ export function PaymentModePurchaseReportSuite({
     void loadReport();
   }, [startDate, endDate, activeModeTab]);
 
+  // Live reload on cross-component procurement or payment updates
+  useEffect(() => {
+    const handleSync = () => {
+      void loadReport();
+    };
+    window.addEventListener("vendor_payments_updated", handleSync);
+    window.addEventListener("procurement_updated", handleSync);
+    window.addEventListener("inventory_updated", handleSync);
+    window.addEventListener("focus", handleSync);
+    return () => {
+      window.removeEventListener("vendor_payments_updated", handleSync);
+      window.removeEventListener("procurement_updated", handleSync);
+      window.removeEventListener("inventory_updated", handleSync);
+      window.removeEventListener("focus", handleSync);
+    };
+  }, []);
+
   // Debounced search
   useEffect(() => {
     const handler = setTimeout(() => {

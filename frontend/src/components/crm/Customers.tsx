@@ -146,6 +146,43 @@ export function Customers() {
   const [adjustBalanceReason, setAdjustBalanceReason] = useState<string>("");
   const [savingBalance, setSavingBalance] = useState<boolean>(false);
 
+  // Multi-select & Bulk Delete State
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState<boolean>(false);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState<boolean>(false);
+
+  const toggleSelect = (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkDeleting(true);
+    try {
+      const res = await crmCustomersApi.bulkDelete({
+        customer_ids: Array.from(selectedIds),
+      });
+      toast.success(res.message || `Deleted ${res.deleted_count} customer(s) successfully.`);
+      setSelectedIds(new Set());
+      setShowBulkDeleteModal(false);
+      void load();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to bulk delete customers");
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   useEffect(() => {
     setCurrentPage(1);
   }, [search, type, statusFilter]);
@@ -265,7 +302,7 @@ export function Customers() {
       let page = 1;
       // Fetch every customer server-side (paged) so the export is complete,
       // independent of the currently loaded/searched table.
-      for (;;) {
+      for (; ;) {
         const res = await crmCustomersApi.list(page, pageSize, search || undefined);
         all.push(...(res.items || []));
         const fetched = (res.items || []).length;
@@ -315,6 +352,29 @@ export function Customers() {
     const start = (currentPage - 1) * pageSize;
     return filtered.slice(start, start + pageSize);
   }, [filtered, currentPage, pageSize]);
+
+  const allVisibleSelected =
+    paginatedCustomers.length > 0 && paginatedCustomers.every((c) => selectedIds.has(c.id));
+
+  const toggleSelectAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        paginatedCustomers.forEach((c) => next.delete(c.id));
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        paginatedCustomers.forEach((c) => next.add(c.id));
+        return next;
+      });
+    }
+  };
+
+  const selectAllFiltered = () => {
+    setSelectedIds(new Set(filtered.map((c) => c.id)));
+  };
 
   const stats = useMemo(() => {
     const active = customers.filter((c) => c.status === "Active").length;
@@ -549,8 +609,8 @@ export function Customers() {
           form.outstanding_balance !== undefined && form.outstanding_balance !== "" && !isNaN(Number(form.outstanding_balance))
             ? Number(form.outstanding_balance)
             : form.opening_balance !== undefined && form.opening_balance !== "" && !isNaN(Number(form.opening_balance))
-            ? Number(form.opening_balance)
-            : 0,
+              ? Number(form.opening_balance)
+              : 0,
         opening_balance:
           form.opening_balance !== undefined && form.opening_balance !== "" && !isNaN(Number(form.opening_balance))
             ? Number(form.opening_balance)
@@ -752,11 +812,10 @@ export function Customers() {
                       <button
                         type="button"
                         onClick={() => handleSetDefaultAddress(addr.id, "billing")}
-                        className={`text-[10px] font-bold px-2 py-1 rounded-md border flex items-center gap-1 transition ${
-                          addr.is_default_billing
+                        className={`text-[10px] font-bold px-2 py-1 rounded-md border flex items-center gap-1 transition ${addr.is_default_billing
                             ? "bg-indigo-500/10 text-indigo-600 border-indigo-500/30"
                             : "bg-muted/40 text-muted-foreground border-border hover:bg-muted"
-                        }`}
+                          }`}
                         title="Set this address as Default Billing"
                       >
                         {addr.is_default_billing ? <Check className="size-3" /> : null}
@@ -766,11 +825,10 @@ export function Customers() {
                       <button
                         type="button"
                         onClick={() => handleSetDefaultAddress(addr.id, "shipping")}
-                        className={`text-[10px] font-bold px-2 py-1 rounded-md border flex items-center gap-1 transition ${
-                          addr.is_default_shipping
+                        className={`text-[10px] font-bold px-2 py-1 rounded-md border flex items-center gap-1 transition ${addr.is_default_shipping
                             ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
                             : "bg-muted/40 text-muted-foreground border-border hover:bg-muted"
-                        }`}
+                          }`}
                         title="Set this address as Default Shipping"
                       >
                         {addr.is_default_shipping ? <Check className="size-3" /> : null}
@@ -1033,6 +1091,16 @@ export function Customers() {
                 <Upload className="size-3.5 text-emerald-600" />
                 {t("Import Customers", "Import Customers")}
               </button>
+              {selectedIds.size > 0 && (
+                <button
+                  onClick={() => setShowBulkDeleteModal(true)}
+                  className="flex items-center gap-1.5 px-3 h-8 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 rounded-xl text-xs font-bold text-rose-600 dark:text-rose-400 transition-colors cursor-pointer"
+                  title={`Delete ${selectedIds.size} selected customer(s)`}
+                >
+                  <Trash2 className="size-3.5 text-rose-600" />
+                  {t("Delete Selected", "Delete Selected")} ({selectedIds.size})
+                </button>
+              )}
               <button
                 onClick={openCreate}
                 className="flex items-center justify-center gap-1.5 px-3 h-8 gradient-brand text-white rounded-lg text-xs font-semibold cursor-pointer"
@@ -1081,6 +1149,38 @@ export function Customers() {
             </div>
           </div>
 
+          {/* Bulk Selection Action Banner */}
+          {selectedIds.size > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 px-4 bg-primary/10 border border-primary/25 rounded-xl text-xs font-medium text-foreground">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="font-bold text-primary">
+                  {selectedIds.size} of {total} customer(s) selected
+                </span>
+                {selectedIds.size < filtered.length && (
+                  <button
+                    onClick={selectAllFiltered}
+                    className="text-primary hover:underline font-semibold cursor-pointer"
+                  >
+                    Select all {filtered.length} filtered customers
+                  </button>
+                )}
+                <button
+                  onClick={clearSelection}
+                  className="text-muted-foreground hover:text-foreground underline cursor-pointer"
+                >
+                  Clear selection
+                </button>
+              </div>
+              <button
+                onClick={() => setShowBulkDeleteModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-xs shadow-xs cursor-pointer transition-colors"
+              >
+                <Trash2 className="size-3.5" />
+                Delete Selected ({selectedIds.size})
+              </button>
+            </div>
+          )}
+
           {/* Customer Table */}
           {loading ? (
             <div className="py-16 text-center text-muted-foreground">Loading customers…</div>
@@ -1090,6 +1190,15 @@ export function Customers() {
                 <table className="w-full text-xs text-left">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase font-semibold tracking-wider">
                     <tr>
+                      <th className="w-10 px-4 py-4 text-center whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={allVisibleSelected}
+                          onChange={toggleSelectAllVisible}
+                          className="size-4 rounded accent-primary cursor-pointer align-middle"
+                          title={allVisibleSelected ? "Deselect all visible" : "Select all visible"}
+                        />
+                      </th>
                       <th className="px-6 py-4 text-left whitespace-nowrap">Customer</th>
                       <th className="px-6 py-4 text-left whitespace-nowrap">Contact</th>
                       <th className="px-6 py-4 text-left whitespace-nowrap">Type</th>
@@ -1112,9 +1221,18 @@ export function Customers() {
                         }}
                         className={cn(
                           "hover:bg-muted/30 cursor-pointer transition-colors",
-                          (selectedCustomerForDetail?.id === customer.id || selectedCustomer?.id === customer.id) && "bg-primary/5"
+                          (selectedCustomerForDetail?.id === customer.id || selectedCustomer?.id === customer.id) && "bg-primary/5",
+                          selectedIds.has(customer.id) && "bg-primary/10"
                         )}
                       >
+                        <td className="w-10 px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(customer.id)}
+                            onChange={(e) => toggleSelect(customer.id, e as any)}
+                            className="size-4 rounded accent-primary cursor-pointer align-middle"
+                          />
+                        </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             <div className="size-8 rounded-xl bg-primary/10 text-primary font-bold flex items-center justify-center text-xs shrink-0">
@@ -1136,11 +1254,10 @@ export function Customers() {
                               const days = Math.floor((Date.now() - new Date(log.created_at).getTime()) / (1000 * 60 * 60 * 24));
                               const overdue = days >= 3;
                               return (
-                                <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                                  overdue
+                                <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${overdue
                                     ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
                                     : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
-                                }`}>
+                                  }`}>
                                   {overdue ? <Clock className="size-2.5" /> : <CheckCircle2 className="size-2.5" />}
                                   {overdue ? `Follow-up ${days}d ago` : days === 0 ? "Called today" : `Called ${days}d ago`}
                                 </span>
@@ -1210,13 +1327,12 @@ export function Customers() {
                             </button>
                             <button
                               onClick={(e) => { e.stopPropagation(); setCallingCustomer(customer); }}
-                              className={`p-1.5 rounded-lg transition cursor-pointer ${
-                                callStatusMap[customer.id]
+                              className={`p-1.5 rounded-lg transition cursor-pointer ${callStatusMap[customer.id]
                                   ? Math.floor((Date.now() - new Date(callStatusMap[customer.id].created_at).getTime()) / (1000 * 60 * 60 * 24)) >= 3
                                     ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 animate-pulse"
                                     : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
                                   : "hover:bg-emerald-500/10 text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400"
-                              }`}
+                                }`}
                               title={callStatusMap[customer.id] ? "Called — Click to call again" : "Start AI Voice Call"}
                             >
                               <PhoneCall className="size-3.5" />
@@ -1339,7 +1455,7 @@ export function Customers() {
                   <MapPin className="size-3.5 text-primary" />
                   Saved Locations & Branches ({Array.isArray(selectedCustomer.addresses) && selectedCustomer.addresses.length > 0 ? selectedCustomer.addresses.length : 1})
                 </h4>
-                
+
                 {Array.isArray(selectedCustomer.addresses) && selectedCustomer.addresses.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {selectedCustomer.addresses.map((addr: CustomerAddressItem, idx: number) => (
@@ -1556,6 +1672,53 @@ export function Customers() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Customers Confirmation Modal */}
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full overflow-hidden p-6 space-y-4">
+            <div className="size-12 rounded-2xl bg-rose-500/10 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="size-6" />
+            </div>
+            <div className="text-center space-y-1.5">
+              <h3 className="text-base font-bold text-foreground">
+                Delete {selectedIds.size} Selected Customer{selectedIds.size > 1 ? "s" : ""}?
+              </h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Are you sure you want to permanently delete these <strong>{selectedIds.size}</strong> selected customer(s)? Their customer profiles will be deleted, and historical ledger / invoices will be preserved.
+              </p>
+            </div>
+            <div className="flex gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowBulkDeleteModal(false)}
+                disabled={bulkDeleting}
+                className="flex-1 px-4 py-2.5 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-xl text-xs cursor-pointer transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+                className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md transition disabled:opacity-50"
+              >
+                {bulkDeleting ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" />
+                    Deleting…
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="size-3.5" />
+                    Yes, Delete ({selectedIds.size})
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
