@@ -1488,6 +1488,51 @@ async def update_customer_outstanding_balance(
     return CustomerResponse(**c_dict)
 
 
+async def _cleanup_customer_dependents(db: AsyncSession, customer_ids: list[uuid.UUID]) -> None:
+    """Safely nullify or delete dependent records referencing customers before deletion.
+    Uses PostgreSQL savepoints (begin_nested) to prevent aborting the outer transaction.
+    """
+    if not customer_ids:
+        return
+
+    # 1. Nullify foreign keys in historical/financial tables so business documents remain intact
+    nullable_tables = [
+        ("ar_invoices", "customer_id"),
+        ("crm_support_tickets", "customer_id"),
+        ("crm_opportunities", "customer_id"),
+        ("payment_reminder_logs", "customer_id"),
+        ("pos_transactions", "customer_id"),
+        ("delivery_challans", "customer_id"),
+    ]
+    for tbl, col in nullable_tables:
+        try:
+            async with db.begin_nested():
+                await db.execute(
+                    text(f"UPDATE {tbl} SET {col} = NULL WHERE {col} = ANY(:cids)"),
+                    {"cids": customer_ids},
+                )
+        except Exception as e:
+            logger.debug("Optional FK nullify on %s.%s skipped: %s", tbl, col, e)
+
+    # 2. Delete child records that belong strictly to the deleted customer(s)
+    # Note: Wallet transactions reference wallet_id, so delete them before deleting wallets
+    child_cleanup_stmts = [
+        "DELETE FROM crm_customer_wallet_transactions WHERE wallet_id IN (SELECT id FROM crm_customer_wallets WHERE customer_id = ANY(:cids))",
+        "DELETE FROM crm_customer_wallets WHERE customer_id = ANY(:cids)",
+        "DELETE FROM crm_loyalty_transactions WHERE customer_id = ANY(:cids)",
+        "DELETE FROM crm_customer_memberships WHERE customer_id = ANY(:cids)",
+        "DELETE FROM crm_customer_group_members WHERE customer_id = ANY(:cids)",
+        "DELETE FROM crm_quotations WHERE customer_id = ANY(:cids)",
+        "DELETE FROM crm_sales_orders WHERE customer_id = ANY(:cids)",
+    ]
+    for stmt in child_cleanup_stmts:
+        try:
+            async with db.begin_nested():
+                await db.execute(text(stmt), {"cids": customer_ids})
+        except Exception as e:
+            logger.debug("Optional child cleanup skipped: %s", e)
+
+
 @router.delete("/customers/{customer_id}")
 async def delete_customer(
     customer_id: uuid.UUID,
@@ -1513,6 +1558,7 @@ async def delete_customer(
         user_agent=request.headers.get("user-agent")
     )
 
+    await _cleanup_customer_dependents(db, [customer_id])
     await db.delete(customer)
     await db.commit()
     return {"status": "success", "message": f"Customer '{cust_name}' deleted successfully", "deleted_id": str(customer_id)}
@@ -1543,42 +1589,7 @@ async def bulk_delete_customers(
     deleted_ids = [c.id for c in customers]
     deleted_names = [c.name for c in customers[:5]]
 
-    # Safely nullify foreign keys in financial and support records to avoid breaking historical records
-    fks_nullify = [
-        ("ar_invoices", "customer_id"),
-        ("crm_support_tickets", "customer_id"),
-        ("crm_quotations", "customer_id"),
-        ("crm_sales_orders", "customer_id"),
-        ("crm_opportunities", "customer_id"),
-        ("payment_reminder_logs", "customer_id"),
-    ]
-    for tbl, col in fks_nullify:
-        try:
-            await db.execute(
-                text(f"UPDATE {tbl} SET {col} = NULL WHERE {col} = ANY(:cids)"),
-                {"cids": deleted_ids}
-            )
-        except Exception as e:
-            logger.warning(f"Could not nullify {tbl}.{col} during bulk delete: {e}")
-
-    # Safely delete dependent CRM child records (wallets, memberships, etc.)
-    fks_delete = [
-        ("crm_wallets", "customer_id"),
-        ("crm_wallet_transactions", "customer_id"),
-        ("crm_customer_wallets", "customer_id"),
-        ("crm_customer_group_members", "customer_id"),
-        ("crm_customer_memberships", "customer_id"),
-        ("crm_memberships", "customer_id"),
-        ("crm_loyalty_transactions", "customer_id"),
-    ]
-    for tbl, col in fks_delete:
-        try:
-            await db.execute(
-                text(f"DELETE FROM {tbl} WHERE {col} = ANY(:cids)"),
-                {"cids": deleted_ids}
-            )
-        except Exception as e:
-            logger.warning(f"Could not delete child rows in {tbl} during bulk delete: {e}")
+    await _cleanup_customer_dependents(db, deleted_ids)
 
     for c in customers:
         await db.delete(c)
