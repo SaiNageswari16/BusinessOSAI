@@ -7,13 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth, resolvePostAuthRoute, AuthLockoutError, type LockoutInfo } from "@/contexts/auth-context";
-import { passkeysApi, fingerprintsApi } from "@/lib/api-client";
+import { passkeysApi, fingerprintsApi, API_BASE_URL } from "@/lib/api-client";
 import { isBiometricsSupported, getBiometricAssertion } from "@/lib/webauthn";
 import { discoverRDService, captureFingerprint } from "@/lib/rd-service";
 import { formatRegionUnlockTime, getRegionTimezoneDisplay } from "@/lib/utils";
 import { toast } from "sonner";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
+
 
 interface LoginSearch {
   mode?: string;

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { companies as mockCompanies } from "@/data/mock";
-import { companiesApi, branchesApi, clearApiCache, type Company as RealCompany, type Branch as RealBranch } from "@/lib/api-client";
+import { companiesApi, branchesApi, clearApiCache, API_BASE_URL, type Company as RealCompany, type Branch as RealBranch } from "@/lib/api-client";
 import { useCurrency } from "@/hooks/use-currency";
 import { safeSetItem, sanitizeForStorage } from "@/lib/safe-storage";
 
@@ -36,7 +36,7 @@ interface TenantContextType {
 
 const TenantContext = createContext<TenantContextType | undefined>(undefined);
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
+
 
 function getAuthToken(): string | null {
   try {

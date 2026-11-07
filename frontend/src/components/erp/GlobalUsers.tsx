@@ -26,7 +26,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/contexts/auth-context";
 import { useCurrency } from "@/hooks/use-currency";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
+import { API_BASE_URL } from "@/lib/api-client";
 
 interface PlatformUser {
   id: string;

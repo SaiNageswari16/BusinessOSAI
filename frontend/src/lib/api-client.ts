@@ -1,12 +1,40 @@
 import { useCurrency } from "@/hooks/use-currency";
 
 /**
- * LazyMonkeyAI â€” Central API Client
+ * LazyMonkeyAI — Central API Client
  * All backend API calls go through this module.
  * Auth token is injected from localStorage (set by AuthProvider).
  */
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000/api/v1";
+export function getApiBaseUrl(): string {
+  const envBase = (
+    typeof import.meta !== "undefined" && import.meta.env
+      ? (import.meta.env.VITE_API_BASE_URL as string | undefined)
+      : undefined
+  )?.trim();
+
+  if (typeof window !== "undefined") {
+    const hostname = window.location.hostname;
+    const isLocalhost =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "0.0.0.0" ||
+      hostname === "::1";
+
+    if (!isLocalhost) {
+      // If deployed on a production/remote domain (e.g. iotronics.com, app.iotronics.com),
+      // do not attempt to contact localhost or 127.0.0.1 (which was baked into bundle from dev .env).
+      // Fallback dynamically to current origin `/api/v1` so reverse proxy / Nginx routes it correctly.
+      if (!envBase || envBase.includes("localhost") || envBase.includes("127.0.0.1")) {
+        return `${window.location.origin}/api/v1`;
+      }
+    }
+  }
+
+  return envBase || "http://127.0.0.1:8000/api/v1";
+}
+
+export const API_BASE_URL: string = getApiBaseUrl();
 
 export function resolveImageUrl(url: string | null | undefined): string {
   if (!url || url.trim() === "") return "";
@@ -5539,7 +5567,7 @@ export const expenseClaimsApi = {
     const formData = new FormData();
     formData.append("file", file);
     const token = localStorage.getItem("auth_token") || localStorage.getItem("accessToken") || "";
-    const res = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1"}/expense-claims/upload-receipt`, {
+    const res = await fetch(`${API_BASE_URL}/expense-claims/upload-receipt`, {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: formData,
@@ -6028,7 +6056,7 @@ export const crmCallsApi = {
     if (params?.start_date) query.set("start_date", params.start_date);
     if (params?.end_date) query.set("end_date", params.end_date);
     if (params?.search) query.set("search", params.search);
-    const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
+    const API_BASE = API_BASE_URL;
     return `${API_BASE}/crm/calls/export-csv?${query.toString()}`;
   },
 };

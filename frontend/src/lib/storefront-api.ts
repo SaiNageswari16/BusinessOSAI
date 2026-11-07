@@ -1,4 +1,5 @@
 import { useCurrency } from "@/hooks/use-currency";
+import { getApiBaseUrl, resolveImageUrl } from "@/lib/api-client";
 
 /**
  * Storefront API — connects to the public inventory endpoints that expose
@@ -7,7 +8,7 @@ import { useCurrency } from "@/hooks/use-currency";
  * The base URL is read from VITE_API_BASE_URL (set in frontend/.env).
  * No auth token is needed — these are public endpoints.
  */
-const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'}/inventory/public`;
+const API_BASE_URL = `${getApiBaseUrl()}/inventory/public`;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -275,7 +276,7 @@ export const createStorefrontOrder = async (orderData: {
   shipping_address?: string;
   notes?: string;
 }): Promise<any> => {
-  const rootBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+  const rootBase = getApiBaseUrl();
   const marketplaceBase = `${rootBase}/marketplace`;
   const tid = getActiveStorefrontTenantId();
   const storeSlug = getStoreSlugFromUrl();
@@ -302,7 +303,7 @@ export const createStorefrontOrder = async (orderData: {
 };
 
 export const fetchStorefrontUserOrders = async (customerEmail?: string, customerId?: string, storeSlug?: string): Promise<any[]> => {
-  const rootBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+  const rootBase = getApiBaseUrl();
   const url = new URL(`${rootBase}/marketplace/orders`);
   const effectiveStore = storeSlug || getStoreSlugFromUrl();
   if (effectiveStore) url.searchParams.append('store', effectiveStore);
@@ -314,7 +315,7 @@ export const fetchStorefrontUserOrders = async (customerEmail?: string, customer
 };
 
 export const fetchStorefrontOrderById = async (orderId: string, storeSlug?: string): Promise<any> => {
-  const rootBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+  const rootBase = getApiBaseUrl();
   const url = new URL(`${rootBase}/marketplace/orders/${orderId}`);
   const effectiveStore = storeSlug || getStoreSlugFromUrl();
   if (effectiveStore) url.searchParams.append('store', effectiveStore);
@@ -323,7 +324,7 @@ export const fetchStorefrontOrderById = async (orderId: string, storeSlug?: stri
   return res.json();
 };
 
-import { resolveImageUrl } from "@/lib/api-client";
+
 
 /**
  * Maps a backend StorefrontProduct to the OrganicProduct format used by the UI components.

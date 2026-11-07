@@ -23,7 +23,8 @@ import {
   type TaxConfiguration,
   type GstRegistration,
   type GspCredentials,
-  type CompanyEmailSettings
+  type CompanyEmailSettings,
+  API_BASE_URL
 } from "@/lib/api-client";
 import { lookupGstinDetails } from "@/lib/gst-helper";
 import { toast } from "sonner";
@@ -40,7 +41,7 @@ import {
   type ActiveGstDetails
 } from "@/lib/receipt-template-store";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
+
 
 export const STATE_GST_CODES: Record<string, string> = {
   "01": "Jammu & Kashmir", "02": "Himachal Pradesh", "03": "Punjab", "04": "Chandigarh",

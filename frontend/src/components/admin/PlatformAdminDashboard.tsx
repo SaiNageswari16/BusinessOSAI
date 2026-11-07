@@ -68,7 +68,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useTenant } from "@/contexts/tenant-context";
 import { RazorpaySubscriptionModal } from "./RazorpaySubscriptionModal";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
+import { API_BASE_URL } from "@/lib/api-client";
 
 interface SystemStats {
   total_tenants: number;

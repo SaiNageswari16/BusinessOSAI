@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useCurrency } from "@/hooks/use-currency";
-import { clearApiCache } from "@/lib/api-client";
+import { clearApiCache, API_BASE_URL } from "@/lib/api-client";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
+
 
 export interface AuthRole {
   id: string;

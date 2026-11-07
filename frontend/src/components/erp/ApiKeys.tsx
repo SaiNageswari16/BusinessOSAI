@@ -11,7 +11,7 @@ import { useI18n } from "@/contexts/i18n-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCurrency } from "@/hooks/use-currency";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
+import { API_BASE_URL } from "@/lib/api-client";
 
 interface ApiKey {
   id: string;
