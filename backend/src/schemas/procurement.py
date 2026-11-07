@@ -577,6 +577,7 @@ class VendorBillResponse(VendorBillBase):
 
 class VendorPaymentBase(BaseModel):
     vendor_bill_id: Optional[uuid.UUID] = None
+    supplier_id: Optional[uuid.UUID] = None
     supplier_name: Optional[str] = None
     payment_date: Optional[datetime] = None
     payment_method: Optional[str] = "Bank Transfer"
@@ -594,6 +595,7 @@ class VendorPaymentCreate(VendorPaymentBase):
 
 class VendorPaymentUpdate(BaseModel):
     vendor_bill_id: Optional[uuid.UUID] = None
+    supplier_id: Optional[uuid.UUID] = None
     supplier_name: Optional[str] = None
     payment_date: Optional[datetime] = None
     payment_method: Optional[str] = None
@@ -604,6 +606,7 @@ class VendorPaymentUpdate(BaseModel):
 
 class VendorPaymentResponse(VendorPaymentBase):
     id: uuid.UUID
+    supplier_id: Optional[uuid.UUID] = None
     bill_number: Optional[str] = None
     supplier_name: Optional[str] = None
     notes: Optional[str] = None

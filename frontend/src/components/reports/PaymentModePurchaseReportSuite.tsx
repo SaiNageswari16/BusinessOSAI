@@ -175,14 +175,46 @@ export function PaymentModePurchaseReportSuite({
           if (s.name) suppMap.set(s.name.toLowerCase().trim(), s);
         });
 
-        // Map payments by vendor_bill_id
+        // Map payments by vendor_bill_id, bill_number, supplier_id, and supplier name
         const paymentByBill = new Map<string, any[]>();
+        const paymentByBillNum = new Map<string, any[]>();
+        const paymentBySupp = new Map<string, any[]>();
+
         rawPayments.forEach((p: any) => {
           const bId = String(p.vendor_bill_id || "");
           if (bId) {
             const list = paymentByBill.get(bId) || [];
             list.push(p);
             paymentByBill.set(bId, list);
+          }
+          const ref = String(p.reference_number || p.bill_number || "").trim().toUpperCase();
+          if (ref) {
+            const list = paymentByBillNum.get(ref) || [];
+            list.push(p);
+            paymentByBillNum.set(ref, list);
+          }
+          const sId = String(p.supplier_id || "");
+          if (sId) {
+            const list = paymentBySupp.get(sId) || [];
+            list.push(p);
+            paymentBySupp.set(sId, list);
+          }
+          const sNameRaw = String(p.supplier_name || p.vendor_name || "").trim().toLowerCase();
+          if (sNameRaw && sNameRaw !== "vendor / supplier" && sNameRaw !== "supplier / vendor") {
+            const list = paymentBySupp.get(sNameRaw) || [];
+            list.push(p);
+            paymentBySupp.set(sNameRaw, list);
+          }
+          if (p.notes) {
+            const m = String(p.notes).match(/(?:Payment Out to|Payout to|Vendor|Supplier)\s+([A-Za-z0-9_.\-\s&]+)/i);
+            if (m && m[1]) {
+              const ext = m[1].trim().toLowerCase();
+              if (ext && ext !== "vendor" && ext !== "supplier") {
+                const list = paymentBySupp.get(ext) || [];
+                list.push(p);
+                paymentBySupp.set(ext, list);
+              }
+            }
           }
         });
 
@@ -207,31 +239,81 @@ export function PaymentModePurchaseReportSuite({
           const gstin = b.supplier_gstin || suppObj?.gstin || "";
 
           const total = Number(b.total_amount || b.amount || 0);
-          const paid = Number(b.paid_amount || b.amount_paid || 0);
+          let paid = Number(b.paid_amount || b.amount_paid || 0);
+
+          // Authoritatively gather all matched payments
+          const linkedPayMap = new Map<string, any>();
+          (paymentByBill.get(String(b.id)) || []).forEach((p: any) => linkedPayMap.set(String(p.id || p.reference_number), p));
+          const bNumClean = String(b.bill_number || "").trim().toUpperCase();
+          if (bNumClean) {
+            (paymentByBillNum.get(bNumClean) || []).forEach((p: any) => linkedPayMap.set(String(p.id || p.reference_number), p));
+          }
+          if (b.supplier_id && paymentBySupp.has(String(b.supplier_id))) {
+            paymentBySupp.get(String(b.supplier_id))!.forEach((p: any) => linkedPayMap.set(String(p.id || p.reference_number), p));
+          } else if (sName && paymentBySupp.has(sName.toLowerCase())) {
+            paymentBySupp.get(sName.toLowerCase())!.forEach((p: any) => linkedPayMap.set(String(p.id || p.reference_number), p));
+          }
+
+          const linkedPay = Array.from(linkedPayMap.values());
+          let billCash = 0;
+          let billUpi = 0;
+          let billCheque = 0;
+          let billBank = 0;
+
+          if (linkedPay.length > 0) {
+            linkedPay.forEach((p: any) => {
+              const pAmt = Number(p.amount_paid || p.amount || 0);
+              if (pAmt <= 0) return;
+              const pMeth = String(p.payment_method || "").toLowerCase();
+              if (pMeth.includes("cash")) billCash += pAmt;
+              else if (pMeth.includes("upi") || pMeth.includes("qr") || pMeth.includes("gpay") || pMeth.includes("phonepe") || pMeth.includes("paytm")) billUpi += pAmt;
+              else if (pMeth.includes("cheque") || pMeth.includes("check")) billCheque += pAmt;
+              else billBank += pAmt;
+            });
+            const sumP = billCash + billUpi + billCheque + billBank;
+            if (sumP > 0) {
+              paid = Math.max(paid, sumP);
+            }
+            const remPaid = paid - sumP;
+            if (remPaid > 0.01) {
+              const headM = String(b.payment_method || b.payment_terms || "").toLowerCase();
+              if (headM.includes("cash")) billCash += remPaid;
+              else if (headM.includes("upi") || headM.includes("qr")) billUpi += remPaid;
+              else if (headM.includes("cheque") || headM.includes("check")) billCheque += remPaid;
+              else billBank += remPaid;
+            }
+          } else if (paid > 0.01) {
+            const headM = String(b.payment_method || b.payment_terms || "").toLowerCase();
+            if (headM.includes("cash")) billCash = paid;
+            else if (headM.includes("upi") || headM.includes("qr")) billUpi = paid;
+            else if (headM.includes("cheque") || headM.includes("check")) billCheque = paid;
+            else billBank = paid;
+          }
+
           const pending = Math.max(0, total - paid);
 
-          // Determine category
-          const linkedPay = paymentByBill.get(String(b.id)) || [];
-          const payMethods = linkedPay.map((p: any) => String(p.payment_method || "").toLowerCase()).join(" ");
+          const modesPresent: string[] = [];
+          const modeLabels: string[] = [];
+          if (billCash > 0.01) { modesPresent.push("cash"); modeLabels.push(`Cash (₹${billCash.toLocaleString("en-IN")})`); }
+          if (billUpi > 0.01) { modesPresent.push("upi"); modeLabels.push(`UPI (₹${billUpi.toLocaleString("en-IN")})`); }
+          if (billCheque > 0.01) { modesPresent.push("cheque"); modeLabels.push(`Cheque (₹${billCheque.toLocaleString("en-IN")})`); }
+          if (billBank > 0.01) { modesPresent.push("bank"); modeLabels.push(`Bank (₹${billBank.toLocaleString("en-IN")})`); }
+          if (pending > 0.01) { modesPresent.push("credit"); modeLabels.push(`Pending (₹${pending.toLocaleString("en-IN")})`); }
+          if (modesPresent.length === 0) {
+            modesPresent.push(pending > 0.01 ? "credit" : "bank");
+            modeLabels.push(pending > 0.01 ? "Credit / Net Terms" : "Bank Transfer");
+          }
 
-          let cat = "credit";
-          let catLabel = "Credit / Payables";
-
-          if (payMethods.includes("cash")) {
-            cat = "cash";
-            catLabel = "Cash";
-          } else if (payMethods.includes("upi") || payMethods.includes("qr") || payMethods.includes("gpay")) {
-            cat = "upi";
-            catLabel = "UPI / QR";
-          } else if (payMethods.includes("cheque") || payMethods.includes("check")) {
-            cat = "cheque";
-            catLabel = "Cheque";
-          } else if (payMethods.includes("bank") || payMethods.includes("card") || payMethods.includes("neft") || payMethods.includes("rtgs") || payMethods.includes("online")) {
-            cat = "bank";
-            catLabel = "Bank Transfer";
-          } else if (paid > 0.01) {
-            cat = "bank";
-            catLabel = "Bank / NEFT";
+          let cat = modesPresent[0];
+          let catLabel = "Bank Transfer";
+          let rawLabel = "";
+          if (modeLabels.length === 1) {
+            catLabel = cat === "cash" ? "Cash" : cat === "upi" ? "UPI / QR" : cat === "cheque" ? "Cheque" : cat === "bank" ? "Bank Transfer" : "Credit / Payables";
+            rawLabel = catLabel;
+          } else {
+            cat = "split";
+            catLabel = "Split / Multi-Mode";
+            rawLabel = modeLabels.join(" • ");
           }
 
           const billItem = {
@@ -241,22 +323,27 @@ export function PaymentModePurchaseReportSuite({
             vendor_name: sName,
             vendor_phone: phone,
             vendor_gstin: gstin,
-            payment_mode_raw: catLabel,
+            payment_mode_raw: rawLabel,
             total_amount: total,
             paid_amount: paid,
             pending_amount: pending,
             status: pending <= 0.01 && paid > 0 ? "Paid" : (paid > 0 ? "Partially Paid" : "Payable"),
             category: cat,
             category_label: catLabel,
+            modes: modesPresent,
+            cash_paid: billCash,
+            upi_paid: billUpi,
+            cheque_paid: billCheque,
+            bank_paid: billBank,
             is_debit_note: false,
           };
 
           activeBills.push(billItem);
-          if (cat === "cash") cashBills.push(billItem);
-          else if (cat === "upi") upiBills.push(billItem);
-          else if (cat === "cheque") chequeBills.push(billItem);
-          else if (cat === "bank") bankBills.push(billItem);
-          else creditBills.push(billItem);
+          if (modesPresent.includes("cash")) cashBills.push(billItem);
+          if (modesPresent.includes("upi")) upiBills.push(billItem);
+          if (modesPresent.includes("cheque")) chequeBills.push(billItem);
+          if (modesPresent.includes("bank")) bankBills.push(billItem);
+          if (modesPresent.includes("credit") || pending > 0.01) creditBills.push(billItem);
         });
 
         // Debit notes
@@ -278,28 +365,29 @@ export function PaymentModePurchaseReportSuite({
         }));
 
         const grandTotal = activeBills.reduce((s, b) => s + b.total_amount, 0);
-        const cashTot = cashBills.reduce((s, b) => s + b.total_amount, 0);
-        const cashPaid = cashBills.reduce((s, b) => s + b.paid_amount, 0);
-        const cashDues = cashBills.reduce((s, b) => s + b.pending_amount, 0);
-
-        const upiTot = upiBills.reduce((s, b) => s + b.total_amount, 0);
-        const upiPaid = upiBills.reduce((s, b) => s + b.paid_amount, 0);
-        const upiDues = upiBills.reduce((s, b) => s + b.pending_amount, 0);
-
-        const bankTot = bankBills.reduce((s, b) => s + b.total_amount, 0);
-        const bankPaid = bankBills.reduce((s, b) => s + b.paid_amount, 0);
-        const bankDues = bankBills.reduce((s, b) => s + b.pending_amount, 0);
-
-        const chequeTot = chequeBills.reduce((s, b) => s + b.total_amount, 0);
-        const chequePaid = chequeBills.reduce((s, b) => s + b.paid_amount, 0);
-        const chequeDues = chequeBills.reduce((s, b) => s + b.pending_amount, 0);
-
-        const creditTot = creditBills.reduce((s, b) => s + b.total_amount, 0);
-        const creditPaid = creditBills.reduce((s, b) => s + b.paid_amount, 0);
-        const creditDues = creditBills.reduce((s, b) => s + b.pending_amount, 0);
-
         const grandDues = activeBills.reduce((s, b) => s + b.pending_amount, 0);
         const duesCount = activeBills.filter((b) => b.pending_amount > 0.01).length;
+
+        const cashPaid = activeBills.reduce((s, b) => s + (b.cash_paid || 0), 0);
+        const cashTot = cashPaid;
+        const cashDues = 0;
+
+        const upiPaid = activeBills.reduce((s, b) => s + (b.upi_paid || 0), 0);
+        const upiTot = upiPaid;
+        const upiDues = 0;
+
+        const bankPaid = activeBills.reduce((s, b) => s + (b.bank_paid || 0), 0);
+        const bankTot = bankPaid;
+        const bankDues = 0;
+
+        const chequePaid = activeBills.reduce((s, b) => s + (b.cheque_paid || 0), 0);
+        const chequeTot = chequePaid;
+        const chequeDues = 0;
+
+        const creditTot = grandDues;
+        const creditPaid = 0;
+        const creditDues = grandDues;
+
         const dnTotal = debitNotesList.reduce((s, d) => s + d.total_amount, 0);
 
         const clientData = {
@@ -441,15 +529,15 @@ export function PaymentModePurchaseReportSuite({
   const filteredBills = useMemo(() => {
     let list = detailedBills;
     if (activeModeTab === "cash") {
-      list = list.filter((b) => b.category === "cash");
+      list = list.filter((b) => b.modes?.includes("cash") || b.category === "cash" || Number(b.cash_paid || 0) > 0);
     } else if (activeModeTab === "upi") {
-      list = list.filter((b) => b.category === "upi");
+      list = list.filter((b) => b.modes?.includes("upi") || b.category === "upi" || Number(b.upi_paid || 0) > 0);
     } else if (activeModeTab === "bank") {
-      list = list.filter((b) => b.category === "bank");
+      list = list.filter((b) => b.modes?.includes("bank") || b.category === "bank" || Number(b.bank_paid || 0) > 0);
     } else if (activeModeTab === "cheque") {
-      list = list.filter((b) => b.category === "cheque");
+      list = list.filter((b) => b.modes?.includes("cheque") || b.category === "cheque" || Number(b.cheque_paid || 0) > 0);
     } else if (activeModeTab === "credit") {
-      list = list.filter((b) => b.category === "credit");
+      list = list.filter((b) => b.modes?.includes("credit") || b.category === "credit" || Number(b.pending_amount || 0) > 0.01);
     } else if (activeModeTab === "dues") {
       list = list.filter((b) => Number(b.pending_amount || 0) > 0.01);
     } else if (activeModeTab === "debit_notes") {
@@ -1368,10 +1456,12 @@ export function PaymentModePurchaseReportSuite({
                               ? "bg-teal-50 text-teal-700 border border-teal-200"
                               : b.category === "debit_note"
                               ? "bg-amber-50 text-amber-700 border border-amber-200"
+                              : b.category === "split"
+                              ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
                               : "bg-pink-50 text-pink-700 border border-pink-200"
                           }`}
                         >
-                          {b.category_label || b.category || "Cash"}
+                          {b.category === "split" ? (b.payment_mode_raw || "Split Payment") : (b.category_label || b.payment_mode_raw || b.category || "Cash")}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-center whitespace-nowrap">

@@ -1174,10 +1174,12 @@ export function PaymentModeSalesReportSuite({
                               ? "bg-blue-50 text-blue-700 border border-blue-200"
                               : inv.category === "credit"
                               ? "bg-purple-50 text-purple-700 border border-purple-200"
+                              : inv.category === "split"
+                              ? "bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200"
                               : "bg-amber-50 text-amber-700 border border-amber-200"
                           }`}
                         >
-                          {inv.category_label || inv.payment_mode_raw}
+                          {inv.category === "split" ? (inv.payment_mode_raw || "Split Payment") : (inv.category_label || inv.payment_mode_raw)}
                         </span>
                       </td>
                       <td className="py-2.5 px-4 text-center whitespace-nowrap">

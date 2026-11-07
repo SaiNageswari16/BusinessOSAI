@@ -537,11 +537,14 @@ export function PurchaseStatementSuite({ onBack, initialSupplierName }: Purchase
       const pSName = (p.supplier_name || p.vendor_name || "").toLowerCase().trim();
       const pBillId = p.vendor_bill_id ? String(p.vendor_bill_id) : "";
       const pBillNo = String(p.bill_number || "").trim().toUpperCase();
+      const pSuppId = p.supplier_id ? String(p.supplier_id) : "";
 
       const matchesDirectBill = (pBillId && matchedBillIds.has(pBillId)) || (pBillNo && matchedBillNumbers.has(pBillNo));
-      const matchesName = pSName && (pSName === sName || pSName.includes(sName) || sName.includes(pSName));
+      const matchesSupplierId = Boolean(pSuppId && sId && (pSuppId === sId || sId.includes(pSuppId) || pSuppId.includes(sId)));
+      const matchesName = Boolean(pSName && pSName !== "vendor / supplier" && pSName !== "supplier / vendor" && (pSName === sName || pSName.includes(sName) || sName.includes(pSName)));
+      const matchesNotes = Boolean(p.notes && sName && String(p.notes).toLowerCase().includes(sName));
 
-      return (matchesDirectBill || matchesName) && isDateInFilter(p.payment_date || p.created_at);
+      return (matchesDirectBill || matchesSupplierId || matchesName || matchesNotes) && isDateInFilter(p.payment_date || p.created_at);
     });
 
     // 3. Filter Debit Notes for this supplier

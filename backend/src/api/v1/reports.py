@@ -1025,6 +1025,14 @@ async def _get_all_sales_invoices(
         pos_sgst = round(tax - pos_cgst, 2)
         pos_igst = 0.0
 
+        pos_payments = [
+            {
+                "method": pay.payment_method.value if hasattr(pay.payment_method, "value") else str(pay.payment_method),
+                "amount": float(pay.amount or 0.0)
+            }
+            for pay in (p.payments or [])
+        ]
+
         all_rows.append({
             "id": str(p.id),
             "invoice_no": p.receipt_number or f"REC-{str(p.id)[:8].upper()}",
@@ -1033,6 +1041,7 @@ async def _get_all_sales_invoices(
             "customer_gstin": getattr(p, "customer_gstin", "") or "",
             "sales_executive": p.cashier.full_name if getattr(p, "cashier", None) else "POS Cashier",
             "payment_mode": pay_mode,
+            "payments": pos_payments,
             "status": "Cancelled" if is_pos_cancelled else (p.status or "Completed").title(),
             "is_cancelled": is_pos_cancelled,
             "cancellation_reason": "POS Receipt Voided / Cancelled" if is_pos_cancelled else None,
@@ -1196,6 +1205,14 @@ async def _get_all_sales_invoices(
                 "raw_total": total,
             })
 
+        erp_payments = [
+            {
+                "method": str(getattr(pay, "payment_method", "") or ""),
+                "amount": float(getattr(pay, "amount", 0.0) or 0.0)
+            }
+            for pay in (inv.payments or [])
+        ]
+
         all_rows.append({
             "id": str(inv.id),
             "invoice_no": inv.invoice_number or f"INV-{str(inv.id)[:8].upper()}",
@@ -1204,6 +1221,7 @@ async def _get_all_sales_invoices(
             "customer_gstin": inv.customer_gstin or "",
             "sales_executive": getattr(inv, "sales_rep_name", None) or getattr(inv, "salesperson_name", None) or "Sales Executive",
             "payment_mode": inv.payment_terms or "Bank / Credit",
+            "payments": erp_payments,
             "status": inv_status,
             "is_cancelled": is_cancelled,
             "cancellation_reason": getattr(inv, "notes", None) or "Cancelled by Admin" if is_cancelled else None,
@@ -6008,6 +6026,78 @@ async def get_payment_mode_sales_report(
         if pending_amt < 0.01:
             pending_amt = 0.0
 
+        # Accurately decompose payment modes across all payments for this sales invoice
+        payments = tx.get("payments") or []
+        inv_cash = 0.0
+        inv_upi = 0.0
+        inv_bank = 0.0
+
+        if payments:
+            for p in payments:
+                amt = float(p.get("amount") or 0.0)
+                if amt <= 0:
+                    continue
+                m = str(p.get("method") or "").lower()
+                if "cash" in m:
+                    inv_cash += amt
+                elif any(k in m for k in ["upi", "gpay", "phonepe", "paytm", "qr", "bhim"]):
+                    inv_upi += amt
+                elif any(k in m for k in ["cheque", "check", "bank", "card", "pos_card", "netbanking", "razorpay", "online", "transfer", "neft", "rtgs"]):
+                    inv_bank += amt
+                else:
+                    inv_cash += amt
+
+            sum_p = inv_cash + inv_upi + inv_bank
+            if sum_p > 0:
+                paid_amt = max(paid_amt, sum_p)
+                pending_amt = max(0.0, total_amt - paid_amt)
+                if pending_amt < 0.01:
+                    pending_amt = 0.0
+            rem_paid = paid_amt - sum_p
+            if rem_paid > 0.01:
+                if any(k in mode_str for k in ["upi", "qr", "gpay", "phonepe", "paytm"]):
+                    inv_upi += rem_paid
+                elif any(k in mode_str for k in ["bank", "card", "pos_card", "netbanking", "cheque"]):
+                    inv_bank += rem_paid
+                else:
+                    inv_cash += rem_paid
+        elif paid_amt > 0.01:
+            if any(k in mode_str for k in ["upi", "qr", "gpay", "phonepe", "paytm"]):
+                inv_upi = paid_amt
+            elif any(k in mode_str for k in ["bank", "card", "pos_card", "netbanking", "razorpay", "online", "transfer", "cheque", "check"]):
+                inv_bank = paid_amt
+            elif any(k in mode_str for k in ["credit", "due", "pay later", "unpaid"]):
+                pass
+            else:
+                inv_cash = paid_amt
+
+        modes_present = []
+        mode_labels = []
+        if inv_cash > 0.01:
+            modes_present.append("cash")
+            mode_labels.append(f"Cash (₹{inv_cash:,.2f})")
+        if inv_upi > 0.01:
+            modes_present.append("upi")
+            mode_labels.append(f"UPI (₹{inv_upi:,.2f})")
+        if inv_bank > 0.01:
+            modes_present.append("bank")
+            mode_labels.append(f"Bank/Card (₹{inv_bank:,.2f})")
+        if pending_amt > 0.01:
+            modes_present.append("credit")
+            mode_labels.append(f"Due (₹{pending_amt:,.2f})")
+        if not modes_present:
+            modes_present.append("credit" if pending_amt > 0.01 else "cash")
+            mode_labels.append("Credit / Due" if pending_amt > 0.01 else "Cash")
+
+        if len(mode_labels) == 1:
+            cat = modes_present[0]
+            cat_label = "Cash" if cat == "cash" else ("UPI / QR" if cat == "upi" else ("Bank / Card" if cat == "bank" else "Credit / Due"))
+            raw_label = cat_label
+        else:
+            cat = "split"
+            cat_label = "Split / Multi-Mode"
+            raw_label = " • ".join(mode_labels)
+
         tx_item = {
             "id": tx.get("id"),
             "invoice_no": tx.get("invoice_no"),
@@ -6018,7 +6108,7 @@ async def get_payment_mode_sales_report(
             "customer_gstin": tx.get("customer_gstin") or "",
             "sales_executive": tx.get("sales_executive") or "POS Cashier",
             "source": tx.get("source") or "Sales Invoice",
-            "payment_mode_raw": tx.get("payment_mode") or "Cash",
+            "payment_mode_raw": raw_label,
             "total_amount": round(total_amt, 2),
             "subtotal": round(float(tx.get("subtotal") or total_amt), 2),
             "tax": round(max(0.0, float(tx.get("tax") or 0.0)), 2),
@@ -6028,6 +6118,12 @@ async def get_payment_mode_sales_report(
             "status": "Cancelled & Repaid" if is_canc else ("Due" if pending_amt > 0.01 else ("Paid" if paid_amt > 0 else (tx.get("status") or "Paid"))),
             "is_credit_note": is_cn,
             "is_cancelled": is_canc,
+            "category": cat,
+            "category_label": cat_label,
+            "modes": modes_present,
+            "cash_paid": 0.0 if is_canc else round(inv_cash, 2),
+            "upi_paid": 0.0 if is_canc else round(inv_upi, 2),
+            "bank_paid": 0.0 if is_canc else round(inv_bank, 2),
         }
 
         if is_canc:
@@ -6044,55 +6140,45 @@ async def get_payment_mode_sales_report(
 
         all_sales_invoices.append(tx_item)
 
-        m = mode_str
-        if any(k in m for k in ["credit", "due", "pay later", "unpaid", "pending", "net 30", "net 15", "on account"]):
-            cat = "credit"
-            cat_label = "Credit / Due"
-            credit_invoices.append(tx_item)
-        elif any(k in m for k in ["upi", "gpay", "phonepe", "paytm", "qr", "bhim"]):
-            cat = "upi"
-            cat_label = "UPI / QR"
-            upi_invoices.append(tx_item)
-        elif any(k in m for k in ["bank", "card", "pos_card", "netbanking", "razorpay", "online", "transfer", "neft", "rtgs", "cheque"]):
-            cat = "bank"
-            cat_label = "Bank / Card"
-            bank_invoices.append(tx_item)
-        else:
-            cat = "cash"
-            cat_label = "Cash"
+        if "cash" in modes_present:
             cash_invoices.append(tx_item)
-
-        tx_item["category"] = cat
-        tx_item["category_label"] = cat_label
+        if "upi" in modes_present:
+            upi_invoices.append(tx_item)
+        if "bank" in modes_present:
+            bank_invoices.append(tx_item)
+        if "credit" in modes_present or pending_amt > 0.01:
+            credit_invoices.append(tx_item)
 
     # Compute KPI totals strictly across active invoices
     grand_total_revenue = sum(x["total_amount"] for x in all_sales_invoices)
     total_sales_invoices_cnt = len(all_sales_invoices)
     avg_bill = (grand_total_revenue / total_sales_invoices_cnt) if total_sales_invoices_cnt > 0 else 0.0
 
-    cash_total = sum(x["total_amount"] for x in cash_invoices)
-    cash_collected = sum(x["paid_amount"] for x in cash_invoices)
-    cash_dues = sum(x["pending_amount"] for x in cash_invoices)
-    cash_dues_cnt = sum(1 for x in cash_invoices if x["pending_amount"] > 0.01)
-
-    upi_total = sum(x["total_amount"] for x in upi_invoices)
-    upi_collected = sum(x["paid_amount"] for x in upi_invoices)
-    upi_dues = sum(x["pending_amount"] for x in upi_invoices)
-    upi_dues_cnt = sum(1 for x in upi_invoices if x["pending_amount"] > 0.01)
-
-    bank_total = sum(x["total_amount"] for x in bank_invoices)
-    bank_collected = sum(x["paid_amount"] for x in bank_invoices)
-    bank_dues = sum(x["pending_amount"] for x in bank_invoices)
-    bank_dues_cnt = sum(1 for x in bank_invoices if x["pending_amount"] > 0.01)
-
-    credit_total = sum(x["total_amount"] for x in credit_invoices)
-    credit_collected = sum(x["paid_amount"] for x in credit_invoices)
-    credit_dues = sum(x["pending_amount"] for x in credit_invoices)
-    credit_dues_cnt = sum(1 for x in credit_invoices if x["pending_amount"] > 0.01)
-
-    # Grand Dues
+    actual_cash_collected = sum(x["cash_paid"] for x in all_sales_invoices)
+    actual_upi_collected = sum(x["upi_paid"] for x in all_sales_invoices)
+    actual_bank_collected = sum(x["bank_paid"] for x in all_sales_invoices)
     grand_dues = sum(x["pending_amount"] for x in all_sales_invoices)
     grand_dues_cnt = sum(1 for x in all_sales_invoices if x["pending_amount"] > 0.01)
+
+    cash_total = actual_cash_collected
+    cash_collected = actual_cash_collected
+    cash_dues = 0.0
+    cash_dues_cnt = 0
+
+    upi_total = actual_upi_collected
+    upi_collected = actual_upi_collected
+    upi_dues = 0.0
+    upi_dues_cnt = 0
+
+    bank_total = actual_bank_collected
+    bank_collected = actual_bank_collected
+    bank_dues = 0.0
+    bank_dues_cnt = 0
+
+    credit_total = grand_dues
+    credit_collected = 0.0
+    credit_dues = grand_dues
+    credit_dues_cnt = grand_dues_cnt
 
     # Credit Notes & Cancelled Totals
     cn_total = sum(x["total_amount"] for x in credit_notes)
@@ -6186,15 +6272,15 @@ async def get_payment_mode_sales_report(
     # Filter detailed invoices if mode filter is specified
     selected_mode = (mode_str_arg or "all").lower().strip()
     if selected_mode == "cash":
-        detailed_list = cash_invoices
+        detailed_list = [x for x in all_sales_invoices if "cash" in x.get("modes", []) or x.get("category") == "cash"]
     elif selected_mode == "upi":
-        detailed_list = upi_invoices
-    elif selected_mode == "bank":
-        detailed_list = bank_invoices
-    elif selected_mode == "credit":
-        detailed_list = credit_invoices
+        detailed_list = [x for x in all_sales_invoices if "upi" in x.get("modes", []) or x.get("category") == "upi"]
+    elif selected_mode in ["bank", "card"]:
+        detailed_list = [x for x in all_sales_invoices if "bank" in x.get("modes", []) or x.get("category") == "bank"]
+    elif selected_mode in ["credit", "due"]:
+        detailed_list = [x for x in all_sales_invoices if "credit" in x.get("modes", []) or x.get("pending_amount", 0) > 0.01]
     elif selected_mode == "dues":
-        detailed_list = [x for x in all_sales_invoices if x["pending_amount"] > 0.01]
+        detailed_list = [x for x in all_sales_invoices if x.get("pending_amount", 0) > 0.01]
     elif selected_mode == "credit_notes":
         detailed_list = credit_notes
     elif selected_mode in ["cancelled", "repaid"]:
@@ -6291,6 +6377,34 @@ async def get_payment_mode_purchases_report(
         except Exception:
             end_dt = None
 
+    # Query all VendorPayment records for cross-matching
+    vpay_query = select(VendorPayment)
+    if ctx.active_company_id:
+        if ctx.is_primary_company:
+            vpay_query = vpay_query.where(
+                or_(
+                    VendorPayment.company_id == ctx.active_company_id,
+                    and_(VendorPayment.tenant_id == ctx.tenant_id, VendorPayment.company_id == None)
+                )
+            )
+        else:
+            vpay_query = vpay_query.where(VendorPayment.company_id == ctx.active_company_id)
+    elif ctx.tenant_id:
+        vpay_query = vpay_query.where(VendorPayment.tenant_id == ctx.tenant_id)
+    
+    all_vpays = (await db.execute(vpay_query)).scalars().all()
+    vp_by_bill_id = {}
+    vp_by_bill_num = {}
+    vp_by_supp_id = {}
+    for vp in all_vpays:
+        if vp.vendor_bill_id:
+            vp_by_bill_id.setdefault(str(vp.vendor_bill_id), []).append(vp)
+        if vp.reference_number:
+            ref_clean = str(vp.reference_number).strip().upper()
+            vp_by_bill_num.setdefault(ref_clean, []).append(vp)
+        if vp.supplier_id:
+            vp_by_supp_id.setdefault(str(vp.supplier_id), []).append(vp)
+
     # Query VendorBill
     bill_query = select(VendorBill).options(
         selectinload(VendorBill.payments),
@@ -6375,32 +6489,110 @@ async def get_payment_mode_purchases_report(
         if pending_amt < 0.01:
             pending_amt = 0.0
 
-        # Determine payment mode from linked payments or bill state
-        payments = getattr(b, "payments", []) or []
-        pay_methods = [str(p.payment_method or "").lower() for p in payments if getattr(p, "payment_method", None)]
-        comb_methods = " ".join(pay_methods)
+        # Cross-reference direct payments, bill-number payments, and supplier payouts
+        payments_dict = {}
+        for p in (getattr(b, "payments", []) or []):
+            if p and p.id:
+                payments_dict[str(p.id)] = p
 
-        if is_canc:
-            cat = "cancelled"
-            cat_label = "Cancelled Bill"
-        elif any(k in comb_methods for k in ["cash"]):
-            cat = "cash"
-            cat_label = "Cash"
-        elif any(k in comb_methods for k in ["upi", "gpay", "phonepe", "paytm", "qr"]):
-            cat = "upi"
-            cat_label = "UPI / QR"
-        elif any(k in comb_methods for k in ["cheque", "check"]):
-            cat = "cheque"
-            cat_label = "Cheque"
-        elif any(k in comb_methods for k in ["bank", "card", "neft", "rtgs", "online", "transfer"]):
-            cat = "bank"
-            cat_label = "Bank / NEFT"
+        b_id_str = str(b.id)
+        for p in vp_by_bill_id.get(b_id_str, []):
+            if p and p.id:
+                payments_dict[str(p.id)] = p
+
+        b_num_clean = str(b.bill_number or "").strip().upper()
+        for p in vp_by_bill_num.get(b_num_clean, []):
+            if p and p.id:
+                payments_dict[str(p.id)] = p
+
+        # Merge any supplier-level payouts registered to this vendor
+        supp_id_str = str(b.purchase_order.supplier_id) if (b.purchase_order and b.purchase_order.supplier_id) else ""
+        if supp_id_str and supp_id_str in vp_by_supp_id:
+            for p in vp_by_supp_id[supp_id_str]:
+                if p and p.id:
+                    payments_dict[str(p.id)] = p
+
+        payments = list(payments_dict.values())
+        bill_cash = 0.0
+        bill_upi = 0.0
+        bill_cheque = 0.0
+        bill_bank = 0.0
+
+        if payments:
+            for p in payments:
+                p_amt = float(getattr(p, "amount_paid", 0.0) or 0.0)
+                if p_amt <= 0:
+                    continue
+                p_meth = str(getattr(p, "payment_method", "") or "").lower()
+                if "cash" in p_meth:
+                    bill_cash += p_amt
+                elif any(k in p_meth for k in ["upi", "gpay", "phonepe", "paytm", "qr", "bhim"]):
+                    bill_upi += p_amt
+                elif any(k in p_meth for k in ["cheque", "check"]):
+                    bill_cheque += p_amt
+                elif any(k in p_meth for k in ["bank", "card", "neft", "rtgs", "online", "transfer", "pos_card", "netbanking"]):
+                    bill_bank += p_amt
+                else:
+                    bill_bank += p_amt
+
+            sum_p = bill_cash + bill_upi + bill_cheque + bill_bank
+            if sum_p > 0:
+                paid_amt = max(paid_amt, sum_p)
+                pending_amt = max(0.0, total_amt - paid_amt)
+                if pending_amt < 0.01:
+                    pending_amt = 0.0
+
+            rem_paid = paid_amt - sum_p
+            if rem_paid > 0.01:
+                header_m = str(getattr(b, "payment_method", "") or getattr(b, "payment_terms", "") or "").lower()
+                if "cash" in header_m:
+                    bill_cash += rem_paid
+                elif any(k in header_m for k in ["upi", "qr", "gpay"]):
+                    bill_upi += rem_paid
+                elif any(k in header_m for k in ["cheque", "check"]):
+                    bill_cheque += rem_paid
+                else:
+                    bill_bank += rem_paid
         elif paid_amt > 0.01:
-            cat = "bank"
-            cat_label = "Bank / NEFT"
+            header_m = str(getattr(b, "payment_method", "") or getattr(b, "payment_terms", "") or "").lower()
+            if "cash" in header_m:
+                bill_cash = paid_amt
+            elif any(k in header_m for k in ["upi", "gpay", "phonepe", "paytm", "qr"]):
+                bill_upi = paid_amt
+            elif any(k in header_m for k in ["cheque", "check"]):
+                bill_cheque = paid_amt
+            else:
+                bill_bank = paid_amt
+
+        modes_present = []
+        mode_labels = []
+        if bill_cash > 0.01:
+            modes_present.append("cash")
+            mode_labels.append(f"Cash (₹{bill_cash:,.2f})")
+        if bill_upi > 0.01:
+            modes_present.append("upi")
+            mode_labels.append(f"UPI (₹{bill_upi:,.2f})")
+        if bill_cheque > 0.01:
+            modes_present.append("cheque")
+            mode_labels.append(f"Cheque (₹{bill_cheque:,.2f})")
+        if bill_bank > 0.01:
+            modes_present.append("bank")
+            mode_labels.append(f"Bank (₹{bill_bank:,.2f})")
+        if pending_amt > 0.01:
+            modes_present.append("credit")
+            mode_labels.append(f"Pending (₹{pending_amt:,.2f})")
+        if not modes_present:
+            modes_present.append("credit" if pending_amt > 0.01 else "bank")
+            mode_labels.append("Credit / Net Terms" if pending_amt > 0.01 else "Bank Transfer")
+
+        if len(mode_labels) == 1:
+            cat = modes_present[0]
+            cat_label = "Cash" if cat == "cash" else ("UPI / QR" if cat == "upi" else ("Cheque" if cat == "cheque" else ("Bank Transfer" if cat == "bank" else "Credit / Payables")))
+            raw_label = cat_label
         else:
-            cat = "credit"
-            cat_label = "Credit / Payables"
+            cat = "split"
+            cat_label = "Split / Multi-Mode"
+            raw_label = " • ".join(mode_labels)
 
         bill_item = {
             "id": str(b.id),
@@ -6410,13 +6602,18 @@ async def get_payment_mode_purchases_report(
             "vendor_name": supp_name,
             "vendor_phone": supp_phone,
             "vendor_gstin": supp_gstin,
-            "payment_mode_raw": cat_label,
+            "payment_mode_raw": raw_label,
             "total_amount": round(total_amt, 2),
             "paid_amount": 0.0 if is_canc else round(paid_amt, 2),
             "pending_amount": 0.0 if is_canc else round(pending_amt, 2),
             "status": "Cancelled" if is_canc else ("Paid" if pending_amt < 0.01 and paid_amt > 0 else ("Partially Paid" if paid_amt > 0 else "Payable")),
             "category": cat,
             "category_label": cat_label,
+            "modes": modes_present,
+            "cash_paid": 0.0 if is_canc else round(bill_cash, 2),
+            "upi_paid": 0.0 if is_canc else round(bill_upi, 2),
+            "cheque_paid": 0.0 if is_canc else round(bill_cheque, 2),
+            "bank_paid": 0.0 if is_canc else round(bill_bank, 2),
             "is_cancelled": is_canc,
             "is_debit_note": False,
         }
@@ -6426,15 +6623,15 @@ async def get_payment_mode_purchases_report(
             continue
 
         all_active_bills.append(bill_item)
-        if cat == "cash":
+        if "cash" in modes_present:
             cash_bills.append(bill_item)
-        elif cat == "upi":
+        if "upi" in modes_present:
             upi_bills.append(bill_item)
-        elif cat == "cheque":
+        if "cheque" in modes_present:
             cheque_bills.append(bill_item)
-        elif cat == "bank":
+        if "bank" in modes_present:
             bank_bills.append(bill_item)
-        else:
+        if "credit" in modes_present or pending_amt > 0.01:
             credit_bills.append(bill_item)
 
     # Process Debit Notes
@@ -6478,33 +6675,37 @@ async def get_payment_mode_purchases_report(
     total_bills_cnt = len(all_active_bills)
     avg_bill = (grand_total_procurement / total_bills_cnt) if total_bills_cnt > 0 else 0.0
 
-    cash_total = sum(x["total_amount"] for x in cash_bills)
-    cash_paid = sum(x["paid_amount"] for x in cash_bills)
-    cash_dues = sum(x["pending_amount"] for x in cash_bills)
-    cash_dues_cnt = sum(1 for x in cash_bills if x["pending_amount"] > 0.01)
-
-    upi_total = sum(x["total_amount"] for x in upi_bills)
-    upi_paid = sum(x["paid_amount"] for x in upi_bills)
-    upi_dues = sum(x["pending_amount"] for x in upi_bills)
-    upi_dues_cnt = sum(1 for x in upi_bills if x["pending_amount"] > 0.01)
-
-    bank_total = sum(x["total_amount"] for x in bank_bills)
-    bank_paid = sum(x["paid_amount"] for x in bank_bills)
-    bank_dues = sum(x["pending_amount"] for x in bank_bills)
-    bank_dues_cnt = sum(1 for x in bank_bills if x["pending_amount"] > 0.01)
-
-    cheque_total = sum(x["total_amount"] for x in cheque_bills)
-    cheque_paid = sum(x["paid_amount"] for x in cheque_bills)
-    cheque_dues = sum(x["pending_amount"] for x in cheque_bills)
-    cheque_dues_cnt = sum(1 for x in cheque_bills if x["pending_amount"] > 0.01)
-
-    credit_total = sum(x["total_amount"] for x in credit_bills)
-    credit_paid = sum(x["paid_amount"] for x in credit_bills)
-    credit_dues = sum(x["pending_amount"] for x in credit_bills)
-    credit_dues_cnt = sum(1 for x in credit_bills if x["pending_amount"] > 0.01)
-
+    actual_cash_paid = sum(x["cash_paid"] for x in all_active_bills)
+    actual_upi_paid = sum(x["upi_paid"] for x in all_active_bills)
+    actual_bank_paid = sum(x["bank_paid"] for x in all_active_bills)
+    actual_cheque_paid = sum(x["cheque_paid"] for x in all_active_bills)
     grand_dues = sum(x["pending_amount"] for x in all_active_bills)
     grand_dues_cnt = sum(1 for x in all_active_bills if x["pending_amount"] > 0.01)
+
+    cash_total = actual_cash_paid
+    cash_paid = actual_cash_paid
+    cash_dues = 0.0
+    cash_dues_cnt = 0
+
+    upi_total = actual_upi_paid
+    upi_paid = actual_upi_paid
+    upi_dues = 0.0
+    upi_dues_cnt = 0
+
+    bank_total = actual_bank_paid
+    bank_paid = actual_bank_paid
+    bank_dues = 0.0
+    bank_dues_cnt = 0
+
+    cheque_total = actual_cheque_paid
+    cheque_paid = actual_cheque_paid
+    cheque_dues = 0.0
+    cheque_dues_cnt = 0
+
+    credit_total = grand_dues
+    credit_paid = 0.0
+    credit_dues = grand_dues
+    credit_dues_cnt = grand_dues_cnt
 
     dn_total = sum(x["total_amount"] for x in debit_notes_list)
     dn_cnt = len(debit_notes_list)
@@ -6569,17 +6770,17 @@ async def get_payment_mode_purchases_report(
 
     # Filter detailed list by mode if requested
     if mode_str_arg == "cash":
-        detailed_list = cash_bills
+        detailed_list = [x for x in all_active_bills if "cash" in x.get("modes", []) or x.get("category") == "cash"]
     elif mode_str_arg == "upi":
-        detailed_list = upi_bills
+        detailed_list = [x for x in all_active_bills if "upi" in x.get("modes", []) or x.get("category") == "upi"]
     elif mode_str_arg in ["bank", "card"]:
-        detailed_list = bank_bills
+        detailed_list = [x for x in all_active_bills if "bank" in x.get("modes", []) or x.get("category") == "bank"]
     elif mode_str_arg in ["cheque", "check"]:
-        detailed_list = cheque_bills
+        detailed_list = [x for x in all_active_bills if "cheque" in x.get("modes", []) or x.get("category") == "cheque"]
     elif mode_str_arg in ["credit", "due"]:
-        detailed_list = credit_bills
+        detailed_list = [x for x in all_active_bills if "credit" in x.get("modes", []) or x.get("pending_amount", 0) > 0.01]
     elif mode_str_arg == "dues":
-        detailed_list = [x for x in all_active_bills if x["pending_amount"] > 0.01]
+        detailed_list = [x for x in all_active_bills if x.get("pending_amount", 0) > 0.01]
     elif mode_str_arg in ["debit_note", "debit_notes"]:
         detailed_list = debit_notes_list
     else:
